@@ -192,7 +192,9 @@ export class AgentPresets extends TypertRemoteService {
       this.settings = settingsCtx.settings.register(
         SETTINGS_NAMESPACE,
         AgentPresetSettingsSchema,
-        { base: { default: config.default, modeSelectionEnabled: true } },
+        // AsterHub ships mode selection off: every new session composes the
+        // deployment default (standard); the setting can still enable it.
+        { base: { default: config.default, modeSelectionEnabled: false } },
       )
       this.settingsService = settingsCtx.settings
       settingsCtx.effect(() => () => {
@@ -250,7 +252,7 @@ export class AgentPresets extends TypertRemoteService {
   /** Read one internally consistent snapshot of the selection policy. */
   private selectionPolicy(): { enabled: boolean; defaultId: string } {
     const settings = this.settings?.get()
-    if (settings === undefined) return { enabled: true, defaultId: this.config.default }
+    if (settings === undefined) return { enabled: false, defaultId: this.config.default }
     const enabled = settings.modeSelectionEnabled
     return {
       enabled,
