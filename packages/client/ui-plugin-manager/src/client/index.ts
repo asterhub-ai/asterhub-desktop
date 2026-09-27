@@ -1,10 +1,10 @@
 /**
- * Plugin manager, browser half: the **Plugins** entry of the sidebar and the
- * management page it opens in the main column. The page installs, enables,
- * disables, and removes the bundles of the Host's profile through the
- * `pluginManager` Remote and switches their rows in the profile's user layer.
- * A plugin that carries its own configuration renders it on this page through
- * the slots the page declares (`slot-contract.ts`).
+ * The Plugins entry, browser half: the sidebar entry and the main-column page
+ * it opens. The upstream install and management machinery is intentionally
+ * not part of this fork — the entry stays and the surface is reserved for the
+ * AsterHub plugin system. The slot declarations below (`plugins.item` and the
+ * per-row configuration seats) keep the slot contract available for that
+ * system to grow into; see `slot-contract.ts`.
  */
 
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -15,28 +15,51 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
-// Type-only: the ctx.remote Context merge and the forwarded-event key face.
-import type {} from '@deepseek-ai/dsh-api-remotes/client'
-// Type-only: the forwarded events' own declaration (`$on`'s key face resolves
-// through the owning package's client-safe types subpath).
-import type {} from '@deepseek-ai/dsh-plugin-manager/types'
 import { PluginManagerPage } from './PluginManagerPage.tsx'
 import { PluginsPanelIcon } from './PluginsPanelIcon.tsx'
-import { configLedgerSource } from './config-ledger.ts'
-import { PluginManagerController } from './manager-store.ts'
 import { en, zh, type PluginManagerLocaleKey } from './locales.ts'
+import type { PluginConfigViewProps } from './slot-contract.ts'
 import type {} from './slot-contract.ts'
 
 export type { PluginManagerPageProps } from './PluginManagerPage.tsx'
-export type { ConfigLedger, OfficialItem } from './config-ledger.ts'
-export type { PluginManagerFace } from './manager-store.ts'
 export type { PluginManagerLocaleKey } from './locales.ts'
 export type { PluginConfigViewProps } from './slot-contract.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** Plugin manager tab copy. */
+    /** Plugins tab copy. */
     'pluginManager': PluginManagerLocaleKey
+  }
+
+  /**
+   * The slots the Plugins page declares for plugins that carry their own
+   * configuration. Kept inline (beside the mirror in `slot-contract.ts`) so
+   * the augmentation survives dts bundling into the published types.
+   */
+  interface SlotMap {
+    /**
+     * One official plugin the Plugins page lists in its Official group after
+     * the official bundles: `label` is the card's title and `order` its place.
+     * The page renders the entry as the card's one-liner (`view: 'summary'`)
+     * and, once the card is opened, as the body of the plugin's own page
+     * (`view: 'page'`). OCCUPIED by the host-plane configuration pages
+     * `ui-settings-plugins` ships; a bundle's configuration belongs in
+     * `plugins.bundle.config` or `plugins.row.config` instead.
+     */
+    'plugins.item': { kind: 'list'; scope: 'root'; owner: PluginConfigViewProps }
+    /**
+     * A bundle's own configuration, keyed by the bundle's package name and
+     * rendered on the bundle's page between its description and its rows
+     * (`view: 'page'` only).
+     */
+    'plugins.bundle.config': { kind: 'keyed'; scope: 'root'; owner: PluginConfigViewProps }
+    /**
+     * The configuration of one row a bundle declares, keyed by
+     * `<package name>#<row id>` with the row id as the bundle's patch declares
+     * it: the row on the bundle's page gains a configure control that opens
+     * the entry's page, headed by the row id and the entry's summary.
+     */
+    'plugins.row.config': { kind: 'keyed'; scope: 'root'; owner: PluginConfigViewProps }
   }
 }
 
@@ -46,45 +69,24 @@ export const NS = 'pluginManager'
 /** The id shared by the sidebar entry and the main panel it opens. */
 export const PANEL_ID = 'plugins' as MainPanelId
 
-/** Services required by the sidebar registration and the Remote methods; the inventory says whether the Host manages a profile. */
-export const inject = ['slots', 'locale', 'remote', 'remote.pluginManager', 'remote.pluginInventory']
+/** Services required by the sidebar registration. */
+export const inject = ['slots', 'locale']
 
 /**
- * Contribute the Plugins entry to the sidebar with the management page it
- * opens, and keep it current on the Host's change events.
+ * Contribute the Plugins entry to the sidebar with the reserved page it opens.
  * @param ctx - the browser plugin context.
  */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-plugin-manager: dictionaries')
   const t = ctx.locale.bind(NS)
-  const controller = new PluginManagerController(ctx)
-  ctx.effect(() => () => { controller.dispose() }, 'ui-plugin-manager: controller')
-  // The Host says when what is installed, enabled, or composed changed — from
-  // this page, the CLI, or another browser — and streams install output.
-  ctx.effect(() => {
-    // A page never rendered holds no snapshot to refresh.
-    const refresh = (): void => {
-      if (controller.getSnapshot().status !== 'idle') void controller.load()
-    }
-    const disposers = [
-      ctx.remote.$on('plugin-manager/changed', refresh),
-      ctx.remote.$on('plugin-manager/install-log', (chunk) => { controller.appendLog(chunk) }),
-      ctx.remote.$on('plugin-manager/install-state', (progress) => { controller.installProgress(progress) }),
-      ctx.on('connection/reset', refresh),
-    ]
-    return () => { for (const dispose of disposers) dispose() }
-  }, 'ui-plugin-manager: host invalidations')
 
   // The page is a global panel: it belongs to the profile, not to a Session,
-  // and the sidebar's entry selects it. What is installed and switched on is
-  // the page's own; a plugin's configuration arrives through the slots the
-  // page declares here, so the page never names a configurable plugin.
-  const configLedger = configLedgerSource(ctx)
+  // and the sidebar's entry selects it. The children keep the slot contract
+  // declared so the future AsterHub plugin system can register into it.
   ctx.slots.inject('main', () => ctx.slots.register({
     name: 'main',
     key: PANEL_ID,
     locale: NS,
-    inject: () => controller.inject(configLedger),
     children: {
       'plugins.item': { kind: 'list', scope: 'root' },
       'plugins.bundle.config': { kind: 'keyed', scope: 'root' },
@@ -98,5 +100,4 @@ export function apply(ctx: ClientContext): void {
     label: () => t('panel'),
     locale: NS,
   }, PluginsPanelIcon))
-
 }

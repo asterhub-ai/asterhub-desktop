@@ -16,7 +16,10 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 // through the service, never a value import (client bundle purity gate).
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only: the Plugins page's SlotMap merge (the 'plugins.item' entry).
-import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
+// Re-exported (not a bare `import type {}`) so the dts bundler keeps the
+// plugin-manager's SlotMap augmentation in this package's published types.
+import type { PluginConfigViewProps } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
+export type { PluginConfigViewProps }
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
