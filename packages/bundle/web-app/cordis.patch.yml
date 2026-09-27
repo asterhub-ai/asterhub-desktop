@@ -249,8 +249,11 @@
     - id: ui-settings-general
       name: '@deepseek-ai/dsh-client-ui-settings-general'
 
-    - id: ui-settings-models
-      name: '@deepseek-ai/dsh-client-ui-settings-models'
+    # The Account settings entry: sub2api login, quota, and top-up. Login
+    # provisions the model key the llm-pi-ai sub2api route resolves, replacing
+    # the upstream provider-management section.
+    - id: ui-settings-account
+      name: '@deepseek-ai/dsh-client-ui-settings-account'
 
     # Plugin management: the sidebar Plugins page installs, enables, disables,
     # and removes the profile's bundles through the `pluginManager` Remote.
@@ -347,9 +350,9 @@
     - id: ui-message-feedback
       name: '@deepseek-ai/dsh-client-ui-message-feedback'
 
-    # Model selection: the /model popupSelect + composer seat over session.models.
-    - id: ui-model-selection
-      name: '@deepseek-ai/dsh-client-ui-model-selection'
+    # Model selection is intentionally not mounted: AsterHub always uses the
+    # deployment default model (sub2api/aster), so the composer has no
+    # model-picker seat.
 
     - id: ui-permission
       name: '@deepseek-ai/dsh-client-ui-permission-presets'
@@ -509,3 +512,12 @@
       name: '@deepseek-ai/dsh-agent-presets'
       config:
         default: standard
+
+    # The AsterHub account service: sub2api login, model-key provisioning
+    # (written to the SUB2API_API_KEY credential reference), quota, and
+    # top-up for the 账户 settings entry.
+    - id: account-sub2api
+      name: '@deepseek-ai/dsh-account-sub2api'
+      config:
+        authBaseUrl: !!js process.env.ASTERHUB_AUTH_BASE_URL ?? 'https://xapi.fans/api/v1'
+        groupId: 6

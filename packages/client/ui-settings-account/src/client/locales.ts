@@ -1,0 +1,61 @@
+/** The Account settings entry copy: sub2api-backed login, quota, and top-up. */
+
+/** Simplified Chinese dictionary and key source of truth. */
+export const zh = {
+  nav: '账户',
+  title: '账户',
+  loading: '正在读取账户…',
+  loggedOutIntro: '账户由 sub2api 托管。登录后即可使用模型，并在此管理额度与账户。',
+  emailLabel: '邮箱',
+  passwordLabel: '密码',
+  loginButton: '登录',
+  loggingIn: '登录中…',
+  forgotLink: '忘记密码',
+  registerLink: '注册账户',
+  loggedInAs: '当前账户',
+  balanceLabel: '余额',
+  balanceLoading: '正在查询余额…',
+  refresh: '刷新',
+  topUpTitle: '充值',
+  topUpAmountLabel: '金额',
+  topUpButton: '获取支付链接',
+  topUpOpening: '已创建订单，正在打开支付页面…',
+  redeemTitle: '兑换码',
+  redeemButton: '兑换',
+  changePasswordLink: '修改密码',
+  dashboardLink: '前往账户中心',
+  logoutButton: '退出登录',
+  loggingOut: '正在退出…',
+  keyBoundNote: '模型调用密钥已绑定本安装，登录后即可直接使用模型。',
+} as const
+/** The locale key union. */
+export type AccountLocaleKey = keyof typeof zh
+
+/** English dictionary checked against the Chinese key set. */
+export const en = {
+  nav: 'Account',
+  title: 'Account',
+  loading: 'Loading account…',
+  loggedOutIntro: 'Accounts are hosted by sub2api. Log in to use models and manage quota here.',
+  emailLabel: 'Email',
+  passwordLabel: 'Password',
+  loginButton: 'Log in',
+  loggingIn: 'Logging in…',
+  forgotLink: 'Forgot password',
+  registerLink: 'Create account',
+  loggedInAs: 'Signed in as',
+  balanceLabel: 'Balance',
+  balanceLoading: 'Loading balance…',
+  refresh: 'Refresh',
+  topUpTitle: 'Top up',
+  topUpAmountLabel: 'Amount',
+  topUpButton: 'Get payment link',
+  topUpOpening: 'Order created. Opening the payment page…',
+  redeemTitle: 'Redemption code',
+  redeemButton: 'Redeem',
+  changePasswordLink: 'Change password',
+  dashboardLink: 'Open account center',
+  logoutButton: 'Log out',
+  loggingOut: 'Logging out…',
+  keyBoundNote: 'The model-call key is bound to this installation; models work right after login.',
+} as const satisfies Record<AccountLocaleKey, string>

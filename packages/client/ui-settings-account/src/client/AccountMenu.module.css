@@ -1,0 +1,75 @@
+/* Top-left account menu: trigger on the brand row, dropdown below it. */
+
+.root {
+  position: relative;
+  display: inline-flex;
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #4f7cff;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.avatarAnonymous {
+  background: color-mix(in srgb, currentColor 25%, transparent);
+}
+
+.menu {
+  position: fixed;
+  top: 34px;
+  left: 8px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 220px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-primary, #fff);
+  color: var(--dsw-alias-label-primary);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 22%);
+}
+
+.menu .item {
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.menu .item:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.muted {
+  margin: 0;
+  opacity: 0.7;
+}
+
+.error {
+  margin: 0;
+  color: #d4483b;
+}

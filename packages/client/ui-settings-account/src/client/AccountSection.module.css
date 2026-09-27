@@ -1,0 +1,114 @@
+/* Account settings entry: a quiet single-column surface. */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 560px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.heading {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.muted {
+  margin: 0;
+  opacity: 0.7;
+}
+
+.error {
+  margin: 0;
+  color: #d4483b;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  border-radius: 10px;
+}
+
+.groupTitle {
+  font-weight: 500;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fieldLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.fieldLabel > span {
+  opacity: 0.7;
+}
+
+.input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.primary {
+  align-self: flex-start;
+  padding: 8px 18px;
+  border: none;
+  border-radius: 8px;
+  background: #4f7cff;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.primary:disabled,
+.action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.action {
+  padding: 7px 14px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.links {
+  display: flex;
+  gap: 16px;
+}
+
+.link {
+  color: #4f7cff;
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}

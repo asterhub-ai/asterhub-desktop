@@ -234,6 +234,7 @@ export function SidebarRoot({
             </span>
           </button>
         )}
+        {renderSlot('sidebar.brand.trailing', {})}
         {!darwinDesktop && toggle}
       </div>
 
