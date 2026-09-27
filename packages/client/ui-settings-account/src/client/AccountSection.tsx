@@ -1,215 +1,260 @@
-/** Account settings renders safe Host state and explicit login actions. */
-import { Big } from 'big.js'
-import { useEffect, useRef, useState, type MouseEvent } from 'react'
-import { Button, IconRightUpOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { AccountDetails, AccountView, SignInAttemptId } from '@deepseek-ai/dsh-deepseek-account/types'
-import type { PropsRuntime, PropsLocale, InjectFace, HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ThemeSnapshot } from '@deepseek-ai/dsh-client-ui-theme/client'
-import type { PlatformPage, PlatformPages } from './platform-pages.ts'
-import { formatBalance } from './formatBalance.ts'
-import { AccountAvatar } from './AccountAvatar.tsx'
-import { authorizeUrlWithTheme } from './authorize-url.ts'
-import type { BonusNotice } from './bonus-notices.ts'
+/**
+ * The Account settings surface: logged-out it offers the sub2api login and
+ * dashboard entries; logged in it shows the live balance and the top-up,
+ * redemption, password-management, and logout actions.
+ */
+import { useState } from 'react'
+import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { AccountStatus } from '@deepseek-ai/dsh-account-sub2api/types'
+import { getAccountApi } from './account-api.ts'
 import css from './AccountSection.module.css'
 
-/** Safe account snapshot shared by the settings page and launcher. */
-export interface AccountSnapshot {
-  /** Server-authored bonus notice awaiting display, absent when none is available. */
-  notice?: BonusNotice
-
-  /** Latest Host state, absent until the stream responds. */
-  view: AccountView | undefined
-  /** Sanitized profile and balance query outcomes, absent while loading. */
-  details: Partial<AccountDetails> | undefined
-  /** Whether the state stream failed. */
-  failed: boolean
-  /** Explicitly opened account dialog outside onboarding. */
-  loginVisible?: boolean
-  /** Latest explicit start request failed before a Host state was available. */
-  loginFailed?: boolean
-  /** Mounted onboarding owns the dialog while active. */
-  onboarding?: boolean
-}
-
-/** Host operations injected into the Cordis-free account component. */
-export interface AccountSectionInjected {
-  /** Subscribe to live credential-expiry notifications.
-   * @param listener - callback after the current credential is removed.
-   * @returns listener cleanup.
-   */
-  subscribeSessionExpired?: (listener: () => void) => () => void
-  /** Subscribe to live model sign-in guidance; the returned function removes the listener.
-   * @param listener - callback for one rejected account-model request.
-   * @returns listener cleanup.
-   */
-  subscribeModelSignInRequired?: (listener: () => void) => () => void
-  /** Desktop-only: show one page in the account feature's shared native host; absent in ordinary browsers. */
-  openPlatformPage?: PlatformPages['open']
-
-  /** Account stream owned by the Host and theme snapshots published by the renderer, observed through framework hooks. */
-  hooks: {
-    account: HostObservable<AccountSnapshot>
-    /** Palette the Platform login pages follow. */
-    theme: HostObservable<ThemeSnapshot>
-  }
-  /**
-   * Read the balance, bonus wallets and unnotified bonus once. The Settings launcher
-   * calls it on each entry, and a page opener on return from top-up.
-   * @returns after both reads settle.
-   */
-  refreshAccount: () => Promise<void>
-  /** Open the external support questionnaire with the account, build and environment sampled by this click. */
-  contactUs: () => void
-  /** Open or dismiss the login dialog. */
-  showLogin: (visible: boolean) => void
-  /** Claim dialog ownership for the onboarding step. */
-  setOnboarding: (active: boolean) => void
-  /** @param orderId - notice whose card finished a presented frame while visible. */
-  bonusNoticeShown: (orderId: BonusNotice['orderId']) => void
-  /** @param orderId - notice the user closed. */
-  bonusNoticeDismissed: (orderId: BonusNotice['orderId']) => void
-  /** @returns after the login attempt is created. */
-  start: () => Promise<void>
-  /** @param id - attempt to cancel. @returns after cancellation or an already-admitted commit. */
-  cancel: (id: SignInAttemptId) => Promise<void>
-  /** @returns whether a running task currently uses the account token. */
-  hasRunningAccountTasks: () => Promise<boolean>
-  /** @returns after local account credentials are removed. */
-  signOut: () => Promise<void>
-}
-/** Composed account section props. */
+/** Full component props assembled by the settings section renderer. */
 export type AccountSectionProps =
-  PropsRuntime<'settings.section'> & PropsLocale<'settings.account'> & InjectFace<AccountSectionInjected>
-/** @param props - localized actions, account subscription, and the shared Platform page channel. @returns account settings UI. */
-export function AccountSection({ t, useAccount, useTheme, start, cancel, openPlatformPage }: AccountSectionProps) {
-  const { view: state, details, failed: streamFailed } = useAccount(value => value)
-  const colorScheme = useTheme(snapshot => snapshot.active.colorScheme)
-  // The shared host owns the native view; this page holds only its own request,
-  // and only while it is the latest owner.
-  const releasePage = useRef<(() => void) | undefined>(undefined)
-  const [failed, setFailed] = useState(false)
+  PropsRuntime<'settings.section'>
+  & PropsLocale<'settings.account'>
+
+/** Extract the human message from a failed remote call. */
+function failureMessage(error: { message: string }): string {
+  return error.message
+}
+
+/** Render the account surface for its current state. */
+export function AccountSection({ t }: AccountSectionProps) {
+  const api = getAccountApi()
+  const [status, setStatus] = useState<AccountStatus>()
   const [busy, setBusy] = useState(false)
-  const profile = details?.profile?.status === 'ready' ? details.profile.value : undefined
-  const wallets = details?.balance?.status === 'ready' ? details.balance.value : undefined
-  const bonusWallets = details?.balance?.status === 'ready'
-    ? details.balance.bonusWallets.filter(wallet => new Big(wallet.balance).gt(0)) : []
-  const showBonusRow = details?.balance?.status !== 'ready' || bonusWallets.length > 0
-  const attempt = state?.attempt
-  const active = attempt !== null && attempt !== undefined
-    && ['initializing', 'waiting-browser', 'exchanging', 'committing'].includes(attempt.phase)
-  const signedIn = state?.status === 'credential-stored'
-  useEffect(() => () => { releasePage.current?.(); releasePage.current = undefined }, [])
-  useEffect(() => {
-    if (signedIn) return
-    releasePage.current?.()
-    releasePage.current = undefined
-  }, [signedIn])
-  const showPage = (open: PlatformPages['open'], page: PlatformPage) => {
-    releasePage.current?.()
-    releasePage.current = open(page, () => { releasePage.current = undefined })
+  const [notice, setNotice] = useState<string>()
+  const [error, setError] = useState<string>()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [amount, setAmount] = useState('10')
+  const [code, setCode] = useState('')
+
+  const applyStatus = (next: AccountStatus): void => {
+    setStatus(next)
+    setError(undefined)
   }
-  const run = async (action: () => Promise<void>) => {
+
+  if (api === undefined) {
+    return (
+      <div className={css.section}>
+        <h2 className={css.heading}>{t('title')}</h2>
+        <p className={css.error}>账户服务不可用</p>
+      </div>
+    )
+  }
+
+  const load = async (): Promise<void> => {
     setBusy(true)
-    setFailed(false)
-    try { await action() } catch { setFailed(true) } finally { setBusy(false) }
+    try {
+      const result = await api.getStatus()
+      if (result.ok) applyStatus(result.value)
+      else setError(failureMessage(result.error))
+    } finally {
+      setBusy(false)
+    }
   }
-  /**
-   * @param event - click on a Platform destination link.
-   * @returns nothing; on Desktop the embedded page replaces the pending navigation.
-   */
-  const openUsage = (event: MouseEvent<HTMLAnchorElement>): void => {
-    if (openPlatformPage !== undefined && signedIn) { event.preventDefault(); showPage(openPlatformPage, 'usage') }
+
+  const login = async (): Promise<void> => {
+    setBusy(true)
+    setError(undefined)
+    try {
+      const result = await api.login({ email, password })
+      if (result.ok) {
+        applyStatus(result.value)
+        setPassword('')
+      } else setError(failureMessage(result.error))
+    } finally {
+      setBusy(false)
+    }
   }
-  /**
-   * The Platform entry the balance rows share with the Usage action: an embedded page on
-   * Desktop, a new tab elsewhere. A wallet read that failed still reaches the same
-   * destination, so the user can inspect the balance the Harness could not load; the
-   * destination comes from the account links, not from the wallet response.
-   * @param label - localized link copy.
-   * @param className - link treatment for the row that renders it, absent when the sheet has no such rule.
-   * @returns the Platform anchor.
-   */
-  const platformLink = (label: string, className: string | undefined) => (
-    <a className={className} href={state?.links.usageUrl} aria-disabled={state === undefined}
-      target="_blank" rel="noreferrer" onClick={openUsage}>{label}</a>
-  )
-  const status = failed || streamFailed || attempt?.phase === 'failed' ? t('failed')
-    : attempt?.phase === 'expired' ? t('expired')
-      : active ? t(attempt.phase === 'initializing' ? 'initializing' : attempt.phase === 'waiting-browser' ? 'waiting' : 'completing')
-        : signedIn ? profile?.contact ?? t(details?.profile === undefined ? 'loading' : 'profileUnavailable') : t('signInDescription')
-  if (!signedIn && !active) return (
-    <section className={css.signedOut} aria-label={t('nav')}>
-      <div className={css.signedOutContent}>
-        <div className={css.signedOutCopy}>
-          <span className={css.signedOutTitle}>{t('settingsSignedOutTitle')}</span>
-          <span className={css.signedOutDescription} role="status">
-            {failed || streamFailed ? t('failed') : t('settingsSignedOutDescription')}
-          </span>
-        </div>
-        <Button variant="primary" className={css.signInButton} disabled={busy || state === undefined}
-          onClick={() => { void run(start) }}>{t('signIn')}</Button>
+
+  const logout = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      const result = await api.logout()
+      if (result.ok) {
+        setStatus({ loggedIn: false, keyBound: false, dashboardUrl: status?.dashboardUrl ?? '' })
+        setNotice(undefined)
+      } else setError(failureMessage(result.error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const refreshBalance = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      const result = await api.quota()
+      if (result.ok) {
+        setStatus((previous) => {
+          if (previous === undefined) return undefined
+          const next: AccountStatus = {
+            ...previous,
+            balance: result.value.balance,
+            ...(result.value.currency !== undefined ? { currency: result.value.currency } : {}),
+          }
+          return next
+        })
+        setError(undefined)
+      } else setError(failureMessage(result.error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const topUp = async (): Promise<void> => {
+    const parsed = Number(amount)
+    setBusy(true)
+    setNotice(undefined)
+    setError(undefined)
+    try {
+      const result = await api.topUp({ amount: parsed })
+      if (result.ok) {
+        if (result.value.checkoutUrl) {
+          setNotice(t('topUpOpening'))
+          window.open(result.value.checkoutUrl, '_blank')
+        } else setError('认证服务未返回支付链接，请前往账户中心充值')
+      } else setError(failureMessage(result.error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const redeem = async (): Promise<void> => {
+    setBusy(true)
+    setError(undefined)
+    setNotice(undefined)
+    try {
+      const result = await api.redeem({ code })
+      if (result.ok) {
+        setCode('')
+        setNotice('兑换成功')
+        await refreshBalance()
+      } else setError(failureMessage(result.error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (status === undefined) {
+    return (
+      <div className={css.section}>
+        <h2 className={css.heading}>{t('title')}</h2>
+        <p className={css.muted}>{t('loading')}</p>
+        {error !== undefined && <p className={css.error}>{error}</p>}
+        <button type="button" className={css.action} disabled={busy} onClick={() => { void load() }}>
+          {t('refresh')}
+        </button>
       </div>
-    </section>
-  )
+    )
+  }
+
+  if (!status.loggedIn) {
+    return (
+      <div className={css.section}>
+        <h2 className={css.heading}>{t('title')}</h2>
+        <p className={css.muted}>{t('loggedOutIntro')}</p>
+        <form
+          className={css.form}
+          onSubmit={(event) => { event.preventDefault(); void login() }}
+        >
+          <label className={css.fieldLabel}>
+            <span>{t('emailLabel')}</span>
+            <input
+              className={css.input}
+              type="email"
+              value={email}
+              autoComplete="username"
+              onChange={(event) => { setEmail(event.target.value) }}
+            />
+          </label>
+          <label className={css.fieldLabel}>
+            <span>{t('passwordLabel')}</span>
+            <input
+              className={css.input}
+              type="password"
+              value={password}
+              autoComplete="current-password"
+              onChange={(event) => { setPassword(event.target.value) }}
+            />
+          </label>
+          <button type="submit" className={css.primary} disabled={busy || !email || !password}>
+            {busy ? t('loggingIn') : t('loginButton')}
+          </button>
+        </form>
+        <div className={css.links}>
+          <a className={css.link} href={status.dashboardUrl} target="_blank" rel="noreferrer">{t('forgotLink')}</a>
+          <a className={css.link} href={status.dashboardUrl} target="_blank" rel="noreferrer">{t('registerLink')}</a>
+        </div>
+        <p className={css.muted}>{t('keyBoundNote')}</p>
+        {error !== undefined && <p className={css.error}>{error}</p>}
+      </div>
+    )
+  }
+
+  const balanceText = status.balance === undefined
+    ? t('balanceLoading')
+    : `${status.balance}${status.currency === undefined ? '' : ` ${status.currency}`}`
+
   return (
-    <section className={css.section} aria-label={t('nav')}>
-      <div className={css.card}>
-        <div className={css.identity}>
-          <span className={css.avatar}><AccountAvatar url={signedIn ? profile?.avatarUrl : null} /></span>
-          <div className={css.identityCopy}>
-            <span className={css.name}>{signedIn ? profile?.name ?? t('signedIn') : t('signedOut')}</span>
-            <span className={css.status} role="status">{status}</span>
-          </div>
-        </div>
-        {signedIn && <a className={css.accountInfo} href={new URL('/', state.links.usageUrl).href} target="_blank" rel="noopener noreferrer">
-          {t('accountInfo')}<IconRightUpOutlineRegular size={12} />
-        </a>}
+    <div className={css.section}>
+      <h2 className={css.heading}>{t('title')}</h2>
+      <p className={css.muted}>
+        {t('loggedInAs')}
+        {'：'}
+        {status.user?.email ?? status.user?.username ?? status.user?.id}
+      </p>
+      <div className={css.row}>
+        <span>{t('balanceLabel')}</span>
+        <strong>{balanceText}</strong>
+        <button type="button" className={css.action} disabled={busy} onClick={() => { void refreshBalance() }}>
+          {t('refresh')}
+        </button>
       </div>
-      {active && <div className={css.actions}>
-        {attempt.authorizeUrl && <a className={css.linkButton} href={authorizeUrlWithTheme(attempt.authorizeUrl, colorScheme)}
-          target="_blank" rel="noreferrer">
-          {t('open')}
-        </a>}
-        <Button variant="outline" disabled={busy || attempt.phase === 'committing'}
-          onClick={() => { void run(() => cancel(attempt.id)) }}>{t('cancel')}</Button>
-      </div>}
-      <div className={css.balanceCard}>
+      <div className={css.group}>
+        <span className={css.groupTitle}>{t('topUpTitle')}</span>
         <div className={css.row}>
-          <span>{t('balance')}</span>
-          {signedIn && wallets !== undefined && wallets.length > 0
-            ? <span className={css.amount}>{wallets.map(wallet => <span key={wallet.currency}>
-              {formatBalance(wallet.balance, wallet.currency === 'CNY' ? '¥' : '$')}
-            </span>)}</span>
-            : !signedIn || details?.balance === undefined
-              ? <span className={css.unavailable}>{t(!signedIn ? 'balanceSignedOut' : 'loading')}</span>
-              : platformLink(t('balanceUnavailable'), css.unavailableLink)}
+          <label className={css.fieldLabel}>
+            <span>{t('topUpAmountLabel')}</span>
+            <input
+              className={css.input}
+              type="number"
+              min="1"
+              step="1"
+              value={amount}
+              onChange={(event) => { setAmount(event.target.value) }}
+            />
+          </label>
+          <button type="button" className={css.action} disabled={busy} onClick={() => { void topUp() }}>
+            {t('topUpButton')}
+          </button>
         </div>
-        {signedIn && showBonusRow && <>
-          <div className={css.divider} />
-          <div className={css.row}>
-            <span>{t('bonusBalance')}</span>
-            <span className={css.bonusValue}>
-              {bonusWallets.length > 0
-                ? <span className={css.amount}>{bonusWallets.map(wallet => <span key={wallet.currency}>
-                  {formatBalance(wallet.balance, wallet.currency === 'CNY' ? '¥' : '$')}
-                </span>)}</span>
-                : details?.balance === undefined
-                  ? <span className={css.unavailable}>{t('loading')}</span>
-                  : platformLink(t('balanceUnavailable'), css.unavailableLink)}
-            </span>
-          </div>
-        </>}
-        <div className={css.divider} />
         <div className={css.row}>
-          <span className={css.secondary}>{t('more')}</span>
-          <div className={css.links}>
-            {platformLink(t('usage'), css.linkButton)}
-            <a className={`${css.linkButton} ${css.primary}`} href={state?.links.topUpUrl} aria-disabled={state === undefined}
-              target="_blank" rel="noreferrer"
-              onClick={(event) => { if (openPlatformPage !== undefined && signedIn) { event.preventDefault(); showPage(openPlatformPage, 'top-up') } }}>{t('topUp')}</a>
-          </div>
+          <label className={css.fieldLabel}>
+            <span>{t('redeemTitle')}</span>
+            <input
+              className={css.input}
+              type="text"
+              value={code}
+              onChange={(event) => { setCode(event.target.value) }}
+            />
+          </label>
+          <button type="button" className={css.action} disabled={busy || !code} onClick={() => { void redeem() }}>
+            {t('redeemButton')}
+          </button>
         </div>
       </div>
-    </section>
+      <div className={css.links}>
+        <a className={css.link} href={status.dashboardUrl} target="_blank" rel="noreferrer">{t('changePasswordLink')}</a>
+        <a className={css.link} href={status.dashboardUrl} target="_blank" rel="noreferrer">{t('dashboardLink')}</a>
+      </div>
+      <button type="button" className={css.action} disabled={busy} onClick={() => { void logout() }}>
+        {busy ? t('loggingOut') : t('logoutButton')}
+      </button>
+      {notice !== undefined && <p className={css.muted}>{notice}</p>}
+      {error !== undefined && <p className={css.error}>{error}</p>}
+    </div>
   )
 }
