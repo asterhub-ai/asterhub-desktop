@@ -14,8 +14,10 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { AccountSection } from './AccountSection.tsx'
-import { AccountMenuButton } from './AccountMenuButton.tsx'
-import { setAccountApiResolver } from './account-api.ts'
+import { UsageSection } from './UsageSection.tsx'
+import type { AccountSectionActions, AccountUsageActions } from './account-api.ts'
+import { ACCOUNT_COMMAND_EVENT } from './account-api.ts'
+import { AccountGate } from './AccountGate.tsx'
 import { en, zh, type AccountLocaleKey } from './locales.ts'
 
 export type { AccountSectionProps } from './AccountSection.tsx'
@@ -32,7 +34,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 const NS = 'settings.account'
 
 /** Required services (cordis fiber inject). */
-export const inject = ['slots', 'locale', 'remote']
+export const inject = ['slots', 'locale', 'remote', 'remote.accountSub2api']
 
 /**
  * Mount the Account section: the settings entry that owns login state,
@@ -43,25 +45,58 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-settings-account: dictionaries')
   const t = ctx.locale.bind(NS)
 
-  // Capture the account Remote once; components read it through the shared
-  // module handle, so a not-yet-mounted namespace degrades to a quiet
-  // "service unavailable" state instead of crashing the slot outlet.
-  setAccountApiResolver(() => ctx.remote.accountSub2api)
-
+  // Keep the Remote in this plugin instance and resolve it when an action runs.
+  // Only narrow callbacks cross the slot boundary; the components never receive
+  // the Client Remote service or shared module state.
+  const accountSectionActions: AccountSectionActions = {
+    getStatus: () => ctx.remote.accountSub2api.getStatus(),
+    login: input => ctx.remote.accountSub2api.login(input),
+    logout: () => ctx.remote.accountSub2api.logout(),
+    quota: () => ctx.remote.accountSub2api.quota(),
+    paymentMethods: () => ctx.remote.accountSub2api.paymentMethods(),
+    topUp: input => ctx.remote.accountSub2api.topUp(input),
+    redeem: input => ctx.remote.accountSub2api.redeem(input),
+  }
+  const accountUsageActions: AccountUsageActions = {
+    usage: () => ctx.remote.accountSub2api.usage(),
+  }
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'account',
     order: 10,
     label: () => t('nav'),
     locale: NS,
+    inject: () => accountSectionActions,
   }, AccountSection))
 
-  // The top-left account menu on the sidebar brand row. The seat is declared
-  // by ui-sidebar's contract; the cross-package project reference is not
-  // wired into this package's tsconfig yet, so the slot names are asserted
-  // here and type-checked against the sidebar contract by review.
-  ctx.slots.inject('sidebar.brand.trailing' as never, () => ctx.slots.register({
-    name: 'sidebar.brand.trailing',
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
+    id: 'account-usage',
+    order: 20,
+    label: () => t('usageNav'),
     locale: NS,
-  } as never, AccountMenuButton))
+    inject: () => accountUsageActions,
+  }, UsageSection))
+
+  ctx.slots.inject('shell.overlay' as never, () => ctx.slots.register({
+    name: 'shell.overlay',
+    id: 'account-gate',
+    order: 0,
+    locale: NS,
+    inject: () => accountSectionActions,
+  } as never, AccountGate))
+
+  const desktop = (globalThis as typeof globalThis & {
+    dshDesktop?: {
+      account?: {
+        subscribeCommand(listener: (command: 'open' | 'logout') => void): () => void
+      }
+    }
+  }).dshDesktop
+  ctx.effect(() => {
+    const dispose = desktop?.account?.subscribeCommand((command) => {
+      window.dispatchEvent(new CustomEvent(ACCOUNT_COMMAND_EVENT, { detail: command }))
+    })
+    return () => { dispose?.() }
+  }, 'ui-settings-account: application menu')
 }

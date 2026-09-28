@@ -1,0 +1,87 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  color: var(--dsw-alias-label-primary);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.header button {
+  padding: 7px 14px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.header button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.card {
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  border-radius: 10px;
+}
+
+.card h3 {
+  margin: 0 0 14px;
+  font-size: 15px;
+  font-weight: 550;
+}
+
+.card dl {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+}
+
+.card dl div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.card dt {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.card dd {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.error {
+  margin: 0;
+  color: #d4483b;
+}
+
+@media (max-width: 760px) {
+  .grid { grid-template-columns: 1fr; }
+}

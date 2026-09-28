@@ -11,6 +11,14 @@ export interface AccountUser {
   readonly username?: string
 }
 
+/** Account login input and local sign-in preferences. */
+export interface AccountLoginInput {
+  readonly email: string
+  readonly password: string
+  readonly rememberUsername: boolean
+  readonly autoLogin: boolean
+}
+
 /** Everything the 账户 settings surface renders for the current state. */
 export interface AccountStatus {
   /** Whether a sub2api access token is stored on this installation. */
@@ -19,18 +27,41 @@ export interface AccountStatus {
   readonly keyBound: boolean
   /** The account identity; present only when logged in. */
   readonly user?: AccountUser
-  /** Live balance from the sub2api profile; absent when the query failed. */
+  /** Compute credits; the upstream balance is multiplied by 100 and rounded to two decimals. */
   readonly balance?: number
-  /** Balance currency, when the deployment reports one. */
-  readonly currency?: string
-  /** The sub2api web root, for entries that live in the dashboard. */
-  readonly dashboardUrl: string
+  /** Username retained on this installation when requested by the user. */
+  readonly rememberedUsername?: string
+  /** Whether the Host may use its saved password to renew an expired session. */
+  readonly autoLogin?: boolean
 }
 
 /** One live quota read. */
 export interface QuotaSnapshot {
+  /** Compute credits, scaled from the upstream balance. */
   readonly balance: number
-  readonly currency?: string
+}
+
+/** Usage aggregates returned for one time window. */
+export interface UsagePeriodSnapshot {
+  readonly requests: number
+  readonly tokens: number
+  /** Compute credits, converted from actual upstream cost at 10 points per unit. */
+  readonly credits: number
+}
+
+/** Usage totals across the account's lifetime, recent week, and current day. */
+export interface AccountUsageSnapshot {
+  readonly cumulative: UsagePeriodSnapshot
+  readonly last7Days: UsagePeriodSnapshot
+  readonly today: UsagePeriodSnapshot
+}
+
+/** One checkout method returned by the account service. */
+export interface AccountPaymentMethod {
+  readonly id: string
+  readonly label: string
+  readonly minAmount?: number
+  readonly maxAmount?: number
 }
 
 /** One created top-up order: open `checkoutUrl` in a browser to pay. */

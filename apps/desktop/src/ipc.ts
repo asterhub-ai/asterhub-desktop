@@ -31,7 +31,11 @@ export const DESKTOP_IPC = {
   windowFullscreen: 'dsh-desktop:window-fullscreen',
   windowsAppearance: 'dsh-desktop:windows-appearance',
   windowsMenu: 'dsh-desktop:windows-menu',
+  accountCommand: 'dsh-desktop:account-command',
 } as const
+
+/** Account actions sent from the native application menu to the renderer. */
+export type DesktopAccountMenuCommand = 'open' | 'logout'
 
 /** Desktop release update state rendered by desktop-owned UI. */
 export type DesktopUpdatePreparationFailureKind = 'stop-failed' | 'tasks-changed' | 'tasks-unavailable'
@@ -83,6 +87,9 @@ export interface DshDesktopProductApi {
     status(): Promise<DesktopUpdatePresentation>
     open(): Promise<void>
     subscribe(listener: (state: DesktopUpdatePresentation) => void): () => void
+  }
+  readonly account: {
+    subscribeCommand(listener: (command: DesktopAccountMenuCommand) => void): () => void
   }
 }
 

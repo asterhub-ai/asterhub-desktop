@@ -85,6 +85,13 @@ app.setAppLogsPath()
 function currentDesktopLocale(): ReturnType<typeof resolveDesktopLocale> {
   return resolveDesktopLocale(windowsLanguage ?? app.getLocale())
 }
+
+/** Shared mark used by the running Windows window and the About panel. */
+function desktopIconPath(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'icon.png')
+    : join(app.getAppPath(), 'resources', 'icon-windows.png')
+}
 /** Quit without the task confirmation; the caller has already decided the application must stop. */
 function quitWithoutConfirmation(): void {
   skipQuitConfirmation = true
@@ -211,6 +218,7 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
     minHeight: 600,
     show,
     ...(process.platform === 'win32' && primary ? {
+      icon: desktopIconPath(),
       titleBarStyle: 'hidden' as const,
       titleBarOverlay: { height: WINDOWS_TITLEBAR_HEIGHT, color: chromeFallbackFill(),
         symbolColor: nativeTheme.shouldUseDarkColors ? '#f9fafb' : '#0f1115' },
@@ -922,8 +930,7 @@ async function main(): Promise<void> {
     updates.dispose()
   })
 
-  const applicationIconPath = development ? join(app.getAppPath(), 'resources', 'icon-windows.png')
-    : join(process.resourcesPath, 'icon.png')
+  const applicationIconPath = desktopIconPath()
   app.setAboutPanelOptions({
     applicationName: 'AsterHub',
     applicationVersion: app.getVersion(),
@@ -944,6 +951,10 @@ async function main(): Promise<void> {
       { role: 'hideOthers', label: currentDesktopLocale().messages.hideOtherApplications },
       { role: 'unhide', label: currentDesktopLocale().messages.showAllApplications }, { type: 'separator' }]
     : []
+  const sendAccountCommand = (command: 'open' | 'logout'): void => {
+    if (mainWindow === undefined || mainWindow.isDestroyed()) return
+    mainWindow.webContents.send(DESKTOP_IPC.accountCommand, command)
+  }
   const applicationItems = (): MenuItemConstructorOptions[] => [
     // Windows has no system About panel; Electron's fallback is a plain
     // message box, so the shell shows its own dimmed dialog instead.
@@ -951,6 +962,14 @@ async function main(): Promise<void> {
       ? { label: currentDesktopLocale().messages.aboutMenu,
         click: () => { void showAbout().catch((error: unknown) => { console.error(error) }) } }
       : { label: currentDesktopLocale().messages.aboutMenu, role: 'about' },
+    { type: 'separator' },
+    {
+      label: currentDesktopLocale().messages.accountMenu,
+      submenu: [
+        { label: currentDesktopLocale().messages.accountOpen, click: () => { sendAccountCommand('open') } },
+        { label: currentDesktopLocale().messages.accountLogout, click: () => { sendAccountCommand('logout') } },
+      ],
+    },
     { type: 'separator' },
     { label: currentDesktopLocale().messages.checkUpdatesMenu, click: () => { void openUpdatePrompt(true) } },
     ...process.platform === 'darwin' || process.platform === 'win32'

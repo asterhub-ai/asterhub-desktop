@@ -1,6 +1,6 @@
 /**
- * Framework-free boot page and failure report. It remains available when a
- * client plugin fails because React arrives only with the UI renderer.
+ * Minimal shell shown while the workspace mounts. It stays static so startup
+ * never displays a loading animation or internal plugin names.
  * @module @deepseek-ai/dsh-client-web/src/boot-page
  */
 import type { LoaderEntryState } from './loader-status.ts'
@@ -14,90 +14,61 @@ function div(className: string | undefined, text?: string): HTMLDivElement {
   return el
 }
 
-/** Kernel-owned page mounted below the application's root element. */
+/** Static shell mounted before the application renderer takes the mount point. */
 export class BootPage {
   private readonly root: HTMLDivElement
   private readonly card: HTMLDivElement
+  private readonly mark: HTMLImageElement
   private readonly wordmark: HTMLDivElement
-  private readonly spinner: HTMLDivElement
-  private readonly hint: HTMLDivElement
-  private readonly states = new Map<string, LoaderEntryState>()
-  private readonly active = new Set<string>()
-  private total = 0
-  private failure: string | undefined
+  private failure = false
 
-  /**
-   * Build and attach the boot page.
-   * @param container - Application mount point.
-   */
+  /** Build and attach the static shell. */
   constructor(container: HTMLElement) {
     this.root = div(css.boot)
     this.root.dataset.dshBoot = ''
     this.card = div(css.card)
-    this.wordmark = div(css.wordmark, 'HARNESS')
-    this.spinner = div(css.spinner)
-    this.spinner.dataset.dshBootSpinner = ''
-    this.hint = div(css.hint, 'Loading plugins…')
-    this.card.append(this.wordmark, this.spinner, this.hint)
+    this.mark = document.createElement('img')
+    this.mark.className = css.mark ?? ''
+    this.mark.src = '/favicon.svg'
+    this.mark.alt = ''
+    this.mark.setAttribute('aria-hidden', 'true')
+    this.wordmark = div(css.wordmark, 'AsterHub')
+    this.card.append(this.mark, this.wordmark)
     this.root.append(this.card)
     container.append(this.root)
-    this.updateProgress()
   }
 
-  /**
-   * Set the number of loader entries represented by the progress arc.
-   * @param total - Complete boot roster size.
+  /** Retained for the loader interface; startup does not render progress.
+   * @param _total - number of client modules in the startup plan.
    */
-  setTotal(total: number): void {
-    this.total = total
-    this.updateProgress()
-  }
+  setTotal(_total: number): void {}
 
-  /**
-   * Project one loader entry's fiber state.
-   * @param id - Loader entry name.
-   * @param state - Projected fiber state.
+  /** Replace the static shell with a generic failure message when a module fails.
+   * @param _id - failed module identifier; never shown to the user.
+   * @param state - loader state for the module.
    */
-  setState(id: string, state: LoaderEntryState): void {
-    this.states.set(id, state)
-    if (state === 'active') this.active.add(id)
-    this.updateProgress()
-    this.render()
+  setState(_id: string, state: LoaderEntryState): void {
+    if (state === 'failed') this.showFailure()
   }
 
-  /**
-   * Display the boot failure report.
-   * @param message - Failure report text.
+  /** Keep raw failure details out of the application page.
+   * @param _message - failure detail; never shown to the user.
    */
-  fail(message: string): void {
-    this.failure = message
-    this.render()
+  fail(_message: string): void {
+    this.showFailure()
   }
 
-  /** Detach the page before or after the UI renderer takes the mount point. */
+  /** Detach the page after the application renderer takes the mount point. */
   dispose(): void {
     this.root.remove()
   }
 
-  /** Redraw the state-dependent content below the wordmark. */
-  private render(): void {
-    const failed = [...this.states].filter(([, state]) => state === 'failed').map(([id]) => id)
-    if (this.failure === undefined && failed.length === 0) {
-      if (this.spinner.parentElement !== this.card) {
-        this.card.replaceChildren(this.wordmark, this.spinner, this.hint)
-      }
-      return
-    }
-    const report = div(css.failed)
-    report.append(div(css.failedTitle, 'Failed to load plugins'))
-    for (const id of failed) report.append(div(css.failedItem, id))
-    if (this.failure !== undefined) report.append(div(css.failedItem, this.failure))
-    this.card.replaceChildren(this.wordmark, report)
-  }
-
-  /** Grow the rotating arc monotonically as loader entries activate. */
-  private updateProgress(): void {
-    const ratio = this.total === 0 ? 0 : Math.min(this.active.size / this.total, 1)
-    this.spinner.style.setProperty('--dsh-boot-arc', `${String(Math.round(72 + ratio * 216))}deg`)
+  private showFailure(): void {
+    if (this.failure) return
+    this.failure = true
+    const message = document.documentElement.lang.toLowerCase().startsWith('zh')
+      ? 'AsterHub 无法启动，请重启后重试。'
+      : 'AsterHub could not start. Restart the application and try again.'
+    this.card.replaceChildren(this.mark, this.wordmark, div(css.failed, message))
   }
 }

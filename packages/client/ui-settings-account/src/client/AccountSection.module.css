@@ -8,6 +8,19 @@
   color: var(--dsw-alias-label-primary);
 }
 
+.fullPage {
+  width: 100%;
+  max-width: none;
+}
+
+.productName {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+
 .heading {
   margin: 0;
   font-size: 20px;
@@ -47,6 +60,26 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.preferences {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.checkboxLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--dsw-alias-label-secondary, currentColor);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.checkboxLabel input {
+  margin: 0;
+  accent-color: #4f7cff;
 }
 
 .fieldLabel {
@@ -99,16 +132,6 @@
   white-space: nowrap;
 }
 
-.links {
-  display: flex;
-  gap: 16px;
-}
-
-.link {
-  color: #4f7cff;
-  text-decoration: none;
-}
-
-.link:hover {
-  text-decoration: underline;
+.fieldAction {
+  align-self: flex-end;
 }
