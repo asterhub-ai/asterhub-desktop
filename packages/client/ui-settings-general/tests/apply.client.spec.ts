@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 /**
  * Ownerless-copy registrations inside the assembled web client: the five
- * seats, the `settings` dictionaries, the locale-following nav label, the
- * loopback-only document action over the real settings mirror, and recovery
- * across Loader rebuilds of the declaring chain.
+ * seats, the `settings` dictionaries, the locale-following nav label, and
+ * recovery across Loader rebuilds of the declaring chain.
  */
 import { describe, expect, onTestFinished, vi } from 'vitest'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
@@ -15,8 +14,6 @@ import { LOCALE_SETTINGS_NAMESPACE, LocaleSettingsSchema } from '@deepseek-ai/ds
 import { inject } from '../src/client/index.ts'
 import { CloseLabel, HeaderContent, TriggerContent } from '../src/client/chrome.tsx'
 import { GeneralSection } from '../src/client/GeneralSection.tsx'
-import { SettingsDocumentAction } from '../src/client/SettingsDocumentAction.tsx'
-import type { SettingsDocumentActionInjected } from '../src/client/SettingsDocumentAction.tsx'
 
 const SELF = '@deepseek-ai/dsh-client-ui-settings-general'
 const SIDEBAR = '@deepseek-ai/dsh-client-ui-sidebar'
@@ -30,7 +27,6 @@ const NS = 'settings'
 const SEATS = [
   ['settings.trigger', TriggerContent],
   ['settings.header', HeaderContent],
-  ['settings.action', SettingsDocumentAction],
   ['settings.close', CloseLabel],
   ['settings.section', GeneralSection],
 ] as const
@@ -58,7 +54,7 @@ async function client(mock: RemoteMock, start: () => Promise<TestClient>, hasDoc
 }
 
 /** This plugin's rows in a seat: the list seats also carry feature-owned rows (the product's other sections and actions). */
-function ownEntries(c: TestClient, name: (typeof SEATS)[number][0]) {
+function ownEntries(c: TestClient, name: (typeof SEATS)[number][0] | 'settings.action') {
   return c.ctx.slots.entries(name).filter(entry => entry.locale === NS)
 }
 
@@ -68,11 +64,6 @@ function generalEntry(c: TestClient) {
 
 function generalLabel(c: TestClient): string | undefined {
   return resolveSlotLabel(generalEntry(c).options.label)
-}
-
-function actionInjectedOf(c: TestClient): SettingsDocumentActionInjected {
-  const entry = ownEntries(c, 'settings.action')[0]!
-  return (entry.inject as unknown as () => SettingsDocumentActionInjected)()
 }
 
 function expectSeated(c: TestClient): void {
@@ -103,9 +94,7 @@ describe('ui-settings-general apply', () => {
     // The General items and the onboarding steps are feature-owned rows; this plugin seats none of its own.
     expect(c.ctx.slots.entries('settings.general.item').filter(row => row.locale === NS)).toEqual([])
     expect(c.ctx.slots.entries('settings.onboarding').filter(row => row.locale === NS)).toEqual([])
-    const { controller, hooks } = actionInjectedOf(c)
-    expect(controller.store.getSnapshot().status).toBe('idle')
-    expect(hooks.snapshot).toBe(controller.store)
+    expect(ownEntries(c, 'settings.action')).toEqual([])
     // Copy rides the standard locale seat: every row this plugin seats declares the namespace.
     for (const [name, component] of SEATS) {
       expect(c.ctx.slots.entries(name).find(row => row.component === component)!.locale).toBe(NS)
@@ -166,18 +155,9 @@ describe('ui-settings-general apply', () => {
     })
   })
 
-  it('reads availability from the shared mirror and follows its reconnect refresh', async ({ mock, start }) => {
+  it('does not add an action for opening the configuration file', async ({ mock, start }) => {
     const { c } = await client(mock, start, true)
-    const { controller } = actionInjectedOf(c)
-    // Boot reads the document twice: the mirror's own `ensure` at apply, then
-    // the `connection/reset` of the first connection. The action's load adds none.
-    expect(c.mock.log.calls('settings/describe')).toHaveLength(2)
-    await controller.load()
-    expect(c.mock.log.calls('settings/describe')).toHaveLength(2)
-    expect(controller.store.getSnapshot().status).toBe('ready')
-    c.connection.reconnect()
-    await c.mock.streams.opened('$events', 2)
-    await vi.waitFor(() => { expect(c.mock.log.calls('settings/describe')).toHaveLength(3) })
+    expect(ownEntries(c, 'settings.action')).toEqual([])
   })
 
   it('withholds the Host document action off-loopback', async ({ mock, start }) => {

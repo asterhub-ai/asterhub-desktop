@@ -1,7 +1,9 @@
 /** Origin-scoped boot, native directory selection, and update presentation with native confirmation actions. */
 
 import { contextBridge, ipcRenderer } from 'electron'
-import { DESKTOP_IPC, SCHEME, type DshDesktopProductApi, type DesktopUpdatePresentation } from './ipc.ts'
+import {
+  DESKTOP_IPC, SCHEME, type DesktopAccountMenuCommand, type DshDesktopProductApi, type DesktopUpdatePresentation,
+} from './ipc.ts'
 import { markDocumentPlatform } from './preload-platform.ts'
 import { syncNativeTheme } from './preload-theme.ts'
 import { syncWindowsAppearance } from './preload-windows.ts'
@@ -15,6 +17,15 @@ const product: DshDesktopProductApi = {
       const handle = (_event: Electron.IpcRendererEvent, state: DesktopUpdatePresentation): void => { listener(state) }
       ipcRenderer.on(DESKTOP_IPC.updatesPresentation, handle)
       return () => { ipcRenderer.off(DESKTOP_IPC.updatesPresentation, handle) }
+    },
+  },
+  account: {
+    subscribeCommand(listener) {
+      const handle = (_event: Electron.IpcRendererEvent, command: DesktopAccountMenuCommand): void => {
+        if (command === 'open' || command === 'logout') listener(command)
+      }
+      ipcRenderer.on(DESKTOP_IPC.accountCommand, handle)
+      return () => { ipcRenderer.off(DESKTOP_IPC.accountCommand, handle) }
     },
   },
 }

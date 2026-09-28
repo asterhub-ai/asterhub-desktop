@@ -13,14 +13,6 @@ interface RecoveryOperations {
   restart(): void
 }
 
-function dialogDetail(error: string, messages: DesktopMessages): string {
-  const advice = `\n\n${messages.startupReinstallAdvice}`
-  const tail = error.split(/\r\n|[\n\r\u2028\u2029]/u).slice(-8).join('\n')
-  const budget = 1200 - advice.length - messages.diagnosticTruncated.length - 1
-  const shortened = tail.slice(-budget).replace(/^[\uDC00-\uDFFF]/u, '')
-  return `${shortened === error ? error : `${messages.diagnosticTruncated}\n${shortened}`}${advice}`
-}
-
 /** Deduplicates fatal reports while keeping explicit recovery-operation failures actionable. */
 export class DesktopFatalRecovery {
   private reported = false
@@ -40,15 +32,14 @@ export class DesktopFatalRecovery {
     if (this.reported) return
     this.reported = true
     const messages = this.operations.messages()
-    let detail = desktopErrorState(error).message
+    let addressInUse = /\blisten EADDRINUSE\b/u.test(desktopErrorState(error).message)
     let message = messages.fatalSummary
     for (;;) {
-      const addressInUse = /\blisten EADDRINUSE\b/u.test(detail)
       const { response } = await this.operations.show({
         type: 'error',
         title: messages.startupFailed,
         message,
-        detail: addressInUse ? messages.startupAddressInUse : dialogDetail(detail, messages),
+        detail: addressInUse ? messages.startupAddressInUse : messages.startupReinstallAdvice,
         buttons: addressInUse
           ? [messages.exitApplication, messages.restartApplication]
           : [messages.exitApplication, messages.restartApplication, messages.disableThirdPartyPlugins],
@@ -69,7 +60,7 @@ export class DesktopFatalRecovery {
       } catch (failure) {
         console.error(failure)
         message = messages.recoveryOperationFailed
-        detail = desktopErrorState(failure).message
+        addressInUse = false
       }
     }
   }

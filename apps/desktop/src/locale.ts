@@ -2,6 +2,9 @@
 
 export const en = {
   application: 'Application',
+  accountMenu: 'Account',
+  accountOpen: 'Sign in / account',
+  accountLogout: 'Log out',
   aboutMenu: 'About AsterHub',
   edit: 'Edit',
   menuBar: 'Application menu',
@@ -15,7 +18,6 @@ export const en = {
   startupFailed: 'AsterHub is unavailable',
   fatalSummary: 'The application could not start or stopped unexpectedly.',
   startupAddressInUse: 'Another AsterHub instance (such as the web app or the desktop app) is running. They cannot start at the same time. Quit the other running AsterHub instance, then restart.',
-  diagnosticTruncated: '… Error details shortened. The full diagnostic was written to the Electron console.',
   startupReinstallAdvice: 'If application files are missing or damaged, close the application and reinstall it. Your tasks are stored separately.',
   exitApplication: 'Exit',
   restartApplication: 'Restart',
@@ -93,6 +95,9 @@ export type DesktopMessages = { readonly [Key in keyof typeof en]: string }
 
 export const zh = {
   application: '应用',
+  accountMenu: '账户',
+  accountOpen: '登录 / 账户',
+  accountLogout: '退出登录',
   aboutMenu: '关于 AsterHub',
   edit: '编辑',
   menuBar: '应用菜单',
@@ -106,7 +111,6 @@ export const zh = {
   startupFailed: 'AsterHub 无法使用',
   fatalSummary: '应用无法启动或已意外停止。',
   startupAddressInUse: '有其他正在运行的 AsterHub（如 Web 端、桌面端），无法同时启动，请退出其他正在运行的 AsterHub 后重启。',
-  diagnosticTruncated: '… 错误详情已截短，完整诊断已写入 Electron 控制台。',
   startupReinstallAdvice: '如果应用文件缺失或损坏，请关闭应用并重新安装。任务数据存储在独立位置。',
   exitApplication: '退出',
   restartApplication: '重启',

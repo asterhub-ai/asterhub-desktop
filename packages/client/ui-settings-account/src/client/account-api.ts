@@ -1,28 +1,17 @@
-/**
- * Module-level handle to the account Remote. The registration (index.ts)
- * captures a lazy resolver during apply; components read it through
- * {@link getAccountApi} — resolved lazily so a not-yet-mounted namespace
- * still resolves once the api-remotes assembly finishes, instead of
- * crashing the slot outlet.
- */
+/** Narrow Remote callbacks passed to the account UI through its owned slots. */
 
 import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
 
-type AccountApi = ClientRemote['accountSub2api']
+type AccountRemote = ClientRemote['accountSub2api']
 
-/** The lazy resolver captured by the registration. */
-let resolver: (() => AccountApi | undefined) | undefined
+/** Account settings actions; the component never receives the Remote service. */
+export type AccountSectionActions = Pick<AccountRemote,
+  'getStatus' | 'login' | 'logout' | 'quota' | 'paymentMethods' | 'topUp' | 'redeem'>
 
-/** Capture the lazy resolver for the account Remote face. */
-export function setAccountApiResolver(next: () => AccountApi | undefined): void {
-  resolver = next
-}
+/** Usage snapshot action owned by the account plugin. */
+export type AccountUsageActions = Pick<AccountRemote, 'usage'>
 
-/** Read the account Remote face, or undefined while it is unavailable. */
-export function getAccountApi(): AccountApi | undefined {
-  try {
-    return resolver?.()
-  } catch {
-    return undefined
-  }
-}
+/** Browser events connecting the native application menu to the account overlay. */
+export const ACCOUNT_COMMAND_EVENT = 'asterhub:account-command'
+/** Browser event asking account surfaces to reread Host state after a native command. */
+export const ACCOUNT_STATE_CHANGED_EVENT = 'asterhub:account-state-changed'

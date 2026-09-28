@@ -325,6 +325,21 @@ describe('desktop main startup', () => {
       : join('desktop-test-app', 'resources', 'icon-windows.png'))
   })
 
+  it('routes native account menu actions to the owning application window', async () => {
+    await readyForUpdate()
+    const submenu = applicationMenuItems()
+    const account = submenu.find(item => item.label === en.accountMenu)
+    expect(account?.submenu).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: en.accountOpen }),
+      expect.objectContaining({ label: en.accountLogout }),
+    ]))
+    const entries = account?.submenu as MenuItemConstructorOptions[]
+    Reflect.apply(entries.find(item => item.label === en.accountOpen)!.click!, undefined, [])
+    Reflect.apply(entries.find(item => item.label === en.accountLogout)!.click!, undefined, [])
+    expect(harness.windows[0]!.webContents.send).toHaveBeenCalledWith(DESKTOP_IPC.accountCommand, 'open')
+    expect(harness.windows[0]!.webContents.send).toHaveBeenCalledWith(DESKTOP_IPC.accountCommand, 'logout')
+  })
+
   it('shows one explained startup login before Host readiness and joins concurrent checks without reopening it', async () => {
     harness.embeddedPolicy = { origin: 'https://policy.example.com', authentication: 'feishu-test',
       allowedPageOrigins: ['https://downloads.example.com'], intervalMs: 1000, jitter: 0 }
@@ -547,7 +562,7 @@ describe('desktop main startup', () => {
     expect(() => handler(event, 'application', NaN, 34)).toThrow('invalid popup request')
     const application = handler(event, 'application', 48, 34)
     expect(harness.menu.buildFromTemplate.mock.lastCall![0].map(item => item.label ?? item.type)).toEqual([
-      '关于 DeepSeek Harness', 'separator', '检查更新…', 'separator', '退出',
+      '关于 AsterHub', 'separator', '账户', 'separator', '检查更新…', 'separator', '退出',
     ])
     expect(harness.popup.mock.lastCall![0]).toMatchObject({ window, x: 48, y: 34 })
     expect(harness.popup.mock.lastCall![0].callback).toBeTypeOf('function')
@@ -584,8 +599,8 @@ describe('desktop main startup', () => {
       : ['Application', 'editMenu'])
     const application = template[0]!.submenu as MenuItemConstructorOptions[]
     expect(application.map(describeItem)).toEqual(platform === 'darwin'
-      ? ['about', 'separator', en.checkUpdatesMenu, 'separator', 'hide', 'hideOthers', 'unhide', 'separator', 'quit']
-      : ['about', 'separator', en.checkUpdatesMenu, 'separator', 'quit'])
+      ? ['about', 'separator', en.accountMenu, 'separator', en.checkUpdatesMenu, 'separator', 'hide', 'hideOthers', 'unhide', 'separator', 'quit']
+      : ['about', 'separator', en.accountMenu, 'separator', en.checkUpdatesMenu, 'separator', 'quit'])
     expect(harness.menu.setApplicationMenu).toHaveBeenCalledOnce()
   })
 
@@ -1128,7 +1143,7 @@ describe('desktop main startup', () => {
     replacement.exited.resolve()
     await harness.dialogShown.promise
     expect(harness.dialog.showMessageBox.mock.calls.some(call =>
-      (call.at(-1) as MessageBoxOptions).detail?.includes('replacement startup failed'))).toBe(true)
+      (call.at(-1) as MessageBoxOptions).detail === en.startupReinstallAdvice)).toBe(true)
     await expect(harness.prepareUpdate()).rejects.toThrow('replacement startup failed')
     expect(harness.hosts).toHaveLength(2)
   })
@@ -1143,7 +1158,7 @@ describe('desktop main startup', () => {
     const window = harness.windows[0]!
     vi.spyOn(window, 'loadURL').mockRejectedValueOnce(new Error('replacement page failed to load'))
     harness.dialog.showMessageBox.mockImplementation((options: MessageBoxOptions) => {
-      if (options.detail?.includes('replacement page failed to load')) {
+      if (options.detail === en.startupReinstallAdvice) {
         harness.dialogShown.resolve()
         return new Promise(() => {})
       }
@@ -1155,7 +1170,7 @@ describe('desktop main startup', () => {
     harness.hosts[1]!.ready.resolve()
     await harness.dialogShown.promise
     expect(harness.dialog.showMessageBox.mock.calls.some(call =>
-      (call.at(-1) as MessageBoxOptions).detail?.includes('replacement page failed to load'))).toBe(true)
+      (call.at(-1) as MessageBoxOptions).detail === en.startupReinstallAdvice)).toBe(true)
   })
 
   it('reports a window construction failure without requiring a window', async () => {
@@ -1165,7 +1180,8 @@ describe('desktop main startup', () => {
     await import('../src/main.ts')
     await shown.promise
     expect(harness.windows).toHaveLength(0)
-    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).toContain('window creation failed')
+    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail)
+      .toBe(en.startupReinstallAdvice)
   })
 
   it('accepts Web fatal reports only from the primary application frame', async () => {
@@ -1181,7 +1197,8 @@ describe('desktop main startup', () => {
     expect(() => { handler(event, {}) }).toThrow('must be text')
     expect(harness.dialog.showMessageBox).not.toHaveBeenCalled()
     handler(event, 'client mount failed')
-    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).toContain('client mount failed')
+    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail)
+      .toBe(en.startupReinstallAdvice)
     expect(window.urls).toEqual(['dsh-app://app/'])
   })
 
@@ -1193,7 +1210,8 @@ describe('desktop main startup', () => {
     window.webContents.emit('did-fail-load', {}, -3, 'aborted', 'dsh-app://app/', true)
     expect(harness.dialog.showMessageBox).not.toHaveBeenCalled()
     window.webContents.emit('did-fail-load', {}, -2, 'failed', 'dsh-app://app/', true)
-    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).toContain('Desktop page failed to load')
+    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail)
+      .toBe(en.startupReinstallAdvice)
   })
 
   it('offers all recovery choices when resources fail before the Host starts', async () => {
@@ -1201,7 +1219,8 @@ describe('desktop main startup', () => {
     await harness.preparing.promise
     harness.prepared.reject(new Error('runtime resources missing'))
     await harness.dialogShown.promise
-    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).toContain('runtime resources missing')
+    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail)
+      .toBe(en.startupReinstallAdvice)
     expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).buttons).toEqual(['Exit', 'Restart', 'Disable third-party plugins, back up profile patch, and restart'])
     expect(harness.windows[0]!.urls).toEqual(['dsh-app://app/'])
   })
@@ -1237,7 +1256,8 @@ describe('desktop main startup', () => {
     await import('../src/main.ts')
     await shown.promise
     expect(harness.dialog.showMessageBox).toHaveBeenCalledOnce()
-    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).toContain('document missing')
+    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail)
+      .toBe(en.startupReinstallAdvice)
     expect(harness.hosts).toHaveLength(0)
   })
 

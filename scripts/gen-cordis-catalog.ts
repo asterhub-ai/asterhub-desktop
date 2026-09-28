@@ -739,6 +739,14 @@ export const FOUNDATION_TYPE_NAMES: ReadonlySet<string> = new Set([
 
 /** Project types deliberately documented outside the subsystems catalog. */
 export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
+  AccountLoginInput: 'account sign-in credentials and local preferences are owned by packages/account/account-sub2api/src/types.ts',
+  AccountPaymentMethod: 'available account payment methods are owned by packages/account/account-sub2api/src/types.ts',
+  AccountStatus: 'account identity, sign-in state, and balance are owned by packages/account/account-sub2api/src/types.ts',
+  AccountUsageSnapshot: 'account usage totals are owned by packages/account/account-sub2api/src/types.ts',
+  QuotaSnapshot: 'the live account quota result is owned by packages/account/account-sub2api/src/types.ts',
+  RedeemResult: 'account redemption results are owned by packages/account/account-sub2api/src/types.ts',
+  TopUpResult: 'account top-up results are owned by packages/account/account-sub2api/src/types.ts',
+  UsagePeriodSnapshot: 'one account usage period is owned by packages/account/account-sub2api/src/types.ts',
   ConnectionFetchHandler: 'shared Fetch dispatch is owned by packages/client/connection/src/rpc.ts',
   ConnectionRequestRejection: 'transport rejection status is owned by packages/client/connection/src/rpc.ts',
   ConnectionTrustRequest: 'transport authentication input is owned by packages/client/connection/src/rpc.ts',

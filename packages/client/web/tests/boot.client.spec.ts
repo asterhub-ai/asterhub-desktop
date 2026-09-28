@@ -50,13 +50,14 @@ async function expectBootFailure(setup: () => void, message: string): Promise<vo
   setup()
   const entry = new AppWebEntry(container)
   await entry.run()
-  expect(container.textContent).toContain(message)
+  expect(container.textContent).toMatch(/AsterHub (?:无法启动|could not start)/u)
+  expect(container.textContent).not.toContain(message)
   expect(error).toHaveBeenCalledOnce()
   await entry.dispose()
 }
 
 describe('bootstrap failure rendering', () => {
-  it('leaves the loading page visible when a carrier owns fatal presentation', async () => {
+  it('leaves the static product mark visible when a carrier owns fatal presentation', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const container = document.createElement('div')
     document.body.append(container)
@@ -64,9 +65,8 @@ describe('bootstrap failure rendering', () => {
     const failure = vi.fn()
     await entry.run(failure)
     expect(failure).toHaveBeenCalledWith(new Error('web boot: window.__ModuleLoader__ bootstrap facade is missing'))
-    expect(container.textContent).toContain('Loading plugins')
-    expect(container.textContent).not.toContain('Failed to load plugins')
-    expect(container.querySelector('[data-dsh-boot-spinner]')).not.toBeNull()
+    expect(container.textContent).toContain('AsterHub')
+    expect(container.querySelector('[data-dsh-boot-spinner]')).toBeNull()
     await entry.dispose()
   })
 
@@ -91,12 +91,12 @@ describe('bootstrap failure rendering', () => {
       if (carrier) {
         expect(report).toHaveBeenCalledOnce()
         expect(String(report.mock.calls[0]![0])).toContain('broken')
-        expect(container.querySelector('[data-dsh-boot-spinner]')).not.toBeNull()
-        expect(container.textContent).not.toContain('Failed to load plugins')
+        expect(container.querySelector('[data-dsh-boot-spinner]')).toBeNull()
+        expect(container.textContent).not.toMatch(/AsterHub (?:无法启动|could not start)/u)
       } else {
         expect(report).not.toHaveBeenCalled()
-        expect(container.textContent).toContain('Failed to load plugins')
-        expect(container.textContent).toContain('broken')
+        expect(container.textContent).toMatch(/AsterHub (?:无法启动|could not start)/u)
+        expect(container.textContent).not.toContain('broken')
       }
     } finally {
       await entry.dispose()
@@ -277,8 +277,7 @@ it('draws the shared boot page before Host injections and resumes without replac
   const boot = entry.run()
   try {
     const page = container.querySelector('[data-dsh-boot]')
-    const spinner = container.querySelector('[data-dsh-boot-spinner]')
-    expect(spinner).not.toBeNull()
+    expect(container.querySelector('[data-dsh-boot-spinner]')).toBeNull()
     await Promise.resolve()
     expect(create).not.toHaveBeenCalled()
     expect(error).not.toHaveBeenCalled()
@@ -287,7 +286,8 @@ it('draws the shared boot page before Host injections and resumes without replac
     await boot
     expect(create).toHaveBeenCalledOnce()
     expect(container.querySelector('[data-dsh-boot]')).toBe(page)
-    expect(container.textContent).toContain('injections consumed')
+    expect(container.textContent).toMatch(/AsterHub (?:无法启动|could not start)/u)
+    expect(container.textContent).not.toContain('injections consumed')
   } finally {
     gate.resolve(undefined)
     await boot
