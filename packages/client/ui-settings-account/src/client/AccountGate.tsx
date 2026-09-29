@@ -14,9 +14,13 @@ export type AccountGateProps =
 
 /** Keep the workspace covered while signed out and reveal it after login. */
 export function AccountGate(props: AccountGateProps) {
-  const { t, getStatus, login, logout, quota, paymentMethods, topUp, redeem } = props
-  const actions = useMemo(() => ({ getStatus, login, logout, quota, paymentMethods, topUp, redeem }),
-    [getStatus, login, logout, quota, paymentMethods, topUp, redeem])
+  const {
+    t, getStatus, authSettings, sendVerifyCode, register, login, logout, quota, paymentMethods, topUp, redeem,
+  } = props
+  const actions = useMemo(() => ({
+    getStatus, authSettings, sendVerifyCode, register, login, logout, quota, paymentMethods, topUp, redeem,
+  }),
+  [getStatus, authSettings, sendVerifyCode, register, login, logout, quota, paymentMethods, topUp, redeem])
   const [visible, setVisible] = useState(true)
   const [forced, setForced] = useState(false)
   const [commandError, setCommandError] = useState<string>()

@@ -50,6 +50,9 @@ export function apply(ctx: ClientContext): void {
   // the Client Remote service or shared module state.
   const accountSectionActions: AccountSectionActions = {
     getStatus: () => ctx.remote.accountSub2api.getStatus(),
+    authSettings: () => ctx.remote.accountSub2api.authSettings(),
+    sendVerifyCode: email => ctx.remote.accountSub2api.sendVerifyCode(email),
+    register: input => ctx.remote.accountSub2api.register(input),
     login: input => ctx.remote.accountSub2api.login(input),
     logout: () => ctx.remote.accountSub2api.logout(),
     quota: () => ctx.remote.accountSub2api.quota(),

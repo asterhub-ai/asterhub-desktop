@@ -15,8 +15,17 @@ import z from '@deepseek-ai/schemastery'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { credentialKey, credentialRef, type CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import type {
-  AccountLoginInput, AccountPaymentMethod, AccountStatus, AccountUsageSnapshot, AccountUser, QuotaSnapshot,
-  RedeemResult, TopUpResult, UsagePeriodSnapshot,
+  AccountAuthSettings,
+  AccountLoginInput,
+  AccountPaymentMethod,
+  AccountRegisterInput,
+  AccountStatus,
+  AccountUsageSnapshot,
+  AccountUser,
+  QuotaSnapshot,
+  RedeemResult,
+  TopUpResult,
+  UsagePeriodSnapshot,
 } from './types.ts'
 
 /** Credential reference holding the sub2api access token. */
@@ -45,6 +54,10 @@ const BOUND_KEYS_REF = 'ASTERHUB_ACCOUNT_BOUND_MODEL_KEYS'
 /** Upstream failure vocabulary the UI maps to copy. */
 export type AccountErrorCode =
   | 'invalid_credentials'
+  | 'registration_failed'
+  | 'verification_required'
+  | 'invitation_required'
+  | 'email_exists'
   | 'group_binding_forbidden'
   | 'upstream_unavailable'
   | 'invalid_response'
@@ -81,6 +94,12 @@ function computeCredits(balance: number): number {
 interface Sub2ApiAuth {
   accessToken: string
   user: AccountUser
+}
+
+interface PublicAuthSettings {
+  registrationEnabled: boolean
+  emailVerifyEnabled: boolean
+  invitationCodeEnabled: boolean
 }
 
 /** One provisioned model key. */
@@ -143,7 +162,7 @@ class Sub2ApiClient {
     return typeof this.groupId === 'string' && /^\d+$/u.test(this.groupId) ? Number(this.groupId) : this.groupId
   }
 
-  private async request(path: string, init: RequestInit = {}, accessToken?: string): Promise<Record<string, unknown>> {
+  private async request(path: string, init: RequestInit = {}, accessToken?: string, operation?: 'register' | 'verify'): Promise<Record<string, unknown>> {
     const headers = new Headers(init.headers)
     headers.set('content-type', 'application/json')
     if (accessToken) headers.set('authorization', `Bearer ${accessToken}`)
@@ -158,6 +177,19 @@ class Sub2ApiClient {
     const body = await response.json().catch(() => ({})) as Record<string, unknown>
     if (!response.ok || (body.code !== undefined && body.code !== 0)) {
       const message = typeof body.message === 'string' && body.message ? body.message : undefined
+      const errorCode = typeof body.error_code === 'string' ? body.error_code.toLowerCase() : ''
+      if (operation === 'register') {
+        if (/verify|verification|验证码/i.test(`${errorCode} ${message ?? ''}`))
+          throw accountError('邮箱验证码无效或已过期，请重新获取')
+        if (/invitation|邀请码/i.test(`${errorCode} ${message ?? ''}`))
+          throw accountError('注册需要邀请码，请填写有效邀请码')
+        if (response.status === 409 || /email.*exists|邮箱.*注册/i.test(`${errorCode} ${message ?? ''}`))
+          throw accountError('该邮箱已注册，请直接登录')
+        if (/registration.*disabled|注册.*关闭/i.test(`${errorCode} ${message ?? ''}`))
+          throw accountError('当前暂未开放注册')
+        throw accountError('注册失败，请检查信息后重试')
+      }
+      if (operation === 'verify') throw accountError('验证码发送失败，请稍后重试')
       if (response.status === 401 || body.error_code === 'invalid_credentials' || body.error_code === 'unauthorized')
         throw new InvalidAccountSessionError()
       if (response.status === 403 && (
@@ -173,6 +205,10 @@ class Sub2ApiClient {
 
   async login(email: string, password: string): Promise<Sub2ApiAuth> {
     const body = await this.request('auth/login', { method: 'POST', body: JSON.stringify({ email, password }) })
+    return this.parseAuth(body)
+  }
+
+  private parseAuth(body: Record<string, unknown>): Sub2ApiAuth {
     if (typeof body.access_token !== 'string' || body.access_token === '')
       throw accountError('认证服务返回了无法识别的响应')
     const user = body.user as Record<string, unknown> | undefined
@@ -186,6 +222,31 @@ class Sub2ApiClient {
         ...(typeof user.username === 'string' ? { username: user.username } : {}),
       },
     }
+  }
+
+  async publicAuthSettings(): Promise<PublicAuthSettings> {
+    const body = await this.request('settings/public')
+    return {
+      registrationEnabled: body.registration_enabled !== false,
+      emailVerifyEnabled: body.email_verify_enabled === true,
+      invitationCodeEnabled: body.invitation_code_enabled === true,
+    }
+  }
+
+  async sendVerifyCode(email: string): Promise<number> {
+    const body = await this.request('auth/send-verify-code', {
+      method: 'POST', body: JSON.stringify({ email }),
+    }, undefined, 'verify')
+    const countdown = Number(body.countdown ?? 60)
+    return Number.isFinite(countdown) && countdown > 0 ? countdown : 60
+  }
+
+  async register(email: string, password: string, verifyCode: string, invitationCode?: string): Promise<Sub2ApiAuth> {
+    const body = await this.request('auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, verify_code: verifyCode, ...(invitationCode ? { invitation_code: invitationCode } : {}) }),
+    }, undefined, 'register')
+    return this.parseAuth(body)
   }
 
   async listGroupKeys(accessToken: string): Promise<Sub2ApiKeyMetadata[]> {
@@ -553,6 +614,34 @@ export class AccountSub2apiService extends TypertRemoteService {
     return this.status()
   }
 
+  /** Read the public sign-up requirements from the authentication service. */
+  @Remote
+  async authSettings(): Promise<AccountAuthSettings> {
+    return this.client.publicAuthSettings()
+  }
+
+  /** Send the upstream email verification code for a prospective account. */
+  @Remote
+  async sendVerifyCode(email: string): Promise<{ countdown: number }> {
+    const normalized = email.trim().toLowerCase()
+    if (!normalized.includes('@')) throw new RemoteError('gateway/bad-request', '请输入有效的邮箱地址', {})
+    return { countdown: await this.client.sendVerifyCode(normalized) }
+  }
+
+  /** Register directly with the authentication service and bind the returned session to this installation. */
+  @Remote
+  async register(input: AccountRegisterInput): Promise<AccountStatus> {
+    const email = input.email.trim().toLowerCase()
+    if (!email.includes('@')) throw new RemoteError('gateway/bad-request', '请输入有效的邮箱地址', {})
+    if (!input.password) throw new RemoteError('gateway/bad-request', '请输入密码', {})
+    if (!input.verifyCode.trim()) throw new RemoteError('gateway/bad-request', '请输入邮箱验证码', {})
+    const settings = await this.client.publicAuthSettings()
+    if (!settings.registrationEnabled) throw accountError('当前暂未开放注册')
+    if (!settings.emailVerifyEnabled) throw accountError('当前账户服务未启用邮箱验证')
+    const auth = await this.client.register(email, input.password, input.verifyCode.trim(), input.invitationCode?.trim())
+    return this.finishLogin(auth, email, input.password, input.rememberUsername, input.autoLogin)
+  }
+
   /** Sign in and bind one reusable model key to this account.
    * @param input - account credentials and local sign-in preferences.
    * @returns current account state after credentials are stored.
@@ -569,6 +658,16 @@ export class AccountSub2apiService extends TypertRemoteService {
       if (error instanceof InvalidAccountSessionError) throw accountError('邮箱或密码不正确')
       throw error
     }
+    return this.finishLogin(auth, email, input.password, input.rememberUsername, input.autoLogin)
+  }
+
+  private async finishLogin(
+    auth: Sub2ApiAuth,
+    email: string,
+    password: string,
+    rememberUsername: boolean,
+    autoLogin: boolean,
+  ): Promise<AccountStatus> {
     const userId = String(auth.user.id)
     const keyName = this.keyName(userId)
     const key = await this.withKeyProvisioning(async () => {
@@ -601,13 +700,13 @@ export class AccountSub2apiService extends TypertRemoteService {
       await this.credentials.set(credentialRef(USER_REF), JSON.stringify(auth.user))
       await this.credentials.modifyRecord(MODEL_KEY_RECORD, async () => ({ kind: 'api-key', key }))
       await this.retainKey(userId, key)
-      if (input.rememberUsername || input.autoLogin) {
+      if (rememberUsername || autoLogin) {
         await this.credentials.set(credentialRef(REMEMBERED_USERNAME_REF), email)
       } else {
         await this.clearRememberedUsername()
       }
-      if (input.autoLogin) {
-        await this.credentials.set(credentialRef(AUTO_LOGIN_PASSWORD_REF), input.password)
+      if (autoLogin) {
+        await this.credentials.set(credentialRef(AUTO_LOGIN_PASSWORD_REF), password)
         await this.credentials.set(credentialRef(AUTO_LOGIN_REF), 'true')
       } else {
         await this.clearAutoLogin()

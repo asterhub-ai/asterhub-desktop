@@ -11,6 +11,9 @@ export type AccountSectionProps =
 
 /** Render account controls inside Settings. */
 export function AccountSection(props: AccountSectionProps) {
-  const { t, getStatus, login, logout, quota, paymentMethods, topUp, redeem } = props
-  return <AccountPanel t={t} actions={{ getStatus, login, logout, quota, paymentMethods, topUp, redeem }} />
+  const {
+    t, getStatus, authSettings, sendVerifyCode, register, login, logout, quota, paymentMethods, topUp, redeem,
+  } = props
+  const actions = { getStatus, authSettings, sendVerifyCode, register, login, logout, quota, paymentMethods, topUp, redeem }
+  return <AccountPanel t={t} actions={actions} />
 }
