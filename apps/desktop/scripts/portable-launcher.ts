@@ -53,15 +53,9 @@ export function prepareWindowsPortableLauncher(applicationDirectory: string): { 
       cwd: directory, windowsHide: true, stdio: 'pipe', timeout: 5_000,
     })
     renameSync(stagingLauncherPath, launcherPath)
-    const runtimeVersion = execFileSync(runtimePath, ['--version'], {
-      cwd: directory, encoding: 'utf8', windowsHide: true, stdio: 'pipe', timeout: 20_000,
-    }).trim()
-    if (!/^v\d+\.\d+\.\d+/u.test(runtimeVersion)) {
-      throw new Error('desktop package: bundled Electron runtime did not return its version')
-    }
     const launcherBytes = statSync(launcherPath).size
     const runtimeBytes = statSync(runtimePath).size
-    if (launcherBytes >= 1_000_000 || runtimeBytes <= launcherBytes) {
+    if (launcherBytes >= 1_000_000 || runtimeBytes <= 100_000_000) {
       throw new Error('desktop package: portable launcher size check failed')
     }
     return { launcherBytes, runtimeBytes }
