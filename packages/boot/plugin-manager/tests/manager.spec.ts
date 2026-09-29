@@ -420,6 +420,53 @@ it('does not start pnpm for a stale curated install request and verifies integri
   expect(readCatalog).toHaveBeenCalledTimes(3)
 })
 
+it('installs the signed curated artifact URL with scripts disabled and checks its direct lock provenance', async () => {
+  const { manager, dir, bundle } = await fixture()
+  const entry = {
+    id: 'curated-artifact', name: 'Curated artifact', description: 'Test release tarball',
+    package: 'curated-artifact', version: '1.0.0',
+    artifactUrl: 'https://asterhub.xapi.fans/releases/curated-artifact-1.0.0.tgz',
+    integrity: 'sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+  }
+  vi.spyOn(manager, 'curatedCatalog').mockResolvedValue({ revision: 8, generatedAt: '2026-09-28T00:00:00.000Z', plugins: [entry] })
+  const lockPath = join(dir, 'pnpm-lock.yaml')
+  let installedVersion = '2.0.0'
+  const pnpm = vi.spyOn(operations, 'runProfilePnpm').mockImplementation(async (_context, args) => {
+    expect(args).toEqual(['add', entry.artifactUrl, '--ignore-scripts'])
+    bundle(entry.package, [{ id: 'curated-artifact', name: './plugin.mjs', config: { service: 'curatedArtifactProbe' } }])
+    const installedManifestPath = join(dir, 'node_modules', entry.package, 'package.json')
+    const installedManifest = JSON.parse(readFileSync(installedManifestPath, 'utf8')) as Record<string, unknown>
+    writeFileSync(installedManifestPath, JSON.stringify({ ...installedManifest, version: installedVersion }))
+    const manifest = readProfileManifest('test', dir)
+    manifest.dependencies = { ...manifest.dependencies, [entry.package]: entry.version }
+    writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest))
+    writeFileSync(lockPath, JSON.stringify({
+      lockfileVersion: '9.0',
+      importers: { '.': { dependencies: {
+        [entry.package]: { specifier: entry.artifactUrl, version: entry.version },
+      } } },
+      packages: {
+        [`${entry.package}@${entry.artifactUrl}`]: { resolution: { integrity: entry.integrity } },
+      },
+    }))
+    return { exitCode: 0, output: 'installed signed artifact', truncated: false, logPath: join(dir, 'pnpm.log') }
+  })
+  onTestFinished(() => pnpm.mockRestore())
+
+  const stale = await manager.installCuratedBundle({ ...entry, artifactUrl: 'https://asterhub.xapi.fans/releases/replaced.tgz', revision: 8 })
+  expect(stale).toMatchObject({ application: 'failed', error: { code: 'stale-approval' } })
+  expect(pnpm).not.toHaveBeenCalled()
+
+  const mismatchedVersion = await manager.installCuratedBundle({ ...entry, revision: 8 })
+  expect(mismatchedVersion).toMatchObject({ application: 'failed', error: { code: 'invalid-spec' } })
+  expect(readProfileManifest('test', dir).dependencies?.[entry.package]).toBeUndefined()
+
+  installedVersion = entry.version
+  const installed = await manager.installCuratedBundle({ ...entry, revision: 8 })
+  expect(installed).toMatchObject({ application: 'applied', bundle: entry.package, packageResult: { exitCode: 0 } })
+  expect(pnpm).toHaveBeenCalledTimes(2)
+})
+
 it.each([
   '@deepseek-ai/dsh-host-plugin-inventory',
   '@deepseek-ai/dsh-typert-registry',

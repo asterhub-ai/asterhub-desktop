@@ -114,6 +114,7 @@ export function apply(ctx: ClientContext): void {
           revision: catalog.revision,
           package: entry.package,
           version: entry.version,
+          ...entry.artifactUrl === undefined ? {} : { artifactUrl: entry.artifactUrl },
           integrity: entry.integrity,
         }))
         if (result.error?.code === 'stale-approval') {

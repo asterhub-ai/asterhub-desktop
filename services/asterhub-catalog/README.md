@@ -15,7 +15,7 @@ The intended HTTPS origin is `https://asterhub.xapi.fans` after an operator conf
 | `/api/v1/desktop/latest.json` | `{ "schemaVersion": 1, "product": "AsterHub", "version": "...", "channel": "stable", "notesUrl": "...", "platforms": { ... } }`; currently unconfigured |
 | `/api/v0/check_client_update` | Existing Desktop mandatory-update contract, fixed safe no-force response `{"code":0,"data":{"biz_code":0,"biz_data":null}}` |
 | `/dsh-desk/feeds/<target>/<file>` | Read-only electron-updater feed files mapped to `data/dsh-desk/feeds/<target>/<file>`; operator supplies exact platform metadata such as `nightly.yml` or `nightly-mac.yml` |
-| `/releases/<relative-file>` | Read-only bytes from the data directory for optional hosted release payloads |
+| `/releases/<relative-file>` | Read-only bytes from the dedicated `data/releases/` directory for hosted package payloads |
 
 Catalog entries and update metadata are static JSON committed in `data/`. The service signs no data itself and contains no private key. `data/catalog.sig` carries the Ed25519 signature for the exact raw bytes in `data/catalog.json`; an optional runtime `CATALOG_SIGNATURE_BASE64` overrides it. If neither is available or the value is malformed, the catalog endpoint returns 503. The Host verifies those exact payload bytes using its separately release-pinned public key, then validates the payload schema. Any payload edit requires generating a new signature; never reuse a signature for changed bytes. The signature is public data and may be versioned with the matching payload. The service does not resolve arbitrary files from the filesystem, and unknown paths return 404. Cross-origin reads are allowed because these responses are public. Responses currently use a short cache lifetime suitable for metadata; tune edge cache behavior only after validating clients and publication cadence.
 
@@ -48,6 +48,4 @@ node server.mjs
 
 The server listens on `0.0.0.0:8080` by default. Set `PORT` and `CATALOG_DATA_DIR` to override. Docker Compose binds the container to `127.0.0.1:18081`, drops Linux capabilities, runs read-only and mounts `data/` read-only. The example Nginx virtual host documents a future TLS proxy; it deliberately leaves certificate paths to the host's existing certificate manager.
 
-The checked-in catalogue sample is deliberately empty and signed, so the catalog route serves the empty list. Any payload edit requires a new signature in `data/catalog.sig`.
-
-Before a real deployment, an operator must inspect existing Cloudflare records and Nginx routing, choose the DNS/tunnel route without replacing existing records, configure TLS, select a release/object-store origin, and qualify backup and update publication. No deployment or DNS action is performed by this scaffold.
+The deployed catalogue is revision 2 and lists the hosted GenOffice CLI and Aster IM packages. Their immutable tarballs live under `data/releases/`; every payload change requires a higher revision and a new signature. The catalogue and release routes are active at `https://asterhub.xapi.fans`. The separate electron-updater feeds remain unconfigured; do not change the existing Cloudflare route when publishing plugin packages.

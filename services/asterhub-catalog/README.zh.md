@@ -15,7 +15,7 @@
 | `/api/v1/desktop/latest.json` | `{ "schemaVersion": 1, "product": "AsterHub", "version": "...", "channel": "stable", "notesUrl": "...", "platforms": { ... } }`；当前未配置 |
 | `/api/v0/check_client_update` | 现有 Desktop 强制更新契约，固定返回安全的无强制更新响应 `{"code":0,"data":{"biz_code":0,"biz_data":null}}` |
 | `/dsh-desk/feeds/<target>/<file>` | 只读 electron-updater feed 文件，映射到 `data/dsh-desk/feeds/<target>/<file>`；由操作员提供 `nightly.yml` 或 `nightly-mac.yml` 等平台元数据 |
-| `/releases/<relative-file>` | 从 data 目录只读返回可选的发布文件 |
+| `/releases/<relative-file>` | 从独立的 `data/releases/` 目录只读返回托管安装包 |
 
 目录和更新元数据是 `data/` 下的静态文件。服务本身不会签名，也不包含私钥。`data/catalog.sig` 保存对 `data/catalog.json` 原始字节的 Ed25519 签名；可选运行时变量 `CATALOG_SIGNATURE_BASE64` 优先覆盖该文件。签名缺失或格式错误时，目录 API 返回 503。Host 使用发行版单独固定的公钥验签，再校验 payload schema。每次修改 payload 都必须重新签名，不能让旧签名复用于新字节。签名是公开数据，可与对应 payload 一起版本管理。服务不会解析任意文件路径，未知路由返回 404。由于响应为公开数据，允许跨域读取；元数据默认使用短缓存，边缘缓存策略应结合发布频率验证后再调整。
 
@@ -48,6 +48,4 @@ node server.mjs
 
 服务默认监听 `0.0.0.0:8080`，可设置 `PORT` 和 `CATALOG_DATA_DIR`。Docker Compose 将容器端口绑定到 `127.0.0.1:18081`，移除 Linux capabilities，以只读容器运行，并将 `data/` 只读挂载。Nginx 示例虚拟主机描述未来 TLS 代理；证书路径交由主机现有证书管理器配置。
 
-当前已签名样例是空精选目录，因此目录接口会返回空列表。任何 payload 修改都必须重新签名并更新 `data/catalog.sig`。
-
-正式部署前，操作员必须检查现有 Cloudflare DNS 记录和 Nginx 路由，在不覆盖现有记录的前提下选定 DNS/tunnel 走向，配置 TLS，选择发布文件或对象存储源，并验证备份与更新发布流程。脚手架本身没有执行部署或 DNS 操作。
+当前已部署目录为修订版 2，包含 GenOffice CLI 与 Aster IM；安装包以不可变 tarball 存放在 `data/releases/`。每次修改目录都必须提高修订号并重新签名。精选目录和安装包路由已在 `https://asterhub.xapi.fans` 生效。独立的 electron-updater feed 尚未配置；发布插件包时不要改动现有 Cloudflare 路由。

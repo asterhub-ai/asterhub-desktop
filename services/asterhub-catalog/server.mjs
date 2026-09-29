@@ -36,6 +36,7 @@ export function createCatalogServer({ directory = dataRoot, signature } = {}) {
     }
 
     const isUpdateFeed = pathname.startsWith('/dsh-desk/feeds/')
+    const isReleaseArtifact = pathname.startsWith('/releases/')
     const relative = pathname === '/api/v1/catalog.json' ? 'catalog.json'
       : pathname === '/api/v1/desktop/latest.json' ? 'desktop/latest.json'
         : pathname.startsWith('/releases/') ? pathname.slice('/releases/'.length)
@@ -47,7 +48,8 @@ export function createCatalogServer({ directory = dataRoot, signature } = {}) {
       catch { activeCatalogSignature = '' }
     }
     if (relative === 'catalog.json' && !isBase64(activeCatalogSignature ?? '')) return send(res, 503, JSON.stringify({ error: 'catalog_signature_unconfigured' }))
-    const routeRoot = isUpdateFeed ? resolve(dataDirectory, 'dsh-desk/feeds') : dataDirectory
+    const routeRoot = isUpdateFeed ? resolve(dataDirectory, 'dsh-desk/feeds')
+      : isReleaseArtifact ? resolve(dataDirectory, 'releases') : dataDirectory
     const target = resolve(routeRoot, relative)
     if (target !== routeRoot && !target.startsWith(`${routeRoot}${sep}`)) return send(res, 404, JSON.stringify({ error: 'not_found' }))
     try {

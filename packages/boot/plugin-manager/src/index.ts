@@ -189,6 +189,26 @@ export function verifyCuratedCatalogEnvelope(
       || !/^sha512-[A-Za-z0-9+/]+={0,2}$/.test(row.integrity as string)) {
       throw new Error('catalogue plugin identity, package, exact version, or integrity is invalid')
     }
+    let artifactUrl: string | undefined
+    if (row.artifactUrl !== undefined) {
+      if (typeof row.artifactUrl !== 'string') throw new Error('catalogue plugin artifact URL is invalid')
+      try {
+        const url = new URL(row.artifactUrl)
+        const catalog = new URL(catalogUrl)
+        const pathParts = url.pathname.split('/').slice(1)
+        if (url.protocol !== 'https:' || catalog.protocol !== 'https:' || url.origin !== catalog.origin
+          || url.username !== '' || url.password !== '' || url.search !== '' || url.hash !== ''
+          || url.href !== row.artifactUrl
+          || !/^\/releases\/[A-Za-z0-9._~/-]+$/.test(url.pathname)
+          || pathParts.some(part => part === '' || part === '.' || part === '..')
+          || !/\.(?:tgz|tar\.gz)$/.test(url.pathname)) {
+          throw new Error('invalid release URL')
+        }
+        artifactUrl = url.href
+      } catch {
+        throw new Error('catalogue plugin artifact URL must be a same-origin HTTPS tarball under /releases/')
+      }
+    }
     ids.add(row.id as string)
     packages.add(row.package as string)
     let iconUrl: string | undefined
@@ -203,6 +223,7 @@ export function verifyCuratedCatalogEnvelope(
       description: row.description as string,
       package: row.package as string,
       version: row.version as string,
+      ...artifactUrl === undefined ? {} : { artifactUrl },
       integrity: row.integrity as string,
       ...typeof row.category === 'string' ? { category: row.category } : {},
       ...iconUrl === undefined ? {} : { iconUrl },
@@ -224,7 +245,7 @@ export function resolveCuratedInstallRequest(
   if (request.revision !== catalog.revision) throw new ManagementFailure('stale-approval')
   const entry = catalog.plugins.find(candidate => candidate.id === request.id)
   if (entry === undefined || entry.package !== request.package || entry.version !== request.version
-    || entry.integrity !== request.integrity) throw new ManagementFailure('stale-approval')
+    || entry.artifactUrl !== request.artifactUrl || entry.integrity !== request.integrity) throw new ManagementFailure('stale-approval')
   return entry
 }
 
@@ -244,7 +265,7 @@ interface CuratedLockfile {
  * @returns Whether the exact root dependency resolves to the signed registry package.
  */
 export function curatedLockIntegrityMatches(
-  entry: Pick<CuratedPluginEntry, 'package' | 'version' | 'integrity'>,
+  entry: Pick<CuratedPluginEntry, 'package' | 'version' | 'integrity' | 'artifactUrl'>,
   lockfile: CuratedLockfile,
 ): boolean {
   const importer = lockfile.importers?.['.']
@@ -256,10 +277,17 @@ export function curatedLockIntegrityMatches(
   ].filter(reference => reference !== undefined)
   if (directReferences.length !== 1) return false
   const direct = directReferences[0]
-  if (direct?.specifier !== entry.version || typeof direct.version !== 'string'
+  if (typeof direct?.version !== 'string'
     || !(direct.version === entry.version
       || direct.version.startsWith(`${entry.version}(`) && direct.version.endsWith(')'))) return false
-  return lockfile.packages?.[`${entry.package}@${direct.version}`]?.resolution?.integrity === entry.integrity
+  if (entry.artifactUrl === undefined) {
+    if (direct.specifier !== entry.version) return false
+    return lockfile.packages?.[`${entry.package}@${direct.version}`]?.resolution?.integrity === entry.integrity
+  }
+  if (direct.specifier !== entry.artifactUrl) return false
+  const peerSuffix = direct.version.slice(entry.version.length)
+  const packageResolution = lockfile.packages?.[`${entry.package}@${entry.artifactUrl}${peerSuffix}`]?.resolution
+  return packageResolution?.integrity === entry.integrity
 }
 
 /** A bundle is the exact curated installation only when both manifest and lockfile facts match.
@@ -525,7 +553,7 @@ export class PluginManager extends TypertRemoteService {
       }
       throw error
     }
-    return this.installBundleInternal(`${entry.package}@${entry.version}`, { approvedBuilds: [] }, entry)
+    return this.installBundleInternal(entry.artifactUrl ?? `${entry.package}@${entry.version}`, { approvedBuilds: [] }, entry)
   }
 
   private installBundleInternal(spec: string, options?: InstallBundleOptions, curated?: CuratedPluginEntry): Promise<ChangeResult> {
@@ -573,6 +601,9 @@ export class PluginManager extends TypertRemoteService {
         const dir = resolveBundleDir('dsh', name, this.profile.installAnchor, this.profile.dir)
         const manifest = bundleManifest(name, this.profile.dir, this.profile.installAnchor)
         if (manifest?.dsh?.bundle?.patch === undefined) throw new ManagementFailure('not-bundle')
+        if (curated !== undefined && (manifest.name !== curated.package || manifest.version !== curated.version)) {
+          throw new ManagementFailure('invalid-spec')
+        }
         loadOverlayPatches('dsh', join(dir, manifest.dsh.bundle.patch))
       } catch (error) {
         // pnpm has exited by now, so the files it rewrote go back as they were.
