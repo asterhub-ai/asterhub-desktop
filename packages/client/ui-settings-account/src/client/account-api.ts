@@ -6,7 +6,7 @@ type AccountRemote = ClientRemote['accountSub2api']
 
 /** Account settings actions; the component never receives the Remote service. */
 export type AccountSectionActions = Pick<AccountRemote,
-  'getStatus' | 'login' | 'logout' | 'quota' | 'paymentMethods' | 'topUp' | 'redeem'>
+  'getStatus' | 'authSettings' | 'sendVerifyCode' | 'register' | 'login' | 'logout' | 'quota' | 'paymentMethods' | 'topUp' | 'redeem'>
 
 /** Usage snapshot action owned by the account plugin. */
 export type AccountUsageActions = Pick<AccountRemote, 'usage'>

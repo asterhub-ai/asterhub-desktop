@@ -38,6 +38,13 @@ export function AccountPanel({
   const [paymentMethods, setPaymentMethods] = useState<AccountPaymentMethod[]>([])
   const [paymentType, setPaymentType] = useState('')
   const [paymentMethodsError, setPaymentMethodsError] = useState<string>()
+  const [registerMode, setRegisterMode] = useState(false)
+  const [verifyCode, setVerifyCode] = useState('')
+  const [invitationCode, setInvitationCode] = useState('')
+  const [verifyCountdown, setVerifyCountdown] = useState(0)
+  const [registrationEnabled, setRegistrationEnabled] = useState(true)
+  const [emailVerifyEnabled, setEmailVerifyEnabled] = useState(true)
+  const [invitationCodeEnabled, setInvitationCodeEnabled] = useState(false)
   const eventSource = useRef(Symbol('account-panel'))
 
   const applyStatus = (next: AccountStatus): void => {
@@ -111,6 +118,23 @@ export function AccountPanel({
     }
   }, [actions, t])
 
+  useEffect(() => {
+    let active = true
+    void actions.authSettings().then((result) => {
+      if (!active || !result.ok) return
+      setRegistrationEnabled(result.value.registrationEnabled)
+      setEmailVerifyEnabled(result.value.emailVerifyEnabled)
+      setInvitationCodeEnabled(result.value.invitationCodeEnabled)
+    }).catch(() => { /* Keep the registration entry visible; Host validates settings on submit. */ })
+    return () => { active = false }
+  }, [actions])
+
+  useEffect(() => {
+    if (verifyCountdown <= 0) return
+    const timer = window.setInterval(() => setVerifyCountdown(value => Math.max(0, value - 1)), 1000)
+    return () => window.clearInterval(timer)
+  }, [verifyCountdown])
+
   const login = async (): Promise<void> => {
     setBusy(true)
     setError(undefined)
@@ -122,6 +146,42 @@ export function AccountPanel({
         await load()
         window.dispatchEvent(new CustomEvent(ACCOUNT_STATE_CHANGED_EVENT, { detail: eventSource.current }))
       } else setError(failureMessage(result.error))
+    } catch {
+      setError(t('serviceUnavailable'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const register = async (): Promise<void> => {
+    setBusy(true)
+    setError(undefined)
+    try {
+      const result = await actions.register({
+        email, password, verifyCode, ...(invitationCode.trim() ? { invitationCode: invitationCode.trim() } : {}),
+        rememberUsername, autoLogin,
+      })
+      if (result.ok) {
+        setPassword('')
+        setVerifyCode('')
+        applyStatus(result.value)
+        await load()
+        window.dispatchEvent(new CustomEvent(ACCOUNT_STATE_CHANGED_EVENT, { detail: eventSource.current }))
+      } else setError(failureMessage(result.error))
+    } catch {
+      setError(t('serviceUnavailable'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const sendVerifyCode = async (): Promise<void> => {
+    setBusy(true)
+    setError(undefined)
+    try {
+      const result = await actions.sendVerifyCode(email)
+      if (result.ok) setVerifyCountdown(result.value.countdown)
+      else setError(failureMessage(result.error))
     } catch {
       setError(t('serviceUnavailable'))
     } finally {
@@ -235,19 +295,39 @@ export function AccountPanel({
     return (
       <div className={rootClass}>
         {fullPage && <p className={css.productName}>{t('productName')}</p>}
-        <h2 className={css.heading}>{t('title')}</h2>
-        <p className={css.muted}>{t('loggedOutIntro')}</p>
-        <form className={css.form} onSubmit={(event) => { event.preventDefault(); void login() }}>
+        <h2 className={css.heading}>{registerMode ? t('registerButton') : t('title')}</h2>
+        <p className={css.muted}>{registerMode ? t('registrationIntro') : t('loggedOutIntro')}</p>
+        <form className={css.form} onSubmit={(event) => { event.preventDefault(); void (registerMode ? register() : login()) }}>
           <label className={css.fieldLabel}>
             <span>{t('emailLabel')}</span>
             <input className={css.input} type="email" value={email} autoComplete="username"
-              onChange={(event) => { setEmail(event.target.value) }} />
+              onChange={(event) => { setEmail(event.target.value) }} required />
           </label>
           <label className={css.fieldLabel}>
             <span>{t('passwordLabel')}</span>
-            <input className={css.input} type="password" value={password} autoComplete="current-password"
-              onChange={(event) => { setPassword(event.target.value) }} />
+            <input className={css.input} type="password" value={password} autoComplete={registerMode ? 'new-password' : 'current-password'}
+              minLength={registerMode ? 8 : undefined} onChange={(event) => { setPassword(event.target.value) }} required />
           </label>
+          {registerMode && emailVerifyEnabled && (
+            <div className={css.row}>
+              <label className={css.fieldLabel}>
+                <span>{t('verifyCodeLabel')}</span>
+                <input className={css.input} type="text" value={verifyCode} autoComplete="one-time-code"
+                  onChange={(event) => { setVerifyCode(event.target.value) }} required />
+              </label>
+              <button type="button" className={css.action} disabled={busy || verifyCountdown > 0 || !email}
+                onClick={() => { void sendVerifyCode() }}>
+                {verifyCountdown > 0 ? `${verifyCountdown}${t('resendVerifyCode')}` : t('sendVerifyCode')}
+              </button>
+            </div>
+          )}
+          {registerMode && invitationCodeEnabled && (
+            <label className={css.fieldLabel}>
+              <span>{t('invitationCodeLabel')}</span>
+              <input className={css.input} type="text" value={invitationCode}
+                onChange={(event) => { setInvitationCode(event.target.value) }} required />
+            </label>
+          )}
           <div className={css.preferences}>
             <label className={css.checkboxLabel}>
               <input type="checkbox" checked={rememberUsername}
@@ -266,10 +346,20 @@ export function AccountPanel({
               <span>{t('autoLogin')}</span>
             </label>
           </div>
-          <button type="submit" className={css.primary} disabled={busy || !email || !password}>
-            {busy ? t('loggingIn') : t('loginButton')}
+          <button type="submit" className={css.primary} disabled={busy || !email || !password || (registerMode && (!registrationEnabled || (emailVerifyEnabled && !verifyCode)))}>
+            {busy ? (registerMode ? t('registering') : t('loggingIn')) : (registerMode ? t('registerButton') : t('loginButton'))}
           </button>
         </form>
+        {registerMode && !registrationEnabled && <p className={css.muted}>{t('registrationUnavailable')}</p>}
+        <button type="button" className={css.action} disabled={busy} onClick={() => {
+          setRegisterMode(value => !value)
+          setError(undefined)
+          setVerifyCode('')
+          setInvitationCode('')
+          setVerifyCountdown(0)
+        }}>
+          {registerMode ? t('loginLink') : t('registerLink')}
+        </button>
         {(externalError ?? error) !== undefined && <p className={css.error}>{externalError ?? error}</p>}
       </div>
     )

@@ -19,6 +19,19 @@ export interface AccountLoginInput {
   readonly autoLogin: boolean
 }
 
+/** Sub2API registration fields and local sign-in preferences. */
+export interface AccountRegisterInput extends AccountLoginInput {
+  readonly verifyCode: string
+  readonly invitationCode?: string
+}
+
+/** Public account-creation requirements returned by the authentication service. */
+export interface AccountAuthSettings {
+  readonly registrationEnabled: boolean
+  readonly emailVerifyEnabled: boolean
+  readonly invitationCodeEnabled: boolean
+}
+
 /** Everything the 账户 settings surface renders for the current state. */
 export interface AccountStatus {
   /** Whether a sub2api access token is stored on this installation. */
