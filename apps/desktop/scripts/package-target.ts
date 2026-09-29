@@ -13,6 +13,7 @@ import { packageMacOSArtifacts, type DesktopPrepackagedArtifact } from './packag
 import { loadDesktopPackageEnvironment, validateDesktopPackageEnvironment } from './desktop-package-environment.mjs'
 import { createPackagingRun } from './packaging-run.mjs'
 import { withMacOSSigningKeychain } from './macos-signing-keychain.mjs'
+import { prepareWindowsPortableLauncher } from './portable-launcher.ts'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
 const REPOSITORY_ROOT = resolve(APP_ROOT, '..', '..')
@@ -328,6 +329,7 @@ export async function packageTarget(
     DSH_DESKTOP_TARGET_ARCH: target.arch,
   }
   const electronBuilderEnv = desktopElectronBuilderEnvironment(targetEnv, invocation.unsigned)
+  if (invocation.directory) electronBuilderEnv.DSH_DESKTOP_DIRECTORY_BUILD = '1'
   for (const name of WINDOWS_SIGNING_ENV_NAMES) {
     if (!invocation.unsigned && environment[name] !== undefined) electronBuilderEnv[name] = environment[name]
   }
@@ -376,6 +378,10 @@ export async function packageTarget(
     }, artifact => execute(desktopElectronBuilderArguments(target, false, artifact), electronBuilderEnv))
   } else {
     await execute(desktopElectronBuilderArguments(target, invocation.directory), electronBuilderEnv)
+  }
+  if (invocation.unsigned && invocation.directory && target.platform === 'win32') {
+    const launcher = prepareWindowsPortableLauncher(join(buildPaths.root, 'unsigned-artifacts', 'win-unpacked'))
+    console.log(`desktop package: small launcher ${launcher.launcherBytes} bytes; Electron runtime ${launcher.runtimeBytes} bytes`)
   }
   if (!invocation.directory && !invocation.unsigned) writeReleaseRecord(target, electronBuilderEnv, buildPaths.artifacts)
 }

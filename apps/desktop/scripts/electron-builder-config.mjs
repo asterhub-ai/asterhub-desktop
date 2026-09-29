@@ -49,10 +49,11 @@ export function createElectronBuilderConfig(
     throw new Error('desktop package: DSH_DESKTOP_UNSIGNED must be 0 or 1')
   }
   const unsigned = env.DSH_DESKTOP_UNSIGNED === '1'
+  const directoryBuild = env.DSH_DESKTOP_DIRECTORY_BUILD === '1'
   if (unsigned && resolvedPlatform !== 'win32') throw new Error('desktop package: unsigned builds require Windows')
   const packagesMacOS = targetPlatform === 'darwin' || (targetPlatform === undefined && hostPlatform === 'darwin')
   const packagesWindows = resolvedPlatform === 'win32'
-  if (resolvedPlatform === 'win32') installWindowsDirectoryInstaller()
+  if (resolvedPlatform === 'win32' && !directoryBuild) installWindowsDirectoryInstaller()
   const macOSSigning = packagesMacOS ? resolveMacOSSigningEnvironment(env) : undefined
   if (packagesMacOS) resolveMacOSNotarizationEnvironment(env)
   const buildPaths = desktopTargetBuildPaths(resolveDesktopBuildTarget(env, hostPlatform, hostArch))
@@ -85,7 +86,7 @@ export function createElectronBuilderConfig(
     electronDist: buildPaths.electron,
     electronFuses: { runAsNode: true },
     beforeBuild: async () => {
-      if (resolvedPlatform !== 'win32') return true
+      if (resolvedPlatform !== 'win32' || directoryBuild) return true
       await promisify(execFile)('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
         fileURLToPath(new URL('./prepare-windows-installer.ps1', import.meta.url)),
         '-OutputDirectory', join(buildPaths.root, 'installer-ui')], {
