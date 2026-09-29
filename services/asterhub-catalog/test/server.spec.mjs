@@ -17,6 +17,7 @@ let catalogPublicKey
 before(async () => {
   directory = await mkdtemp(join(tmpdir(), 'asterhub-catalog-'))
   await mkdir(join(directory, 'desktop'), { recursive: true })
+  await mkdir(join(directory, 'releases'), { recursive: true })
   await mkdir(join(directory, 'dsh-desk/feeds/win-x64'), { recursive: true })
   catalogPayload = Buffer.from('{"schemaVersion":1,"revision":3,"issuedAt":"2026-09-28T00:00:00.000Z","expiresAt":"2026-10-28T00:00:00.000Z","plugins":[]}')
   await writeFile(join(directory, 'catalog.json'), catalogPayload)
@@ -25,7 +26,7 @@ before(async () => {
   const outside = join(directory, '..', 'asterhub-catalog-outside-secret.txt')
   await writeFile(outside, 'private')
   try {
-    await symlink(outside, join(directory, 'catalog-link.json'))
+    await symlink(outside, join(directory, 'releases/catalog-link.json'))
     symlinkSupported = true
   }
   catch (error) {
@@ -120,6 +121,18 @@ test('serves operator-supplied electron-updater feeds from the dedicated feed ro
   assert.equal(response.status, 200)
   assert.equal(response.headers.get('content-type'), 'application/yaml; charset=utf-8')
   assert.equal(await response.text(), 'version: 0.1.7\nfiles: []\n')
+})
+
+test('serves curated plugin tarballs from the dedicated release root', async () => {
+  const payload = Buffer.from('curated plugin archive')
+  await writeFile(join(directory, 'releases/plugin.tgz'), payload)
+  const response = await fetch(`${base}/releases/plugin.tgz`)
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('content-type'), 'application/octet-stream')
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), payload)
+  const head = await fetch(`${base}/releases/plugin.tgz`, { method: 'HEAD' })
+  assert.equal(head.status, 200)
+  assert.equal(await head.text(), '')
 })
 
 test('restricts the public route surface and prevents path traversal', async () => {

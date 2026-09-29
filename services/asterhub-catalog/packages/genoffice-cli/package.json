@@ -1,0 +1,32 @@
+{
+  "name": "@asterhub/genoffice-cli",
+  "version": "0.11.0-asterhub.1",
+  "private": true,
+  "type": "module",
+  "description": "Workspace-scoped GenOffice CLI tools for AsterHub",
+  "license": "Apache-2.0",
+  "main": "./index.mjs",
+  "files": [
+    "cordis.patch.yml",
+    "index.mjs",
+    "resources/**",
+    "LICENSE",
+    "NOTICE",
+    "LICENSE-UNICODE.txt",
+    "THIRD-PARTY-NOTICES.txt",
+    "UPSTREAM.md"
+  ],
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "compatibility": {
+      "dsh": "0.1.6-alpha.2",
+      "dshReleases": { "0.1.6-alpha.2": "compatible" },
+      "profiles": ["web"]
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-mcp-client": "0.1.6-alpha.2",
+    "@deepseek-ai/dsh-subprocess": "0.1.6-alpha.2",
+    "@modelcontextprotocol/client": "2.0.0"
+  }
+}
