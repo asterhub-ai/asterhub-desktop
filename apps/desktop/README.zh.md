@@ -323,6 +323,10 @@ pnpm run package:desktop:win:x64:unsigned
 
 该命令要求设置 `DSH_DESKTOP_APP_ID` 并具备常规构建依赖，包括编译原生模块所需的 Python 和 Visual C++ 构建工具。Python 不在 `PATH` 中时，将 `PYTHON` 设置为其可执行文件路径。命令将安装包写入 `.desktop-build/targets/win-x64/unsigned-artifacts/`，省略自动更新配置，清除签名凭据，且不生成发布完成记录。它不需要 EV 凭据或更新源地址。签名打包和上传命令仍遵循正式发布要求。
 
+未签名便携目录构建运行 `pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned --dir`。该产物使用较小的 `AsterHub.exe` 启动器，并将 Electron 运行时保留为同目录的 `AsterHub.Runtime.exe`，其旁边仍是 `resources/`。启动器会转发命令行参数，并从应用目录启动内置运行时；它只改变用户看到的启动入口，不会缩小安装内容。签名安装器仍使用现有可执行文件布局。
+
+未签名便携目录构建可以在 Desktop 包脚本后附加 `--dir`。该产物使用较小的 `AsterHub.exe` 启动器，并将 Electron 运行时保留为同目录的 `AsterHub.Runtime.exe`，其旁边仍是 `resources/`。启动器会转发命令行参数，并从应用目录启动内置运行时；它只改变用户看到的启动入口，不会缩小安装内容。签名安装器仍使用现有可执行文件布局。
+
 ### Windows 安装界面
 
 Windows 安装程序使用原生 NSIS 页面，提供亮暗配色、系统阴影、可编辑的安装目录，以及默认勾选立即启动的完成页。安装仅面向当前用户。点击安装或按 Enter 均校验当前路径；新安装位置必须为空，非空位置必须是已登记的安装目录。受影响安装路径中的程序运行时显示系统提示，并保持应用运行；其他目录中的同名应用不阻止安装。静默更新最多等待受影响应用退出十秒，若仍在运行则以退出码 2 结束。
