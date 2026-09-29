@@ -2,6 +2,7 @@
 
 /** Simplified Chinese dictionary and key source of truth. */
 export const zh = {
+  productName: 'AsterHub',
   nav: '账户',
   usageNav: '用量统计',
   title: '账户',
@@ -47,6 +48,7 @@ export type AccountLocaleKey = keyof typeof zh
 
 /** English dictionary checked against the Chinese key set. */
 export const en = {
+  productName: 'AsterHub',
   nav: 'Account',
   usageNav: 'Usage',
   title: 'Account',

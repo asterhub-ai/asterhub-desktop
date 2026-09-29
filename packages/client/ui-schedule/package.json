@@ -51,7 +51,8 @@
     "access": "public"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "workspace:~"
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-schedule": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-api-remotes": "workspace:*",

@@ -1,0 +1,11 @@
+{
+  "name": "asterhub-catalog-service",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test",
+    "sign:catalog": "node sign-catalog.mjs"
+  },
+  "engines": { "node": ">=22" }
+}

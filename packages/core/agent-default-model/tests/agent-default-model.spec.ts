@@ -67,3 +67,12 @@ it('serializes overlapping saves and continues after a rejected write', async ()
   expect(calls).toEqual(['rejected', 'saved'])
   expect(ctx.agentDefaultModel.currentSelection()).toEqual({ provider: 'test', model: 'final' })
 })
+
+it('rejects model changes when the deployment locks the default route', async () => {
+  const ctx = new Context()
+  onTestFinished(() => ctx.fiber.dispose())
+  await ctx.plugin(DefaultModel, { provider: 'sub2api', model: 'aster', locked: true })
+  expect(ctx.agentDefaultModel.currentSelection()).toEqual({ provider: 'sub2api', model: 'aster' })
+  await expect(ctx.agentDefaultModel.saveSelection({ provider: 'other', model: 'other' }))
+    .rejects.toThrow('model selection is deployment-locked')
+})

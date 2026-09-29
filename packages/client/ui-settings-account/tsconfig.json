@@ -4,18 +4,32 @@
     "rootDir": "src",
     "outDir": "lib/types"
   },
-  "include": [
-    "src"
+  "files": [
+    "src/index.ts",
+    "src/client/index.ts",
+    "src/client/AccountPanel.tsx",
+    "src/client/AccountGate.tsx",
+    "src/client/AccountSection.tsx",
+    "src/client/UsageSection.tsx",
+    "src/client/account-api.ts",
+    "src/client/locales.ts",
+    "src/client/css-modules.d.ts"
   ],
   "references": [
     {
-      "path": "../locale"
+      "path": "../../account/account-sub2api"
+    },
+    {
+      "path": "../ui-renderer"
+    },
+    {
+      "path": "../locale/tsconfig.client.json"
     },
     {
       "path": "../../../vendor/cordis"
     },
     {
-      "path": "../ui-settings"
+      "path": "../ui-settings/tsconfig.client.json"
     },
     {
       "path": "../../api/remotes/tsconfig.client.json"

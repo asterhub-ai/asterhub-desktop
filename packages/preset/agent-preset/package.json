@@ -24,6 +24,7 @@
   "files": [
     "lib/index.js",
     "skills",
+    "mcp-skills",
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",

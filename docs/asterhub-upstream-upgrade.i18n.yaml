@@ -1,0 +1,13 @@
+# Bilingual-pair consistency record for asterhub-upstream-upgrade.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/asterhub-upstream-upgrade.md
+/asterhub-upstream-upgrade-record:
+  en: 8fe1d773f954ce8c
+  zh: 54c2ee45a0298513
+/asterhub-upstream-upgrade-record/product-decisions:
+  en: 9d7a71579cbe9414
+  zh: 158ce1a1f2308ded
+/asterhub-upstream-upgrade-record/progress-2026-10-01:
+  en: 0b3f6ab37ac46d66
+  zh: 1c8d5cb75dfba35f

@@ -528,7 +528,6 @@ describe('LlmRuntime', () => {
           [Symbol.asyncIterator](): AsyncIterator<StreamChunk> {
             return {
               // Third-party adapters can reject with arbitrary values.
-              // oxlint-disable-next-line typescript/prefer-promise-reject-errors
               next: () => Promise.reject('plain provider failure'),
             }
           },
@@ -1326,6 +1325,46 @@ describe('LlmRuntime', () => {
       ...assistant, source: { kind: 'model', provider: 'historical', model: 'old-model' },
     })
     expect(assistant.source.replayState).toEqual({ private: 'state' })
+  })
+  it('enforces an application-owned model route across resolve, prepare, middleware and direct streams', async () => {
+    const ctx = new Context()
+    await ctx.plugin(LlmRuntime)
+    const adapter = new RecordingAdapter(SCRIPT)
+    ctx.llm.registerAdapter(['sub2api'], adapter)
+    ctx.llm.registerAdapter(['other'], new RecordingAdapter(SCRIPT))
+    ctx.llm.lockRoute('sub2api', 'aster')
+    expect(ctx.llm.listProviders()).toEqual([{ id: 'sub2api', name: 'sub2api' }])
+    expect(ctx.llm.listConfigurableProviders()).toEqual([])
+
+    await expect(ctx.llm.resolveCallConfig({ provider: 'other', model: 'm' }))
+      .rejects.toMatchObject({ code: 'MODEL_ROUTE_LOCKED' })
+    await expect(ctx.llm.prepareCall({ provider: 'sub2api', model: 'other' }))
+      .rejects.toMatchObject({ code: 'MODEL_ROUTE_LOCKED' })
+    await expect(ctx.llm.resolveModelInfo('other', 'm'))
+      .rejects.toMatchObject({ code: 'MODEL_ROUTE_LOCKED' })
+
+    ctx.on('llm/stream', (options, next) => {
+      options.provider = 'other'
+      options.model = 'm'
+      return next()
+    })
+    const chunks = await collect(ctx.llm.stream({ provider: 'sub2api', model: 'aster', messages: [] }))
+    expect(chunks.at(-1)).toMatchObject({
+      type: 'finish', reason: { kind: 'error', failure: { code: 'MODEL_ROUTE_LOCKED' } },
+    })
+    expect(adapter.lastOptions).toBeUndefined()
+  })
+
+  it('loads the application route ceiling when the service mounts', async () => {
+    const ctx = new Context()
+    ctx.provide('applicationModelRoute', Object.freeze({ provider: 'sub2api', model: 'aster' }))
+    await ctx.plugin(LlmRuntime)
+    const adapter = new RecordingAdapter(SCRIPT)
+    ctx.llm.registerAdapter(['sub2api'], adapter)
+    await expect(ctx.llm.prepareCall({ provider: 'other', model: 'm' }))
+      .rejects.toMatchObject({ code: 'MODEL_ROUTE_LOCKED' })
+    await expect(ctx.llm.prepareCall({ provider: 'sub2api', model: 'aster' }))
+      .resolves.toMatchObject({ config: { provider: 'sub2api', model: 'aster' } })
   })
 
   it('keeps replay state when historical and target providers belong to the same adapter instance', async () => {

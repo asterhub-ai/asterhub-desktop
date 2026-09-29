@@ -1,11 +1,10 @@
-/* Plugins page placeholder: a quiet reserved surface. */
+/* Product curated catalogue. */
 
 .page {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
+  align-items: stretch;
+  gap: 18px;
   box-sizing: border-box;
   height: 100%;
   padding: 28px clamp(24px, 4vw, 48px) 48px;
@@ -18,7 +17,42 @@
   font-weight: 500;
 }
 
-.placeholder {
+.status,
+.notice {
   margin: 0;
   opacity: 0.65;
 }
+
+.list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: 14px;
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: 14px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.copy { min-width: 0; }
+.copy h2 { margin: 0 0 8px; font-size: 16px; font-weight: 600; }
+.copy p { margin: 0 0 10px; opacity: 0.78; line-height: 1.45; }
+.copy span { font-size: 12px; opacity: 0.62; }
+
+.card button {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-2);
+  cursor: pointer;
+}
+
+.card button:disabled { cursor: default; opacity: 0.55; }

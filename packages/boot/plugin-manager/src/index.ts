@@ -1,7 +1,8 @@
 /** Current-profile plugin and bundle management over shared dsh plugin operations. */
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { readFile, rm } from 'node:fs/promises'
+import { createPublicKey, verify as verifySignature } from 'node:crypto'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
@@ -9,6 +10,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import z from '@deepseek-ai/schemastery'
+import { parse as parseYaml } from 'yaml'
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 import { pluginEntryId, readPluginInventory } from '@deepseek-ai/dsh-host-plugin-inventory'
 import {
@@ -31,6 +33,7 @@ import type {
   BundleInfo, BundleRowInfo, ChangeResult, InspectOptions, InstallBundleOptions, ManagementError, PackageResult, PluginChange,
   PluginEntryId, PluginInfo, PluginInspectProblem, PluginInstallCancellation, PluginInstallProgress, PluginInstallRequestId,
   PluginRegistries, PluginSpecInspection, Registry,
+  CuratedPluginCatalog, CuratedPluginEntry, CuratedPluginInstallRequest,
 } from './types.ts'
 export type * from './types.ts'
 export { classifyInstallFailure, type InstallFailureFacts } from './install-failure.ts'
@@ -58,6 +61,10 @@ export interface Config {
    * unless that is npm's own registry or one of these.
    */
   fallbackRegistries?: string[]
+  /** Public catalogue endpoint for the reserved app Plugins page. */
+  curatedCatalogUrl?: string
+  /** Release-pinned Ed25519 public key in PEM form. Empty means unavailable. */
+  curatedCatalogPublicKey?: string
 }
 
 /** An http(s) URL, as pnpm's `--registry` takes it. */
@@ -73,7 +80,12 @@ const protectedModules = new Set([
   '@deepseek-ai/cordis-plugin-timer', '@deepseek-ai/dsh-client-connection',
   '@deepseek-ai/dsh-host-frontend-static', '@deepseek-ai/dsh-tools',
   '@deepseek-ai/dsh-hmr',
+  '@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-llm-pi-ai',
+  '@deepseek-ai/dsh-agent-default-model', '@deepseek-ai/dsh-account-sub2api',
+  '@deepseek-ai/dsh-credentials-local', '@deepseek-ai/dsh-sandbox-policy',
 ])
+
+const protectedEntryIds = new Set(['llm', 'llm-pi-ai', 'agent-default-model', 'account-sub2api', 'credentials', 'sandbox-policy'])
 
 /** The profile files an installation writes and a failed or cancelled one restores. */
 const RESTORED_FILES = ['package.json', 'pnpm-lock.yaml'] as const
@@ -164,11 +176,173 @@ function parsedForRegistry(spec: string): ParsedInstallSpec {
     return { kind: 'registry', spec, name: spec }
   }
 }
+/** Verify the raw-byte envelope and validate the catalogue values before exposing them to a Client.
+ * @param envelope Untrusted JSON envelope returned by the catalogue endpoint.
+ * @param publicKeyPem Release-pinned Ed25519 public key in PEM form.
+ * @param catalogUrl Configured HTTPS catalogue URL used to restrict icon origins.
+ * @param now Current epoch time in milliseconds for validity checks.
+ * @returns The validated catalogue payload and its monotone revision.
+ */
+export function verifyCuratedCatalogEnvelope(
+  envelope: unknown,
+  publicKeyPem: string,
+  catalogUrl: string,
+  now = Date.now(),
+): CuratedPluginCatalog {
+  if (typeof envelope !== 'object' || envelope === null || Array.isArray(envelope)) {
+    throw new Error('curated plugin catalogue signature envelope is invalid')
+  }
+  const record = envelope as Record<string, unknown>
+  if (typeof record.payload !== 'string' || typeof record.signature !== 'string'
+    || record.payload.length === 0 || record.payload.length > 3_000_000
+    || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(record.payload)
+    || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(record.signature)) {
+    throw new Error('curated plugin catalogue signature envelope is invalid')
+  }
+  const payloadBytes = Buffer.from(record.payload, 'base64')
+  if (!verifySignature(null, payloadBytes, createPublicKey(publicKeyPem), Buffer.from(record.signature, 'base64'))) {
+    throw new Error('curated plugin catalogue signature verification failed')
+  }
+  const payload = JSON.parse(payloadBytes.toString('utf8')) as Record<string, unknown>
+  if (payload.schemaVersion !== 1 || !Number.isSafeInteger(payload.revision) || (payload.revision as number) < 1
+    || typeof payload.issuedAt !== 'string' || typeof payload.expiresAt !== 'string'
+    || !Array.isArray(payload.plugins) || payload.plugins.length > 500) {
+    throw new Error('curated plugin catalogue payload is invalid')
+  }
+  const issuedAt = Date.parse(payload.issuedAt)
+  const expiresAt = Date.parse(payload.expiresAt)
+  if (!Number.isFinite(issuedAt) || !Number.isFinite(expiresAt)
+    || new Date(issuedAt).toISOString() !== payload.issuedAt || new Date(expiresAt).toISOString() !== payload.expiresAt
+    || issuedAt > now + 5 * 60_000 || expiresAt <= now || expiresAt <= issuedAt) {
+    throw new Error('curated plugin catalogue is not currently valid')
+  }
+  const catalog = new URL(catalogUrl)
+  if (catalog.protocol !== 'https:' || catalog.username || catalog.password || catalog.search || catalog.hash) {
+    throw new Error('curated plugin catalogue URL must be a clean HTTPS URL')
+  }
+  const origin = catalog.origin
+  const ids = new Set<string>()
+  const packages = new Set<string>()
+  const plugins: CuratedPluginEntry[] = payload.plugins.map((item: unknown) => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) throw new Error('catalogue plugin entry is invalid')
+    const row = item as Record<string, unknown>
+    for (const field of ['id', 'name', 'description', 'package', 'version', 'integrity', 'artifactUrl']) {
+      if (typeof row[field] !== 'string' || row[field] === '') throw new Error(`catalogue plugin ${field} is invalid`)
+    }
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(row.id as string)
+      || ids.has(row.id as string)
+      || packages.has(row.package as string)
+      || !/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/.test(row.package as string)
+      || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(row.version as string)
+      || !/^sha512-[A-Za-z0-9+/]+={0,2}$/.test(row.integrity as string)) {
+      throw new Error('catalogue plugin identity, package, exact version, or integrity is invalid')
+    }
+    let artifactUrl: URL
+    try { artifactUrl = new URL(row.artifactUrl as string) }
+    catch { throw new Error('catalogue artifact URL is invalid') }
+    if (artifactUrl.protocol !== 'https:' || artifactUrl.origin !== origin || artifactUrl.username || artifactUrl.password
+      || artifactUrl.search || artifactUrl.hash || artifactUrl.href !== row.artifactUrl
+      || !/^\/releases\/[A-Za-z0-9._-]+\.tgz$/.test(artifactUrl.pathname)) {
+      throw new Error('catalogue artifact URL must be a same-origin immutable release tarball')
+    }
+    ids.add(row.id as string)
+    packages.add(row.package as string)
+    let iconUrl: string | undefined
+    if (typeof row.iconUrl === 'string') {
+      try {
+        if (new URL(row.iconUrl).origin === origin && new URL(row.iconUrl).protocol === 'https:') iconUrl = row.iconUrl
+      } catch { /* invalid remote image URLs are omitted from the display data */ }
+    }
+    return {
+      id: row.id as string,
+      name: row.name as string,
+      description: row.description as string,
+      package: row.package as string,
+      version: row.version as string,
+      integrity: row.integrity as string,
+      artifactUrl: artifactUrl.href,
+      ...typeof row.category === 'string' ? { category: row.category } : {},
+      ...iconUrl === undefined ? {} : { iconUrl },
+    }
+  })
+  return { revision: payload.revision as number, generatedAt: payload.issuedAt, plugins }
+}
+
+/** Match a UI install click to the exact signed row and revision it displayed.
+ * @param catalog Current verified catalogue shown by the Plugins page.
+ * @param request Exact item identity and signed package facts sent by the page.
+ * @returns The verified catalogue entry bound to the user's selection.
+ * @throws ManagementFailure `stale-approval` when the catalogue or item changed.
+ */
+export function resolveCuratedInstallRequest(
+  catalog: CuratedPluginCatalog,
+  request: CuratedPluginInstallRequest,
+): CuratedPluginEntry {
+  if (request.revision !== catalog.revision) throw new ManagementFailure('stale-approval')
+  const entry = catalog.plugins.find(candidate => candidate.id === request.id)
+  if (entry === undefined || entry.package !== request.package || entry.version !== request.version
+    || entry.integrity !== request.integrity || entry.artifactUrl !== request.artifactUrl) throw new ManagementFailure('stale-approval')
+  return entry
+}
+
+/** The root profile dependency reference and resolution records in a pnpm lockfile. */
+interface CuratedLockfile {
+  readonly importers?: Readonly<Record<string, {
+    readonly dependencies?: Readonly<Record<string, { readonly specifier?: unknown; readonly version?: unknown }>>
+    readonly devDependencies?: Readonly<Record<string, { readonly specifier?: unknown; readonly version?: unknown }>>
+    readonly optionalDependencies?: Readonly<Record<string, { readonly specifier?: unknown; readonly version?: unknown }>>
+  }>>
+  readonly packages?: Readonly<Record<string, { readonly resolution?: { readonly integrity?: unknown; readonly tarball?: unknown } }>>
+}
+
+/** Check the profile's direct exact dependency and its resolved registry tarball integrity.
+ * @param entry Signed package identity and registry integrity.
+ * @param lockfile Parsed pnpm lockfile for the profile.
+ * @returns Whether the exact root dependency resolves to the signed registry package.
+ */
+export function curatedLockIntegrityMatches(
+  entry: Pick<CuratedPluginEntry, 'package' | 'version' | 'integrity' | 'artifactUrl'>,
+  lockfile: CuratedLockfile,
+): boolean {
+  const importer = lockfile.importers?.['.']
+  if (importer === undefined) return false
+  const directReferences = [
+    importer.dependencies?.[entry.package],
+    importer.devDependencies?.[entry.package],
+    importer.optionalDependencies?.[entry.package],
+  ].filter(reference => reference !== undefined)
+  if (directReferences.length !== 1) return false
+  const direct = directReferences[0]
+  if (direct?.specifier !== entry.artifactUrl || typeof direct.version !== 'string'
+    || !(direct.version === entry.version
+      || direct.version.startsWith(`${entry.version}(`) && direct.version.endsWith(')'))) return false
+  const peerSuffix = direct.version.slice(entry.version.length)
+  const resolution = lockfile.packages?.[`${entry.package}@${entry.artifactUrl}${peerSuffix}`]?.resolution
+  return resolution?.integrity === entry.integrity
+    && (resolution.tarball === undefined || resolution.tarball === entry.artifactUrl)
+}
+
+/** A bundle is the exact curated installation only when both manifest and lockfile facts match.
+ * @param entry Signed catalogue entry to compare.
+ * @param bundles Installed bundle inventory from the current profile.
+ * @param lockfile Parsed pnpm lockfile for the profile.
+ * @returns Whether the installed bundle is the exact signed package resolution.
+ */
+export function isExactCuratedInstallation(
+  entry: CuratedPluginEntry,
+  bundles: readonly BundleInfo[],
+  lockfile: CuratedLockfile,
+): boolean {
+  return bundles.some(bundle => bundle.name === entry.package && bundle.installed && bundle.version === entry.version)
+    && curatedLockIntegrityMatches(entry, lockfile)
+}
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
     /** Persistent management of the current profile's composition and packages. */
     pluginManager: PluginManager
+    /** Release-pinned AsterHub catalogue trust root supplied by the Desktop Host. */
+    applicationCatalogPublicKey?: string
   }
 }
 
@@ -184,6 +358,8 @@ export class PluginManager extends TypertRemoteService {
     idleTimeoutMs: z.number().step(1).min(1000).default(600000),
     registry: z.string().pattern(REGISTRY_URL),
     fallbackRegistries: z.array(z.string().pattern(REGISTRY_URL)).default([NPMMIRROR_REGISTRY]),
+    curatedCatalogUrl: z.string().default('https://asterhub.xapi.fans/api/v1/catalog.json'),
+    curatedCatalogPublicKey: z.string().default(''),
   })
   /** Management bundles remain protected if their files become unreadable. */
   private readonly managementBundles = new Set<string>()
@@ -197,6 +373,9 @@ export class PluginManager extends TypertRemoteService {
   private readonly idleTimeoutMs: number
   private readonly pnpmCommand: string
   private readonly configuredRegistries: Omit<PluginRegistries, 'resolved'>
+  private readonly curatedCatalogUrl: string
+  private readonly curatedCatalogPublicKey: string
+  private catalogRevisionWrite: Promise<void> = Promise.resolve()
   private readonly ownerContext: Context
   private readonly abort = new AbortController()
   /** Installations by request id, from their call until it settles. */
@@ -218,6 +397,11 @@ export class PluginManager extends TypertRemoteService {
       registry: config.registry === undefined ? null : normalizeRegistry(config.registry),
       fallbackRegistries: (config as Required<Config>).fallbackRegistries.map(normalizeRegistry),
     }
+    this.curatedCatalogUrl = (config as Config & { curatedCatalogUrl?: string }).curatedCatalogUrl
+      ?? 'https://asterhub.xapi.fans/api/v1/catalog.json'
+    this.curatedCatalogPublicKey = ctx.get('applicationCatalogPublicKey')
+      ?? config.curatedCatalogPublicKey
+      ?? ''
     ctx.effect(() => async () => {
       this.abort.abort()
       await Promise.allSettled([...this.packageOperations])
@@ -260,7 +444,8 @@ export class PluginManager extends TypertRemoteService {
       const actual = [...this.ctx.loader.entries()].find(row => row.id === entry.entryId)
       const candidates = rows.filter(row => row.id === actual?.options.id)
       const candidate = candidates[0]
-      if (protectedModules.has(entry.moduleName) || entry.entryId === this.ownerEntryId) {
+      if (protectedModules.has(entry.moduleName) || protectedEntryIds.has(actual?.options.id ?? '')
+        || entry.entryId === this.ownerEntryId) {
         return { ...entry, readOnlyReason: 'management-required' as const }
       }
       if (candidate === undefined || candidates.length > 1 || candidate.name !== entry.moduleName
@@ -460,6 +645,29 @@ export class PluginManager extends TypertRemoteService {
    */
   @Remote
   installBundle(spec: string, options?: InstallBundleOptions): Promise<ChangeResult> {
+    return this.installBundleInternal(spec, options)
+  }
+
+  /** Install the exact signed catalogue item shown to the user.
+   * @param request Catalogue identity and signed package facts displayed when the user selected Install.
+   * @returns Package-manager diagnostics and the resulting application state.
+   */
+  @Remote
+  async installCuratedBundle(request: CuratedPluginInstallRequest): Promise<ChangeResult> {
+    let entry: CuratedPluginEntry
+    try {
+      entry = resolveCuratedInstallRequest(await this.curatedCatalog(), request)
+    } catch (error) {
+      if (error instanceof ManagementFailure && error.code === 'stale-approval') {
+        return { changed: false, application: 'failed', stage: 'install', target: request.id,
+          error: { code: 'stale-approval' } }
+      }
+      throw error
+    }
+    return this.installBundleInternal(entry.artifactUrl, { approvedBuilds: [] }, entry)
+  }
+
+  private installBundleInternal(spec: string, options?: InstallBundleOptions, curated?: CuratedPluginEntry): Promise<ChangeResult> {
     const requestId = options?.requestId
     const control: InstallControl = { abort: new AbortController(), phase: 'installing', result: Promise.resolve(null) }
     const stopped = (): boolean => control.abort.signal.aborted || this.abort.signal.aborted
@@ -479,15 +687,17 @@ export class PluginManager extends TypertRemoteService {
       let name: string
       try {
         result.registries = []
-        const connection = checkGithubConnection(parsedForRegistry(spec), this.profile.dir, {
-          timeoutMs: this.githubConnectionTimeoutMs, outputBytes: this.outputBytes,
-          signal: AbortSignal.any([this.abort.signal, control.abort.signal]),
-          ...this.profile.packageManager?.env === undefined ? {} : { env: this.profile.packageManager.env },
-        })
-        this.packageOperations.add(connection)
         let connectionFailure: PackageResult | undefined
-        try { connectionFailure = await connection }
-        finally { this.packageOperations.delete(connection) }
+        if (curated === undefined) {
+          const connection = checkGithubConnection(parsedForRegistry(spec), this.profile.dir, {
+            timeoutMs: this.githubConnectionTimeoutMs, outputBytes: this.outputBytes,
+            signal: AbortSignal.any([this.abort.signal, control.abort.signal]),
+            ...this.profile.packageManager?.env === undefined ? {} : { env: this.profile.packageManager.env },
+          })
+          this.packageOperations.add(connection)
+          try { connectionFailure = await connection }
+          finally { this.packageOperations.delete(connection) }
+        }
         if (stopped()) throw new InstallCancelledError()
         if (connectionFailure?.kind === 'network' || connectionFailure?.kind === 'timeout') {
           result.packageResult = connectionFailure
@@ -503,7 +713,7 @@ export class PluginManager extends TypertRemoteService {
           if (stopped()) throw new InstallCancelledError()
           result.registries.push(registry)
           announce('installing', { registry, index: index + 1, total: plan.length })
-          run = await this.runPnpm(['add', spec, ...registryArguments(registry)], control.abort.signal, requestId)
+          run = await this.runPnpm(['add', spec, ...registryArguments(registry), ...(curated === undefined ? [] : ['--ignore-scripts'])], control.abort.signal, requestId)
           result.packageResult = run
           if (stopped()) throw new InstallCancelledError()
           // A compatibility refusal is the package's own answer, so no other registry is asked.
@@ -536,13 +746,23 @@ export class PluginManager extends TypertRemoteService {
         const after = readProfileManifest('dsh', this.profile.dir).dependencies ?? {}
         const installed = Object.keys(after).filter(name => before[name] !== after[name])
         // Registry retries can retain the saved range after a partial installation.
-        if (installed.length === 0) installed.push(...Object.keys(after).filter(name => spec === name || spec.startsWith(`${name}@`)))
+        if (installed.length === 0) installed.push(...Object.keys(after).filter(name => curated !== undefined
+          ? name === curated.package
+          : spec === name || spec.startsWith(`${name}@`)))
         const target = installed[0]
         if (installed.length !== 1 || target === undefined) throw new ManagementFailure('ambiguous-install')
         name = target
+        if (curated !== undefined) {
+          if (name !== curated.package) throw new ManagementFailure('invalid-spec')
+          const lock = parseYaml(await readFile(join(this.profile.dir, 'pnpm-lock.yaml'), 'utf8')) as CuratedLockfile
+          if (!curatedLockIntegrityMatches(curated, lock)) throw new ManagementFailure('invalid-spec')
+        }
         const dir = resolveBundleDir('dsh', name, this.profile.installAnchor, this.profile.dir)
         const manifest = bundleManifest(name, this.profile.dir, this.profile.installAnchor)
         if (manifest?.dsh?.bundle === undefined) throw new ManagementFailure('not-bundle')
+        if (curated !== undefined && (manifest.name !== curated.package || manifest.version !== curated.version)) {
+          throw new ManagementFailure('invalid-spec')
+        }
         const compatibility = evaluatePluginCompatibility(manifest, readProfileVersionExemptions(this.profile.dir))
         if (compatibility !== undefined && !compatibility.exempted) throw new ManagementFailure('incompatible-version', [incompatiblePlugin(compatibility)])
         for (const file of bundlePatchPaths(dir, manifest.dsh.bundle)) loadOverlayPatches('dsh', file)
@@ -560,6 +780,9 @@ export class PluginManager extends TypertRemoteService {
         if (options?.enabled !== false) await this.selectBundle(name, true)
         if (Object.hasOwn(before, name)) return 'restart-required'
         if (options?.enabled !== false) result.warnings = await this.reload()
+        if (curated !== undefined) {
+          result.warnings = [...result.warnings ?? [], 'Curated installation skipped dependency scripts; use the conversation manager if this bundle requires an explicitly approved build.']
+        }
       })
     }, { stage: 'install', target: spec, enabled: options?.enabled !== false }, 'install')
     control.result = result
@@ -591,6 +814,69 @@ export class PluginManager extends TypertRemoteService {
     /* v8 ignore next -- change() folds every failure into its result; only a lock or disposal error rejects */
     await control.result.then(() => undefined, () => undefined)
     return { status: 'cancelled' }
+  }
+
+  /** Fetch and verify the separately curated catalogue for the app Plugins page.
+   * @returns Verified catalogue entries with Host-computed exact installed state.
+   */
+  @Remote
+  async curatedCatalog(): Promise<CuratedPluginCatalog> {
+    if (this.curatedCatalogPublicKey.length === 0) {
+      throw new Error('curated plugin catalogue is not configured for this installation')
+    }
+    const response = await fetch(this.curatedCatalogUrl, { headers: { accept: 'application/json' }, signal: this.abort.signal })
+    if (!response.ok) throw new Error(`curated plugin catalogue request failed with HTTP ${String(response.status)}`)
+    const bytes = Buffer.from(await response.arrayBuffer())
+    if (bytes.length > 4_000_000) throw new Error('curated plugin catalogue envelope is too large')
+    const envelope = JSON.parse(bytes.toString('utf8')) as { payload?: unknown }
+    const catalog = verifyCuratedCatalogEnvelope(envelope,
+      this.curatedCatalogPublicKey, this.curatedCatalogUrl)
+    if (typeof envelope.payload !== 'string') throw new Error('curated plugin catalogue signature envelope is invalid')
+    const digest = createHash('sha256').update(Buffer.from(envelope.payload, 'base64')).digest('hex')
+    await this.commitCatalogRevision(catalog.revision, digest)
+    let lockfile: CuratedLockfile = {}
+    try {
+      lockfile = parseYaml(await readFile(join(this.profile.dir, 'pnpm-lock.yaml'), 'utf8')) as CuratedLockfile
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+    const bundles = await this.listBundles()
+    return {
+      ...catalog,
+      plugins: catalog.plugins.map(entry => ({
+        ...entry,
+        installed: isExactCuratedInstallation(entry, bundles, lockfile),
+      })),
+    }
+  }
+
+  /** Persist the highest accepted signed catalogue revision against replay. */
+  private async commitCatalogRevision(revision: number, digest: string): Promise<void> {
+    const previous = this.catalogRevisionWrite
+    let release!: () => void
+    this.catalogRevisionWrite = new Promise<void>((resolve) => { release = resolve })
+    await previous
+    try {
+      const path = join(this.profile.dir, '.asterhub-catalog-revision')
+      let current = 0
+      let currentDigest: string | undefined
+      try {
+        const parsed = JSON.parse(await readFile(path, 'utf8')) as { revision?: unknown; digest?: unknown }
+        if (typeof parsed.revision === 'number' && Number.isSafeInteger(parsed.revision) && parsed.revision >= 0) current = parsed.revision
+        if (typeof parsed.digest === 'string') currentDigest = parsed.digest
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error
+      }
+      if (revision < current) throw new Error('curated plugin catalogue revision rollback was rejected')
+      if (revision === current && currentDigest !== undefined && currentDigest !== digest) {
+        throw new Error('curated plugin catalogue changed without advancing its revision')
+      }
+      if (revision > current || currentDigest === undefined) {
+        await writeFileAtomic(path, `${JSON.stringify({ revision, digest })}\n`, { mode: 0o600 })
+      }
+    } finally {
+      release()
+    }
   }
 
   /** Unload and remove a profile-owned bundle dependency through dsh plugin's pnpm path.
@@ -727,6 +1013,9 @@ export class PluginManager extends TypertRemoteService {
     if (!enabled && previous.includes(name)) {
       if (this.protectsManager(name)) throw new ManagementFailure('management-required')
     }
+    if (enabled && !previous.includes(name) && this.protectsManager(name)) {
+      throw new ManagementFailure('management-required')
+    }
     const bundles = enabled ? [...previous, ...previous.includes(name) ? [] : [name]] : previous.filter(item => item !== name)
     if (JSON.stringify(previous) === JSON.stringify(bundles)) return
     manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles } }
@@ -748,7 +1037,8 @@ export class PluginManager extends TypertRemoteService {
       // Unreadable bundles contribute no new rows; listBundles reports their diagnostics.
       return false
     }
-    const protectedBundle = rows.some(row => protectedModules.has(row.name) || `include:${row.id}` === this.ownerEntryId)
+    const protectedBundle = rows.some(row => protectedModules.has(row.name) || protectedEntryIds.has(row.id)
+      || `include:${row.id}` === this.ownerEntryId)
     if (protectedBundle) this.managementBundles.add(name)
     return protectedBundle
   }

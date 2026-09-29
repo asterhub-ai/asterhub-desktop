@@ -1,6 +1,7 @@
 import type { SidebarBrandMarkOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { HeroBrandMarkOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { useId } from 'react'
+import { brandName } from './locales.ts'
 
 /**
  * Render the AsterHub mark at the size requested by its host surface.
@@ -45,5 +46,5 @@ export function OfficialHeroBrandMark({ size, className }: HeroBrandMarkOwnerPro
  * @returns the AsterHub name.
  */
 export function OfficialBrandName() {
-  return <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: 0.2 }}>AsterHub</span>
+  return <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: 0.2 }}>{brandName}</span>
 }

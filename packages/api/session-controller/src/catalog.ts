@@ -15,16 +15,20 @@ import type {
  * Build the browser model catalog without requiring a Session.
  * @param ctx - Host context carrying the live LLM registry.
  * @param defaultSelection - deployment default used before a Session selects a model.
+ * @param fixedSelection - restrict the projection to the deployment provider/model.
  * @returns successful non-empty provider groups and isolated provider failures.
  */
 export async function buildModelCatalog(
   ctx: Context,
   defaultSelection: ModelSelection = ctx.agentDefaultModel.currentSelection(),
+  fixedSelection = false,
 ): Promise<ModelCatalog> {
-  const providers = ctx.llm.listProviders()
+  const providers = ctx.llm.listProviders().filter(provider =>
+    !fixedSelection || provider.id === defaultSelection.provider)
   const catalog = await Promise.all(providers.map(async (provider) => {
     try {
-      const models = await ctx.llm.listModels(provider.id)
+      const models = (await ctx.llm.listModels(provider.id)).filter(model =>
+        !fixedSelection || model.id === defaultSelection.model)
       const entries = await Promise.all(models.map(async (model) => {
         const resolved = await ctx.llm.resolveModelInfo(provider.id, model.id)
         const reasoning: ModelReasoning | undefined = resolved.reasoning === undefined

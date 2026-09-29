@@ -8,7 +8,9 @@
  */
 
 import type {} from '@deepseek-ai/dsh-client-locale/client'
+import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import { createElement, useEffect, useState } from 'react'
 // Type-only: the root `main` keyed slot the page registers into, declared by
 // ui-layout with the panel id brand, and the `sidebar.panellist` list the
 // entry registers into, declared by ui-sidebar.
@@ -19,7 +21,8 @@ import { PluginManagerPage } from './PluginManagerPage.tsx'
 import { PluginsPanelIcon } from './PluginsPanelIcon.tsx'
 import { en, zh, type PluginManagerLocaleKey } from './locales.ts'
 import type { PluginConfigViewProps } from './slot-contract.ts'
-import type {} from './slot-contract.ts'
+import type { ChangeResult, CuratedPluginCatalog } from '@deepseek-ai/dsh-plugin-manager'
+import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 
 export type { PluginManagerPageProps } from './PluginManagerPage.tsx'
 export type { PluginManagerLocaleKey } from './locales.ts'
@@ -70,7 +73,12 @@ export const NS = 'pluginManager'
 export const PANEL_ID = 'plugins' as MainPanelId
 
 /** Services required by the sidebar registration. */
-export const inject = ['slots', 'locale']
+export const inject = ['slots', 'locale', 'remote', 'remote.pluginManager']
+
+function unwrap<T>(result: RemoteResult<T>): T {
+  if (result.ok) return result.value
+  throw new Error(result.error.message)
+}
 
 /**
  * Contribute the Plugins entry to the sidebar with the reserved page it opens.
@@ -79,6 +87,63 @@ export const inject = ['slots', 'locale']
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-plugin-manager: dictionaries')
   const t = ctx.locale.bind(NS)
+  const Page = (props: Parameters<typeof PluginManagerPage>[0]) => {
+    const [catalog, setCatalog] = useState<CuratedPluginCatalog>()
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState(false)
+    const [busy, setBusy] = useState<string>()
+    const [message, setMessage] = useState<string>()
+    const load = () => {
+      setLoading(true)
+      setError(false)
+      void ctx.remote.pluginManager.curatedCatalog()
+        .then((catalogResult) => {
+          setCatalog(unwrap(catalogResult))
+        })
+        .catch(() => setError(true))
+        .finally(() => setLoading(false))
+    }
+    useEffect(() => { load() }, [])
+    const install = async (entry: CuratedPluginCatalog['plugins'][number]): Promise<void> => {
+      if (catalog === undefined) return
+      setBusy(entry.id)
+      setMessage(undefined)
+      try {
+        const result: ChangeResult = unwrap(await ctx.remote.pluginManager.installCuratedBundle({
+          id: entry.id,
+          revision: catalog.revision,
+          package: entry.package,
+          version: entry.version,
+          integrity: entry.integrity,
+          artifactUrl: entry.artifactUrl,
+        }))
+        if (result.error?.code === 'stale-approval') {
+          setMessage(t('catalogChanged'))
+          load()
+          return
+        }
+        if (result.application === 'applied' || result.application === 'restart-required') {
+          setMessage(t('installed'))
+          load()
+        } else {
+          setMessage(t('installFailed'))
+        }
+      } catch {
+        setMessage(t('installFailed'))
+      } finally {
+        setBusy(undefined)
+      }
+    }
+    return createElement(PluginManagerPage, {
+      ...props,
+      ...catalog === undefined ? {} : { catalog },
+      loading,
+      unavailable: error,
+      ...busy === undefined ? {} : { busy },
+      ...message === undefined ? {} : { message },
+      onInstall: install,
+    })
+  }
 
   // The page is a global panel: it belongs to the profile, not to a Session,
   // and the sidebar's entry selects it. The children keep the slot contract
@@ -92,7 +157,7 @@ export function apply(ctx: ClientContext): void {
       'plugins.bundle.config': { kind: 'keyed', scope: 'root' },
       'plugins.row.config': { kind: 'keyed', scope: 'root' },
     },
-  }, PluginManagerPage))
+  }, Page))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
     name: 'sidebar.panellist',
     id: PANEL_ID,

@@ -42,11 +42,6 @@
 # `dsh.client` rows are the browser roster the modules node half scans into
 # window.__DSH_BOOT__; the modules row is simultaneously a host row.
 - insert:
-    # Host-owned opt-in sampled when a new Web session receives its preset
-    # delegation tools. The Plugins page edits this settings namespace.
-    - id: subagent-model-selection-settings
-      name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'
-
     - id: message-feedback
       name: '@deepseek-ai/dsh-message-feedback'
       config:
@@ -101,6 +96,8 @@
     # Session commands, cold reads, and live control over Typert Remote.
     - id: session-controller
       name: '@deepseek-ai/dsh-api-session-controller'
+      config:
+        modelSelectionPolicy: fixed
 
     # One background job's observation record streamed over Typert Remote;
     # the roster rides the session control stream above.
@@ -298,6 +295,24 @@
 
     - id: ui-attachment
       name: '@deepseek-ai/dsh-client-ui-attachment'
+
+    # Native voice input is part of the AsterHub workbench. Model assets are
+    # downloaded on first use; the model weights are not part of the app bundle.
+    - id: speech-to-text
+      name: '@deepseek-ai/dsh-experimental-speech-to-text'
+      config:
+        defaultProvider: sensevoice-local
+
+    - id: speech-to-text-sensevoice
+      name: '@deepseek-ai/dsh-experimental-speech-to-text-sensevoice'
+      config:
+        dataRoot: !!js dshHomePath('speech-to-text', 'sensevoice')
+
+    - id: api-speech-to-text
+      name: '@deepseek-ai/dsh-experimental-api-speech-to-text'
+
+    - id: ui-voice-input
+      name: '@deepseek-ai/dsh-experimental-client-ui-voice-input'
 
     # Tool call tree, generic fallback, and keyed business Tool views.
     - id: ui-tool
@@ -537,11 +552,11 @@
       config:
         default: standard
 
-    # The AsterHub account service: sub2api login, model-key provisioning
-    # (written to the SUB2API_API_KEY credential reference), quota, and
+    # The AsterHub account service: Sub2API login, model-key provisioning
+    # (written to a Host-only credential record), quota, and
     # top-up for the 账户 settings entry.
     - id: account-sub2api
       name: '@deepseek-ai/dsh-account-sub2api'
       config:
-        authBaseUrl: !!js process.env.ASTERHUB_AUTH_BASE_URL ?? 'https://xapi.fans/api/v1'
+        authBaseUrl: 'https://xapi.fans/api/v1'
         groupId: 6

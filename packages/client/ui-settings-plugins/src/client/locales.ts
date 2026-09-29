@@ -1,18 +1,22 @@
-/** Locale bundles for the Plugins settings entry: the surface is reserved for the AsterHub plugin system. */
+/** Locale bundles for the built-in plugins settings section. */
 
-/** Simplified Chinese dictionary and key source of truth. */
-export const zh = {
-  nav: '插件',
-  title: '插件',
-  placeholder: '插件功能即将上线，敬请期待。',
-} as const
+/** Locale keys the section renders. */
+export type PluginsSettingsLocaleKey = 'nav' | 'title' | 'intro' | 'tabs' | 'empty'
 
-/** The locale key union. */
-export type PluginsSettingsLocaleKey = keyof typeof zh
+/** English copy. */
+export const en: Record<PluginsSettingsLocaleKey, string> = {
+  nav: 'Built-in plugins',
+  title: 'Built-in plugins',
+  intro: 'Inspect the plugins this deployment ships.',
+  tabs: 'Plugin views',
+  empty: 'This deployment exposes no plugin views.',
+}
 
-/** English dictionary checked against the Chinese key set. */
-export const en = {
-  nav: 'Plugins',
-  title: 'Plugins',
-  placeholder: 'The plugin system is coming soon. Stay tuned.',
-} as const satisfies Record<PluginsSettingsLocaleKey, string>
+/** Simplified Chinese copy. */
+export const zh: Record<PluginsSettingsLocaleKey, string> = {
+  nav: '内置插件',
+  title: '内置插件',
+  intro: '查看内置部署的插件列表',
+  tabs: '插件视图',
+  empty: '本部署没有开放任何插件视图。',
+}

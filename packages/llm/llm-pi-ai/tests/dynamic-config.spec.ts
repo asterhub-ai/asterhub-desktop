@@ -1,11 +1,11 @@
 import { getBuiltinModels } from '@earendil-works/pi-ai/providers/all'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import LlmRuntime, { LlmAdapter } from '@deepseek-ai/dsh-llm'
-import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import { credentialKey, credentialRef } from '@deepseek-ai/dsh-credentials'
 import { LocalCredentialProvider } from '@deepseek-ai/dsh-credentials-local'
 import { liveConfig } from '../../../settings/settings/tests/live-config.ts'
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
@@ -15,6 +15,7 @@ import { closeMockServers, mockServer, textEvents } from './mock-server.ts'
 
 const configurations = new WeakMap<Context, Awaited<ReturnType<typeof liveConfig>>>()
 const initialConfigs = new WeakMap<Context, LlmPiAi.Options>()
+const NS = 'llm-pi-ai'
 
 /** Minimal foreign adapter: only needs to own a route the pi-ai plugin then wants. */
 class StubAdapter extends LlmAdapter {
@@ -41,12 +42,24 @@ async function home(): Promise<string> {
 async function boot(
   dir: string,
   config: LlmPiAi.Options,
-  options: { authorization?: boolean } = {},
+  options: {
+    authorization?: boolean
+    applicationModelRoute?: {
+      provider: string
+      model: string
+      baseURL: string
+      api: string
+      credentialRecord: string
+      contextWindow: number
+      maxTokens: number
+    }
+  } = {},
 ): Promise<Context> {
   const ctx = new Context()
   cleanups.push(async () => {
     await ctx.fiber.dispose()
   })
+  if (options.applicationModelRoute !== undefined) ctx.provide('applicationModelRoute', Object.freeze(options.applicationModelRoute))
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(LocalCredentialProvider, { path: join(dir, '.credentials.yaml'), watch: false })
   if (options.authorization === true) await ctx.plugin(AuthorizationService)
@@ -72,6 +85,59 @@ describe('login flows in a real composition', () => {
     // else this plugin does still works.
     expect(ctx.get('authorization')).toBeUndefined()
     expect(ctx.llm.listConfigurableProviders().length).toBeGreaterThan(0)
+  })
+})
+
+describe('deployment-locked provider routes', () => {
+  it('uses the application-owned route over profile/settings/environment and reads the Host account record', async () => {
+    vi.stubEnv('SUB2API_LOCKED_KEY', 'process-environment-must-not-win')
+    const dir = await home()
+    const server = await mockServer([{ events: textEvents }])
+    const settingsPath = join(dir, 'settings.yaml')
+    const stored = [
+      'llm-pi-ai:',
+      '  providers:',
+      '    attacker:',
+      '      api: openai-completions',
+      '      baseURL: https://invalid.example/v1',
+      '      models:',
+      '        - id: wrong-model',
+      'agent-default-model:',
+      '  provider: attacker',
+      '  model: wrong-model',
+      '',
+    ].join('\n')
+    await writeFile(settingsPath, stored)
+    await writeFile(join(dir, '.credentials.yaml'), 'version: 1\nrecords:\n  asterhub-account/model-api-key:\n    kind: api-key\n    key: credential-from-host\n', { mode: 0o600 })
+    const ctx = await boot(dir, {
+      deploymentLocked: false,
+      providers: {
+        sub2api: {
+          displayName: 'Overridden display name',
+          credentialRecord: String(credentialKey('asterhub-account', 'model-api-key')),
+          api: 'openai-completions',
+          baseURL: 'https://evil.invalid/v1',
+          models: [{ id: 'wrong-model', name: 'Wrong', contextWindow: 1000, maxTokens: 500 }],
+        },
+        attacker: { api: 'openai-completions', baseURL: 'https://attacker.invalid/v1', models: [{ id: 'attacker-model' }] },
+      },
+    }, { authorization: true, applicationModelRoute: {
+      provider: 'sub2api', model: 'aster', baseURL: server.url, api: 'openai-completions',
+      credentialRecord: String(credentialKey('asterhub-account', 'model-api-key')), contextWindow: 65_536, maxTokens: 4096,
+    } })
+
+    expect(ctx.llm.listProviders()).toEqual([{ id: 'sub2api', name: 'AsterHub' }])
+    expect(ctx.llm.listConfigurableProviders()).toEqual([])
+    expect(ctx.get('settings')?.describe().map(section => section.ns) ?? []).not.toContain(NS)
+    await expect(ctx.llm.discoverModels(NS, {
+      provider: 'attacker', api: 'openai-completions', baseURL: 'https://invalid.example/v1',
+    })).rejects.toThrow()
+    expect(ctx.authorization.describe(LlmPiAi.recordKeyFor('openai-codex'))).toBeUndefined()
+    expect(await readFile(settingsPath, 'utf8')).toBe(stored)
+
+    const result = await assemble(ctx, { provider: 'sub2api', model: 'aster', messages: [] })
+    expect(result.message.content).toEqual([{ type: 'text', text: 'hello' }])
+    expect(server.headers[0]?.authorization).toBe('Bearer credential-from-host')
   })
 })
 

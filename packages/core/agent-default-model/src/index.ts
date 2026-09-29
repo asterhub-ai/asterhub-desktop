@@ -28,6 +28,8 @@ export interface Config {
   model: Volatile<string>
   /** Adapter-owned reasoning effort; omission follows the provider default. */
   reasoningEffort: Volatile<string | undefined>
+  /** Whether deployment configuration is the only model-selection source. */
+  locked: Volatile<boolean>
 }
 
 /** Project stored settings onto the Agent-facing selection type. */
@@ -52,6 +54,7 @@ export class AgentDefaultModelConfig extends Service {
     provider: z.string().required().volatile(),
     model: z.string().required().volatile(),
     reasoningEffort: z.string().volatile(),
+    locked: z.boolean().default(false).volatile(),
   })
 
   constructor(private readonly ownerContext: Context, private config: Config) {
@@ -80,6 +83,7 @@ export class AgentDefaultModelConfig extends Service {
    * @returns fulfillment after the optional profile write settles.
    */
   async saveSelection(next: ModelSelection): Promise<void> {
+    if (this.config.locked.get()) throw new Error('agent-default-model: model selection is deployment-locked')
     const entry = this.ownerContext.fiber.entry
     if (entry === undefined) return
     const editor = this.ctx.get('configEditor')

@@ -78,12 +78,14 @@
       name: '@deepseek-ai/dsh-plugin-package-inventory-deepseek'
 
     # The transport-independent default for Agents created by entry points.
-    # Settings may supply a saved selection; consumers read it at creation time.
+    # AsterHub fixes the model route in the deployment profile. User settings
+    # cannot replace this composition value.
     - id: agent-default-model
       name: '@deepseek-ai/dsh-agent-default-model'
       config:
-        provider: deepseek-official
-        model: deepseek-flash
+        provider: sub2api
+        model: aster
+        locked: true
 
     - id: jobs
       name: '@deepseek-ai/dsh-jobs-local'
@@ -102,30 +104,31 @@
       name: '@deepseek-ai/dsh-settings'
       disabled: !!js "!ctx.get('profileContext')"
 
-    # Credential sources: inherited environment over the managed
-    # `$DSH_HOME/.credentials.yaml`, with project and user `.env` fallbacks.
-    # Adapters resolve references per request; the Models page writes only the
-    # managed document, which is never materialized into the process environment.
-    - id: authorization
-      name: '@deepseek-ai/dsh-authorization'
-
-    - id: deepseek-account
-      name: '@deepseek-ai/dsh-deepseek-account-platform'
-      config:
-        desktopPlatform: !!js "ctx.get('profileContext')?.name === 'desktop' && ['darwin', 'win32'].includes(process.platform) ? process.platform : null"
-
+    # Credential references stay layered for normal DSH routes. The AsterHub
+    # model route reads a dedicated Host credential record instead, so process
+    # environment and .env values cannot shadow account login.
     - id: credentials
       name: '@deepseek-ai/dsh-credentials-local'
 
-    # The pi-ai multi-provider twin, mounted dormant: zero routes (and no extra
-    # models in the picker) until a `llm-pi-ai:` settings section supplies provider
-    # profiles — then those routes register live, keys resolving per request
-    # through their apiKeyEnv references, and drop again when the section empties.
-    # Supplying those profiles is exactly what the web Models page does. Which
-    # adapters exist is composition; which providers run is the user's settings
-    # document.
+    # The pi-ai adapter serves the fixed AsterHub route. Its endpoint and model
+    # are deployment-owned; the API key comes only from an account-owned Host
+    # credential record written after Sub2API login.
     - id: llm-pi-ai
       name: '@deepseek-ai/dsh-llm-pi-ai'
+      config:
+        deploymentLocked: true
+        providers:
+          sub2api:
+            displayName: AsterHub
+            credentialRecord: asterhub-account/model-api-key
+            api: openai-completions
+            baseURL: 'https://xapi.fans/v1'
+            models:
+              - id: aster
+                name: AsterHub
+                contextWindow: 262144
+                maxTokens: 32768
+                input: [text]
 
     - id: session-persistence-jsonl
       name: '@deepseek-ai/dsh-session-persistence-jsonl'
