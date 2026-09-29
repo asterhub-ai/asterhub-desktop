@@ -69,12 +69,14 @@
       name: '@deepseek-ai/dsh-agent'
 
     # The transport-independent default for Agents created by entry points.
-    # Settings may supply a saved selection; consumers read it at creation time.
+    # AsterHub fixes the model route in the deployment profile. User settings
+    # cannot replace this composition value.
     - id: agent-default-model
       name: '@deepseek-ai/dsh-agent-default-model'
       config:
         provider: sub2api
         model: aster
+        locked: true
 
     - id: jobs
       name: '@deepseek-ai/dsh-jobs-local'
@@ -88,28 +90,25 @@
     - id: settings
       name: '@deepseek-ai/dsh-settings-file'
 
-    # Credential sources: inherited environment over the managed
-    # `$DSH_HOME/.credentials.yaml`, with project and user `.env` fallbacks.
-    # Adapters resolve references per request; the Models page writes only the
-    # managed document, which is never materialized into the process environment.
+    # Credential references stay layered for normal DSH routes. The AsterHub
+    # model route reads a dedicated Host credential record instead, so process
+    # environment and .env values cannot shadow account login.
     - id: credentials
       name: '@deepseek-ai/dsh-credentials-local'
 
-    # The pi-ai multi-provider twin, shipping the AsterHub gateway as the
-    # default route: an OpenAI-compatible sub2api endpoint whose key is supplied
-    # through the web Models page and stored under the SUB2API_API_KEY
-    # credential reference, resolved per request. A `llm-pi-ai:` section in the
-    # user settings document overrides this profile per provider — which
-    # providers run is the user's settings document.
+    # The pi-ai adapter serves the fixed AsterHub route. Its endpoint and model
+    # are deployment-owned; the API key comes only from an account-owned Host
+    # credential record written after Sub2API login.
     - id: llm-pi-ai
       name: '@deepseek-ai/dsh-llm-pi-ai'
       config:
+        deploymentLocked: true
         providers:
           sub2api:
             displayName: AsterHub
-            apiKeyEnv: SUB2API_API_KEY
+            credentialRecord: asterhub-account/model-api-key
             api: openai-completions
-            baseURL: !!js process.env.ASTERHUB_MODEL_BASE_URL ?? 'https://xapi.fans/v1'
+            baseURL: 'https://xapi.fans/v1'
             models:
               - id: aster
                 name: AsterHub

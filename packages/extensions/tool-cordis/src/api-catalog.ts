@@ -82,6 +82,61 @@ export interface TypeApiEntry {
 /** Every harness `ctx.<key>` service, sorted by key. */
 export const SERVICE_API: readonly ServiceApiEntry[] = [
   {
+    key: 'accountSub2api',
+    summary: 'Account service: login, provisioning, quota, and top-up over sub2api.',
+    description: 'Account service: login, provisioning, quota, and top-up over sub2api.',
+    methods: [
+      {
+        signature: '@Remote async getStatus(): Promise<AccountStatus>',
+        description: 'Read the current account state, including a live balance when logged in.',
+        parameters: [],
+        returns: 'current sign-in state, identity, preferences, and available balance.',
+      },
+      {
+        signature: '@Remote async login(input: AccountLoginInput): Promise<AccountStatus>',
+        description: 'Sign in and bind one reusable model key to this account.',
+        parameters: [{ name: 'input', description: 'account credentials and local sign-in preferences.' }],
+        returns: 'current account state after credentials are stored.',
+      },
+      {
+        signature: '@Remote async logout(): Promise<void>',
+        description: 'Forget the active session and unbind the model key.',
+        parameters: [],
+        returns: 'resolves after active credentials and automatic sign-in are cleared.',
+      },
+      {
+        signature: '@Remote async quota(): Promise<QuotaSnapshot>',
+        description: 'Read one live quota snapshot.',
+        parameters: [],
+        returns: 'remaining compute credits.',
+      },
+      {
+        signature: '@Remote async usage(): Promise<AccountUsageSnapshot>',
+        description: 'Read account totals, last seven calendar days, and today\'s usage.',
+        parameters: [],
+        returns: 'request, token, and compute-credit totals for each period.',
+      },
+      {
+        signature: '@Remote async paymentMethods(): Promise<AccountPaymentMethod[]>',
+        description: 'List payment methods enabled for this account.',
+        parameters: [],
+        returns: 'available payment methods.',
+      },
+      {
+        signature: '@Remote async topUp(input: { amount: number; paymentType: string }): Promise<TopUpResult>',
+        description: 'Create one top-up order; open the returned checkout URL in a browser to pay.',
+        parameters: [{ name: 'input', description: 'requested amount and payment method.' }],
+        returns: 'created order and its checkout address, when available.',
+      },
+      {
+        signature: '@Remote async redeem(input: { code: string }): Promise<RedeemResult>',
+        description: 'Redeem one code into the account balance.',
+        parameters: [{ name: 'input', description: 'redemption code.' }],
+        returns: 'redemption result and updated balance, when reported.',
+      },
+    ],
+  },
+  {
     key: 'agentDefaultModel',
     summary: 'Owns the default model selection independently of any Host or transport.',
     description: 'Owns the default model selection independently of any Host or transport. The composition entry remains usable without a settings provider; when one is mounted, its user layer is read live.',
@@ -1262,6 +1317,17 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'The abstract `llm` service: an adapter registry plus a streaming model-call API, interceptable via the `llm/stream` waterfall.',
     methods: [
       {
+        signature: 'lockRoute(provider: string, model: string): void',
+        description: 'Install an application-owned route ceiling before adapters are mounted.',
+        parameters: [{ name: 'provider', description: 'Provider id that every model call must use.' }, { name: 'model', description: 'Model id that every model call must use.' }],
+      },
+      {
+        signature: 'hasFixedRoute(): boolean',
+        description: 'Whether an application-owned fixed route has been installed.',
+        parameters: [],
+        returns: '`true` when calls are constrained to the application route.',
+      },
+      {
         signature: 'registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle',
         description: 'Register an adapter for the given provider routes. Throws `LlmError` with code `DUPLICATE_ADAPTER` if any provider already has an adapter (all-or-nothing). Disposed with the fiber.',
         parameters: [{ name: 'providers', description: 'every provider route this adapter should serve.' }, { name: 'adapter', description: 'the adapter that streams calls for those providers.' }],
@@ -1547,10 +1613,22 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Package-manager diagnostics and observed activation outcome.',
       },
       {
+        signature: '@Remote async installCuratedBundle(request: CuratedPluginInstallRequest): Promise<ChangeResult>',
+        description: 'Install the exact signed catalogue item shown to the user.',
+        parameters: [{ name: 'request', description: 'Catalogue identity and signed package facts displayed when the user selected Install.' }],
+        returns: 'Package-manager diagnostics and the resulting application state.',
+      },
+      {
         signature: '@Remote async cancelInstall(requestId: PluginInstallRequestId): Promise<PluginInstallCancellation>',
         description: 'Stop an installation this manager owns and wait until its files are back.',
         parameters: [{ name: 'requestId', description: 'The id the installation was started with.' }],
         returns: '`cancelled` once pnpm exited and the files are restored, `too-late` once the bundle is being applied, `not-running` for any other id.',
+      },
+      {
+        signature: '@Remote async curatedCatalog(): Promise<CuratedPluginCatalog>',
+        description: 'Fetch and verify the separately curated catalogue for the app Plugins page.',
+        parameters: [],
+        returns: 'Verified catalogue entries with Host-computed exact installed state.',
       },
       {
         signature: '@Remote removeBundle(name: string): Promise<ChangeResult>',
@@ -3989,6 +4067,26 @@ export const EVENT_API: readonly EventApiEntry[] = [
 /** Shapes of every exported type the Service and Event signatures reference (transitively), sorted by name. */
 export const TYPE_API: readonly TypeApiEntry[] = [
   {
+    name: 'AccountLoginInput',
+    declaration: 'export interface AccountLoginInput {\n    readonly email: string;\n    readonly password: string;\n    readonly rememberUsername: boolean;\n    readonly autoLogin: boolean;\n}',
+  },
+  {
+    name: 'AccountPaymentMethod',
+    declaration: 'export interface AccountPaymentMethod {\n    readonly id: string;\n    readonly label: string;\n    readonly minAmount?: number;\n    readonly maxAmount?: number;\n}',
+  },
+  {
+    name: 'AccountStatus',
+    declaration: 'export interface AccountStatus {\n    readonly loggedIn: boolean;\n    readonly keyBound: boolean;\n    readonly user?: AccountUser;\n    readonly balance?: number;\n    readonly rememberedUsername?: string;\n    readonly autoLogin?: boolean;\n}',
+  },
+  {
+    name: 'AccountUsageSnapshot',
+    declaration: 'export interface AccountUsageSnapshot {\n    readonly cumulative: UsagePeriodSnapshot;\n    readonly last7Days: UsagePeriodSnapshot;\n    readonly today: UsagePeriodSnapshot;\n}',
+  },
+  {
+    name: 'AccountUser',
+    declaration: 'export interface AccountUser {\n    readonly id: string;\n    readonly email?: string;\n    readonly username?: string;\n}',
+  },
+  {
     name: 'AdapterRegistrationHandle',
     declaration: 'export interface AdapterRegistrationHandle {\n    (): void;\n    replace(providers: string[]): void;\n}',
   },
@@ -4059,6 +4157,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AgentStatus',
     declaration: 'export type AgentStatus = \'idle\' | \'running\';',
+  },
+  {
+    name: 'AllowedModelRoute',
+    declaration: 'export interface AllowedModelRoute {\n    readonly provider: string;\n    readonly model: string;\n}',
   },
   {
     name: 'ApiKeyRecord',
@@ -4523,6 +4625,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CredentialRef',
     declaration: 'export type CredentialRef = Branded<\'CredentialRef\'>;',
+  },
+  {
+    name: 'CuratedPluginCatalog',
+    declaration: 'export interface CuratedPluginCatalog {\n    revision: number;\n    generatedAt: string;\n    plugins: CuratedPluginEntry[];\n}',
+  },
+  {
+    name: 'CuratedPluginEntry',
+    declaration: 'export interface CuratedPluginEntry {\n    id: string;\n    name: string;\n    description: string;\n    category?: string;\n    package: string;\n    version: string;\n    integrity: string;\n    installed?: boolean;\n    iconUrl?: string;\n}',
+  },
+  {
+    name: 'CuratedPluginInstallRequest',
+    declaration: 'export interface CuratedPluginInstallRequest {\n    id: string;\n    revision: number;\n    package: string;\n    version: string;\n    integrity: string;\n}',
   },
   {
     name: 'DeepSeekLlmApiExtensionMap',
@@ -5038,7 +5152,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmRuntime',
-    declaration: 'export class LlmRuntime extends TypertRemoteService {\n    constructor(ctx: Context);\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    @Remote\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    @Remote\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    async discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    @Remote(\'discoverModels\')\n    async remoteDiscoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    providerRetryPolicy(provider: string): ResolvedRetryPolicy;\n    imageRequestPricing(provider: string, model: string): LlmImageRequestPricing | undefined;\n    fileRequestText(ref: FileAttachmentRef): string;\n    async listModels(provider: string): Promise<LlmModelInfo[]>;\n    async resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>;\n    async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlmCall>;\n    stream(options: GenerateOptions) /* …truncated — full shape in source */',
+    declaration: 'export class LlmRuntime extends TypertRemoteService {\n    constructor(ctx: Context);\n    lockRoute(provider: string, model: string): void;\n    hasFixedRoute(): boolean;\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    @Remote\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    @Remote\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    async discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    @Remote(\'discoverModels\')\n    async remoteDiscoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    providerRetryPolicy(provider: string): ResolvedRetryPolicy;\n    imageRequestPricing(provider: string, model: string): LlmImageRequestPricing | undefined;\n    fileRequestText(ref: FileAttachmentRef): string;\n    async listModels(provider: string): Promise<LlmModelInfo[]>;\n    async resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>;\n    async prepareCall(config: LlmCallConfig, s /* …truncated — full shape in source */',
   },
   {
     name: 'LspHover',
@@ -5473,6 +5587,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type QueueAction = {\n    readonly kind: \'edit\';\n    readonly content: readonly ContentBlock[];\n} | {\n    readonly kind: \'remove\';\n} | {\n    readonly kind: \'steer\';\n};',
   },
   {
+    name: 'QuotaSnapshot',
+    declaration: 'export interface QuotaSnapshot {\n    readonly balance: number;\n}',
+  },
+  {
     name: 'ReadFileLine',
     declaration: 'export interface ReadFileLine {\n    number: number;\n    text: string;\n}',
   },
@@ -5495,6 +5613,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RedactedSecret',
     declaration: 'export interface RedactedSecret {\n    path: string[];\n    set: boolean;\n}',
+  },
+  {
+    name: 'RedeemResult',
+    declaration: 'export interface RedeemResult {\n    readonly status: string;\n    readonly balance?: number;\n}',
   },
   {
     name: 'Reload',
@@ -6377,6 +6499,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type SubagentListEntry = {\n    readonly kind: \'child\';\n    readonly id: SessionId;\n    readonly activity: \'running\' | \'inactive\';\n    readonly hasChildren: boolean;\n} & ({\n    readonly mode: \'one-shot\';\n    readonly label?: string;\n} | {\n    readonly mode: \'continuable\';\n    readonly label: string;\n}) | {\n    readonly kind: \'diagnostic\';\n    readonly id: SessionId;\n    readonly reason: \'corrupt\' | \'unsupported\' | \'unavailable\';\n};',
   },
   {
+    name: 'SubagentModelSelectionSettings',
+    declaration: 'export interface SubagentModelSelectionSettings {\n    enabled: boolean;\n    allowedModels: AllowedModelRoute[];\n}',
+  },
+  {
     name: 'SubagentPromptReceipt',
     declaration: 'export interface SubagentPromptReceipt {\n    readonly messageId: MessageId;\n}',
   },
@@ -6805,6 +6931,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ToolSchema {\n    name: string;\n    description: string;\n    parameters: Record<string, unknown>;\n}',
   },
   {
+    name: 'TopUpResult',
+    declaration: 'export interface TopUpResult {\n    readonly id: string;\n    readonly status: string;\n    readonly checkoutUrl?: string;\n}',
+  },
+  {
     name: 'TurnEndCancelCause',
     declaration: 'export type TurnEndCancelCause = AgentCancelCause | {\n    readonly kind: \'legacy\';\n};',
   },
@@ -6923,6 +7053,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'UpdateTeamTaskRequest',
     declaration: 'export interface UpdateTeamTaskRequest {\n    readonly taskId: TeamTaskId;\n    readonly expectedRevision: number;\n    readonly action: TeamTaskAction;\n    readonly subject?: string;\n    readonly description?: string;\n    readonly blockedBy?: readonly TeamTaskId[];\n    readonly writeScopes?: readonly string[];\n    readonly owner?: string;\n}',
+  },
+  {
+    name: 'UsagePeriodSnapshot',
+    declaration: 'export interface UsagePeriodSnapshot {\n    readonly requests: number;\n    readonly tokens: number;\n    readonly credits: number;\n}',
   },
   {
     name: 'UserMessage',

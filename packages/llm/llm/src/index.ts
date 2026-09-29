@@ -54,6 +54,15 @@ export type { LlmCallConfig, LlmCallConfigAdapterDefaults } from './call-config.
 declare module '@deepseek-ai/cordis' {
   interface Context {
     llm: LlmRuntime
+    applicationModelRoute?: Readonly<{
+      provider: string
+      model: string
+      baseURL?: string
+      api?: string
+      credentialRecord?: string
+      contextWindow?: number
+      maxTokens?: number
+    }>
   }
 
   interface Events {
@@ -340,9 +349,41 @@ export class LlmRuntime extends TypertRemoteService {
     string,
     (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>
   >()
+  private fixedRoute: Readonly<{ provider: string; model: string }> | undefined
+  private fixedRouteLocked = false
 
   constructor(ctx: Context) {
     super(ctx, 'llm')
+    const route = ctx.get('applicationModelRoute')
+    if (route !== undefined) this.lockRoute(route.provider, route.model)
+  }
+
+  /** Install an application-owned route ceiling before adapters are mounted.
+   * @param provider Provider id that every model call must use.
+   * @param model Model id that every model call must use.
+   */
+  lockRoute(provider: string, model: string): void {
+    if (provider.length === 0 || model.length === 0) {
+      throw new LlmError('a fixed model route needs non-empty provider and model ids', 'INVALID_FIXED_ROUTE')
+    }
+    if (this.fixedRouteLocked) throw new LlmError('the fixed model route is already owned by the application', 'FIXED_ROUTE_LOCKED')
+    this.fixedRoute = Object.freeze({ provider, model })
+    this.fixedRouteLocked = true
+  }
+
+  /** Reject a route that differs from the application-owned model route. */
+  private assertFixedRoute(config: Pick<LlmCallConfig, 'provider' | 'model'>): void {
+    const fixed = this.fixedRoute
+    if (fixed !== undefined && (config.provider !== fixed.provider || config.model !== fixed.model)) {
+      throw new LlmError('model route is fixed by this application', 'MODEL_ROUTE_LOCKED')
+    }
+  }
+
+  /** Whether an application-owned fixed route has been installed.
+   * @returns `true` when calls are constrained to the application route.
+   */
+  hasFixedRoute(): boolean {
+    return this.fixedRoute !== undefined
   }
 
   /** Notify topology observers without letting one broken listener veto the commit. */
@@ -470,6 +511,10 @@ export class LlmRuntime extends TypertRemoteService {
    */
   @Remote
   listProviders(): LlmProviderInfo[] {
+    if (this.fixedRoute !== undefined) {
+      const provider = this.adapters.get(this.fixedRoute.provider)?.provider
+      return provider === undefined ? [] : [{ ...provider }]
+    }
     return [...this.adapters.values()].map(({ provider }) => ({ ...provider }))
   }
 
@@ -542,6 +587,7 @@ export class LlmRuntime extends TypertRemoteService {
    */
   @Remote
   listConfigurableProviders(): LlmConfigurableProvider[] {
+    if (this.fixedRoute !== undefined) return []
     return [...this.directory.values()].map(entry => ({ ...entry, settingsPath: [...entry.settingsPath] }))
   }
 
@@ -592,6 +638,9 @@ export class LlmRuntime extends TypertRemoteService {
     request: LlmModelDiscoveryRequest,
     signal?: AbortSignal,
   ): Promise<LlmDiscoveredModel[]> {
+    if (this.fixedRoute !== undefined) {
+      throw new LlmError('model discovery is disabled for this application', 'MODEL_ROUTE_LOCKED')
+    }
     const discover = this.discoveries.get(settingsNs)
     if (discover === undefined) {
       throw new LlmError(`no model discovery is registered for "${settingsNs}"`, 'NO_DISCOVERY')
@@ -635,6 +684,9 @@ export class LlmRuntime extends TypertRemoteService {
     signal: AbortSignal,
   ): Promise<LlmDiscoveredModel[]> {
     try {
+      if (this.fixedRoute !== undefined) {
+        throw new LlmError('model discovery is disabled for this application', 'MODEL_ROUTE_LOCKED')
+      }
       return await this.discoverModels(settingsNs, request, signal)
     } catch (error: unknown) {
       throw new RemoteError(
@@ -693,6 +745,9 @@ export class LlmRuntime extends TypertRemoteService {
    * @returns detached model metadata in adapter-preferred order.
    */
   async listModels(provider: string): Promise<LlmModelInfo[]> {
+    if (this.fixedRoute !== undefined && provider !== this.fixedRoute.provider) {
+      throw new LlmError('model route is fixed by this application', 'MODEL_ROUTE_LOCKED')
+    }
     const adapter = this.registration(provider).adapter
     const models = await adapter.listModels(provider)
     const seen = new Set<string>()
@@ -735,6 +790,9 @@ export class LlmRuntime extends TypertRemoteService {
     model: string,
     signal?: AbortSignal,
   ): Promise<LlmResolvedModelInfo> {
+    if (this.fixedRoute !== undefined && (provider !== this.fixedRoute.provider || model !== this.fixedRoute.model)) {
+      throw new LlmError('model route is fixed by this application', 'MODEL_ROUTE_LOCKED')
+    }
     return this.resolveModelInfoFor(this.registration(provider), model, signal)
   }
 
@@ -860,6 +918,7 @@ export class LlmRuntime extends TypertRemoteService {
    * @returns a detached config only when a default must be materialized.
    */
   async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig> {
+    this.assertFixedRoute(config)
     return (await this.resolveCallFor(this.registration(config.provider), config, signal)).config
   }
 
@@ -918,6 +977,7 @@ export class LlmRuntime extends TypertRemoteService {
    * @returns a prepared config and its registration-bound stream entry point.
    */
   async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlmCall> {
+    this.assertFixedRoute(config)
     const registration = this.registration(config.provider)
     const adapterCall = await registration.adapter.prepareCall(config.provider, config.model, signal)
     const modelInfo = this.normalizeModelInfo(registration, config.model, adapterCall.model)
@@ -1018,6 +1078,7 @@ export class LlmRuntime extends TypertRemoteService {
   ): AsyncGenerator<StreamChunk> {
     let iterator: AsyncIterator<StreamChunk>
     try {
+      this.assertFixedRoute(options)
       const registration = prepared?.registration ?? this.registration(options.provider)
       const adapter = registration.adapter
       let modelInfo: LlmResolvedModelInfo

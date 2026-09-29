@@ -5,16 +5,15 @@
  * provisioned model key (as credential records) and never sees deployment
  * secrets such as an admin token.
  *
- * The provisioned key is written to the `SUB2API_API_KEY` credential
- * reference, which the llm-pi-ai `sub2api` route resolves per request — so a
- * successful login is what makes model calls work on this installation.
+ * The provisioned key is written to the Host-only `asterhub-account/model-api-key`
+ * record, which the fixed Desktop model route resolves directly per request.
  * @module @deepseek-ai/dsh-account-sub2api
  */
 
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { credentialRef, type CredentialProvider } from '@deepseek-ai/dsh-credentials'
+import { credentialKey, credentialRef, type CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import type {
   AccountLoginInput, AccountPaymentMethod, AccountStatus, AccountUsageSnapshot, AccountUser, QuotaSnapshot,
   RedeemResult, TopUpResult, UsagePeriodSnapshot,
@@ -30,8 +29,12 @@ const REMEMBERED_USERNAME_REF = 'ASTERHUB_ACCOUNT_USERNAME'
 const AUTO_LOGIN_PASSWORD_REF = 'ASTERHUB_ACCOUNT_AUTO_LOGIN_PASSWORD'
 /** Sign-in preference flag. */
 const AUTO_LOGIN_REF = 'ASTERHUB_ACCOUNT_AUTO_LOGIN'
-/** Credential reference the llm-pi-ai sub2api route resolves for model calls. */
+/** Legacy credential reference cleared after migration; never read as a model route source. */
 export const MODEL_KEY_REF = 'SUB2API_API_KEY'
+/** Credential record used only as the active Desktop model key. */
+const MODEL_KEY_RECORD = credentialKey('asterhub-account', 'model-api-key')
+/** Per-account key cache in the record store; unlike credential refs it has no environment layer. */
+const MODEL_KEYS_RECORD = credentialKey('asterhub-account', 'account-model-keys')
 /** Retained while logged out so signing back into the same account can reuse its one key. */
 const BOUND_KEY_REF = 'ASTERHUB_ACCOUNT_BOUND_MODEL_KEY'
 /** Legacy owner field used to safely migrate previously retained keys. */
@@ -322,7 +325,7 @@ class Sub2ApiClient {
 declare module '@deepseek-ai/cordis' {
   interface Context {
     /** AsterHub account state: sub2api login, key provisioning, quota, top-up. */
-    accountSub2apiService: AccountSub2apiService
+    accountSub2api: AccountSub2apiService
   }
 }
 
@@ -350,7 +353,10 @@ export class AccountSub2apiService extends TypertRemoteService {
     super(ctx, 'accountSub2api')
     this.credentials = ctx.credentials
     const resolved = config as Required<Config>
-    this.client = new Sub2ApiClient({ baseUrl: resolved.authBaseUrl, groupId: resolved.groupId })
+    const authBaseUrl = ctx.get('applicationModelRoute') === undefined
+      ? resolved.authBaseUrl
+      : 'https://xapi.fans/api/v1'
+    this.client = new Sub2ApiClient({ baseUrl: authBaseUrl, groupId: resolved.groupId })
   }
 
   private keyName(userId: string): string {
@@ -371,7 +377,11 @@ export class AccountSub2apiService extends TypertRemoteService {
 
   /** Return a locally retained key only when its saved owner matches the account. */
   private async retainedKeyFor(userId: string): Promise<string | undefined> {
-    const serialized = (await this.credentials.resolve(credentialRef(BOUND_KEYS_REF)))?.value
+    const retained = await this.credentials.readRecord(MODEL_KEYS_RECORD)
+    const legacyMap = await this.credentials.resolve(credentialRef(BOUND_KEYS_REF))
+    const serialized = retained?.kind === 'api-key'
+      ? retained.key
+      : legacyMap?.source === 'file' ? legacyMap.value : undefined
     if (serialized) {
       try {
         const mapping = JSON.parse(serialized) as Record<string, unknown>
@@ -379,12 +389,16 @@ export class AccountSub2apiService extends TypertRemoteService {
         if (typeof key === 'string' && key) return key
       } catch { /* recover the legacy single-account binding below */ }
     }
-    const legacyOwner = (await this.credentials.resolve(credentialRef(BOUND_KEY_USER_REF)))?.value
-    return legacyOwner === userId ? (await this.credentials.resolve(credentialRef(BOUND_KEY_REF)))?.value : undefined
+    const legacyOwner = await this.credentials.resolve(credentialRef(BOUND_KEY_USER_REF))
+    const legacyKey = await this.credentials.resolve(credentialRef(BOUND_KEY_REF))
+    return legacyOwner?.source === 'file' && legacyOwner.value === userId && legacyKey?.source === 'file'
+      ? legacyKey.value
+      : undefined
   }
 
   private async retainKey(userId: string, key: string): Promise<void> {
-    const serialized = (await this.credentials.resolve(credentialRef(BOUND_KEYS_REF)))?.value
+    const retained = await this.credentials.readRecord(MODEL_KEYS_RECORD)
+    const serialized = retained?.kind === 'api-key' ? retained.key : undefined
     let mapping: Record<string, string> = {}
     if (serialized) {
       try {
@@ -393,17 +407,24 @@ export class AccountSub2apiService extends TypertRemoteService {
       } catch { /* replace malformed local cache with the newly validated binding */ }
     }
     mapping[userId] = key
-    await this.credentials.set(credentialRef(BOUND_KEYS_REF), JSON.stringify(mapping))
+    await this.credentials.modifyRecord(MODEL_KEYS_RECORD, async () => ({ kind: 'api-key', key: JSON.stringify(mapping) }))
   }
 
   private async token(): Promise<string | undefined> {
     return (await this.credentials.resolve(credentialRef(TOKEN_REF)))?.value
   }
 
+  /** Remove only the legacy managed-file key; never let an environment layer block logout. */
+  private async clearLegacyModelKey(): Promise<void> {
+    const resolved = await this.credentials.resolve(credentialRef(MODEL_KEY_REF))
+    if (resolved?.source === 'file') await this.credentials.unset(credentialRef(MODEL_KEY_REF))
+  }
+
   /** Remove the active account and model credentials. */
   private async clearSessionCredentials(): Promise<void> {
     const results = await Promise.allSettled([
-      this.credentials.unset(credentialRef(MODEL_KEY_REF)),
+      this.clearLegacyModelKey(),
+      this.credentials.deleteRecord(MODEL_KEY_RECORD),
       this.credentials.unset(credentialRef(TOKEN_REF)),
       this.credentials.unset(credentialRef(USER_REF)),
     ])
@@ -487,7 +508,7 @@ export class AccountSub2apiService extends TypertRemoteService {
 
   private async status(): Promise<AccountStatus> {
     const token = await this.token()
-    const keyBound = (await this.credentials.resolve(credentialRef(MODEL_KEY_REF))) !== undefined
+    const keyBound = (await this.credentials.readRecord(MODEL_KEY_RECORD))?.kind === 'api-key'
     if (!token) {
       const signedIn = await this.automaticSignIn()
       if (signedIn !== undefined) return signedIn
@@ -552,7 +573,8 @@ export class AccountSub2apiService extends TypertRemoteService {
     const keyName = this.keyName(userId)
     const key = await this.withKeyProvisioning(async () => {
       const previousUser = await this.storedUser()
-      const activeKey = (await this.credentials.resolve(credentialRef(MODEL_KEY_REF)))?.value
+      const activeRecord = await this.credentials.readRecord(MODEL_KEY_RECORD)
+      const activeKey = activeRecord?.kind === 'api-key' ? activeRecord.key : undefined
       const locallyBoundKey = previousUser?.id === userId ? activeKey : await this.retainedKeyFor(userId)
       if (locallyBoundKey) return locallyBoundKey
 
@@ -577,7 +599,7 @@ export class AccountSub2apiService extends TypertRemoteService {
     try {
       await this.credentials.set(credentialRef(TOKEN_REF), auth.accessToken)
       await this.credentials.set(credentialRef(USER_REF), JSON.stringify(auth.user))
-      await this.credentials.set(credentialRef(MODEL_KEY_REF), key)
+      await this.credentials.modifyRecord(MODEL_KEY_RECORD, async () => ({ kind: 'api-key', key }))
       await this.retainKey(userId, key)
       if (input.rememberUsername || input.autoLogin) {
         await this.credentials.set(credentialRef(REMEMBERED_USERNAME_REF), email)
@@ -592,7 +614,8 @@ export class AccountSub2apiService extends TypertRemoteService {
       }
     } catch {
       const cleanup = await Promise.allSettled([
-        this.credentials.unset(credentialRef(MODEL_KEY_REF)),
+        this.clearLegacyModelKey(),
+        this.credentials.deleteRecord(MODEL_KEY_RECORD),
         this.credentials.unset(credentialRef(TOKEN_REF)),
         this.credentials.unset(credentialRef(USER_REF)),
         this.credentials.unset(credentialRef(REMEMBERED_USERNAME_REF)),

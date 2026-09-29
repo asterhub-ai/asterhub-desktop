@@ -142,9 +142,14 @@ export class ApiSessionAgentController {
   private readonly creations = new Map<SessionId, Promise<Agent>>()
   private readonly selections = new WeakMap<Agent, InstalledSelection>()
   private readonly imageAdmissionChains = new WeakMap<Agent, Promise<void>>()
+  private readonly fixedModelSelection: boolean
 
-  /** @param ctx - Host context carrying Agent, model, persistence, and Typert services. */
-  constructor(private readonly ctx: Context) {
+  /**
+   * @param ctx - Host context carrying Agent, model, persistence, and Typert services.
+   * @param fixedModelSelection - use only the deployment model, ignoring Session history and writes.
+   */
+  constructor(private readonly ctx: Context, fixedModelSelection = false) {
+    this.fixedModelSelection = fixedModelSelection
     ctx.typert.lookups.configure('agent', async (sessionId: SessionId) => {
       const found = await this.resolveAgent(sessionId)
       if ('error' in found) throw found.error
@@ -291,8 +296,10 @@ export class ApiSessionAgentController {
       ? undefined
       : agentModelSelection(projectionState.pending)
     const defaultModel = this.ctx.agentDefaultModel
+    const fixedModelSelection = this.fixedModelSelection
     const selection: InstalledSelection = {
       get current(): AgentModelSelection {
+        if (fixedModelSelection) return defaultModel.currentSelection()
         if (picked !== undefined) return picked
         const loggedHeader = agent.session.requestHeader()
         if (loggedHeader === undefined) return defaultModel.currentSelection()
@@ -309,6 +316,9 @@ export class ApiSessionAgentController {
         }
       },
       set current(next: AgentModelSelection) {
+        if (fixedModelSelection) {
+          throw new RemoteError('session/model-selection-disabled', 'model routing is fixed by this deployment', {})
+        }
         picked = next
       },
       consume(provider: string, model: string, reasoningEffort: string | undefined): boolean {
@@ -331,6 +341,9 @@ export class ApiSessionAgentController {
    * @param selection - validated selection to record and apply.
    */
   selectForNextRequest(agent: Agent, selection: AgentModelSelection): void {
+    if (this.fixedModelSelection) {
+      throw new RemoteError('session/model-selection-disabled', 'model routing is fixed by this deployment', {})
+    }
     agent.session.append('model/selection', selection)
     this.selectionFor(agent).current = selection
   }

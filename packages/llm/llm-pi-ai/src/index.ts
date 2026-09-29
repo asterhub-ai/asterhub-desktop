@@ -7,7 +7,9 @@
  * credential seam, so a changed key, endpoint, model, or knob reaches the next
  * request without a restart; a changed *route set* (or a route's
  * registration-captured retry policy) re-registers the same adapter instance
- * in place.
+ * in place. A deployment-locked instance uses only its composition profiles,
+ * exposes no provider-configuration surfaces, and never installs the user
+ * settings section.
  *
  * ```yaml
  * - id: llm
@@ -56,6 +58,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { credentialKey } from '@deepseek-ai/dsh-credentials'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import { assertUsableApiKey, LlmError, resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm'
 import type { AdapterRegistrationHandle, DirectoryRegistrationHandle, LlmConfigurableProvider } from '@deepseek-ai/dsh-llm'
@@ -143,7 +146,29 @@ function directoryEntries(
 
 /** Register one generic pi-ai adapter for all configured provider routes. */
 export function apply(ctx: Context, config: Config): void {
-  let current: () => Config = () => config
+  const applicationRoute = ctx.get('applicationModelRoute')
+  const deploymentLocked = config.deploymentLocked === true || applicationRoute !== undefined
+  const effectiveConfig: Config = applicationRoute === undefined
+    ? config
+    : {
+      deploymentLocked: true,
+      providers: {
+        [applicationRoute.provider]: {
+          displayName: 'AsterHub',
+          api: applicationRoute.api ?? 'openai-completions',
+          baseURL: applicationRoute.baseURL ?? 'https://xapi.fans/v1',
+          credentialRecord: applicationRoute.credentialRecord ?? 'asterhub-account/model-api-key',
+          models: [{
+            id: applicationRoute.model,
+            name: 'AsterHub',
+            contextWindow: applicationRoute.contextWindow ?? 262_144,
+            maxTokens: applicationRoute.maxTokens ?? 32_768,
+            input: ['text'],
+          }],
+        },
+      },
+    }
+  let current: () => Config = () => effectiveConfig
   let lastRaw: Config | undefined
   let memoized: ReadonlyMap<string, ResolvedPiAiProviderProfile> | undefined
   /**
@@ -169,6 +194,21 @@ export function apply(ctx: Context, config: Config): void {
     provider: string,
     profile: ResolvedPiAiProviderProfile,
   ): Promise<string | undefined> => {
+    if (profile.credentialRecord !== undefined) {
+      const credentials = ctx.get('credentials')
+      if (credentials === undefined) {
+        throw new LlmError('llm-pi-ai: the Host credential service is unavailable', 'MISSING_CREDENTIAL')
+      }
+      const [scope, id, extra] = profile.credentialRecord.split('/')
+      if (scope === undefined || id === undefined || extra !== undefined) {
+        throw new LlmError('llm-pi-ai: the configured Host credential record address is invalid', 'INVALID_CREDENTIAL_REF')
+      }
+      const record = await credentials.readRecord(credentialKey(scope, id))
+      if (record?.kind !== 'api-key' || record.key === undefined || record.key.length === 0) {
+        throw new LlmError('llm-pi-ai: the signed-in account has no model credential', 'MISSING_CREDENTIAL')
+      }
+      return assertUsableApiKey(record.key, 'llm-pi-ai', profile.credentialRecord)
+    }
     const ref = profile.apiKeyEnv
     // Only a profile that names no credential at all defers to pi-ai's
     // provider-native discovery. Once one is named, a miss must fail loud:
@@ -216,7 +256,9 @@ export function apply(ctx: Context, config: Config): void {
   // Scoped to the authorization seam rather than injected outright, because a
   // composition without it (headless, ACP) simply has no surface to sign in
   // from, while everything else this plugin does still works.
-  ctx.inject(['authorization'], (authorized) => { registerPiAiFlows(authorized, auth) })
+  if (!deploymentLocked) {
+    ctx.inject(['authorization'], (authorized) => { registerPiAiFlows(authorized, auth) })
+  }
   // The full installed catalog is configurable from the moment the plugin
   // mounts — dormant or not — so configuration surfaces can offer every
   // pi-ai provider before any route exists. Hand-declared routes join it as
@@ -238,7 +280,7 @@ export function apply(ctx: Context, config: Config): void {
     }
     directoryFacts = entries
   }
-  ensureDirectory()
+  if (!deploymentLocked) ensureDirectory()
   /** Host-owned request inputs for discovery of one configured route. */
   const storedDiscoveryProfile = (
     provider: string | undefined,
@@ -257,10 +299,12 @@ export function apply(ctx: Context, config: Config): void {
   // except the stored credential and deployment-owned headers: the curated UI
   // accepts neither, so an already-configured route supplies both inside the
   // Host rather than widening the discovery request.
-  ctx.llm.registerModelDiscovery(NS, (request, signal) => discoverModels(
-    { ...request, ...signal === undefined ? {} : { signal } },
-    () => storedDiscoveryProfile(request.provider),
-  ))
+  if (!deploymentLocked) {
+    ctx.llm.registerModelDiscovery(NS, (request, signal) => discoverModels(
+      { ...request, ...signal === undefined ? {} : { signal } },
+      () => storedDiscoveryProfile(request.provider),
+    ))
+  }
   // Route effects bind to this apply fiber via the stable `ctx` reference,
   // even when a swap runs inside the scoped settings callback below. A bare
   // mount (zero routes) is the dormant posture: nothing registers until a
@@ -292,7 +336,7 @@ export function apply(ctx: Context, config: Config): void {
   }
   ensureRegistrationFacts()
 
-  ctx.inject(['settings'], (settingsCtx) => {
+  if (!deploymentLocked) ctx.inject(['settings'], (settingsCtx) => {
     let registering = true
     settingsCtx.settings.installSection(ctx, NS, Config, config, {
       validate: (value) => {

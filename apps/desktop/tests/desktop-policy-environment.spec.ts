@@ -4,11 +4,11 @@ import { validateDesktopPackageEnvironment } from '../scripts/desktop-package-en
 import { resolveDesktopPolicyConfig } from '../src/mandatory-update-policy.ts'
 
 const origins = { DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN: 'https://harness-test.deepseek.com',
-  DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://harness.deepseek.com' }
+  DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://asterhub.xapi.fans' }
 
 it.each(['test', 'production'] as const)('selects the %s policy and authentication together', (deployment) => {
   const policy = resolveDesktopPolicyEnvironment({ ...origins, DSH_DESKTOP_AUTO_UPDATE_ENV: deployment })
-  const origin = deployment === 'test' ? origins.DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN : origins.DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN
+  const origin = deployment === 'test' ? origins.DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN : 'https://asterhub.xapi.fans'
   expect(policy).toEqual({ origin, allowedPageOrigins: [origin], authentication: deployment === 'test' ? 'feishu-test' : 'anonymous' })
   expect(resolveDesktopPolicyConfig(policy)).toMatchObject(policy)
 })
@@ -19,6 +19,16 @@ it('requires only the selected origin, defaults to test, and accepts explicit pa
     DSH_DESKTOP_MANDATORY_UPDATE_CONFIG: JSON.stringify({ allowedPageOrigins: ['https://download.deepseek.com'], intervalMs: 5000 }) })
   expect(policy).toMatchObject({ authentication: 'feishu-test', intervalMs: 5000, allowedPageOrigins: ['https://download.deepseek.com'] })
   expect(() => resolveDesktopPolicyEnvironment({ ...origins, DSH_DESKTOP_AUTO_UPDATE_ENV: 'prod' })).toThrow('production')
+})
+
+it('pins the production policy origin to the AsterHub updater and rejects a conflicting legacy origin', () => {
+  expect(resolveDesktopPolicyEnvironment({ DSH_DESKTOP_AUTO_UPDATE_ENV: 'production' })).toMatchObject({
+    origin: 'https://asterhub.xapi.fans', allowedPageOrigins: ['https://asterhub.xapi.fans'], authentication: 'anonymous',
+  })
+  expect(() => resolveDesktopPolicyEnvironment({
+    DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
+    DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://harness.deepseek.com',
+  })).toThrow(/must match the selected auto-update origin/u)
 })
 
 it.each([undefined, '', 'http://harness-test.deepseek.com', 'https://user:secret@harness-test.deepseek.com',

@@ -55,6 +55,7 @@ export { REGION_BEGIN, REGION_END }
  */
 export const SERVICE_PAGE: Record<string, string> = {
   connection: 'web-server.md',
+  accountSub2api: 'account.md',
   pluginManager: 'boot.md',
   profileContext: 'boot.md',
   hmr: 'boot.md',
@@ -157,6 +158,8 @@ export const SERVICE_PAGE: Record<string, string> = {
  * to a model as `cordis_runtime_inspect what:"client"`).
  */
 export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
+  applicationCatalogPublicKey: 'not a service: release-pinned catalogue trust root injected by Desktop Host — docs/交接文档.md owns the application policy',
+  applicationModelRoute: 'not a service: fixed Desktop model route injected by Desktop Host — docs/交接文档.md owns the application policy',
   webTerminals: 'client-side terminal view models — packages/api/terminal-controller/README.md owns the API',
   appReady: 'not a service: launcher-provided successful-startup signal — packages/boot/cmdline/README.md owns the launcher contract',
   appExit: 'not a service: launcher-provided bounded process-exit callback — packages/boot/cmdline/README.md owns the launcher contract',
@@ -276,6 +279,18 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   PluginChange: 'boot.md',
   PluginInstallLogChunk: 'boot.md',
   PluginInstallProgress: 'boot.md',
+  CuratedPluginCatalog: 'boot.md',
+  CuratedPluginEntry: 'boot.md',
+  CuratedPluginInstallRequest: 'boot.md',
+  AccountUser: 'account.md',
+  AccountLoginInput: 'account.md',
+  AccountStatus: 'account.md',
+  QuotaSnapshot: 'account.md',
+  UsagePeriodSnapshot: 'account.md',
+  AccountUsageSnapshot: 'account.md',
+  AccountPaymentMethod: 'account.md',
+  TopUpResult: 'account.md',
+  RedeemResult: 'account.md',
   BrowserUseProviderName: 'browser-use.md',
   ComputerUseProviderName: 'computer-use.md',
   RenderedDocumentBytes: 'office-to-pdf.md',

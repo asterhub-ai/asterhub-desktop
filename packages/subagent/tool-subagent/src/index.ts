@@ -323,7 +323,7 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
   const continuable = (config.backgroundMode ?? 'one-shot') === 'continuable'
   const toolName = config.toolName ?? 'subagent'
 
-  const modelSelectionCapable = config.modelSelectionSettings === true
+  const modelSelectionCapable = config.modelSelectionSettings === true && !ctx.get('llm')?.hasFixedRoute()
   ctx.sessionProjections.register(subagentModelSelectionProjectionDefinition)
 
   const assertSubagentProviderConfiguration = (subagentProvider: SubagentProvider): void => {
@@ -360,7 +360,9 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
 
   const install = (runtimeCtx: Context, modelSelectionPolicy: ModelSelectionPolicy | undefined): void => {
     const modelSelectionEnabled = modelSelectionPolicy !== undefined
-    if (modelSelectionPolicy !== undefined) registerListSubagentModels(runtimeCtx, modelSelectionPolicy)
+    if (modelSelectionPolicy !== undefined && !runtimeCtx.llm.hasFixedRoute()) {
+      registerListSubagentModels(runtimeCtx, modelSelectionPolicy)
+    }
     // Load order and HMR replacement can change provider availability while
     // this fiber remains active.
     let mounted: { subagentProvider: SubagentProvider; disposeTool: () => void } | undefined
@@ -606,7 +608,7 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
     }
   }
 
-  if (config.modelSelectionSettings !== true) {
+  if (config.modelSelectionSettings !== true || ctx.get('llm')?.hasFixedRoute()) {
     install(ctx, undefined)
     return
   }
@@ -620,7 +622,6 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
   }
   const selectForSession = (target: Session): ModelSelectionPolicy | undefined => {
     const freshSession = target.firstLiveSeq === 0
-      // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
       && target.eventAt(SessionSeq(0))?.type !== 'session/end-seed'
     let allowedModels = subagentModelSelectionPolicy(ctx.sessionProjections, target)
     if (allowedModels === undefined) {

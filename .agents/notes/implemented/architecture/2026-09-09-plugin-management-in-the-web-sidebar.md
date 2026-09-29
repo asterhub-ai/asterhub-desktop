@@ -28,4 +28,4 @@ The web bundle's panel list is no longer empty: the **Plugins** entry sits betwe
 
 ## Testing
 
-`packages/client/ui-plugin-manager/tests` pin the two registrations under one id and the page's rendering; `packages/client/ui-settings-plugins/tests` the tab-less single contribution; the web e2e scenarios above drive the panel and the section over a scaffold.
+`apps/web/tests/plugin-manager.e2e.ts` pins the sidebar registration and page rendering; `apps/web/tests/settings-chrome.e2e.ts` covers the tab-less settings contribution; the web e2e scenarios above drive the panel and the section over a scaffold.

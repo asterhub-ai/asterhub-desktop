@@ -2,7 +2,9 @@
 
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import AgentDefaultModelConfig, { AGENT_DEFAULT_MODEL_SETTINGS_NAMESPACE } from '../src/index.ts'
+import AgentDefaultModelConfig, {
+  AGENT_DEFAULT_MODEL_SETTINGS_NAMESPACE,
+} from '../src/index.ts'
 import { SettingsProvider } from '@deepseek-ai/dsh-settings'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
@@ -93,6 +95,22 @@ describe('AgentDefaultModelConfig', () => {
     await ctx.plugin(AgentDefaultModelConfig, { provider: 'p', model: 'm' })
     await ctx.agentDefaultModel.saveSelection({ provider: 'other', model: 'other' })
     expect(ctx.agentDefaultModel.currentSelection()).toEqual({ provider: 'p', model: 'm' })
+    await ctx.fiber.dispose()
+  })
+
+  it('ignores settings and rejects writes when the deployment locks the model route', async () => {
+    const ctx = new Context()
+    const settingsFiber = ctx.plugin(MemorySettings)
+    await settingsFiber.await()
+    await ctx.plugin(AgentDefaultModelConfig, {
+      provider: 'sub2api', model: 'aster', locked: true,
+    })
+
+    expect(ctx.agentDefaultModel.currentSelection()).toEqual({ provider: 'sub2api', model: 'aster' })
+    expect(ctx.settings.describe().map(section => section.ns)).not.toContain(AGENT_DEFAULT_MODEL_SETTINGS_NAMESPACE)
+    await expect(ctx.agentDefaultModel.saveSelection({ provider: 'other', model: 'other' }))
+      .rejects.toThrow('model selection is deployment-locked')
+    expect(ctx.settings.get(AGENT_DEFAULT_MODEL_SETTINGS_NAMESPACE)).toBeUndefined()
     await ctx.fiber.dispose()
   })
 })

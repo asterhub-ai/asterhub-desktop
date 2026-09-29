@@ -83,6 +83,9 @@
 # carries whatever the deployment registered globally (repository plugins).
 - id: skill-filesystem
   name: '@deepseek-ai/dsh-skill-filesystem'
+  config:
+    customSkillDirs:
+      - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/', baseUrl))"
 
 - id: tool-skill
   name: '@deepseek-ai/dsh-tool-skill'
@@ -183,7 +186,7 @@
       config:
         provider: spawn
         toolName: subagent
-        modelSelectionSettings: true
+        modelSelectionSettings: false
         backgroundMode: continuable
 
     # Fork omits model selection so provider/model stay equal to the parent and
@@ -263,4 +266,3 @@
 
 - id: tool-plugin-manager
   name: '@deepseek-ai/dsh-plugin-manager/tools'
-  disabled: true

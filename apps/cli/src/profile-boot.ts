@@ -238,6 +238,8 @@ export interface RunProfileOptions {
   args: readonly string[]
   /** Application-owned package runtime, scoped to plugin package operations. */
   packageManager?: ProfileContext['packageManager']
+  /** Application-owned setup applied before any profile entry mounts. */
+  hostSetup?: (ctx: Context) => void | Promise<void>
   /** Module fallback backend; defaults to runtime. Plain Node callers may override it; pkg executables always use runtime. */
   resolutionMode?: ProfileResolutionMode
 }
@@ -309,6 +311,7 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
       // Before any config-tree entry mounts, so plugins resolve all launch-time
       // environment values from the same immutable launch snapshot.
       hostCtx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, options.environment)
+      await options.hostSetup?.(hostCtx)
       await hostCtx.plugin(PluginPackages, resolutionMode === 'link' ? {} : {
         generation: composed.resolution,
         behavior: resolutionMode === 'dual' ? 'verify' : 'enforce',

@@ -11,6 +11,24 @@
 
 `Requires:` 行列出插件通过 `inject` 注入的服务键：其 `cordis.yml` 树还必须加载这些服务的提供者。范围限定为 harness 层级（`packages/`）；配置树还可能加载的 vendored cordis 插件（控制台日志记录器等）固定为上游源代码（参见 [vendoring policy](../vendor/README.md)），未收录于此目录。
 
+<a id="deepseek-aidsh-account-sub2api"></a>
+
+## `@deepseek-ai/dsh-account-sub2api`
+
+需要：`credentials`
+
+```ts config-catalog
+/** Plugin config: where the control plane lives and which group keys bind to. */
+export interface Config {
+  /** sub2api control-plane base URL. */
+  authBaseUrl?: string
+  /** The key group new model keys bind to. */
+  groupId?: string | number
+}
+```
+
+来源：[`packages/account/account-sub2api/src/index.ts:343`](../packages/account/account-sub2api/src/index.ts)
+
 <a id="deepseek-aidsh-acp"></a>
 
 ## `@deepseek-ai/dsh-acp`
@@ -46,6 +64,8 @@ export interface Config {
   provider: string
   /** Provider-owned model id. */
   model: string
+  /** Whether deployment configuration is the only model-selection source. */
+  locked?: boolean
 }
 ```
 
@@ -212,6 +232,8 @@ export interface Config {
 export interface Config {
   /** Override platform desktop-opener detection. */
   readonly nativeOpen?: boolean
+  /** Use only the Host's deployment model route for every Session. */
+  readonly modelSelectionPolicy?: 'session' | 'fixed'
 }
 ```
 
@@ -1256,12 +1278,16 @@ export interface Config {
    * and registers them the moment a settings section supplies profiles.
    */
   providers?: Record<string, PiAiProviderProfile>
+  /** Whether user settings, model discovery, and provider-login surfaces may alter routes. */
+  deploymentLocked?: boolean
 }
 
 /** Configuration for one pi-ai provider route; the `providers` dict key IS the route. */
 export interface PiAiProviderProfile {
   /** Credential reference (environment-variable name) resolved per request through `ctx.credentials`. */
   apiKeyEnv?: string
+  /** Credential record read directly from Host storage, without environment fallback. */
+  credentialRecord?: string
   /** Name shown by configuration surfaces; defaults to the route key. */
   displayName?: string
   /**
@@ -1895,10 +1921,14 @@ export interface Config {
   lockWaitMs?: number
   /** Bound on one registry lookup an inspection runs, in milliseconds. */
   inspectTimeoutMs?: number
+  /** Public catalogue endpoint for the reserved app Plugins page. */
+  curatedCatalogUrl?: string
+  /** Release-pinned Ed25519 public key in PEM form. Empty means unavailable. */
+  curatedCatalogPublicKey?: string
 }
 ```
 
-来源： [`packages/boot/plugin-manager/src/index.ts:33`](../packages/boot/plugin-manager/src/index.ts)
+来源：[`packages/boot/plugin-manager/src/index.ts:36`](../packages/boot/plugin-manager/src/index.ts)
 
 <a id="deepseek-aidsh-plugin-package-inventory-deepseek"></a>
 
@@ -3808,6 +3838,7 @@ export interface Config {
 - `@deepseek-ai/dsh-client-ui-schedule`（[`packages/client/ui-schedule/src/index.ts`](../packages/client/ui-schedule/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-session`（[`packages/client/ui-session/src/index.ts`](../packages/client/ui-session/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-settings`（[`packages/client/ui-settings/src/index.ts`](../packages/client/ui-settings/src/index.ts)）
+- `@deepseek-ai/dsh-client-ui-settings-account`（[`packages/client/ui-settings-account/src/index.ts`](../packages/client/ui-settings-account/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-settings-general`（[`packages/client/ui-settings-general/src/index.ts`](../packages/client/ui-settings-general/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-settings-models`（[`packages/client/ui-settings-models/src/index.ts`](../packages/client/ui-settings-models/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-settings-plugin-inventory`（[`packages/client/ui-settings-plugin-inventory/src/index.ts`](../packages/client/ui-settings-plugin-inventory/src/index.ts)）

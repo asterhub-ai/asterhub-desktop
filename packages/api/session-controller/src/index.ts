@@ -71,6 +71,8 @@ declare module '@deepseek-ai/cordis' {
 export interface Config {
   /** Override platform desktop-opener detection. */
   readonly nativeOpen?: boolean
+  /** Use only the Host's deployment model route for every Session. */
+  readonly modelSelectionPolicy?: 'session' | 'fixed'
 }
 
 /** Host integrations replaceable by direct unit tests. */
@@ -100,6 +102,7 @@ export class SessionController extends TypertRemoteService {
 
   static Config: z<Config> = z.object({
     nativeOpen: z.boolean(),
+    modelSelectionPolicy: z.union(['session', 'fixed'] as const).default('session'),
   })
 
   private readonly agents: ApiSessionAgentController
@@ -111,6 +114,7 @@ export class SessionController extends TypertRemoteService {
   private readonly revealPath: (path: string, signal: AbortSignal) => Promise<void>
   private readonly canOpenPath: () => boolean
   private readonly promotions = new Set<Promise<void>>()
+  private readonly fixedModelSelection: boolean
 
   /**
    * @param ctx - Host context containing the Session capability assembly.
@@ -120,8 +124,9 @@ export class SessionController extends TypertRemoteService {
   constructor(ctx: Context, config: Config, internals: SessionControllerInternals = {}) {
     super(ctx, 'sessionController', { namespace: 'session' })
     installModelSelectionProjection(ctx)
-    this.agents = new ApiSessionAgentController(ctx)
-    this.commands = new SessionCommandController(ctx, this.agents, process.cwd())
+    this.fixedModelSelection = config.modelSelectionPolicy === 'fixed'
+    this.agents = new ApiSessionAgentController(ctx, this.fixedModelSelection)
+    this.commands = new SessionCommandController(ctx, this.agents, process.cwd(), this.fixedModelSelection)
     ctx.effect(() => ctx.fileUploads.registerAgentResolver(async (sessionId) => {
       const result = await this.agents.resolveAgent(sessionId)
       if ('error' in result) throw result.error
@@ -207,7 +212,6 @@ export class SessionController extends TypertRemoteService {
       return Promise.resolve({
         meta: attached.header,
         inheritedEventCount: attached.inheritedEventCount,
-        // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
         events: attached.snapshotEvents(),
       })
     }
@@ -262,7 +266,7 @@ export class SessionController extends TypertRemoteService {
    */
   @Remote('modelCatalog')
   modelCatalog(): Promise<ModelCatalog> {
-    return buildModelCatalog(this.ctx)
+    return buildModelCatalog(this.ctx, this.ctx.agentDefaultModel.currentSelection(), this.fixedModelSelection)
   }
 
   /**

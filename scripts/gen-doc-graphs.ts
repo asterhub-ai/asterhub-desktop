@@ -100,6 +100,14 @@ const GROUP_ORDER = [
 
 const SERVICE_ROLES: ServiceRole[] = [
   {
+    key: 'accountSub2api',
+    pkg: 'account-sub2api',
+    title: 'Host account and model-key binding Remote',
+    mode: 'core',
+    consumers: ['client-ui-settings-account'],
+    note: 'Owns account login, upstream key reuse, quota, payment and usage reads; credentials stay in Host storage.',
+  },
+  {
     key: 'hmr',
     pkg: 'hmr',
     title: 'Serialized module and configuration reloads',

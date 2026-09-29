@@ -30,6 +30,8 @@ interface SentenceContract {
  * so an absent section cannot be mistaken for forgotten documentation.
  */
 const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
+  'packages/account/account-sub2api': 'The account Remote returns account and billing facts to the Client; the model adapter consumes a Host credential record without rendering it into model input.',
+  'packages/client/ui-settings-account': 'Browser-only account forms call the Host Remote and never contribute prompts, tools, Session events, or model-visible output.',
   'packages/core/scope': 'The package is a model-agnostic registration and lifecycle primitive; model-facing consumers own any context selection.',
   'packages/util/brand': 'The package only constructs plain string values and registers nothing model-facing.',
   'packages/util/home-paths': 'The package only resolves harness-owned host paths; model-facing consumers own any rendered use.',

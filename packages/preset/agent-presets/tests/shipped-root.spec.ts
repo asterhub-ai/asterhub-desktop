@@ -85,6 +85,18 @@ async function shippedEntries(id: string): Promise<unknown[]> {
 }
 
 describe('the shipped preset root', () => {
+  it('ships the MCP bundle recipe into standard, PTC, and Creator skill roots', async () => {
+    const recipe = join(SHIPPED_PRESET_ROOT, 'standard', 'skills', 'adding-mcp-server', 'SKILL.md')
+    expect((await readFile(recipe, 'utf8'))).toContain('plugin_manager')
+    for (const id of ['standard', 'ptc', 'cordis']) {
+      const rows = await shippedEntries(id)
+      const skillFilesystem = findEntry(rows, 'skill-filesystem')
+      const config = skillFilesystem?.config as { customSkillDirs?: unknown[] } | undefined
+      const skillDirs = JSON.stringify(config?.customSkillDirs)
+      expect(skillDirs).toContain(id === 'standard' ? "new URL('skills/', baseUrl)" : "new URL('../standard/skills/', baseUrl)")
+    }
+  })
+
   it('supplies the built-in presets from a bare roster, healthy and system-trusted', async () => {
     const ctx = await roster({ includeUserRoot: false })
 

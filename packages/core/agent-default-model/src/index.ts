@@ -43,6 +43,8 @@ export interface Config {
   provider: string
   /** Provider-owned model id. */
   model: string
+  /** Whether deployment configuration is the only model-selection source. */
+  locked?: boolean
 }
 
 /** Project stored settings onto the Agent-facing selection type. */
@@ -65,14 +67,18 @@ export class AgentDefaultModelConfig extends Service {
   static Config: z<Config> = z.object({
     provider: z.string().required(),
     model: z.string().required(),
+    locked: z.boolean().default(false),
   })
 
   private source: () => AgentDefaultModelSettings
+  private readonly locked: boolean
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'agentDefaultModel')
+    this.locked = config.locked ?? false
     const entry: AgentDefaultModelSettings = { provider: config.provider, model: config.model }
     this.source = () => entry
+    if (this.locked) return
     ctx.inject(['settings'], (settingsCtx) => {
       settingsCtx.settings.installSection(ctx, AGENT_DEFAULT_MODEL_SETTINGS_NAMESPACE, AGENT_DEFAULT_MODEL_SETTINGS_SCHEMA, entry, {
         setSource: (current) => { this.source = current },
@@ -98,6 +104,7 @@ export class AgentDefaultModelConfig extends Service {
    * @returns fulfillment after the optional settings write settles.
    */
   async saveSelection(next: ModelSelection): Promise<void> {
+    if (this.locked) throw new Error('agent-default-model: model selection is deployment-locked')
     await this.ctx.get('settings')?.replace(AGENT_DEFAULT_MODEL_SETTINGS_NAMESPACE, {
       provider: next.provider,
       model: next.model,

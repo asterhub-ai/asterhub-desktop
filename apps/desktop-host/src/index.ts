@@ -9,6 +9,7 @@ import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import * as desktopOffice from './office.ts'
 
 import { installDesktopUpdateTaskControl } from './update-tasks.ts'
+import { ASTERHUB_CATALOG_PUBLIC_KEY } from './catalog-trust.ts'
 
 async function main(): Promise<void> {
   const runtimeDir = process.argv[2] as string
@@ -21,6 +22,18 @@ async function main(): Promise<void> {
     resolutionMode: process.argv[5] === 'runtime' ? 'runtime' : 'link',
     resolvedProfile: { profile, installAnchor },
     patchFiles: [],
+    hostSetup: (hostCtx) => {
+      hostCtx.provide('applicationModelRoute', Object.freeze({
+        provider: 'sub2api',
+        model: 'aster',
+        baseURL: 'https://xapi.fans/v1',
+        api: 'openai-completions',
+        credentialRecord: 'asterhub-account/model-api-key',
+        contextWindow: 262144,
+        maxTokens: 32768,
+      }))
+      hostCtx.provide('applicationCatalogPublicKey', ASTERHUB_CATALOG_PUBLIC_KEY)
+    },
     args: ['--no-open', '--port', '19387'],
     ...(process.argv[6] === undefined ? {} : {
       packageManager: {

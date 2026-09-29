@@ -134,6 +134,7 @@ class PtcWorkflowEngine extends WorkflowEngine {
     const meta = validateMeta(request.meta)
     assertBodyParses(request.script, meta.name)
     const subagentProvider = resolveSubagentProvider(this.ctx, this.config.provider, request.subagentProvider)
+    const fixedModelRoute = this.ctx.get('llm')?.hasFixedRoute() ?? false
     const maxTotalAgents = resolveMaxTotalAgents(request.maxTotalAgents, this.config.maxTotalAgents)
     const id = WorkflowRunId(randomUUID())
     const info: WorkflowRunInfo = { id, meta }
@@ -161,6 +162,7 @@ class PtcWorkflowEngine extends WorkflowEngine {
       id,
       meta,
       request.parent,
+      fixedModelRoute,
       init,
       subagentProvider,
       runCtx.sandboxPolicy.resolve({ session: request.parent.session }),

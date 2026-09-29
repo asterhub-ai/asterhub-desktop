@@ -904,6 +904,17 @@ Source: [`packages/llm/deepseek-llm-api-extensions/src/index.ts`](../../packages
 The abstract `llm` service: an adapter registry plus a streaming model-call API, interceptable via the `llm/stream` waterfall.
 
 ```ts cordis-catalog
+/** Install an application-owned route ceiling before adapters are mounted.
+ * @param provider Provider id that every model call must use.
+ * @param model Model id that every model call must use.
+ */
+lockRoute(provider: string, model: string): void
+
+/** Whether an application-owned fixed route has been installed.
+ * @returns `true` when calls are constrained to the application route.
+ */
+hasFixedRoute(): boolean
+
 /**
  * Register an adapter for the given provider routes. Throws `LlmError` with code
  * `DUPLICATE_ADAPTER` if any provider already has an adapter (all-or-nothing).

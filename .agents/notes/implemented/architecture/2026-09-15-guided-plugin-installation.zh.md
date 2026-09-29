@@ -40,4 +40,4 @@ Status: implemented
 
 ## 测试
 
-`packages/boot/plugin-manager/tests/install-spec.spec.ts` 钉住 spec 形式与失败分类器的输入；`manager.spec.ts` 用桩住的注册表查询和真实目录驱动 `inspect`，流式转发一次运行，停下一次运行并检查恢复后的文件，并检查变更事件；`operations.spec.ts` 覆盖注册表查询。`packages/client/ui-plugin-manager/tests` 覆盖 store 的阶段、经宿主确认的取消、装后启用、toast 与页面的四个画面；`apps/web/tests/plugin-manager.e2e.ts` 经真实宿主拒绝已装名字、不存在的路径和坏名字，并实时切换一个组合包及其中一行，`plugin-install-cancel.e2e.ts` 从对话框停下一个真实子进程、检查恢复后的文件，并在第二次尝试时装成，`plugin-install-approve.e2e.ts` 用假 pnpm 把脚本留作未决、从对话框允许后在重试中装上。
+`packages/boot/plugin-manager/tests/install-spec.spec.ts` 钉住 spec 形式与失败分类器的输入；`manager.spec.ts` 用桩住的注册表查询和真实目录驱动 `inspect`，流式转发一次运行，停下一次运行并检查恢复后的文件，并检查变更事件；`operations.spec.ts` 覆盖注册表查询。`apps/web/tests/{plugin-manager,plugin-config,plugin-install-cancel,plugin-install-approve}.e2e.ts` 覆盖页面、经宿主确认的取消、装后启用、toast 与安装批准画面；`apps/web/tests/plugin-manager.e2e.ts` 经真实宿主拒绝已装名字、不存在的路径和坏名字，并实时切换一个组合包及其中一行，`plugin-install-cancel.e2e.ts` 从对话框停下一个真实子进程、检查恢复后的文件，并在第二次尝试时装成，`plugin-install-approve.e2e.ts` 用假 pnpm 把脚本留作未决、从对话框允许后在重试中装上。

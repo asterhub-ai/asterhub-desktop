@@ -234,7 +234,7 @@ export function AccountPanel({
   if (showLogin) {
     return (
       <div className={rootClass}>
-        {fullPage && <p className={css.productName}>AsterHub</p>}
+        {fullPage && <p className={css.productName}>{t('productName')}</p>}
         <h2 className={css.heading}>{t('title')}</h2>
         <p className={css.muted}>{t('loggedOutIntro')}</p>
         <form className={css.form} onSubmit={(event) => { event.preventDefault(); void login() }}>
@@ -280,7 +280,7 @@ export function AccountPanel({
 
   return (
     <div className={rootClass}>
-      {fullPage && <p className={css.productName}>AsterHub</p>}
+      {fullPage && <p className={css.productName}>{t('productName')}</p>}
       <h2 className={css.heading}>{t('title')}</h2>
       <p className={css.muted}>{t('loggedInAs')}：{status.user?.email ?? status.user?.username ?? status.user?.id}</p>
       <div className={css.row}>

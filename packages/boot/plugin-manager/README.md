@@ -28,7 +28,7 @@ Manage the current profile's plugins without editing configuration by hand. Enab
 <a id="use-this-package"></a>
 ## Use this package
 
-Base-backed profiles provide the manager. In Web, the sidebar's **Plugins** page ([ui-plugin-manager](../../client/ui-plugin-manager/README.md)) manages the profile's bundles and their uniquely addressable rows; the Settings Plugin list stays read-only. Agent-preset rows remain read-only. The `plugin_manager` tool exposes the same operations and is enabled in Creator mode. Other presets keep it disabled by default. Every tool action requires `danger-full-access` or approval for that call. Under lower sandbox modes, `ask` requests approval; `never`, rejection, cancellation, or an unavailable approval channel prevents execution. An approval leaves the session permission mode unchanged. Profile changes persist across sessions, and installed Host code executes in-process outside the workspace sandbox. Dependency build-script approval remains separate.
+Base-backed profiles provide the manager. In Web, the sidebar's **Plugins** page ([ui-plugin-manager](../../client/ui-plugin-manager/README.md)) presents only the separately signed AsterHub curated catalogue. Its install action accepts a catalogue id, installs the exact package version with scripts disabled, and requires the root importer to pin that exact package version and verifies the referenced registry package integrity before activating code. It does not constrain conversation installs. The `plugin_manager` tool is enabled in the shipped standard, PTC and Creator presets and accepts arbitrary package sources, with installation, removal and enablement controlled by explicit per-call approval. The Settings Plugin list stays read-only. Agent-preset rows and the model/authentication core rows remain read-only. An approval leaves the session permission mode unchanged. Profile changes persist across sessions, and installed Host code executes in-process outside the workspace sandbox. Conversation installation keeps its separate explicit build-script approval flow.
 
 For a deployment without agent presets, enable the tool in the profile patch. Preset-backed sessions use their preset’s `tool-plugin-manager` entry.
 
@@ -43,6 +43,8 @@ A plugin toggle updates only `disabled` in the last matching override in the pro
 
 `installBundle` accepts a caller-generated `requestId`, under which `plugin-manager/install-log` streams each pnpm run's output and `plugin-manager/install-state` announces `installing`, `cancelling`, and `applying`. `cancelInstall(requestId)` stops the run and answers `cancelled` only after pnpm exited and the files are back, `too-late` once the bundle is being applied, and `not-running` for any other id; the install call then reports `application: 'cancelled'`. A run that fails, is cancelled, or adds a package without a bundle patch restores `package.json` and `pnpm-lock.yaml` as they were; `packageResult.kind` classifies a failed run from its exit and output, and `bundle` names the package a finished run added. `listBundles` carries each bundle's one-liner (the package `description`), the rows its patch declares with their live entries, and the built-in rows it overrides; it lists the profile's own bundles, the bundles the installation supplies, and a selected name without a bundle patch as a `not-bundle` problem, while an unselected plain dependency is left out. A bundle the launcher's `OPTIONAL_BUNDLES` names is `optional`: shipped switched off for the person to turn on, never removable, and selected by no shipped template ([rationale](../../../.agents/notes/implemented/process/2026-09-15-shipped-optional-bundles.md)). Every completed operation emits `plugin-manager/changed`; a patch generation applied outside the manager, by HMR's watcher after a CLI or hand edit, announces nothing, so the page learns of it on its next read.
 
+`curatedCatalog()` verifies the Ed25519 signature over the payload's original bytes, expiry, schema, duplicate ids/packages, registry package identity, exact version and `sha512` integrity before returning entries. It rejects revision rollback and persists the highest accepted revision in the profile. `installCuratedBundle(id)` re-fetches the verified catalogue, takes only its exact `package@version`, invokes pnpm with scripts disabled, and verifies lockfile integrity before it activates the bundle patch. Conversation `installBundle(spec)` remains an independent arbitrary-source operation. Desktop supplies the catalogue public key from its release-pinned Host; an unsigned or unavailable catalogue fails closed.
+
 When pnpm 11 blocks dependency scripts, the failed installation reports every pending package name in the profile under `pendingBuilds`, including names left by earlier attempts; a failed run restores `package.json` and `pnpm-lock.yaml` but deliberately not `pnpm-workspace.yaml`, where pnpm records them. The Web plugin page offers **Allow these scripts and retry**; the tool can grant permission on the user's behalf through `approvedBuilds` on `install_bundle`, after the user approves those scripts in the conversation. The service validates pending names; it does not verify conversation approval. Approval persists by package name in this profile, permits commands with the host user's permissions, and survives another installation failure. Only currently undecided names can be approved; existing denials and wildcard rules cannot be overridden through this action. Approval rejects YAML anchors or aliases inside `allowBuilds`. Retry preserves the original activation choice.
 
 ### Configuration
@@ -53,6 +55,8 @@ When pnpm 11 blocks dependency scripts, the failed installation reports every pe
 | `inspectTimeoutMs` | `20000` | Bound on one registry lookup an inspection runs, in milliseconds. |
 | `outputBytes` | `16384` | Maximum pnpm diagnostic bytes returned per operation; the full output remains in the returned log path. |
 | `lockWaitMs` | `120000` | Maximum time in milliseconds to acquire the profile write lock. |
+| `curatedCatalogUrl` | `https://asterhub.xapi.fans/api/v1/catalog.json` | Signed catalogue used only by the app Plugins page. |
+| `curatedCatalogPublicKey` | empty | Fallback key for non-Desktop compositions; AsterHub Desktop supplies its release-pinned key. |
 
 -----
 
@@ -85,7 +89,7 @@ Results contain the last attempted stage, target, saved-state change, applicatio
 
 #### What the model sees
 
-The [`plugin_manager` tool](../../../docs/tool-catalog.md#deepseek-aidsh-plugin-manager) lists plugin entries and bundles and performs profile-wide changes. Its results include saved-state changes, application status and package diagnostics. Management operations do not inject messages into Agents.
+The [`plugin_manager` tool](../../../docs/tool-catalog.md#deepseek-aidsh-plugin-manager) lists plugin entries and bundles and performs profile-wide changes, including arbitrary-source plugin and MCP bundles. Its results include saved-state changes, application status and package diagnostics. Management operations do not inject messages into Agents. The signed curated page is a separate UI path; its install action pins the package version and integrity from the release-approved catalogue.
 
 #### Token effect
 
@@ -106,6 +110,7 @@ Tool results append to the transcript. Enabling or disabling other tools can cha
 - A failed removal may leave dependencies partially changed, and a failed or cancelled installation can leave downloaded files under `node_modules` or the pnpm store. Inactive dependencies with missing files remain removable. Diagnostic logs remain under the profile's `.plugin-manager/logs` directory.
 - Management results describe Host activation. Browser synchronization failures appear separately in the Settings plugin list.
 - Desktop package operations remain owned by the Desktop shell.
+- The signed curated catalogue is empty in a fresh installation until the operator publishes reviewed entries. Curated installs skip dependency scripts; a bundle that requires them must be installed through the conversation flow with explicit script approval.
 
 <a id="failure-behavior"></a>
 ### Failure behavior

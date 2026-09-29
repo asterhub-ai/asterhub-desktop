@@ -55,7 +55,7 @@
 
 ### `plugin_manager`
 
-列出当前 profile 中的插件或组合包，启用或禁用它们，安装组合包或移除已安装的组合包。每项操作都要求 danger-full-access 权限或本次调用的批准。批准不改变会话权限模式。变更影响该 profile 的所有会话。先列出条目以获取准确标识。包安装可能运行已获批准的构建脚本。支持热更新的 profile 立即应用变更；仅启动时加载的 profile 需要重启。
+列出当前 profile 的插件或组合包并管理启停、安装和移除。来源允许用户请求的任意 npm、git、tarball 或本地组合包。添加 MCP 时，通过安装挂载 stdio 或 Streamable HTTP 服务的 DSH bundle（含 `@deepseek-ai/dsh-mcp-client`），之后可用同一工具管理组合包生命周期。不要在提示或组合包源码中放秘密值。每项操作都要求 danger-full-access 权限或本次调用的批准。批准不改变会话权限模式。变更影响该 profile 的所有会话。先列出条目以获取准确标识。包安装可能运行已获批准的构建脚本。支持热更新的 profile 立即应用变更；仅启动时加载的 profile 需要重启。
 
 ```json
 {

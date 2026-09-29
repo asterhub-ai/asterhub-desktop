@@ -158,6 +158,34 @@ function currentSelection(ctx: Context, sessionId: SessionId) {
 }
 
 describe('Web session model selection', () => {
+  it('rejects model changes and ignores legacy selections in a fixed deployment', async () => {
+    const { ctx, agent, sessionId } = await harness({
+      provider: 'deepseek-official',
+      model: 'deepseek-reasoner',
+      reasoningEffort: ReasoningEffortId('max'),
+    })
+    const fixed = { provider: 'deepseek-official', model: 'deepseek-chat' }
+    const saveSelection = vi.fn()
+    const remote = createSessionTestRemote(ctx, {
+      defaultModelSelection: () => fixed,
+      saveDefaultModelSelection: saveSelection,
+      modelSelectionPolicy: 'fixed',
+      cwd: '/tmp',
+    })
+    const session = ctx.sessions.get(sessionId)
+    if (session === undefined) throw new Error('expected live test Session')
+    const before = ctx.sessionProjections.stateOf(session, 'modelSelection')
+
+    expect(await remote.selectModel(request({ sessionId, provider: 'other', model: 'other' }))).toMatchObject({
+      ok: false,
+      error: { code: 'session/model-selection-disabled' },
+    })
+    expect(ctx.sessionProjections.stateOf(session, 'modelSelection')).toEqual(before)
+    expect(new ApiSessionAgentController(ctx, true).selectionFor(agent).current).toEqual(fixed)
+    expect(saveSelection).not.toHaveBeenCalled()
+    await ctx.fiber.dispose()
+  })
+
   it('validates an ordered image batch before persisting any member', async () => {
     const { ctx, agent, sessionId } = await harness()
     const validateImage = vi.fn((_input: { data: Uint8Array }) => Promise.resolve())
@@ -386,6 +414,22 @@ describe('Web session model selection', () => {
     await ctx.fiber.dispose()
   })
 
+  it('projects only the deployment route and model when the catalog is fixed', async () => {
+    const { ctx } = await harness()
+    const catalog = await buildModelCatalog(ctx, {
+      provider: 'deepseek-official',
+      model: 'deepseek-chat',
+    }, true)
+
+    expect(catalog.routableProviders).toEqual(['deepseek-official'])
+    expect(catalog.groups).toMatchObject([{
+      id: 'deepseek-official',
+      models: [{ id: 'deepseek-chat' }],
+    }])
+    expect(catalog.groups[0]?.models).toHaveLength(1)
+    await ctx.fiber.dispose()
+  })
+
   it('preserves optional catalog metadata and string provider failures', async () => {
     const { ctx } = await harness()
     ctx.llm.registerAdapter(['plain'], new CatalogAdapter('Plain', [
@@ -398,7 +442,6 @@ describe('Web session model selection', () => {
     }))
     ctx.llm.registerAdapter(['string-failure'], new class extends CatalogAdapter {
       override listModels(): Promise<readonly LlmModelInfo[]> {
-        // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- non-Error provider normalization is the scenario.
         return Promise.reject('string catalog failure')
       }
     }('String Failure', []))
@@ -657,7 +700,6 @@ describe('Web session model selection', () => {
     }('Image Capable', []))
     ctx.llm.registerAdapter(['string-error'], new class extends CatalogAdapter {
       override resolveModel(): Promise<LlmResolvedModelInfo> {
-        // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- non-Error provider normalization is the scenario.
         return Promise.reject('string selection failure')
       }
     }('String Error', []))
