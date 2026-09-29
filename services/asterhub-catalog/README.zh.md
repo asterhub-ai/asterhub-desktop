@@ -48,4 +48,4 @@ node server.mjs
 
 服务默认监听 `0.0.0.0:8080`，可设置 `PORT` 和 `CATALOG_DATA_DIR`。Docker Compose 将容器端口绑定到 `127.0.0.1:18081`，移除 Linux capabilities，以只读容器运行，并将 `data/` 只读挂载。Nginx 示例虚拟主机描述未来 TLS 代理；证书路径交由主机现有证书管理器配置。
 
-当前已部署目录为修订版 2，包含 GenOffice CLI 与 Aster IM；安装包以不可变 tarball 存放在 `data/releases/`。每次修改目录都必须提高修订号并重新签名。精选目录和安装包路由已在 `https://asterhub.xapi.fans` 生效。独立的 electron-updater feed 尚未配置；发布插件包时不要改动现有 Cloudflare 路由。
+当前已部署目录为修订版 3，包含 GenOffice CLI 与 Aster IM；安装包以不可变 tarball 存放在 `data/releases/`。每次修改目录都必须提高修订号并重新签名。精选目录和安装包路由已在 `https://asterhub.xapi.fans` 生效。独立的 electron-updater feed 尚未配置；发布插件包时不要改动现有 Cloudflare 路由。
