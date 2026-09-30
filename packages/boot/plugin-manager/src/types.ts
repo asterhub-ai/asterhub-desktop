@@ -18,8 +18,6 @@ export interface CuratedPluginEntry {
   /** Package identity and immutable version shown for transparency. */
   package: string
   version: string
-  /** Optional signed same-origin release tarball. When absent, the exact registry version is installed. */
-  artifactUrl?: string
   /** Integrity value for the exact tarball installed by the curated app action. */
   integrity: string
   /** Same-origin immutable server tarball selected for on-demand installation. */
@@ -36,8 +34,6 @@ export interface CuratedPluginInstallRequest {
   revision: number
   package: string
   version: string
-  /** Exact signed release tarball URL displayed by the page, when present. */
-  artifactUrl?: string
   integrity: string
   artifactUrl: string
 }

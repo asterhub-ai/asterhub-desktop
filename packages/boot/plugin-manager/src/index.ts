@@ -313,7 +313,7 @@ export function curatedLockIntegrityMatches(
   ].filter(reference => reference !== undefined)
   if (directReferences.length !== 1) return false
   const direct = directReferences[0]
-  if (direct?.specifier !== entry.artifactUrl || typeof direct.version !== 'string'
+  if (direct === undefined || direct.specifier !== entry.artifactUrl || typeof direct.version !== 'string'
     || !(direct.version === entry.version
       || direct.version.startsWith(`${entry.version}(`) && direct.version.endsWith(')'))) return false
   const peerSuffix = direct.version.slice(entry.version.length)

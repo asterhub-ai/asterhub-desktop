@@ -187,12 +187,15 @@
     # webserver under /api; browser half is the fetch/SSE client.
     - id: connection
       name: '@deepseek-ai/dsh-client-connection'
-      inject: [webRuntime]
+      # Electron builds serve only loopback, so keep the authentication service
+      # on the profile root for the Desktop launcher handoff. Regular Web mode
+      # inherits the Web runtime's configured trusted-host authority list.
+      inject: !!js "ctx.get('profileContext')?.name === 'desktop' ? [] : ['webRuntime']"
       config:
         # LAN literals derived from the active bind plus --trusted-host extras.
         # A deployment adding authorities keeps this expression and concatenates
         # its literals, for example: ['app.internal', ...ctx.webRuntime.trustedHosts].
-        trustedHosts: !!js ctx.webRuntime.trustedHosts
+        trustedHosts: !!js "ctx.get('profileContext')?.name === 'desktop' ? [] : ctx.webRuntime.trustedHosts"
 
     # Raw Blob and ReadableStream uploads run independently of Connection's
     # RPC and generation service.
