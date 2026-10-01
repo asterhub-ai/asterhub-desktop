@@ -32,6 +32,24 @@ function transport(preference?: string) {
 const url = 'http://127.0.0.1:19387/?token=fixture'
 
 describe('desktop welcome Web operations', () => {
+  it('reads AsterHub login without upstream account or model setup APIs', async () => {
+    const methods: string[] = []
+    const send: Parameters<typeof connectDesktopWelcome>[1] = async (_input, init) => {
+      if (init?.method !== 'POST') return new Response('index')
+      const { rpcId, method } = JSON.parse(String(init.body)) as { rpcId: string; method: string }
+      methods.push(method)
+      const value = method === 'settings/describe'
+        ? { namespaces: [{ ns: 'locale', value: { preference: 'zh' } }] }
+        : method === 'accountSub2api/getStatus' ? { loggedIn: false, keyBound: false } : undefined
+      if (value === undefined) return new Response(null, { status: 404 })
+      return Response.json({ type: 'server-response', rpcId, result: { ok: true, value } })
+    }
+    const backend = await connectDesktopWelcome(url, send, undefined, { account: 'asterhub' })
+    expect(await backend.read()).toEqual({ loggedIn: false, hasApiKey: false, writable: false, localePreference: 'zh' })
+    expect(await backend.save('unused-key')).toEqual({ ok: false })
+    expect(methods).toEqual(['settings/describe', 'accountSub2api/getStatus'])
+  })
+
   it('authenticates through Web and stores only through the configured credential reference', async () => {
     const host = transport()
     const backend = await connectDesktopWelcome(url, host.send)

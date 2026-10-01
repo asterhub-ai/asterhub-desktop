@@ -44,6 +44,7 @@ export async function connectDesktopWelcome(
   authenticatedUrl: string,
   send: (input: string, init?: RequestInit) => Promise<Response>,
   cookies: () => Promise<string> = () => Promise.resolve(''),
+  options?: { readonly account: 'asterhub' },
 ): Promise<DesktopWelcomeBackend> {
   const origin = new URL(authenticatedUrl).origin
   const authenticated = await send(authenticatedUrl, { credentials: 'include' })
@@ -60,7 +61,7 @@ export async function connectDesktopWelcome(
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ type: 'client-request', rpcId, method, payload: { args: request.args } }),
     })
-    if (!response.ok) throw new Error('desktop welcome: Web request failed')
+    if (!response.ok) throw new Error(`desktop welcome: Web request failed (${method}, ${String(response.status)})`)
     const envelope: unknown = await response.json()
     if (!record(envelope) || envelope.type !== 'server-response' || envelope.rpcId !== rpcId
       || !record(envelope.result) || envelope.result.ok !== true) {
@@ -88,6 +89,16 @@ export async function connectDesktopWelcome(
     return locale.value.preference ?? null
   }
   const read = async (): Promise<WelcomeState> => {
+    if (options?.account === 'asterhub') {
+      const settings = await invoke({ namespace: 'settings', method: 'describe', args: {} })
+      const status = await invoke({ namespace: 'accountSub2api', method: 'getStatus', args: {} })
+      if (!record(settings) || !Array.isArray(settings.namespaces)
+        || !record(status) || typeof status.loggedIn !== 'boolean' || typeof status.keyBound !== 'boolean') {
+        throw new Error('desktop: invalid account entry state')
+      }
+      return { loggedIn: status.loggedIn, hasApiKey: status.keyBound, writable: false,
+        localePreference: localePreference(settings.namespaces) }
+    }
     const { settings, ref } = await settingsAndReference()
     const providers = await invoke({ namespace: 'llm', method: 'listConfigurableProviders', args: {} })
     if (!Array.isArray(providers)) throw new Error('desktop welcome: invalid provider directory')
@@ -135,6 +146,7 @@ export async function connectDesktopWelcome(
       return localePreference(settings.namespaces)
     },
     async save(apiKey) {
+      if (options?.account === 'asterhub') return { ok: false }
       if (!/^[\x21-\x7e]+$/.test(apiKey)) return { ok: false }
       try {
         const { ref } = await settingsAndReference()
