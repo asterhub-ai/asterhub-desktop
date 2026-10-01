@@ -15,9 +15,8 @@
 
 - id: system-prompt
   config:
-    personaSuffix: Your working directory is {{cwd}}.
-    personaPrefix: >-
-      You are a coding agent powered by the {{model}} model.
+    personaSuffix: 当前工作目录：{{cwd}}。
+    personaPrefix: 当前会话使用 {{model}} 模型。
 
 # Full-text session search is opt-in (the base row's `openAt: never`). This
 # restatement keeps the Web values on one ephemeral in-memory index; a
@@ -97,7 +96,7 @@
     - id: session-controller
       name: '@deepseek-ai/dsh-api-session-controller'
       config:
-        modelSelectionPolicy: fixed
+        modelSelectionPolicy: session
 
     # One background job's observation record streamed over Typert Remote;
     # the roster rides the session control stream above.
@@ -280,6 +279,8 @@
     # bundles the sidebar page leaves out are inspected here.
     - id: ui-settings-plugin-inventory
       name: '@deepseek-ai/dsh-client-ui-settings-plugin-inventory'
+      config:
+        curatedCatalog: true
 
     - id: ui-conversation
       name: '@deepseek-ai/dsh-client-ui-conversation'
@@ -375,9 +376,10 @@
     - id: ui-message-feedback
       name: '@deepseek-ai/dsh-client-ui-message-feedback'
 
-    # Model selection is intentionally not mounted: AsterHub always uses the
-    # deployment default model (sub2api/aster), so the composer has no
-    # model-picker seat.
+    # The picker receives only the deployment-owned AsterHub route and its
+    # authenticated upstream model list. Provider configuration stays locked.
+    - id: ui-model-selection
+      name: '@deepseek-ai/dsh-client-ui-model-selection'
 
     - id: ui-permission
       name: '@deepseek-ai/dsh-client-ui-permission-presets'

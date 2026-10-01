@@ -60,6 +60,8 @@ declare module '@deepseek-ai/cordis' {
     applicationModelRoute?: Readonly<{
       provider: string
       model: string
+      selectableModels?: boolean
+      syncModels?: boolean
       baseURL?: string
       api?: string
       credentialRecord?: string
@@ -355,13 +357,16 @@ export class LlmRuntime extends TypertRemoteService {
     string,
     (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>
   >()
-  private fixedRoute: Readonly<{ provider: string; model: string }> | undefined
+  private fixedRoute: Readonly<{ provider: string; model?: string }> | undefined
   private fixedRouteLocked = false
 
   constructor(ctx: Context) {
     super(ctx, 'llm')
     const route = ctx.get('applicationModelRoute')
-    if (route !== undefined) this.lockRoute(route.provider, route.model)
+    if (route !== undefined) {
+      if (route.selectableModels === true) this.lockProvider(route.provider)
+      else this.lockRoute(route.provider, route.model)
+    }
   }
 
   /** Install an application-owned route ceiling before adapters are mounted.
@@ -377,10 +382,18 @@ export class LlmRuntime extends TypertRemoteService {
     this.fixedRouteLocked = true
   }
 
+  /** Lock the application to one provider while allowing its advertised models. */
+  lockProvider(provider: string): void {
+    if (provider.length === 0) throw new LlmError('a fixed provider route needs a non-empty provider id', 'INVALID_FIXED_ROUTE')
+    if (this.fixedRouteLocked) throw new LlmError('the fixed model route is already owned by the application', 'FIXED_ROUTE_LOCKED')
+    this.fixedRoute = Object.freeze({ provider })
+    this.fixedRouteLocked = true
+  }
+
   /** Reject a route that differs from the application-owned model route. */
   private assertFixedRoute(config: Pick<LlmCallConfig, 'provider' | 'model'>): void {
     const fixed = this.fixedRoute
-    if (fixed !== undefined && (config.provider !== fixed.provider || config.model !== fixed.model)) {
+    if (fixed !== undefined && (config.provider !== fixed.provider || (fixed.model !== undefined && config.model !== fixed.model))) {
       throw new LlmError('model route is fixed by this application', 'MODEL_ROUTE_LOCKED')
     }
   }
@@ -797,7 +810,8 @@ export class LlmRuntime extends TypertRemoteService {
     model: string,
     signal?: AbortSignal,
   ): Promise<LlmResolvedModelInfo> {
-    if (this.fixedRoute !== undefined && (provider !== this.fixedRoute.provider || model !== this.fixedRoute.model)) {
+    if (this.fixedRoute !== undefined && (provider !== this.fixedRoute.provider
+      || (this.fixedRoute.model !== undefined && model !== this.fixedRoute.model))) {
       throw new LlmError('model route is fixed by this application', 'MODEL_ROUTE_LOCKED')
     }
     return this.resolveModelInfoFor(this.registration(provider), model, signal)

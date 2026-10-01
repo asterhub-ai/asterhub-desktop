@@ -1,4 +1,4 @@
-# DeepSeek Harness Architecture
+# AsterHub Architecture
 
 English | [中文](architecture.zh.md)
 

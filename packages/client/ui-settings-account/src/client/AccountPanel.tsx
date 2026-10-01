@@ -380,6 +380,7 @@ export function AccountPanel({
           {t('refresh')}
         </button>
       </div>
+      <p className={css.muted}>{t('balanceHint')}</p>
       <div className={css.group}>
         <span className={css.groupTitle}>{t('topUpTitle')}</span>
         <label className={css.fieldLabel}>

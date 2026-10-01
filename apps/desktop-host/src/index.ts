@@ -31,6 +31,8 @@ async function main(): Promise<void> {
       hostCtx.provide('applicationModelRoute', Object.freeze({
         provider: 'sub2api',
         model: 'aster',
+        selectableModels: true,
+        syncModels: true,
         baseURL: 'https://xapi.fans/v1',
         api: 'openai-completions',
         credentialRecord: 'asterhub-account/model-api-key',

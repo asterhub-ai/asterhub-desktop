@@ -43,6 +43,9 @@
     },
     {
       "path": "../store"
+    },
+    {
+      "path": "../../boot/plugin-manager"
     }
   ]
 }

@@ -110,7 +110,10 @@ export function apply(ctx) {
       throw new Error('desktop runtime: packaged frontend smoke failed')
     }
     const pluginResponse = await fetch(new URL('/desktop-smoke', ready.url), { headers: { cookie } })
-    if (await pluginResponse.text() !== 'plugin route ready') throw new Error('desktop runtime: plugin HTTP route failed')
+    const pluginResponseText = await pluginResponse.text()
+    if (pluginResponseText !== 'plugin route ready') {
+      throw new Error(`desktop runtime: plugin HTTP route failed (${String(pluginResponse.status)}): ${pluginResponseText}`)
+    }
     for (const { extension } of inputs) {
       const converted = await fetch(new URL(`/desktop-smoke-office/${extension}`, ready.url), {
         headers: { cookie }, signal: AbortSignal.timeout(120_000),
@@ -134,6 +137,6 @@ export function apply(ctx) {
   } finally {
     clearTimeout(timer)
     await host.stop()
-    rmSync(home, { recursive: true, force: true })
+    rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }
 }

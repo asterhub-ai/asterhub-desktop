@@ -2,6 +2,7 @@
 
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-modules/client'
+import type {} from '@deepseek-ai/dsh-plugin-manager/types'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
@@ -27,11 +28,42 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const NS = 'settings.pluginInventory'
 
 /** Services required by the Settings registration and generated Remote face. */
-export const inject = ['slots', 'locale', 'remote', 'remote.pluginInventory', 'modules']
+export const inject = ['slots', 'locale', 'remote', 'remote.pluginInventory', 'remote.pluginManager', 'modules']
 
 /** Contribute the lazy inventory tab to the Plugins settings section. */
-export function apply(ctx: ClientContext): void {
+export function apply(ctx: ClientContext, config?: { readonly curatedCatalog?: boolean }): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-settings-plugin-inventory: dictionaries')
+
+  if (config?.curatedCatalog === true) {
+    const t = ctx.locale.bind(NS)
+    const catalog: PluginInventorySettingsTabInjected['catalog'] = async () => {
+      const result = await ctx.remote.pluginManager.curatedCatalog()
+      if (!result.ok) throw new Error('curated catalogue is unavailable')
+      return result.value
+    }
+    const install: PluginInventorySettingsTabInjected['install'] = async (request) => {
+      const result = await ctx.remote.pluginManager.installCuratedBundle(request)
+      if (!result.ok) throw new Error('curated installation failed')
+      return result.value
+    }
+    const inject = (): PluginInventorySettingsTabInjected => ({
+      catalog, install,
+      list: async () => ({ entries: [] }),
+      presetName: preset => preset.name ?? preset.id,
+      resolveText: text => ctx.locale.resolveText(text),
+      hooks: { clientSync: ctx.modules.entries.state },
+      retryClient: () => {},
+    })
+    ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
+      name: 'settings.plugins.tab',
+      id: 'curated',
+      order: 10,
+      label: () => t('tab'),
+      locale: NS,
+      inject,
+    }, PluginInventorySettingsTab))
+    return
+  }
 
   const t = ctx.locale.bind(NS)
   const list: PluginInventorySettingsTabInjected['list'] = async () => {

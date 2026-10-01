@@ -159,13 +159,17 @@ export function apply(ctx: Context, config: Config): void {
       api: applicationRoute.api ?? 'openai-completions',
       baseURL: applicationRoute.baseURL ?? 'https://xapi.fans/v1',
       credentialRecord: applicationRoute.credentialRecord ?? 'asterhub-account/model-api-key',
+      syncModels: applicationRoute.syncModels === true,
       models: [{
         id: applicationRoute.model,
         name: 'AsterHub',
         contextWindow: applicationRoute.contextWindow ?? 262_144,
         maxTokens: applicationRoute.maxTokens ?? 32_768,
         input: ['text'],
+        reasoningEfforts: { off: null, low: 'low', medium: 'medium', high: 'high' },
+        compat: { thinkingFormat: 'openai' },
       }],
+      reasoning: 'medium',
     },
   }
   let lastRaw: ReturnType<Config['providers']['get']> | undefined
@@ -250,6 +254,15 @@ export function apply(ctx: Context, config: Config): void {
   const adapter = new PiAiAdapter({
     profiles,
     resolveApiKey,
+    syncModels: (profile, signal) => discoverModels({
+      provider: profile.provider,
+      ...profile.baseURL === undefined ? {} : { baseURL: profile.baseURL },
+      ...profile.api === undefined ? {} : { api: profile.api },
+      signal: signal ?? AbortSignal.timeout(8_000),
+    }, () => ({
+      headers: profile.headers,
+      resolveApiKey: () => resolveApiKey(profile.provider, profile),
+    })),
     auth,
     resolveAttachments: () => ctx.get('attachments'),
     resolveImageAccess: (attachments, ref) => resolveImageAttachmentAccess(
@@ -264,6 +277,9 @@ export function apply(ctx: Context, config: Config): void {
       )
     },
   })
+  ctx.effect(() => ctx.on('credentials/record-updated', () => {
+    adapter.invalidateModelCatalog()
+  }), 'llm-pi-ai: upstream model catalog credential invalidation')
   // Independent of the route set: signing in is what makes a route worth
   // adding, so the flows are offered before any profile names their provider.
   // Scoped to the authorization seam rather than injected outright, because a

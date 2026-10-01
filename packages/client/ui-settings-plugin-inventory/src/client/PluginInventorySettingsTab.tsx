@@ -13,6 +13,7 @@ import {
 import type { StateDotState, TagTone } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { PluginInventoryLocaleKey } from './locales.ts'
+import { CuratedPluginSettingsTab } from './CuratedPluginSettingsTab.tsx'
 import css from './PluginInventorySettingsTab.module.css'
 
 type PluginInventoryEntry = PluginInventorySnapshot['entries'][number]
@@ -34,6 +35,10 @@ export interface PluginInventorySettingsTabInjected {
    * agent-preset dictionaries, user-authored ones keep their own metadata.
    */
   presetName: (preset: AgentPresetGroup) => string
+  /** Present in the AsterHub profile, which surfaces the signed catalogue instead. */
+  catalog?: () => Promise<import('@deepseek-ai/dsh-plugin-manager/types').CuratedPluginCatalog>
+  /** Present in the AsterHub profile, which installs only catalogue entries. */
+  install?: (request: import('@deepseek-ai/dsh-plugin-manager/types').CuratedPluginInstallRequest) => Promise<import('@deepseek-ai/dsh-plugin-manager/types').ChangeResult>
 }
 type PluginFiberPhase = PluginInventoryEntry['fiberPhase']
 
@@ -249,7 +254,18 @@ function StateTag({ kind, label }: { readonly kind: EnablementKind; readonly lab
 }
 
 /** Render the read-only plugin inventory: agent presets first, then the global plane. */
-export function PluginInventorySettingsTab(
+export function PluginInventorySettingsTab(props: PluginInventorySettingsTabProps): ReactNode {
+  if (props.catalog !== undefined && props.install !== undefined) {
+    return <CuratedPluginSettingsTab
+      catalog={props.catalog}
+      install={props.install}
+      t={props.t as (key: PluginInventoryLocaleKey) => string}
+    />
+  }
+  return <PluginInventorySnapshotSettingsTab {...props} />
+}
+
+function PluginInventorySnapshotSettingsTab(
   { list, presetName, resolveText, t, useClientSync, retryClient }: PluginInventorySettingsTabProps,
 ): ReactNode {
   const clientSync = useClientSync(snapshot => snapshot)

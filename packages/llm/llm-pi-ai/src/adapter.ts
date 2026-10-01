@@ -47,6 +47,7 @@ import {
 import type {
   GenerateOptions,
   ImageAttachmentAccess,
+  LlmDiscoveredModel,
   LlmModelInfo,
   LlmProviderInfo,
   LlmResolvedModelInfo,
@@ -74,6 +75,8 @@ interface PiAiSnapshot {
 export interface PiAiAdapterOptions {
   /** Current validated profiles by provider route; called once per operation. */
   profiles: () => ReadonlyMap<string, ResolvedPiAiProviderProfile>
+  /** Read the current upstream catalog for deployment-locked application routes. */
+  syncModels?: (profile: ResolvedPiAiProviderProfile, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>
   /**
    * Resolve the credential for one already-resolved profile; called once per
    * stream call and frozen for that call. `undefined` defers to the route's own
@@ -218,9 +221,25 @@ function requestHeaders(headers: Readonly<Record<string, string>> | undefined): 
  */
 export class PiAiAdapter extends LlmAdapter {
   private snapshot: PiAiSnapshot | undefined
+  private readonly dynamicCatalogs = new Map<string, {
+    models: readonly Model<Api>[]
+    expiresAt: number
+    inflight?: Promise<void> | undefined
+  }>()
 
   constructor(private readonly config: PiAiAdapterOptions) {
     super()
+  }
+
+  /** Invalidate cached upstream model lists after the account credential changes. */
+  invalidateModelCatalog(provider?: string): void {
+    const entries = provider === undefined
+      ? [...this.dynamicCatalogs.entries()]
+      : [[provider, this.dynamicCatalogs.get(provider)] as const]
+    for (const [id, catalog] of entries) {
+      if (catalog !== undefined) catalog.expiresAt = 0
+      else this.dynamicCatalogs.delete(id)
+    }
   }
 
   /**
@@ -234,10 +253,65 @@ export class PiAiAdapter extends LlmAdapter {
     if (this.snapshot?.profiles === profiles) return this.snapshot
     const models: MutableModels = createModels(this.config.auth)
     for (const profile of profiles.values()) {
-      if (profile.piProvider !== undefined) models.setProvider(profile.piProvider)
+      if (profile.piProvider === undefined) continue
+      if (profile.syncModels !== true || this.config.syncModels === undefined) {
+        models.setProvider(profile.piProvider)
+        continue
+      }
+      const staticProvider = profile.piProvider
+      models.setProvider({
+        ...staticProvider,
+        getModels: () => {
+          const base = staticProvider.getModels()
+          const baseIds = new Set(base.map(model => model.id))
+          const dynamic = this.dynamicCatalogs.get(profile.provider)?.models ?? []
+          return [...base, ...dynamic.filter(model => !baseIds.has(model.id))]
+        },
+      })
     }
     this.snapshot = { profiles, models }
     return this.snapshot
+  }
+
+  /** Fetch an application-owned model list and keep the last good list during transient failures. */
+  private async syncModelCatalog(profile: ResolvedPiAiProviderProfile, signal?: AbortSignal): Promise<void> {
+    const sync = this.config.syncModels
+    if (profile.syncModels !== true || sync === undefined) return
+    const now = Date.now()
+    let catalog = this.dynamicCatalogs.get(profile.provider)
+    if (catalog !== undefined && catalog.expiresAt > now) return
+    if (catalog?.inflight !== undefined) return catalog.inflight
+    if (catalog === undefined) {
+      catalog = { models: [], expiresAt: 0, inflight: undefined }
+      this.dynamicCatalogs.set(profile.provider, catalog)
+    }
+    const target = catalog
+    const operation = sync(profile, signal).then((entries) => {
+      const template = profile.piProvider?.getModels()[0]
+      if (template === undefined) throw new LlmError(`provider "${profile.provider}" has no model template`, 'INVALID_CONFIG')
+      const seen = new Set<string>()
+      target.models = entries.flatMap((entry, index) => {
+        if (entry.id.length === 0 || seen.has(entry.id)) return []
+        seen.add(entry.id)
+        const name = (entry.name ?? entry.id)
+          .replace(/deepseek/giu, '')
+          .replace(/\s+/gu, ' ')
+          .replace(/^[-:_\s]+|[-:_\s]+$/gu, '') || `Model ${index + 1}`
+        return [{
+          ...template,
+          id: entry.id,
+          name,
+          provider: profile.provider,
+          ...profile.baseURL === undefined ? {} : { baseUrl: profile.baseURL },
+          contextWindow: entry.contextWindow ?? template.contextWindow,
+          maxTokens: entry.maxTokens ?? template.maxTokens,
+          input: entry.inputModalities === undefined ? [...template.input] : [...entry.inputModalities],
+        }]
+      })
+      target.expiresAt = Date.now() + 60_000
+    }).finally(() => { target.inflight = undefined })
+    target.inflight = operation
+    return operation
   }
 
   /** The profile for one route within one snapshot, or the not-owned failure. */
@@ -273,28 +347,26 @@ export class PiAiAdapter extends LlmAdapter {
     return this.current().profiles.get(provider)?.retryPolicy
   }
 
-  override listModels(provider: string): Promise<readonly LlmModelInfo[]> {
-    return Promise.resolve().then(() => {
-      const snapshot = this.current()
-      this.profileOf(snapshot, provider)
-      return snapshot.models.getModels(provider).map(model => ({
-        provider,
-        id: model.id,
-        name: model.name,
-        inputModalities: [...model.input],
-      }))
-    })
+  override async listModels(provider: string): Promise<readonly LlmModelInfo[]> {
+    const snapshot = this.current()
+    const profile = this.profileOf(snapshot, provider)
+    await this.syncModelCatalog(profile).catch(() => undefined)
+    return snapshot.models.getModels(provider).map(model => ({
+      provider,
+      id: model.id,
+      name: model.name,
+      inputModalities: [...model.input],
+    }))
   }
 
-  override resolveModel(
+  override async resolveModel(
     provider: string,
     model: string,
-    _signal?: AbortSignal,
+    signal?: AbortSignal,
   ): Promise<LlmResolvedModelInfo> {
-    return Promise.resolve().then(() => {
-      const snapshot = this.current()
-      return this.modelInfo(snapshot, provider, model)
-    })
+    const snapshot = this.current()
+    await this.syncModelCatalog(this.profileOf(snapshot, provider), signal).catch(() => undefined)
+    return this.modelInfo(snapshot, provider, model)
   }
 
   private modelInfo(snapshot: PiAiSnapshot, provider: string, model: string): LlmResolvedModelInfo {
@@ -315,8 +387,9 @@ export class PiAiAdapter extends LlmAdapter {
     }
   }
 
-  override prepareCall(provider: string, model: string, _signal?: AbortSignal): Promise<PreparedAdapterCall> {
+  override async prepareCall(provider: string, model: string, signal?: AbortSignal): Promise<PreparedAdapterCall> {
     const snapshot = this.current()
+    await this.syncModelCatalog(this.profileOf(snapshot, provider), signal).catch(() => undefined)
     return Promise.resolve({
       model: this.modelInfo(snapshot, provider, model),
       stream: options => this.streamWithSnapshot(options, snapshot),

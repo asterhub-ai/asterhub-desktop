@@ -129,11 +129,11 @@ URL 行与浏览器交接都是就绪信号：监督方一观察到该行就发�
 <a id="model-experience"></a>
 ## 模型体验
 
-### Harness 源码与 Web 表层上下文
+### 源码与桌面应用上下文
 
 #### 模型看到什么
 
-当 `surfaceContext` 为 true 时，`harness:source` 段落标明磁盘上的 Harness 实现，但不会声称它就是工作目录；全局段落 `app:web-surface`（first-party 顺序 10100，位于可复用指令之后）则向模型说明 GUI：规范的本地 URL、「this page」指代什么、更新约定（重载接收端始终开启；无刷新重载还需要 `pnpm run dev:web` watcher），以及不要启动替代服务器的指令。`DSH_WEB_URL` 还会连同描述出现在受管 bash 环境中，每次调用时从运行中的服务器解析。当它为 false 时，这两个段落和该变量都不会注册。
+当 `surfaceContext` 为 true 时，`harness:source` 段落标明磁盘上的 AsterHub 实现，但不会声称它就是工作目录；`app:web-surface` 段落说明当前产品界面属于 AsterHub 桌面应用，不再向模型提供浏览器地址或开发服务器指令。独立的 `DSH_WEB_URL` 变量仍供开发会话中的受管 bash 使用，并从运行中的服务器解析。当 `surfaceContext` 为 false 时，这两个段落和该变量都不会注册。
 
 #### Token 影响
 
@@ -141,7 +141,7 @@ URL 行与浏览器交接都是就绪信号：监督方一观察到该行就发�
 
 #### KV Cache 影响
 
-源码与 Web 段落位于第一方可复用指令之后。工具与配置一致时，不同 checkout 路径或本地端口不会改变前置前缀；不保证提供方复用缓存。
+源码与桌面应用段落位于第一方可复用指令之后。工具与配置一致时，不同 checkout 路径不会改变前置前缀；不保证提供方复用缓存。
 
 ## 已知限制与延期工作
 

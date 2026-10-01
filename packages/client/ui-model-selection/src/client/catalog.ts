@@ -4,6 +4,8 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { ModelCatalog, ModelSelection, ModelProviderGroup } from '@deepseek-ai/dsh-api-remotes/client'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 
+const MODEL_CATALOG_FRESH_MS = 60_000
+
 /** Observable lifecycle of the shared model catalog. */
 export interface ModelCatalogState {
   value: ModelCatalog | null
@@ -33,6 +35,7 @@ export class ModelCatalogDirectory {
 
   private generation = 0
   private inflight: Promise<ModelCatalog> | undefined
+  private loadedAt = 0
 
   /**
    * @param ctx - the providing plugin's context, whose `remote.session`
@@ -46,7 +49,9 @@ export class ModelCatalogDirectory {
    */
   load(): Promise<ModelCatalog> {
     const state = this.store.getSnapshot()
-    if (state.status === 'ready' && state.value !== null) return Promise.resolve(state.value)
+    if (state.status === 'ready' && state.value !== null && Date.now() - this.loadedAt < MODEL_CATALOG_FRESH_MS) {
+      return Promise.resolve(state.value)
+    }
     if (this.inflight !== undefined) return this.inflight
     const generation = this.generation
     this.store.update((draft) => {
@@ -64,6 +69,7 @@ export class ModelCatalogDirectory {
           }
         }
         this.store.set({ value: response.value, status: 'ready', error: null })
+        this.loadedAt = Date.now()
       }
       return response.value
     }).catch((error: unknown) => {
@@ -88,6 +94,7 @@ export class ModelCatalogDirectory {
   private invalidate(clear = false): void {
     this.generation += 1
     this.inflight = undefined
+    this.loadedAt = 0
     const value = clear ? null : this.store.getSnapshot().value
     this.store.set({ value, status: 'idle', error: null })
   }

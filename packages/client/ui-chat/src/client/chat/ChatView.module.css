@@ -154,41 +154,43 @@
   font-variant-numeric: tabular-nums;
 }
 
-.runningIcon {
-  position: relative;
-  display: inline-flex;
+.thinkingStar {
+  display: block;
   flex: none;
-  width: calc(14px + var(--dsh-content-font-delta, 0px));
-  height: calc(14px + var(--dsh-content-font-delta, 0px));
-  /* The fixed footprint contains the animation's layout and paint. */
-  contain: strict;
-  overflow: hidden;
+  width: calc(16px + var(--dsh-content-font-delta, 0px));
+  height: calc(16px + var(--dsh-content-font-delta, 0px));
+  overflow: visible;
+  transform-origin: center;
+  animation: thinking-star-turn 3.2s ease-in-out infinite;
 }
 
-.runningWhaleAnimated {
-  display: none;
-  position: absolute;
-  inset: 0;
+.thinkingStarMain {
+  fill: #7055d9;
+  transform-origin: 12px 12px;
+  animation: thinking-star-glow 1.7s ease-in-out infinite;
 }
 
-.runningWhaleStill {
-  display: initial;
+.thinkingStarAccent {
+  fill: #a58be9;
+  transform-origin: 19px 20px;
+  animation: thinking-star-glow 1.7s ease-in-out -0.8s infinite;
 }
 
-@supports (mask-mode: alpha) and (mask-image: url('')) {
-  @media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
-    .runningWhaleAnimated {
-      display: block;
-      background: currentColor;
-      mask: url('./running-whale@2x.png') center / 100% 100% no-repeat;
-      mask-mode: alpha;
-      /* Keep animated-mask repaints on an icon-sized composited layer. */
-      will-change: transform;
-    }
+@keyframes thinking-star-turn {
+  0%, 100% { transform: rotate(-9deg) scale(.92); }
+  50% { transform: rotate(9deg) scale(1.04); }
+}
 
-    .runningWhaleStill {
-      display: none;
-    }
+@keyframes thinking-star-glow {
+  0%, 100% { opacity: .6; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinkingStar,
+  .thinkingStarMain,
+  .thinkingStarAccent {
+    animation: none;
   }
 }
 

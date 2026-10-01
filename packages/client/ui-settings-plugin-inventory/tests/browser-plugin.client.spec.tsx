@@ -38,6 +38,10 @@ async function bench() {
   const list = vi.fn<() => Promise<ListResult>>()
     .mockResolvedValue({ ok: true, value: EMPTY })
   ctx.provide('remote.pluginInventory', { list })
+  ctx.provide('remote.pluginManager', {
+    curatedCatalog: async () => ({ ok: true, value: { revision: 3, generatedAt: '2026-10-01T00:00:00Z', plugins: [] } }),
+    installCuratedBundle: async () => ({ ok: true, value: { changed: false, application: 'failed', stage: 'install', target: 'unused' } }),
+  } as never)
   return { ctx, retryClient, slots: ctx.get('slots') as SlotRegistry, locale, list }
 }
 
@@ -54,7 +58,7 @@ describe('ui-settings-plugin-inventory browser plugin', () => {
   })
 
   it('declares only the services used by the Settings Remote contribution', () => {
-    expect(inject).toEqual(['slots', 'locale', 'remote', 'remote.pluginInventory', 'modules'])
+    expect(inject).toEqual(['slots', 'locale', 'remote', 'remote.pluginInventory', 'remote.pluginManager', 'modules'])
   })
 
   it('registers a localized tab without reading the Remote eagerly', async () => {
@@ -66,7 +70,7 @@ describe('ui-settings-plugin-inventory browser plugin', () => {
     expect(entry.component).toBe(PluginInventorySettingsTab)
     expect(entry.options).toMatchObject({ id: 'all', order: 10 })
     expect(entry.locale).toBe(NS)
-    expect(resolveSlotLabel(entry.options.label)).toBe('插件列表')
+    expect(resolveSlotLabel(entry.options.label)).toBe('精选插件')
     expect(b.list).not.toHaveBeenCalled()
 
     const injected = (entry.inject as unknown as () => PluginInventorySettingsTabInjected)()

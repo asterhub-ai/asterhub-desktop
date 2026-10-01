@@ -34,7 +34,7 @@ export const en = {
   'expand': 'Expand',
   'back': 'Back',
   'brand.localBuild': 'AsterHub Local Build',
-  'workspace.defaultName': 'Default workspace',
+  'workspace.defaultName': 'My workspace',
   'unknown': 'Unknown',
   'none': 'None',
   'truncated': 'Truncated',
