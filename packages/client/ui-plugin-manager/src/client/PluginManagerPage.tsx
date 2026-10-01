@@ -5,7 +5,7 @@
  */
 import css from './PluginManagerPage.module.css'
 import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { CuratedPluginCatalog } from '@deepseek-ai/dsh-plugin-manager'
+import type { CuratedPluginCatalog } from '@deepseek-ai/dsh-plugin-manager/types'
 
 /** Full component props assembled by the main slot renderer. */
 export type PluginManagerPageProps =

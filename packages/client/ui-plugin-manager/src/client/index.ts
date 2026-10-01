@@ -21,7 +21,7 @@ import { PluginManagerPage } from './PluginManagerPage.tsx'
 import { PluginsPanelIcon } from './PluginsPanelIcon.tsx'
 import { en, zh, type PluginManagerLocaleKey } from './locales.ts'
 import type { PluginConfigViewProps } from './slot-contract.ts'
-import type { ChangeResult, CuratedPluginCatalog } from '@deepseek-ai/dsh-plugin-manager'
+import type { ChangeResult, CuratedPluginCatalog } from '@deepseek-ai/dsh-plugin-manager/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 
 export type { PluginManagerPageProps } from './PluginManagerPage.tsx'
