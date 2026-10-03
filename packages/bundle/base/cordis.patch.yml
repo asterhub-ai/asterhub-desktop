@@ -78,13 +78,13 @@
       name: '@deepseek-ai/dsh-plugin-package-inventory-deepseek'
 
     # The transport-independent default for Agents created by entry points.
-    # AsterHub owns the provider route and default model. Session choices are
+    # AsterHub owns the provider route. No model is selected until the user chooses.
     # limited to models returned by the authenticated route catalog.
     - id: agent-default-model
       name: '@deepseek-ai/dsh-agent-default-model'
       config:
         provider: sub2api
-        model: aster
+        model: __unselected__
         locked: true
 
     - id: jobs
@@ -110,8 +110,8 @@
     - id: credentials
       name: '@deepseek-ai/dsh-credentials-local'
 
-    # The pi-ai adapter serves the fixed AsterHub route. Its endpoint and model
-    # are deployment-owned; the API key comes only from an account-owned Host
+    # The pi-ai adapter serves the fixed AsterHub endpoint and account catalog.
+    # The configured model is a descriptor template; the key comes from an account-owned Host
     # credential record written after Sub2API login.
     - id: llm-pi-ai
       name: '@deepseek-ai/dsh-llm-pi-ai'
@@ -123,8 +123,9 @@
             credentialRecord: asterhub-account/model-api-key
             api: openai-completions
             baseURL: 'https://xapi.fans/v1'
+            syncModels: true
             models:
-              - id: aster
+              - id: __unselected__
                 name: AsterHub
                 contextWindow: 262144
                 maxTokens: 32768

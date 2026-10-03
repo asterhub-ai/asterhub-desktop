@@ -20,6 +20,8 @@ kind: "package-library"
 - [已知限制与延期工作](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
+`ProfileRuntimeResolution` 保留来源参数，可从当前安装、profile 清单与选定组合包重新计算解析。发布新解析可移除已停止的 profile 映射，同时保留安装映射和已加载模块。
+
 -----
 
 <a id="use-this-package"></a>

@@ -382,7 +382,9 @@ export class LlmRuntime extends TypertRemoteService {
     this.fixedRouteLocked = true
   }
 
-  /** Lock the application to one provider while allowing its advertised models. */
+  /** Lock the application to one provider while allowing its advertised models.
+   * @param provider application-owned provider id.
+   */
   lockProvider(provider: string): void {
     if (provider.length === 0) throw new LlmError('a fixed provider route needs a non-empty provider id', 'INVALID_FIXED_ROUTE')
     if (this.fixedRouteLocked) throw new LlmError('the fixed model route is already owned by the application', 'FIXED_ROUTE_LOCKED')

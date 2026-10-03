@@ -52,6 +52,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { inspect, promisify } from 'node:util'
 import { execFile } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
+export const inject = ['webServer', 'officeToPdf', 'skills']
 export function apply(ctx) {
   if (!(ctx instanceof Context)) throw new Error('desktop runtime: external plugin loaded another Cordis instance')
   ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/desktop-smoke',

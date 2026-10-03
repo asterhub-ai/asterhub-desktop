@@ -20,6 +20,8 @@ English | [中文](README.zh.md)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 - [Dev Note](#dev-note)
 
+`ProfileRuntimeResolution` retains its source inputs and can recompute a successor from the current installation, profile manifest, and selected bundles. Publishing it may remove stopped profile mappings while preserving installation mappings and loaded modules.
+
 -----
 
 <a id="use-this-package"></a>

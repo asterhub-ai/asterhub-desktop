@@ -244,8 +244,10 @@ export function ModelSelect(
     triggerRef.current?.focus()
     setQuery('')
     setHighlightedIndex(null)
-    if (state.current === null) paneFocus.current = 'drill'
-    setPane(state.current === null ? 'model' : 'root')
+    const needsSelection = state.current === null
+      || (state.current.provider === 'sub2api' && currentChoice === undefined)
+    if (needsSelection) paneFocus.current = 'drill'
+    setPane(needsSelection ? 'model' : 'root')
     setOpen(true)
     reload()
   }
@@ -415,7 +417,8 @@ export function ModelSelect(
   const modelLabel = waiting
     ? t('trigger.loading')
     : currentChoice?.model.name
-      ?? (state.current === null ? t('trigger.fallback') : `${state.current.provider}/${state.current.model}`)
+      ?? (state.current === null || state.current.provider === 'sub2api'
+        ? t('trigger.fallback') : `${state.current.provider}/${state.current.model}`)
   const triggerLabel = effortLabel === undefined ? modelLabel : `${modelLabel} · ${effortLabel}`
   const triggerAria = waiting
     ? t('trigger.loading')

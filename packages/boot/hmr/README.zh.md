@@ -19,6 +19,8 @@ kind: "package-reference"
 - [已知限制与延期工作](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
+包清单变化会使受影响的 Node 解析缓存失效，同时保留已执行的模块和已加载入口的身份。Office 引擎仍解析到解包资源；刷新不会重新执行已有模块。
+
 -----
 
 <a id="use-this-package"></a>

@@ -6,7 +6,7 @@ AsterHub 是面向日常工作的桌面 AI 工作台，基于插件化 Cordis �
 
 它构建于**一切皆插件**的架构之上，由 [Cordis](https://github.com/cordiverse/cordis) 驱动，其设计参见论文 [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512)。
 
-产品与桌面开发说明：[桌面版交接文档](docs/交接文档.zh.md) · [桌面开发指南](apps/desktop/README.zh.md)
+产品与桌面开发说明：[桌面版交接文档](交接文档.zh.md) · [桌面开发指南](apps/desktop/README.zh.md)
 
 ## 开发者预览
 

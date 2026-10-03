@@ -917,3 +917,21 @@ it('restores the account model name after login without changing the saved route
   expect(screen.getByRole('button', { name: /选择模型，当前/ }).textContent).toBe('DeepSeek FlashHigh')
   expect(directory.getSnapshot().current).toEqual(selected)
 })
+
+
+it('opens the account model picker when a retained aster selection is absent from the account list', async () => {
+  const initial = state({ current: { provider: 'sub2api', model: 'aster' }, groups: [{
+    id: 'sub2api', name: 'AsterHub', models: [{ id: 'gpt-6.1-sol', name: 'GPT', reasoning }],
+  }] })
+  const directory = createSnapshotStore<ModelDirectoryState>(initial)
+  const select = vi.fn(async (selected: ModelSelection) => {
+    directory.set({ ...initial, current: selected })
+    return { ok: true as const, value: undefined }
+  })
+  render(<ModelSelect locked={false} available directory={directory} load={() => {}} select={select} t={t} />)
+  const trigger = screen.getByRole('button', { name: /请选择模型/ })
+  fireEvent.click(trigger)
+  fireEvent.click(screen.getByRole('menuitemradio', { name: 'GPT' }))
+  await waitFor(() => expect(select).toHaveBeenCalledWith({ provider: 'sub2api', model: 'gpt-6.1-sol' }))
+  expect(screen.getByRole('button', { name: /选择模型，当前 GPT/ })).toBeTruthy()
+})

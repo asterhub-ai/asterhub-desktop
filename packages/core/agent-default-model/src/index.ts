@@ -83,13 +83,24 @@ export class AgentDefaultModelConfig extends Service {
    * @returns fulfillment after the optional profile write settles.
    */
   async saveSelection(next: ModelSelection): Promise<void> {
-    if (this.config.locked.get()) throw new Error('agent-default-model: model selection is deployment-locked')
+    const locked = this.config.locked.get()
+    if (locked) {
+      const route = this.ownerContext.get('applicationModelRoute')
+      if (route?.selectableModels !== true || next.provider !== route.provider) {
+        throw new Error('agent-default-model: model selection is deployment-locked')
+      }
+      const models = await this.ownerContext.llm.listModels(route.provider)
+      if (!models.some(model => model.id === next.model)) {
+        throw new Error('agent-default-model: selected model is unavailable for this account')
+      }
+    }
     const entry = this.ownerContext.fiber.entry
     if (entry === undefined) return
     const editor = this.ctx.get('configEditor')
     if (editor === undefined) return
     const config = {
       provider: next.provider, model: next.model,
+      ...(locked ? { locked: true } : {}),
       ...next.reasoningEffort === undefined ? {} : { reasoningEffort: String(next.reasoningEffort) },
     }
     const saved = this.saves.then(() => editor.edit(entry, () => config))

@@ -6,7 +6,7 @@ AsterHub is a desktop AI workbench for everyday work, built on a plugin-based Co
 
 It is built on an **everything-is-a-plugin** architecture and powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512).
 
-Product and desktop development notes: [Desktop handover](docs/交接文档.md) · [Desktop developer guide](apps/desktop/README.md)
+Product and desktop development notes: [Desktop handover](交接文档.md) · [Desktop developer guide](apps/desktop/README.md)
 
 ## Developer preview
 

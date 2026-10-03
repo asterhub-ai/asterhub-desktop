@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { Context, Service } from '@deepseek-ai/cordis'
 import { AttachmentId, AttachmentStore, ImageVariantId } from '@deepseek-ai/dsh-attachment'
 import type {
@@ -12,6 +12,7 @@ import type {
 import LlmRuntime, { createToolResultMessage, createUserMessage, CONTEXT_WINDOW_EXCEEDED_CODE, LlmError, ReasoningEffortId, userAgent } from '@deepseek-ai/dsh-llm'
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
 import { PiAiAdapter } from '@deepseek-ai/dsh-llm-pi-ai'
+import type { PiAiAdapterOptions } from '../src/adapter.ts'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { getBuiltinModels } from '@earendil-works/pi-ai/providers/all'
 import { DEFAULT_MAX_REQUEST_IMAGE_BYTES, resolveProfiles } from '../src/config.ts'
@@ -20,6 +21,7 @@ import { assemble } from './assemble.ts'
 import { closeMockServers, mockServer, textEvents } from './mock-server.ts'
 
 afterEach(async () => {
+  vi.useRealTimers()
   vi.unstubAllEnvs()
   await closeMockServers()
 })
@@ -414,17 +416,24 @@ describe('PiAiAdapter provider routing', () => {
   })
 
   it('stops the SDK request when the adapter idle watchdog expires', async () => {
-    const server = await mockServer([{ events: textEvents, delayMs: 200 }])
+    const server = await mockServer([{ holdOpen: true }])
     const ctx = await harness(server.url, { streamIdleTimeoutMs: 20 })
+    const controller = new AbortController()
+    onTestFinished(async () => {
+      controller.abort()
+      await ctx.fiber.dispose()
+    })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
 
-    const result = await assemble(ctx, { model: 'deepseek-flash', messages: [] })
+    const pending = assemble(ctx, { model: 'deepseek-flash', messages: [], signal: controller.signal })
+    await server.requestReceived
+    expect(server.closedResponses).toBe(0)
+    await vi.advanceTimersByTimeAsync(20)
+    vi.useRealTimers()
+
+    const result = await pending
     expect(result.finish).toMatchObject({ kind: 'error', failure: { code: 'TIMEOUT' } })
-    await Promise.race([
-      server.responseClosed,
-      new Promise<never>((_resolve, reject) => {
-        setTimeout(() => { reject(new Error('SDK request did not close after idle timeout')) }, 1_000)
-      }),
-    ])
+    await server.responseClosed
 
     expect(server.paths).toEqual(['/chat/completions'])
     expect(server.closedResponses).toBe(1)
@@ -1049,4 +1058,38 @@ it.each([
     auth: memoryAuth(),
   })
   expect(await adapter.listModels('deepseek')).not.toHaveLength(0)
+})
+
+
+describe('AsterHub account model catalog', () => {
+  function managed(syncModels: NonNullable<PiAiAdapterOptions['syncModels']>) {
+    const profiles = resolveProfiles({ sub2api: {
+      api: 'openai-completions', baseURL: 'https://gateway.example/v1', syncModels: true,
+      models: [{ id: '__unselected__', name: 'Template', contextWindow: 262144, maxTokens: 32768,
+        input: ['text'], reasoningEfforts: { off: null, low: 'low', high: 'high' } }],
+    } })
+    return new PiAiAdapter({ profiles: () => profiles, syncModels,
+      resolveApiKey: async () => 'account-key', auth: memoryAuth() })
+  }
+
+  it('advertises only account models and refuses the retired aster alias before dispatch', async () => {
+    const adapter = managed(async () => [{ id: 'gpt-6.1-sol', name: 'GPT' }, { id: 'kimi-k3-oc' }])
+    expect((await adapter.listModels('sub2api')).map(model => model.id))
+      .toEqual(['gpt-6.1-sol', 'kimi-k3-oc'])
+    await expect(adapter.prepareCall('sub2api', 'aster')).rejects.toMatchObject({ code: 'UNKNOWN_MODEL' })
+    await expect(adapter.prepareCall('sub2api', '__unselected__')).rejects.toMatchObject({ code: 'UNKNOWN_MODEL' })
+    expect((await adapter.resolveModel('sub2api', 'gpt-6.1-sol')).reasoning?.efforts.map(effort => effort.id))
+      .toEqual(['off', 'low', 'high'])
+  })
+
+  it('clears the previous account catalog and exposes synchronization errors after credential replacement', async () => {
+    const sync = vi.fn(async () => [{ id: 'first-account-model' }])
+    const adapter = managed(sync)
+    await adapter.listModels('sub2api')
+    adapter.invalidateModelCatalog()
+    sync.mockRejectedValueOnce(new Error('account directory unavailable'))
+    await expect(adapter.listModels('sub2api')).rejects.toThrow('account directory unavailable')
+    sync.mockResolvedValueOnce([{ id: 'second-account-model' }])
+    expect((await adapter.listModels('sub2api')).map(model => model.id)).toEqual(['second-account-model'])
+  })
 })

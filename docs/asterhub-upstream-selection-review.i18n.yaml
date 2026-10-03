@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for asterhub-upstream-selection-review.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/asterhub-upstream-selection-review.md
+/asterhub-selective-upstream-review:
+  en: 008675adfb637958
+  zh: 07bf0c45a4512456
+/asterhub-selective-upstream-review/backported-scope:
+  en: a008cce66b78e6f3
+  zh: 96721df3e0d80194
+/asterhub-selective-upstream-review/model-selection-fix:
+  en: 0ebfee25d5c7e5f5
+  zh: 6c6015801ac01c45
+/asterhub-selective-upstream-review/separate-invariant-review:
+  en: b23843047a6242d9
+  zh: ebf11f935d7952b5
+/asterhub-selective-upstream-review/excluded-scope:
+  en: b6a101f27f423021
+  zh: 703eba84e5a31006
+/asterhub-selective-upstream-review/validation-state:
+  en: 0decf84e28b2f04d
+  zh: a1d2aa4b2404db2f

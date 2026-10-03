@@ -19,6 +19,8 @@ Reload plugin source and configuration while an application is running. Module r
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 - [Dev Note](#dev-note)
 
+Package-manifest changes invalidate the affected Node resolution caches while retaining evaluated modules and loaded entry identities. Office engine redirects continue to resolve to unpacked resources; refresh does not re-execute existing modules.
+
 -----
 
 <a id="use-this-package"></a>

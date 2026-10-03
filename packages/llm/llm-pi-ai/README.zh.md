@@ -20,6 +20,8 @@ kind: "package-reference"
 - [已知限制与延期工作](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
+AsterHub 鉴权路由以 `/models` 为唯一可选目录，不展示配置中的模板模型。首次加载错误会显示给用户；刷新临时失败只能保留同一凭据最近成功取得的目录。凭据更换会清空目录；已准备请求的模型描述不随之后的目录刷新而变化。
+
 -----
 
 <a id="use-this-package"></a>

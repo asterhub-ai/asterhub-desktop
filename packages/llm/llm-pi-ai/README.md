@@ -20,6 +20,8 @@ English | [中文](README.zh.md)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 - [Dev Note](#dev-note)
 
+For the AsterHub authenticated route, `/models` is the sole selectable catalog. Configured template models are not advertised. First-load errors remain visible; transient refresh errors can retain only the same credential’s last successful catalog. Credential replacement clears that catalog. Each prepared request captures its model descriptors independently of later catalog refreshes.
+
 -----
 
 <a id="use-this-package"></a>

@@ -614,13 +614,18 @@ export class AccountSub2apiService extends TypertRemoteService {
     return this.status()
   }
 
-  /** Read the public sign-up requirements from the authentication service. */
+  /** Read the public sign-up requirements from the authentication service.
+   * @returns public registration and email verification requirements.
+   */
   @Remote
   async authSettings(): Promise<AccountAuthSettings> {
     return this.client.publicAuthSettings()
   }
 
-  /** Send the upstream email verification code for a prospective account. */
+  /** Send the upstream email verification code for a prospective account.
+   * @param email prospective account email address.
+   * @returns verification resend countdown in seconds.
+   */
   @Remote
   async sendVerifyCode(email: string): Promise<{ countdown: number }> {
     const normalized = email.trim().toLowerCase()
@@ -628,7 +633,10 @@ export class AccountSub2apiService extends TypertRemoteService {
     return { countdown: await this.client.sendVerifyCode(normalized) }
   }
 
-  /** Register directly with the authentication service and bind the returned session to this installation. */
+  /** Register directly with the authentication service and bind the returned session to this installation.
+   * @param input account details and email verification code.
+   * @returns signed-in account state after registration.
+   */
   @Remote
   async register(input: AccountRegisterInput): Promise<AccountStatus> {
     const email = input.email.trim().toLowerCase()

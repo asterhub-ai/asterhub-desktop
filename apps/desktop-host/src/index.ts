@@ -30,7 +30,7 @@ async function main(): Promise<void> {
     hostSetup: (hostCtx) => {
       hostCtx.provide('applicationModelRoute', Object.freeze({
         provider: 'sub2api',
-        model: 'aster',
+        model: '__unselected__',
         selectableModels: true,
         syncModels: true,
         baseURL: 'https://xapi.fans/v1',
@@ -41,7 +41,7 @@ async function main(): Promise<void> {
       }))
       hostCtx.provide('applicationCatalogPublicKey', ASTERHUB_CATALOG_PUBLIC_KEY)
     },
-    args: ['--no-open', '--port', '19387'],
+    args: ['--no-open', '--port', '0'],
     ...(process.argv[5] === undefined ? {} : {
       packageManager: {
         command: process.execPath,
