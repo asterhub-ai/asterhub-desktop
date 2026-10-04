@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-invariants",
   "description": "Registry service for package-owned AsterHub runtime invariants",
-  "version": "0.2.0-rc.2",
+  "version": "0.2.0-rc.3",
   "publishConfig": {
     "access": "public"
   },

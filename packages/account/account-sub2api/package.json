@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-account-sub2api",
   "description": "AsterHub account service: sub2api-backed login, key provisioning, quota, and top-up for the desktop client",
-  "version": "0.2.0-rc.2",
+  "version": "0.2.0-rc.3",
   "publishConfig": {
     "access": "public"
   },
