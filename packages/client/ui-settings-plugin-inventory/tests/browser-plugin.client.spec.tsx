@@ -1,31 +1,51 @@
 // @vitest-environment jsdom
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { ClientModuleLoader } from '@deepseek-ai/dsh-client-modules/client'
 import { Context, Service } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import { usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply, inject, NS } from '../src/client/index.ts'
-import { PluginInventorySettingsTab } from '../src/client/PluginInventorySettingsTab.tsx'
-import type { PluginInventorySettingsTabInjected } from '../src/client/PluginInventorySettingsTab.tsx'
-import { apply as hostApply } from '../src/index.ts'
+import { CuratedPluginSettingsTab, type CuratedPluginSettingsTabInjected } from '../src/client/CuratedPluginSettingsTab.tsx'
+import { en } from '../src/client/locales.ts'
+
+type CatalogInjection = {
+  catalog: CuratedPluginSettingsTabInjected['catalog']
+  install: CuratedPluginSettingsTabInjected['install']
+}
 
 usePinnedBrowserLanguages('zh-CN')
 afterEach(cleanup)
 
-const EMPTY = { entries: [] }
-type ListResult =
-  | { readonly ok: true; readonly value: typeof EMPTY }
-  | { readonly ok: false; readonly error: { readonly code: string; readonly message: string } }
+const CATALOG = {
+  revision: 3,
+  generatedAt: '2026-10-01T00:00:00Z',
+  plugins: [
+    {
+      id: 'server-office',
+      name: 'Server Office',
+      description: 'Office package from the signed server catalogue',
+      package: '@asterhub/office',
+      version: '1.0.0',
+      integrity: 'sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+      artifactUrl: 'https://asterhub.xapi.fans/releases/office-1.0.0.tgz',
+    },
+    {
+      id: 'server-pdf',
+      name: 'Server PDF',
+      description: 'PDF processing from the server',
+      package: '@asterhub/pdf',
+      version: '2.0.0',
+      integrity: 'sha512-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=',
+      artifactUrl: 'https://asterhub.xapi.fans/releases/pdf-2.0.0.tgz',
+    },
+  ],
+}
 
 async function bench() {
   const ctx = new Context()
   onTestFinished(async () => { await ctx.fiber.dispose() })
-  const retryClient = vi.fn(async () => {})
-  ctx.provide('modules', { entries: { state: createSnapshotStore({ syncing: false, failures: [] }), retry: retryClient } } as unknown as ClientModuleLoader)
   await ctx.plugin(SlotRegistry).await()
   const locale = new LocaleRuntime(ctx)
   ctx.provide('locale', locale)
@@ -35,14 +55,11 @@ async function bench() {
     }
   }
   new RemoteService(ctx)
-  const list = vi.fn<() => Promise<ListResult>>()
-    .mockResolvedValue({ ok: true, value: EMPTY })
-  ctx.provide('remote.pluginInventory', { list })
   ctx.provide('remote.pluginManager', {
-    curatedCatalog: async () => ({ ok: true, value: { revision: 3, generatedAt: '2026-10-01T00:00:00Z', plugins: [] } }),
-    installCuratedBundle: async () => ({ ok: true, value: { changed: false, application: 'failed', stage: 'install', target: 'unused' } }),
+    curatedCatalog: async () => ({ ok: true, value: CATALOG }),
+    installCuratedBundle: async () => ({ ok: true, value: { changed: false, application: 'applied', stage: 'install', target: '@asterhub/office' } }),
   } as never)
-  return { ctx, retryClient, slots: ctx.get('slots') as SlotRegistry, locale, list }
+  return { ctx, slots: ctx.get('slots') as SlotRegistry, locale }
 }
 
 function declare(slots: SlotRegistry): () => void {
@@ -53,67 +70,80 @@ function declare(slots: SlotRegistry): () => void {
 }
 
 describe('ui-settings-plugin-inventory browser plugin', () => {
-  it('keeps the host Loader entry inert', () => {
-    expect(hostApply).not.toThrow()
-  })
-
-  it('declares only the services used by the Settings Remote contribution', () => {
-    expect(inject).toEqual(['slots', 'locale', 'remote', 'remote.pluginInventory', 'remote.pluginManager', 'modules'])
-  })
-
-  it('registers a localized tab without reading the Remote eagerly', async () => {
+  it('renders catalog entries from the verified server', async () => {
     const b = await bench()
     declare(b.slots)
-    await b.ctx.plugin({ inject: [...inject], apply }).await()
-
+    await b.ctx.plugin({ inject, apply }).await()
     const entry = b.slots.entries('settings.plugins.tab')[0]!
-    expect(entry.component).toBe(PluginInventorySettingsTab)
-    expect(entry.options).toMatchObject({ id: 'all', order: 10 })
-    expect(entry.locale).toBe(NS)
-    expect(resolveSlotLabel(entry.options.label)).toBe('精选插件')
-    expect(b.list).not.toHaveBeenCalled()
+    const injected = entry.inject!() as CatalogInjection
+    const Component = entry.component as typeof CuratedPluginSettingsTab
+    render(<Component {...injected} t={key => en[key as keyof typeof en]} />)
+    expect(await screen.findByRole('heading', { name: 'Server Office' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Server PDF' })).toBeTruthy()
+  })
 
-    const injected = (entry.inject as unknown as () => PluginInventorySettingsTabInjected)()
-    const text = { en: 'Local tools', zh: '本地工具' }
-    expect(injected.resolveText(text)).toBe('本地工具')
-    b.locale.setLocale('en')
-    expect(injected.resolveText(text)).toBe('Local tools')
-    b.locale.setLocale('zh')
-    injected.retryClient()
-    const retryError = vi.spyOn(b.ctx.logger, 'error').mockImplementation(() => {})
-    b.retryClient.mockRejectedValueOnce(new Error('retry unavailable'))
-    injected.retryClient()
-    await vi.waitFor(() => { expect(retryError).toHaveBeenCalled() })
-    retryError.mockRestore()
-    await expect(injected.list()).resolves.toEqual(EMPTY)
-    expect(b.list).toHaveBeenCalledOnce()
-    b.list.mockResolvedValueOnce({ ok: false, error: { code: 'REMOTE_ERROR', message: 'unavailable' } })
-    await expect(injected.list()).rejects.toThrow('pluginInventory.list failed: REMOTE_ERROR: unavailable')
+  it('shows loading state while fetching catalog', async () => {
+    const b = await bench()
+    const { promise: catalogPromise, resolve: resolveCatalog } = Promise.withResolvers<unknown>()
+    Object.assign(b.ctx.remote.pluginManager, {
+      curatedCatalog: async () => catalogPromise as never,
+    })
+    declare(b.slots)
+    await b.ctx.plugin({ inject, apply }).await()
+    const entry = b.slots.entries('settings.plugins.tab')[0]!
+    const injected = entry.inject!() as CatalogInjection
+    const Component = entry.component as typeof CuratedPluginSettingsTab
+    render(<Component {...injected} t={key => en[key as keyof typeof en]} />)
+    expect(screen.getByRole('status').textContent).toBe(en.loading)
+    resolveCatalog({ ok: true, value: CATALOG })
+    await screen.findByRole('heading', { name: 'Server Office' })
+  })
 
-    // Shipped preset names resolve over the agent-preset dictionaries the
-    // real plugin registers; user-authored metadata stays untranslated.
-    b.locale.register('settings.agentPreset', 'zh', { presetStandardName: '标准模式' } as never)
-    expect(injected.presetName({ id: 'standard', isDefault: true, rows: [] })).toBe('标准模式')
-    expect(injected.presetName({ id: 'mine', name: '我自己的', isDefault: false, rows: [] })).toBe('我自己的')
-    await b.ctx.fiber.dispose()
+  it('shows error state when catalog fetch fails', async () => {
+    const b = await bench()
+    Object.assign(b.ctx.remote.pluginManager, {
+      curatedCatalog: async () => ({ ok: false, error: { code: 'NETWORK_ERROR', message: 'unavailable' } }),
+    })
+    declare(b.slots)
+    await b.ctx.plugin({ inject, apply }).await()
+    const entry = b.slots.entries('settings.plugins.tab')[0]!
+    const injected = entry.inject!() as CatalogInjection
+    const Component = entry.component as typeof CuratedPluginSettingsTab
+    render(<Component {...injected} t={key => en[key as keyof typeof en]} />)
+    expect((await screen.findByRole('alert')).textContent).toContain(en.error)
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+  })
+
+  it('shows empty state when catalog has no plugins', async () => {
+    const b = await bench()
+    Object.assign(b.ctx.remote.pluginManager, {
+      curatedCatalog: async () => ({ ok: true, value: { revision: 1, generatedAt: '2026-10-01T00:00:00Z', plugins: [] } }),
+    })
+    declare(b.slots)
+    await b.ctx.plugin({ inject, apply }).await()
+    const entry = b.slots.entries('settings.plugins.tab')[0]!
+    const injected = entry.inject!() as CatalogInjection
+    const Component = entry.component as typeof CuratedPluginSettingsTab
+    render(<Component {...injected} t={key => en[key as keyof typeof en]} />)
+    expect(await screen.findByText('No curated plugins are available.')).toBeTruthy()
   })
 
   it('follows locale and recovers across late declaration and declarer reload', async () => {
     const b = await bench()
-    const fiber = b.ctx.plugin({ inject: [...inject], apply })
+    const fiber = b.ctx.plugin({ inject, apply })
     await fiber.await()
     expect(b.slots.entries('settings.plugins.tab')).toHaveLength(0)
 
     const stop = declare(b.slots)
     await vi.waitFor(() => { expect(b.slots.entries('settings.plugins.tab')).toHaveLength(1) })
     b.locale.setLocale('en')
-    expect(resolveSlotLabel(b.slots.entries('settings.plugins.tab')[0]!.options.label)).toBe('Plugin list')
+    expect(resolveSlotLabel(b.slots.entries('settings.plugins.tab')[0]!.options.label)).toBe('Curated plugins')
 
     stop()
     expect(b.slots.entries('settings.plugins.tab')).toHaveLength(0)
     declare(b.slots)
     await vi.waitFor(() => {
-      expect(b.slots.entries('settings.plugins.tab')[0]?.component).toBe(PluginInventorySettingsTab)
+      expect(b.slots.entries('settings.plugins.tab')[0]?.component).toBe(CuratedPluginSettingsTab)
     })
 
     await fiber.dispose()

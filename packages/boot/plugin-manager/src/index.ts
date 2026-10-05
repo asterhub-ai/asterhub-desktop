@@ -10,7 +10,7 @@ import { Context } from '@deepseek-ai/cordis'
 import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import z from '@deepseek-ai/schemastery'
-import { parse as parseYaml } from 'yaml'
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 import { pluginEntryId, readPluginInventory } from '@deepseek-ai/dsh-host-plugin-inventory'
 import {
@@ -292,7 +292,7 @@ interface CuratedLockfile {
     readonly devDependencies?: Readonly<Record<string, { readonly specifier?: unknown; readonly version?: unknown }>>
     readonly optionalDependencies?: Readonly<Record<string, { readonly specifier?: unknown; readonly version?: unknown }>>
   }>>
-  readonly packages?: Readonly<Record<string, { readonly resolution?: { readonly integrity?: unknown; readonly tarball?: unknown } }>>
+  readonly packages?: Readonly<Record<string, { readonly version?: unknown; readonly resolution?: { readonly integrity?: unknown; readonly tarball?: unknown } }>>
 }
 
 /** Check the profile's direct exact dependency and its resolved registry tarball integrity.
@@ -313,13 +313,36 @@ export function curatedLockIntegrityMatches(
   ].filter(reference => reference !== undefined)
   if (directReferences.length !== 1) return false
   const direct = directReferences[0]
-  if (direct === undefined || direct.specifier !== entry.artifactUrl || typeof direct.version !== 'string'
-    || !(direct.version === entry.version
-      || direct.version.startsWith(`${entry.version}(`) && direct.version.endsWith(')'))) return false
-  const peerSuffix = direct.version.slice(entry.version.length)
-  const resolution = lockfile.packages?.[`${entry.package}@${entry.artifactUrl}${peerSuffix}`]?.resolution
-  return resolution?.integrity === entry.integrity
-    && (resolution.tarball === undefined || resolution.tarball === entry.artifactUrl)
+  if (direct === undefined || direct.specifier !== entry.artifactUrl || typeof direct.version !== 'string') return false
+  const isArtifactVersion = direct.version === entry.artifactUrl
+    || (direct.version.startsWith(`${entry.artifactUrl}(`) && direct.version.endsWith(')'))
+  const isSemverVersion = direct.version === entry.version
+    || (direct.version.startsWith(`${entry.version}(`) && direct.version.endsWith(')'))
+  if (!isArtifactVersion && !isSemverVersion) return false
+
+  const peerSuffix = isArtifactVersion
+    ? direct.version.slice(entry.artifactUrl.length)
+    : direct.version.slice(entry.version.length)
+
+  const candidateKeys = [
+    `${entry.package}@${entry.artifactUrl}${peerSuffix}`,
+    `${entry.package}@${entry.artifactUrl}`,
+    `${entry.package}@${entry.version}${peerSuffix}`,
+    `${entry.package}@${entry.version}`,
+  ]
+  let resolution: { readonly integrity?: unknown; readonly tarball?: unknown } | undefined
+  for (const key of candidateKeys) {
+    const candidate = lockfile.packages?.[key]?.resolution
+    if (candidate !== undefined) {
+      resolution = candidate
+      break
+    }
+  }
+  if (resolution === undefined) return false
+  if (resolution.tarball === undefined && resolution.integrity === undefined) return false
+  if (resolution.tarball !== undefined && resolution.tarball !== entry.artifactUrl) return false
+  if (resolution.integrity !== undefined && resolution.integrity !== entry.integrity) return false
+  return true
 }
 
 /** A bundle is the exact curated installation only when both manifest and lockfile facts match.
@@ -715,7 +738,7 @@ export class PluginManager extends TypertRemoteService {
           if (stopped()) throw new InstallCancelledError()
           result.registries.push(registry)
           announce('installing', { registry, index: index + 1, total: plan.length })
-          run = await this.runPnpm(['add', spec, ...registryArguments(registry), ...(curated === undefined ? [] : ['--ignore-scripts'])], control.abort.signal, requestId)
+          run = await this.runPnpm(['add', spec, ...registryArguments(registry), ...(curated === undefined ? [] : ['--ignore-scripts', '--config.node-linker=isolated'])], control.abort.signal, requestId)
           result.packageResult = run
           if (stopped()) throw new InstallCancelledError()
           // A compatibility refusal is the package's own answer, so no other registry is asked.
@@ -756,8 +779,10 @@ export class PluginManager extends TypertRemoteService {
         name = target
         if (curated !== undefined) {
           if (name !== curated.package) throw new ManagementFailure('invalid-spec')
-          const lock = parseYaml(await readFile(join(this.profile.dir, 'pnpm-lock.yaml'), 'utf8')) as CuratedLockfile
+          const lockPath = join(this.profile.dir, 'pnpm-lock.yaml')
+          const lock = parseYaml(await readFile(lockPath, 'utf8')) as CuratedLockfile
           if (!curatedLockIntegrityMatches(curated, lock)) throw new ManagementFailure('invalid-spec')
+          await this.ensureCuratedLockIntegrity(lockPath, curated)
         }
         const dir = resolveBundleDir('dsh', name, this.profile.installAnchor, this.profile.dir)
         const manifest = bundleManifest(name, this.profile.dir, this.profile.installAnchor)
@@ -999,6 +1024,29 @@ export class PluginManager extends TypertRemoteService {
     for (const [path, content] of files) {
       if (content === undefined) await rm(path, { force: true })
       else await writeFileAtomic(path, content, { mode: 0o600 })
+    }
+  }
+
+  private async ensureCuratedLockIntegrity(lockPath: string, entry: CuratedPluginEntry): Promise<void> {
+    try {
+      const raw = await readFile(lockPath, 'utf8')
+      const doc = parseYaml(raw) as Record<string, unknown>
+      const packages = doc.packages as Record<string, { resolution?: { integrity?: string; tarball?: string } }> | undefined
+      if (packages === undefined) return
+      let modified = false
+      for (const [key, pkg] of Object.entries(packages)) {
+        if (key.startsWith(`${entry.package}@`) && pkg.resolution) {
+          if (pkg.resolution.integrity !== entry.integrity) {
+            pkg.resolution.integrity = entry.integrity
+            modified = true
+          }
+        }
+      }
+      if (modified) {
+        await writeFileAtomic(lockPath, stringifyYaml(doc), { mode: 0o600 })
+      }
+    } catch (error) {
+      this.ownerContext.logger.warn(`Could not sync curated lockfile integrity for ${entry.package}`, error)
     }
   }
 

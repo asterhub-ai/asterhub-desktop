@@ -1,4 +1,4 @@
-/** Locale bundles for the built-in plugins settings section. */
+/** Locale bundles for the curated plugins settings section. */
 
 /** Locale keys the section renders. */
 export type PluginsSettingsLocaleKey = 'nav' | 'title' | 'intro' | 'tabs' | 'empty'

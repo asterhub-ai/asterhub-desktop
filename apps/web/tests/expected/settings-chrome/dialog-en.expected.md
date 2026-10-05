@@ -2,10 +2,7 @@
   - navigation:
     - text: Settings
     - button "General"
-    - button "Models"
-    - button "Built-in plugins"
-    - button "Agent presets"
-  - button "Open configuration file"
+    - button "Curated plugins"
   - button "Close"
   - text: Permission Choose the default permission mode for new sessions
   - button "Workspace Write"
@@ -29,6 +26,6 @@
   - button "Queue"
   - text: Performance & usage Choose how much performance and usage information to show
   - button "Detailed"
-  - text: Upload Session Log when using the official model API Help improve DeepSeek models and products.
+  - text: Upload Session Log when using the official model API Help improve AsterHub and its AI service.
   - switch "Upload Session Log when using the official model API"
   - text: "Current version: {{version}}"

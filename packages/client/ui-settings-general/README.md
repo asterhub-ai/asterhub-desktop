@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to give the web client a Settings panel, connection-recovery control, feature-contributed navigation, and sequential first-run onboarding. Users can open it from the sidebar and retry a failed connection immediately. Feature packages supply their own settings rows, sections, and onboarding steps; this package supplies their shared presentation and does not add onboarding copy or built-in General rows.
+Use this package to give the web client a Settings panel, connection-recovery control, feature-contributed navigation, and sequential first-run onboarding. Users can open it from the sidebar and retry a failed connection immediately. Feature packages supply their own settings rows, sections, and onboarding steps; this package supplies their shared presentation, contributes the built-in current-version and developer-tools General rows, and does not add onboarding copy.
 
 ## Table of Contents
 
@@ -31,7 +31,7 @@ In Desktop, the account-row update control shows availability, progress, verific
 
 ### The General section
 
-The General section holds rows registered into `settings.general.item` by feature packages — it has no built-in rows. Feature plugins own the row copy and behavior; the shell only provides the section and its slot. The Appearance row, for example, lives in ui-theme.
+The General section holds rows registered into `settings.general.item`. This package contributes two built-in rows: the current-version row (which displays the compile-time version and, on Desktop with a native update bridge, a localized **Check for updates** button that invokes the main process's manual check-and-consent prompt) and the developer-tools toggle. Feature plugins contribute additional rows — the Appearance row, for example, lives in ui-theme. Concurrent clicks on the check button join the same interaction, and the button is absent in browsers without the bridge.
 
 ### Header actions
 
@@ -100,7 +100,7 @@ None; this package neither assembles nor sends a provider request.
 
 These limits define what the shell itself provides versus what features must supply; they are current package constraints.
 
-- **The General section has no built-in rows** — each row appears only when its owning feature plugin is mounted; the shell cannot fill the section alone.
+- **The General section has two built-in rows** — the current-version row and the developer-tools toggle. Feature-contributed rows (such as the Appearance row from ui-theme) appear only when their owning feature plugin is mounted; the shell alone does not fill the section with feature content.
 
 <a id="dev-note"></a>
 ### Dev Note
@@ -112,4 +112,4 @@ None.
 
 </details>
 
-**Runtime invariant:** No companion is published. The settings seam validates and publishes the durable onboarding section, while slot conflicts fail loud in the slot core.
+**Runtime invariant:** No companion is published. The settings seam validates and publishes the durable onboarding section, while slot conflicts fail loud in the slot core. This package registers no built-in header action.

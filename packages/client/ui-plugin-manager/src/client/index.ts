@@ -2,9 +2,8 @@
  * The Plugins entry, browser half: the sidebar entry and the main-column page
  * it opens. The upstream install and management machinery is intentionally
  * not part of this fork — the entry stays and the surface is reserved for the
- * AsterHub plugin system. The slot declarations below (`plugins.item` and the
- * per-row configuration seats) keep the slot contract available for that
- * system to grow into; see `slot-contract.ts`.
+ * AsterHub plugin system. `slot-contract.ts` owns the configuration-slot
+ * declarations retained for feature plugins.
  */
 
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -20,7 +19,6 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { PluginManagerPage } from './PluginManagerPage.tsx'
 import { PluginsPanelIcon } from './PluginsPanelIcon.tsx'
 import { en, zh, type PluginManagerLocaleKey } from './locales.ts'
-import type { PluginConfigViewProps } from './slot-contract.ts'
 import type { ChangeResult, CuratedPluginCatalog } from '@deepseek-ai/dsh-plugin-manager/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 
@@ -32,37 +30,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
     /** Plugins tab copy. */
     'pluginManager': PluginManagerLocaleKey
-  }
-
-  /**
-   * The slots the Plugins page declares for plugins that carry their own
-   * configuration. Kept inline (beside the mirror in `slot-contract.ts`) so
-   * the augmentation survives dts bundling into the published types.
-   */
-  interface SlotMap {
-    /**
-     * One official plugin the Plugins page lists in its Official group after
-     * the official bundles: `label` is the card's title and `order` its place.
-     * The page renders the entry as the card's one-liner (`view: 'summary'`)
-     * and, once the card is opened, as the body of the plugin's own page
-     * (`view: 'page'`). OCCUPIED by the host-plane configuration pages
-     * `ui-settings-plugins` ships; a bundle's configuration belongs in
-     * `plugins.bundle.config` or `plugins.row.config` instead.
-     */
-    'plugins.item': { kind: 'list'; scope: 'root'; owner: PluginConfigViewProps }
-    /**
-     * A bundle's own configuration, keyed by the bundle's package name and
-     * rendered on the bundle's page between its description and its rows
-     * (`view: 'page'` only).
-     */
-    'plugins.bundle.config': { kind: 'keyed'; scope: 'root'; owner: PluginConfigViewProps }
-    /**
-     * The configuration of one row a bundle declares, keyed by
-     * `<package name>#<row id>` with the row id as the bundle's patch declares
-     * it: the row on the bundle's page gains a configure control that opens
-     * the entry's page, headed by the row id and the entry's summary.
-     */
-    'plugins.row.config': { kind: 'keyed'; scope: 'root'; owner: PluginConfigViewProps }
   }
 }
 

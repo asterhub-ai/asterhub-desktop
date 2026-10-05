@@ -161,3 +161,120 @@ it('requires the direct importer and tarball resolution to match a curated artif
     packages: { [`${entry.package}@https://asterhub.xapi.fans/releases/other.tgz`]: { resolution: { integrity: entry.integrity } } },
   })).toBe(false)
 })
+
+it('matches real pnpm tarball URL resolutions with and without peer dependencies', () => {
+  const entry = {
+    id: 'genoffice', name: 'GenOffice', description: 'Office CLI tools.',
+    package: '@asterhub/genoffice-cli', version: '0.11.0-asterhub.1',
+    artifactUrl: 'https://asterhub.xapi.fans/releases/asterhub-genoffice-cli-0.11.0-asterhub.1.tgz',
+    integrity: 'sha512-DOz1DcrljF09y98G/7RaOzhQpWAhnjXJLXJUE67FhMv2+uP50LPGv7FyXUv9XScJ0r8yx/3qtmIT1bBRM27gEQ==',
+  }
+  const bundle = [{
+    name: entry.package, version: entry.version, enabled: true, installed: true, optional: false, removable: true, rows: [], overrides: [],
+  }]
+  // Real pnpm lockfile when tarball is installed with hoisted peer dependencies:
+  // direct.version is the artifactUrl followed by peer dependencies, while packages key is the bare artifact URL.
+  const lockWithPeers = {
+    importers: {
+      '.': {
+        dependencies: {
+          [entry.package]: {
+            specifier: entry.artifactUrl,
+            version: `${entry.artifactUrl}(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-attachment@0.1.6-alpha.2)`,
+          },
+        },
+      },
+    },
+    packages: {
+      [`${entry.package}@${entry.artifactUrl}`]: {
+        resolution: { integrity: entry.integrity, tarball: entry.artifactUrl },
+        version: entry.version,
+      },
+    },
+  }
+  expect(isExactCuratedInstallation(entry, bundle, lockWithPeers)).toBe(true)
+
+  // Real pnpm lockfile without peer dependencies:
+  // direct.version is the plain artifactUrl.
+  const lockPlainTarball = {
+    importers: {
+      '.': {
+        dependencies: {
+          [entry.package]: {
+            specifier: entry.artifactUrl,
+            version: entry.artifactUrl,
+          },
+        },
+      },
+    },
+    packages: {
+      [`${entry.package}@${entry.artifactUrl}`]: {
+        resolution: { integrity: entry.integrity, tarball: entry.artifactUrl },
+        version: entry.version,
+      },
+    },
+  }
+  expect(isExactCuratedInstallation(entry, bundle, lockPlainTarball)).toBe(true)
+
+  // Real pnpm lockfile where the packages key retains the peer suffix:
+  const lockWithKeySuffix = {
+    importers: {
+      '.': {
+        dependencies: {
+          [entry.package]: {
+            specifier: entry.artifactUrl,
+            version: `${entry.artifactUrl}(debug@4.4.3)`,
+          },
+        },
+      },
+    },
+    packages: {
+      [`${entry.package}@${entry.artifactUrl}(debug@4.4.3)`]: {
+        resolution: { integrity: entry.integrity, tarball: entry.artifactUrl },
+        version: entry.version,
+      },
+    },
+  }
+  expect(isExactCuratedInstallation(entry, bundle, lockWithKeySuffix)).toBe(true)
+
+  // Newly added future plugin with custom tarball and package name:
+  const futureEntry = {
+    id: 'future-plugin', name: 'Future Plugin', description: 'Future curated extension.',
+    package: '@asterhub/future-plugin', version: '1.0.0-beta.1',
+    artifactUrl: 'https://asterhub.xapi.fans/releases/future-plugin-1.0.0-beta.1.tgz',
+    integrity: 'sha512-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=',
+  }
+  const futureBundle = [{
+    name: futureEntry.package, version: futureEntry.version, enabled: true, installed: true, optional: false, removable: true, rows: [], overrides: [],
+  }]
+  const futureLock = {
+    importers: {
+      '.': {
+        dependencies: {
+          [futureEntry.package]: {
+            specifier: futureEntry.artifactUrl,
+            version: futureEntry.artifactUrl,
+          },
+        },
+      },
+    },
+    packages: {
+      [`${futureEntry.package}@${futureEntry.artifactUrl}`]: {
+        resolution: { integrity: futureEntry.integrity, tarball: futureEntry.artifactUrl },
+        version: futureEntry.version,
+      },
+    },
+  }
+  expect(isExactCuratedInstallation(futureEntry, futureBundle, futureLock)).toBe(true)
+
+  // Integrity mismatch on future plugin MUST fail:
+  expect(isExactCuratedInstallation(futureEntry, futureBundle, {
+    ...futureLock,
+    packages: {
+      [`${futureEntry.package}@${futureEntry.artifactUrl}`]: {
+        resolution: { integrity: 'sha512-TAMPERED_HASH==============================', tarball: futureEntry.artifactUrl },
+        version: futureEntry.version,
+      },
+    },
+  })).toBe(false)
+})

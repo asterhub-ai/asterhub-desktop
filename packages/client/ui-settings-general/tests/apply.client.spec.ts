@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 /**
- * Ownerless-copy registrations inside the assembled web client: the five
+ * Ownerless-copy registrations inside the assembled web client: the four
  * seats, the `settings` dictionaries, the locale-following nav label, the
- * loopback-only document action over the real settings mirror, and recovery
- * across Loader rebuilds of the declaring chain.
+ * absence of any built-in header action, and recovery across Loader rebuilds
+ * of the declaring chain.
  */
-import { describe, expect, onTestFinished, vi } from 'vitest'
+import { describe, expect, vi } from 'vitest'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { ok, type RemoteMock } from '@deepseek-ai/dsh-remote-mock'
 import type { SettingsNamespaceView } from '@deepseek-ai/dsh-settings/types'
@@ -13,11 +13,9 @@ import { createClientTest, type TestClient, webApp } from '@deepseek-ai/dsh-clie
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import { LOCALE_SETTINGS_NAMESPACE, LocaleSettingsSchema } from '@deepseek-ai/dsh-client-locale/src/locale-settings.ts'
 import { inject } from '../src/client/index.ts'
-import type { DeveloperToolsRowInjected } from '../src/client/DeveloperToolsRow.tsx'
+import type { CurrentVersionRowInjected } from '../src/client/CurrentVersionRow.tsx'
 import { CloseLabel, HeaderContent, TriggerContent } from '../src/client/chrome.tsx'
 import { GeneralSection } from '../src/client/GeneralSection.tsx'
-import { SettingsDocumentAction } from '../src/client/SettingsDocumentAction.tsx'
-import type { SettingsDocumentActionInjected } from '../src/client/SettingsDocumentAction.tsx'
 
 const SELF = '@deepseek-ai/dsh-client-ui-settings-general'
 const SIDEBAR = '@deepseek-ai/dsh-client-ui-sidebar'
@@ -31,7 +29,6 @@ const NS = 'settings'
 const SEATS = [
   ['settings.trigger', TriggerContent],
   ['settings.header', HeaderContent],
-  ['settings.action', SettingsDocumentAction],
   ['settings.close', CloseLabel],
   ['settings.section', GeneralSection],
 ] as const
@@ -71,28 +68,23 @@ function generalLabel(c: TestClient): string | undefined {
   return resolveSlotLabel(generalEntry(c).options.label)
 }
 
-function actionInjectedOf(c: TestClient): SettingsDocumentActionInjected {
-  const entry = ownEntries(c, 'settings.action')[0]!
-  return (entry.inject as unknown as () => SettingsDocumentActionInjected)()
-}
-
 function expectSeated(c: TestClient): void {
   for (const [name, component] of SEATS) {
     expect(ownEntries(c, name).map(entry => entry.component)).toEqual([component])
   }
 }
 
-/** The page authority the `connection` plugin classifies at apply, reconfigured through the jsdom instance vitest exposes. */
-function setPageUrl(url: string): void {
-  (globalThis as unknown as { jsdom: { reconfigure(settings: { url: string }): void } }).jsdom.reconfigure({ url })
-}
-
 describe('ui-settings-general apply', () => {
+  it('does not offer configuration-file access for a local file-backed deployment', async ({ mock, start }) => {
+    const { c } = await client(mock, start, true)
+    expect(c.ctx.slots.entries('settings.action').some(entry => entry.options.id === 'open-document')).toBe(false)
+  }, COLD_BOOT_TIMEOUT_MS)
+
   it('declares the services it uses', () => {
     expect(inject).toEqual(['slots', 'locale', 'connection', 'remote', 'remote.settings', 'configForms', 'shortcuts'])
   })
 
-  it('fills the five seats of the shell it declares, with the locale-following General label', async ({ mock, start }) => {
+  it('fills the four seats of the shell it declares, with the locale-following General label', async ({ mock, start }) => {
     const { c } = await client(mock, start)
     expect(c.ctx.locale.getSnapshot().active).toBe('zh')
     expectSeated(c)
@@ -103,17 +95,19 @@ describe('ui-settings-general apply', () => {
     expect(c.ctx.slots.spec('settings.general.item')).toEqual({ kind: 'list', scope: 'root' })
     // The shared developer-tool control belongs to General; onboarding remains feature-owned.
     expect(c.ctx.slots.entries('settings.general.item').filter(row => row.locale === NS).map(row => row.options.id)).toEqual(['developer-tools', 'current-version'])
-    expect(c.ctx.slots.entries('settings.onboarding').filter(row => row.locale === NS)).toEqual([])
-    const developerRow = c.ctx.slots.entries('settings.general.item').find(row => row.options.id === 'developer-tools')!
-    const developer = (developerRow.inject as unknown as () => DeveloperToolsRowInjected)()
-    expect(developer.hooks.developerTools).toBe(c.ctx.configForms.developerTools.enabled)
-    expect(developer.hooks.developerTools.getSnapshot()).toBe(false)
+    const developerRow = c.ctx.slots.entries('settings.general.item').find(row => row.locale === NS && row.options.id === 'developer-tools')!
+    const injected = developerRow.inject?.()
+    if (injected === undefined) throw new Error('developer-tools row missing inject')
+    const hooks = injected['hooks']
+    expect(hooks).toBe(c.ctx.configForms.developerTools.enabled)
+    expect(c.ctx.configForms.developerTools.enabled.getSnapshot()).toBe(false)
     const setEnabled = vi.spyOn(c.ctx.configForms.developerTools, 'setEnabled').mockResolvedValue(undefined)
-    await developer.setEnabled(true)
+    const setter = injected['setEnabled']
+    if (typeof setter !== 'function') throw new Error('developer-tools setEnabled not a function')
+    await Reflect.apply(setter, undefined, [true])
     expect(setEnabled).toHaveBeenCalledExactlyOnceWith(true)
-    const { controller, hooks } = actionInjectedOf(c)
-    expect(controller.store.getSnapshot().status).toBe('idle')
-    expect(hooks.snapshot).toBe(controller.store)
+    // The settings.action slot is declared but this plugin registers no built-in action.
+    expect(c.ctx.slots.entries('settings.action').filter(row => row.locale === NS)).toEqual([])
     // Copy rides the standard locale seat: every row this plugin seats declares the namespace.
     for (const [name, component] of SEATS) {
       expect(c.ctx.slots.entries(name).find(row => row.component === component)!.locale).toBe(NS)
@@ -174,35 +168,6 @@ describe('ui-settings-general apply', () => {
     })
   })
 
-  it('reads availability from the shared mirror and follows its reconnect refresh', async ({ mock, start }) => {
-    const { c } = await client(mock, start, true)
-    const { controller } = actionInjectedOf(c)
-    // Boot reads the document twice: the mirror's own `ensure` at apply, then
-    // the `connection/reset` of the first connection. The action's load adds none.
-    expect(c.mock.log.calls('settings/describe')).toHaveLength(2)
-    await controller.load()
-    expect(c.mock.log.calls('settings/describe')).toHaveLength(2)
-    expect(controller.store.getSnapshot().status).toBe('ready')
-    c.connection.reconnect()
-    await c.mock.streams.opened('$events', 2)
-    await vi.waitFor(() => { expect(c.mock.log.calls('settings/describe')).toHaveLength(3) })
-  })
-
-  it('withholds the Host document action off-loopback', async ({ mock, start }) => {
-    const loopbackUrl = location.href
-    setPageUrl('http://198.51.100.7:3000/')
-    onTestFinished(() => { setPageUrl(loopbackUrl) })
-    const { c } = await client(mock, start)
-    expect(c.connection.isLoopback).toBe(false)
-    expect(ownEntries(c, 'settings.action')).toEqual([])
-    // Off-loopback settings stay process-local: no describe read, so the browser language stands.
-    expect(c.mock.log.calls('settings/describe')).toEqual([])
-    expect(c.ctx.locale.getSnapshot().active).toBe('en')
-    await c.unload(SELF)
-    await c.flush()
-    for (const [name] of SEATS) expect(ownEntries(c, name)).toEqual([])
-  })
-
   it('re-registers after a Loader rebuild of the declaring chain (stale disposers must not block)', async ({ mock, start }) => {
     const { c, settings } = await client(mock, start)
     const before = SEATS.map(([name]) => ownEntries(c, name)[0])
@@ -240,4 +205,44 @@ describe('ui-settings-general apply', () => {
     expect(c.ctx.slots.entries('settings.general.item').filter(row => row.locale === NS)).toEqual([])
     expect(c.ctx.slots.spec('settings.general.item')).toBeUndefined()
   })
+
+  it('registers the current-version row and binds the optional Desktop operation from its preload carrier', async ({ mock, start }) => {
+    const check = vi.fn().mockResolvedValue(undefined)
+    const mockDesktop = { protocolVersion: 1, updates: { check, status: vi.fn(), open: vi.fn(), subscribe: vi.fn() } }
+    const g = globalThis as typeof globalThis & { dshDesktop?: typeof mockDesktop }
+    const originalDshDesktop = g.dshDesktop
+    g.dshDesktop = mockDesktop
+    try {
+      const { c } = await client(mock, start)
+      const currentVersionRow = c.ctx.slots.entries('settings.general.item').find(row => row.options.id === 'current-version')
+      expect(currentVersionRow).toBeDefined()
+      expect(currentVersionRow?.locale).toBe(NS)
+      // The row should have inject that returns checkUpdates when Desktop bridge is present
+      const injected = currentVersionRow?.inject as () => CurrentVersionRowInjected
+      const props = injected?.()
+      expect(props?.checkUpdates).toBeDefined()
+      // Verify the checkUpdates function is bound to the bridge
+      await props?.checkUpdates?.()
+      expect(check).toHaveBeenCalledTimes(1)
+    } finally {
+      if (originalDshDesktop === undefined) delete g.dshDesktop
+      else g.dshDesktop = originalDshDesktop
+    }
+  }, COLD_BOOT_TIMEOUT_MS)
+
+  it('registers the current-version row without checkUpdates when Desktop bridge is absent', async ({ mock, start }) => {
+    const g = globalThis as typeof globalThis & { dshDesktop?: unknown }
+    const originalDshDesktop = g.dshDesktop
+    delete g.dshDesktop
+    try {
+      const { c } = await client(mock, start)
+      const currentVersionRow = c.ctx.slots.entries('settings.general.item').find(row => row.options.id === 'current-version')
+      expect(currentVersionRow).toBeDefined()
+      const injected = currentVersionRow?.inject as () => CurrentVersionRowInjected
+      const props = injected?.()
+      expect(props?.checkUpdates).toBeUndefined()
+    } finally {
+      if (originalDshDesktop !== undefined) g.dshDesktop = originalDshDesktop
+    }
+  }, COLD_BOOT_TIMEOUT_MS)
 })

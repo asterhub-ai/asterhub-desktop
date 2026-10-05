@@ -1,16 +1,21 @@
 /** Settings surface for the signed AsterHub plugin catalogue. */
 import { useEffect, useState, type ReactNode } from 'react'
 import type { ChangeResult, CuratedPluginCatalog, CuratedPluginEntry, CuratedPluginInstallRequest } from '@deepseek-ai/dsh-plugin-manager/types'
-import type { PluginInventoryLocaleKey } from './locales.ts'
+import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import css from './CuratedPluginSettingsTab.module.css'
 
-export interface CuratedPluginSettingsTabProps {
+/** Registration-side Remote face used by the curated catalogue section. */
+export interface CuratedPluginSettingsTabInjected {
+  /** Read the verified server catalogue. */
   readonly catalog: () => Promise<CuratedPluginCatalog>
+  /** Install one catalogue entry through the signed bundle path. */
   readonly install: (request: CuratedPluginInstallRequest) => Promise<ChangeResult>
-  readonly t: (key: PluginInventoryLocaleKey) => string
 }
 
-export type CuratedPluginSettingsTabInjected = CuratedPluginSettingsTabProps
+/** Full component props assembled by the Settings slot renderer. */
+export type CuratedPluginSettingsTabProps =
+  PropsLocale<'settings.pluginInventory'>
+  & InjectFace<CuratedPluginSettingsTabInjected>
 
 type ViewState = 'loading' | 'error' | 'ready'
 

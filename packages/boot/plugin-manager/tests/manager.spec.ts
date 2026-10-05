@@ -729,7 +729,7 @@ it('does not start pnpm for a stale curated install request and verifies integri
   expect(readFileSync(lockPath, 'utf8')).toBe(lockBefore)
 
   pnpm.mockImplementationOnce(async (_context, args) => {
-    expect(args).toEqual(['add', entry.artifactUrl, '--ignore-scripts'])
+    expect(args).toEqual(['add', entry.artifactUrl, '--ignore-scripts', '--config.node-linker=isolated'])
     bundle('curated-fixture', [{ id: 'curated-fixture', name: './plugin.mjs', config: { service: 'curatedFixtureProbe' } }])
     const manifest = readProfileManifest('test', dir)
     manifest.dependencies = { ...manifest.dependencies, 'curated-fixture': entry.artifactUrl }
@@ -749,7 +749,7 @@ it('does not start pnpm for a stale curated install request and verifies integri
   expect(await manager.listBundles()).toEqual(bundlesBefore)
 
   pnpm.mockImplementation(async (_context, args) => {
-    expect(args).toEqual(['add', entry.artifactUrl, '--ignore-scripts'])
+    expect(args).toEqual(['add', entry.artifactUrl, '--ignore-scripts', '--config.node-linker=isolated'])
     bundle('curated-fixture', [{ id: 'curated-fixture', name: './plugin.mjs', config: { service: 'curatedFixtureProbe' } }])
     const manifest = readProfileManifest('test', dir)
     manifest.dependencies = { ...manifest.dependencies, 'curated-fixture': entry.artifactUrl }
@@ -781,7 +781,7 @@ it('installs the signed curated artifact URL with scripts disabled and checks it
   const lockPath = join(dir, 'pnpm-lock.yaml')
   let installedVersion = '2.0.0'
   const pnpm = vi.spyOn(operations, 'runProfilePnpm').mockImplementation(async (_context, args) => {
-    expect(args).toEqual(['add', entry.artifactUrl, '--ignore-scripts'])
+    expect(args).toEqual(['add', entry.artifactUrl, '--ignore-scripts', '--config.node-linker=isolated'])
     bundle(entry.package, [{ id: 'curated-artifact', name: './plugin.mjs', config: { service: 'curatedArtifactProbe' } }])
     const installedManifestPath = join(dir, 'node_modules', entry.package, 'package.json')
     const installedManifest = JSON.parse(readFileSync(installedManifestPath, 'utf8')) as Record<string, unknown>
@@ -814,6 +814,55 @@ it('installs the signed curated artifact URL with scripts disabled and checks it
   const installed = await manager.installCuratedBundle({ ...entry, revision: 8 })
   expect(installed).toMatchObject({ application: 'applied', bundle: entry.package, packageResult: { exitCode: 0 } })
   expect(pnpm).toHaveBeenCalledTimes(2)
+})
+
+it('successfully installs curated bundles when pnpm writes real tarball URL versions into lockfile', async () => {
+  const { manager, dir, bundle } = await fixture()
+  const entry = {
+    id: 'genoffice', name: 'GenOffice', description: 'Office CLI tools',
+    package: '@asterhub/genoffice-cli', version: '0.11.0-asterhub.1',
+    artifactUrl: 'https://asterhub.xapi.fans/releases/asterhub-genoffice-cli-0.11.0-asterhub.1.tgz',
+    integrity: 'sha512-DOz1DcrljF09y98G/7RaOzhQpWAhnjXJLXJUE67FhMv2+uP50LPGv7FyXUv9XScJ0r8yx/3qtmIT1bBRM27gEQ==',
+  }
+  vi.spyOn(manager, 'curatedCatalog').mockResolvedValue({ revision: 9, generatedAt: '2026-10-01T00:00:00.000Z', plugins: [entry] })
+  const lockPath = join(dir, 'pnpm-lock.yaml')
+  const pnpm = vi.spyOn(operations, 'runProfilePnpm').mockImplementation(async (_context, args) => {
+    expect(args).toEqual(['add', entry.artifactUrl, '--ignore-scripts', '--config.node-linker=isolated'])
+    bundle(entry.package, [{ id: 'genoffice-cli', name: './plugin.mjs', config: { service: 'officeProbe' } }])
+    const installedManifestPath = join(dir, 'node_modules', entry.package, 'package.json')
+    const installedManifest = JSON.parse(readFileSync(installedManifestPath, 'utf8')) as Record<string, unknown>
+    writeFileSync(installedManifestPath, JSON.stringify({ ...installedManifest, version: entry.version }))
+    const manifest = readProfileManifest('test', dir)
+    manifest.dependencies = { ...manifest.dependencies, [entry.package]: entry.artifactUrl }
+    writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest))
+    // This reflects real pnpm lockfile output when adding a remote tarball:
+    writeFileSync(lockPath, JSON.stringify({
+      lockfileVersion: '9.0',
+      importers: { '.': { dependencies: {
+        [entry.package]: {
+          specifier: entry.artifactUrl,
+          version: `${entry.artifactUrl}(@deepseek-ai/cordis@4.0.4)`,
+        },
+      } } },
+      packages: {
+        [`${entry.package}@${entry.artifactUrl}`]: {
+          resolution: { integrity: entry.integrity, tarball: entry.artifactUrl },
+          version: entry.version,
+        },
+      },
+    }))
+    return { exitCode: 0, output: 'installed curated tarball', truncated: false, logPath: join(dir, 'pnpm.log') }
+  })
+  onTestFinished(() => pnpm.mockRestore())
+
+  const result = await manager.installCuratedBundle({ ...entry, revision: 9 })
+  expect(result).toMatchObject({
+    application: 'applied',
+    bundle: entry.package,
+    packageResult: { exitCode: 0 },
+  })
+  expect(readProfileManifest('test', dir).dsh?.profile?.bundles).toContain(entry.package)
+  expect(readProfileManifest('test', dir).dependencies?.[entry.package]).toBe(entry.artifactUrl)
 })
 
 it.each([

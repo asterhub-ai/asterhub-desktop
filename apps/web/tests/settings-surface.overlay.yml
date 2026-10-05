@@ -1,0 +1,3 @@
+# Settings preferences are qualified independently of the account sign-in gate.
+- id: ui-settings-account
+  disabled: true

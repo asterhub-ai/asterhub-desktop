@@ -1,5 +1,5 @@
 ---
-description: "dsh Web 客户端设置中按作用域分组的只读插件清单标签页：Agent 预设组合在前，全局平面收在折叠分组里，搜索跨两组。"
+description: "dsh Web 客户端设置中的 AsterHub 精选插件标签页：仅展示已签名服务器目录条目，按签名完整性安装，提供本地化的加载/空/错误/重试状态。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-**插件列表**标签页让 Web 用户查看插件，而不改变其配置。它先列 agent（智能体）预设分组，再列全局清单；预设分组默认展开，全局分组默认收起，搜索期间两组都展开。卡片显示可用的本地化标题与描述，以稳定的条目 id 标识实例，并展示启停状态、出处、运行状态、禁用条件与发现失败；由预设提供的全局条目会列出对应预设。搜索覆盖两个分组，并指出其他预设中的匹配。标签页处理加载、空结果、无匹配、失败与重试状态，且不暴露传输细节；没有预设 roster 时仍会展示全局清单。
+设置中「插件」分区下的**精选插件**标签页仅展示 AsterHub 已签名服务器目录的条目。它绝不回退到宿主内置 Loader 清单：提供方缺失、网络失败或目录为空时各自渲染对应的本地化状态并提供重试。每张卡片展示服务器提供的名称、描述、分类与版本，安装按钮通过 `remote.pluginManager.installCuratedBundle()` 发送该条目的精确签名目录事实（id、revision、package、version、integrity、artifact URL）。
 
 ## 目录
 
@@ -25,25 +25,19 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-打开设置中的「插件」分区并选择**插件列表**标签页，即可查看宿主的插件清单。插件激活期间不会读取 Remote——首次选择该标签页时才挂载组件，并通过 `api-remotes` 懒调用 `ctx.remote.pluginInventory.list()`。
-
-安装失败且存在待审批的 pnpm 构建权限时，页面提供“允许这些脚本并重试”。该操作展示准确包名和持久授权范围，再使用原来的包规格及启用选项重试。一次点击批准整个列表，其中可能包括此前安装留下的待审批包。关闭页面不会授予权限。
+打开设置中的「插件」分区并选择**精选插件**标签页。标签页在首次选择时通过 `ctx.remote.pluginManager.curatedCatalog()` 懒读取目录；Remote 调用仅在标签页挂载时发生，插件激活期间不会读取。
 
 ### 阅读卡片
 
-每张收起的卡片使用插件可用的本地化标题与描述；描述最多显示两行，展开卡片后显示全文。设置页会缩短字面的包名或模块名回退值，移除 npm scope 以及 `cordis:`、`cordis-plugin-` 或 `dsh-`/`dsh-host-`/`dsh-client-` 前缀；locale 标题保持原样。Host 在 `meta` 中提供 locale 与包字段的回退结果，Client 选择当前语言。详情与搜索仍保留完整模块标识。缺失的描述不显示，元信息诊断随卡片展示。这种短名显示仅用于设置页，不影响侧栏的插件页。
+每张卡片原样使用服务器目录的名称与描述，在服务器提供时展示分类与版本。目录已标记为已安装的条目，其安装按钮被禁用；任何安装进行中时所有安装按钮均被禁用。
 
-表示启停状态的小标签只标记与普通启用不同的状态：已停用、条件启用、由预设提供与启动失败；普通启用的行不带标签。彩色根 fiber 状态圆点标记没有标签表达的存活阶段：`pending` 映射为 idle，`loading` 与 `unloading` 映射为 ongoing；`active` 或 `failed` fiber 不显示圆点。稳定的条目 id 仅在与标题不同时显示，位于卡片左下角的代码标签中，与标题左对齐：组合生成的 id 在此省略开头的 `include:` 标记，省略后与标题相同的 id 不再重复显示。显示代码标签时，其悬停提示与卡片的无障碍名称带完整 id；搜索与展开详情始终保留完整 id。长条目 id 会在代码标签内截断，悬停时仍可查看完整值。展开卡片后会显示完整描述、声明的条目 id、完整模块标识与状态事实：预设行说明它来自哪个预设、组合存活时的运行状态，以及它携带的禁用条件；被预设提供的全局行说明它由 Agent 预设按会话提供、列出启用它的预设，并提供跳转到预设组的入口。预设名经共享的 `presetDisplayText` 纯函数（`dsh-agent-preset-registry/display`）叠在 [`ui-agent-preset`](../ui-agent-preset/README.zh.md) 的字典上解析：内置预设走当前语言，用户自建预设保留自己的元数据，因此英文界面不会回显预设声明里的中文名。搜索按本地化标题与描述、模块名称及条目 id 过滤两组。
+### 安装
 
-### 预设切换器
-
-切换器与通用设置各行使用同一种「选择胶囊 + 菜单」控件。它列出 roster 的每个预设——默认项带后缀、坏预设带标记——并且只改变列表显示什么：它不写任何设置，选中坏预设时在行的位置展示 discovery 报告的原因。选择默认预设或会话预设的入口仍在原处：Agent 预设分区与新会话页。
+点击安装会发送该条目的精确签名目录事实。成功应用（`applied` 或 `restart-required`）显示已安装消息并刷新目录。`stale-approval` 结果——目录 revision 在展示与审批之间发生了变化——显示列表已更新消息并刷新，让用户核对当前条目。其他结果或传输错误显示失败消息；用户可重试。
 
 ### 重试失败的读取
 
-读取失败会在标签页内渲染共享 error 标记。加载时在卡片网格中显示骨架卡片，当前页面同步使用共享 ongoing loading。重试会重新执行懒 `list()` 调用，且不会暴露传输细节。
-
-插件列表还显示当前页面的同步失败。重试会重新应用最新客户端图，不改变 Host 启用状态，也不刷新页面。
+目录读取失败时在标签页内渲染错误状态并提供重试按钮，重新执行懒 `curatedCatalog()` 调用。空目录渲染自己的空状态；两者都不会展示宿主内置 Loader 清单。
 
 -----
 
@@ -53,15 +47,9 @@ kind: "package-reference"
 <details>
 <summary>实现细节——点击展开</summary>
 
-该标签页是宿主拥有快照的只读投影；插件激活期间不执行任何 Remote 读取，首次选择时才取快照。
+浏览器插件注册一个 id 为 `curated` 的本地化 `settings.plugins.tab` 贡献；「插件」分区拥有导航入口与标签栏。注册使用 `ctx.slots.inject()`，因此能跟随标签 slot 的延迟声明、重新声明、本地化变化与 teardown，而无需 import 分区拥有方。
 
-### 注册
-
-浏览器插件注册一个 id 为 `all` 的本地化 `settings.plugins.tab` 贡献；「插件」分区拥有导航入口与标签栏。注册使用 `ctx.slots.inject()`，因此能跟随标签 slot 的延迟声明、重新声明、本地化变化与 teardown，而无需 import 分区拥有方。
-
-### 渲染
-
-行 key 按作用域限定（`global:`、`preset:<id>:<index>`），因此同一模块出现在两个作用域时保持各自的展开状态；声明的条目 id 出现在展开详情中；去掉开头的组合 `include:` 标记后若与标题不同，则作为收起卡片的 id 代码标签，没有 id 的行不显示次级标签。预设提供标记在客户端推导：一个全局条目在全局被停用、且至少一个预设行对同一模块标识实际启用时才携带它，因此被所有预设关掉（或仅条件声明）的模块保持单纯的已停用，而不是夸大提供关系。
+inject face 只携带两个 Remote 回调——`catalog` 与 `install`——闭包于 `ctx.remote.pluginManager`；locale `t` 座通过标准 `PropsLocale` 共享到达。组件维护自己的 loading/error/ready 视图状态以及安装的 busy/message 反馈。
 
 </details>
 
@@ -70,19 +58,18 @@ kind: "package-reference"
 <a id="further-exploration"></a>
 ## 进一步探索
 
-以下页面覆盖设置分区、Remote 调用与宿主侧投影。
+以下页面覆盖设置分区、Remote 调用与宿主侧目录验证。
 
 - [ui-settings-plugins](../ui-settings-plugins/README.zh.md)——本标签页注册进的「插件」分区。
 - [ui-settings](../ui-settings/README.zh.md)——声明 `settings.plugins.tab` 的领域底座。
-- [api-remotes](../../api/remotes/README.zh.md)——`pluginInventory.list()` 背后的 Remote BFF 表面。
-- [plugin-inventory](../../host/plugin-inventory/README.zh.md)——本标签页所渲染的宿主侧只读 Loader 投影。
+- [plugin-manager](../../boot/plugin-manager/README.zh.md)——本标签页驱动的宿主侧签名目录验证与精选 bundle 安装。
 
 -----
 
 <a id="model-experience"></a>
 ## 模型体验
 
-无。该包是浏览器端清单投影，不注册任何面向模型的内容。
+无。该包是浏览器端目录视图，不注册任何面向模型的内容。
 
 #### KV Cache 影响
 
@@ -93,10 +80,10 @@ kind: "package-reference"
 <a id="known-limitations-and-deferred-work"></a>
 
 
-这些限制定义清单视图的新鲜度与触达范围；它们是当前包约束。
+这些限制定义目录视图的新鲜度与触达范围；它们是当前包约束。
 
-- **每次 Settings 挂载或重试只读取一份快照**：标签页不订阅 Loader 变化，也不会在重连后自动重新读取；切换标签页会保留当前快照，重新打开 Settings 则会取得新快照。
-- **两个平面都只读**：标签页展示全局与预设的启停状态但都不修改；写回自定义预设组合文件的启停控件是刻意留作后续的工作。
+- **每次 Settings 挂载或重试只读取一份目录**：标签页不订阅目录变化，也不会在重连后自动重新读取；切换标签页会保留当前目录，重新打开 Settings 则会取得新目录。
+- **仅服务器目录**：标签页不展示宿主内置 Loader 清单；侧栏的插件页是独立的管理入口。
 
 <a id="dev-note"></a>
 ### 开发备注

@@ -10,7 +10,7 @@ export const zh = {
   installed: '已安装',
   install: '安装',
   installing: '正在安装…',
-  installFailed: '安装未完成，请检查权限或在对话中处理依赖脚本审批。',
+  installFailed: '安装未完成，请检查网络连接或权限后重试。',
   catalogChanged: '精选列表已更新，请核对新版本后再次点击安装。',
   installedVersion: '版本',
 } as const
@@ -28,7 +28,7 @@ export const en = {
   installed: 'Installed',
   install: 'Install',
   installing: 'Installing…',
-  installFailed: 'Installation did not complete. Check permissions or handle dependency script approval in chat.',
+  installFailed: 'Installation did not complete. Check your connection or permissions and try again.',
   catalogChanged: 'The curated list changed. Review the new version and click Install again.',
   installedVersion: 'Version',
 } as const satisfies Record<PluginManagerLocaleKey, string>
