@@ -624,6 +624,80 @@ describe('desktop main startup', () => {
     expect(testAuth.login).not.toHaveBeenCalled()
   })
 
+  it('performs a manual check and displays the current version when no newer candidate exists', async () => {
+    await readyForUpdate()
+
+    harness.updateState = { phase: 'idle' }
+    await invoke(DESKTOP_IPC.updatesCheck, 'app')
+    expect(harness.updateCheck).toHaveBeenCalledWith(true)
+    expect(harness.dialog.showMessageBox).toHaveBeenCalledWith(expect.objectContaining({
+      message: en.updateCurrent,
+      detail: expect.stringContaining('1.0.0'),
+    }))
+  })
+
+  it('accepting the available-version download prompt downloads and installs without a second prompt when no active tasks', async () => {
+    await readyForUpdate()
+    harness.updateState = { phase: 'available', version: '1.0.1-nightly.1' }
+    harness.updateDownload.mockImplementation(async () => { harness.updateState = { phase: 'ready', version: '1.0.1-nightly.1' }; return harness.updateState })
+    harness.dialog.showMessageBox.mockResolvedValue({ response: 0 }) // Accept the download prompt
+    await invoke(DESKTOP_IPC.updatesCheck, 'app')
+    expect(harness.updateDownload).toHaveBeenCalledWith('1.0.1-nightly.1')
+    // After download, no second prompt should appear because there are no active tasks
+    // The install happens directly
+    expect(harness.updateInstall).toHaveBeenCalledWith('1.0.1-nightly.1')
+    // Only the checking progress and the download confirmation were shown;
+    // no "ready to install" confirmation appears because the user already consented to install.
+    const messages = harness.dialog.showMessageBox.mock.calls.map(call => (call.at(-1) as { message?: string }).message ?? '')
+    expect(messages).not.toContain(en.updateDownloadedTitle.replace('{version}', '1.0.1-nightly.1'))
+    expect(messages).toContain(en.updateAvailable.replace('{version}', '1.0.1-nightly.1'))
+  })
+
+  it('requires separate stop-tasks confirmation at install time; declining leaves the downloaded version ready', async () => {
+    await readyForUpdate()
+    harness.updateState = { phase: 'available', version: '1.0.1-nightly.1' }
+    harness.updateDownload.mockImplementation(async () => { harness.updateState = { phase: 'ready', version: '1.0.1-nightly.1' }; return harness.updateState })
+    harness.dialog.showMessageBox.mockResolvedValueOnce({ response: 0 }) // Accept the initial download prompt
+    // First, let's make the Host report active tasks
+    const host = harness.hosts[0]!
+    host.updateTasks.mockResolvedValueOnce(true) // Active tasks
+    await invoke(DESKTOP_IPC.updatesCheck, 'app')
+    // The install step should now ask about stopping tasks
+    // Decline the task stop confirmation
+    harness.dialog.showMessageBox.mockResolvedValueOnce({ response: 1 }) // Decline stop tasks
+    // Now call prepareUpdate (the task confirmation)
+    await harness.prepareUpdate()
+    expect(host.updateTasks).toHaveBeenCalledWith('inspect')
+    // The downloaded version should still be ready, but quitAndInstall should not have been called
+    expect(harness.updateInstall).not.toHaveBeenCalled()
+  })
+
+  it('declining the initial update confirmation does not download or install', async () => {
+    await readyForUpdate()
+    harness.updateState = { phase: 'available', version: '1.0.1-nightly.1' }
+    harness.dialog.showMessageBox.mockResolvedValue({ response: 1 }) // Decline the download prompt
+    await invoke(DESKTOP_IPC.updatesCheck, 'app')
+    expect(harness.updateCheck).toHaveBeenCalledWith(true)
+    expect(harness.updateDownload).not.toHaveBeenCalled()
+    expect(harness.updateInstall).not.toHaveBeenCalled()
+  })
+
+  it('shows the separate install confirmation after a nonmanual updates.open() download when there are no active tasks', async () => {
+    await readyForUpdate()
+    harness.updateState = { phase: 'available', version: '1.0.1-nightly.1' }
+    harness.updateDownload.mockImplementation(async () => { harness.updateState = { phase: 'ready', version: '1.0.1-nightly.1' }; return harness.updateState })
+    // Nonmanual updates.open() doesn't show a download prompt; it downloads directly.
+    // But it still must show the separate "ready to install" confirmation.
+    harness.dialog.showMessageBox.mockResolvedValue({ response: 1 }) // All dialogs decline
+    await invoke(DESKTOP_IPC.updatesOpen, 'app')
+    expect(harness.updateDownload).toHaveBeenCalledWith('1.0.1-nightly.1')
+    // The download happens, but the install confirmation is shown separately when prepareUpdate is called.
+    // For nonmanual flow, installAuthorized is false, so confirmation should appear.
+    await harness.prepareUpdate()
+    const messages = harness.dialog.showMessageBox.mock.calls.map(call => call[0] && call[0].message || '')
+    expect(messages.some(m => m.includes('ready to install'))).toBe(true)
+  })
+
   it('retains the embedded block and running Host after expired test login is cancelled', async () => {
     harness.embeddedPolicy = { origin: 'https://policy.example.com', authentication: 'feishu-test', allowedAuthOrigins: ['https://login.example.com'],
       allowedPageOrigins: ['https://downloads.example.com'], intervalMs: 1000, jitter: 0 }
@@ -845,7 +919,7 @@ describe('desktop main startup', () => {
     expect(() => handler(event, 'application', NaN, 34)).toThrow('invalid popup request')
     const application = handler(event, 'application', 48, 34)
     expect(harness.menu.buildFromTemplate.mock.lastCall![0].map(item => item.label ?? item.type)).toEqual([
-      '关于 AsterHub', 'separator', '检查更新…', '管理 dsh 命令…', 'separator', '退出',
+      '关于 AsterHub', 'separator', '账户', 'separator', '检查更新…', 'separator', '退出',
     ])
     expect(harness.popup.mock.lastCall![0]).toMatchObject({ window, x: 48, y: 34 })
     expect(harness.popup.mock.lastCall![0].callback).toBeTypeOf('function')
@@ -882,7 +956,7 @@ describe('desktop main startup', () => {
       : ['Application', 'editMenu'])
     const application = template[0]!.submenu as MenuItemConstructorOptions[]
     expect(application.filter(item => item.visible !== false).map(describeItem)).toEqual(platform === 'darwin'
-      ? ['about', 'separator', en.accountMenu, 'separator', en.checkUpdatesMenu, en.cliCommandMenu, 'separator', 'hide', 'hideOthers', 'unhide', 'separator', 'quit']
+      ? ['about', 'separator', en.accountMenu, 'separator', en.checkUpdatesMenu, 'separator', 'hide', 'hideOthers', 'unhide', 'separator', 'quit']
       : ['about', 'separator', en.accountMenu, 'separator', en.checkUpdatesMenu, 'separator', 'quit'])
     expect(harness.menu.setApplicationMenu).toHaveBeenCalledOnce()
   })
@@ -898,8 +972,7 @@ describe('desktop main startup', () => {
       await harness.preparing.promise
       const commands = applicationMenuItems().filter(item =>
         item.role === 'hide' || item.role === 'hideOthers' || item.role === 'unhide' || item.role === 'quit'
-        || item.label === en.checkUpdatesMenu || item.label === zh.checkUpdatesMenu
-        || item.label === en.cliCommandMenu || item.label === zh.cliCommandMenu)
+        || item.label === en.checkUpdatesMenu || item.label === zh.checkUpdatesMenu)
       await expect(JSON.stringify(commands, null, 2) + '\n')
         .toMatchFileSnapshot(`./expected/application-menu-${locale}.json`)
       expect(harness.app.name).toBe('@deepseek-ai/dsh-desktop')

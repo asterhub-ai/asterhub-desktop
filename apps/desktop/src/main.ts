@@ -33,7 +33,6 @@ import { readDeviceInfo } from './device-info.ts'
 import { desktopUpdateReadyConfirmation, formatDesktopMessage, resolveDesktopLocale, resolveDesktopStartupLocale } from './locale.ts'
 import { claimDesktopSingleInstance } from './single-instance.ts'
 import { DesktopUpdateCoordinator } from './update-coordinator.ts'
-import { DesktopCommandManager } from './command-management.ts'
 import { serveWebDocument, authenticateWebHost, forwardWebRequest } from './web-document.ts'
 import { DesktopFatalRecovery } from './fatal-recovery.ts'
 import { pruneCrashReports, RendererConsoleTail, writeCrashReport, type CrashReportSource } from './crash-report.ts'
@@ -393,15 +392,6 @@ async function main(): Promise<void> {
       detail: formatDesktopMessage(locale.messages.aboutVersion, { version: app.getVersion() }),
       buttons: [locale.messages.updateAcknowledge], cancelId: 0 })
   }
-  const commandManager = new DesktopCommandManager({
-    resources: process.resourcesPath,
-    isPackaged: app.isPackaged,
-    isInstalledLocation: () => process.platform !== 'darwin' || app.isInApplicationsFolder(),
-    isInstalling: () => updateState.phase === 'installing',
-    isQuitting,
-    messages: () => currentDesktopLocale().messages,
-    show: ordinaryMessageBox,
-  })
   const appPreload = fileURLToPath(new URL('./preload-app.cjs', import.meta.url))
   const applicationUrl = `${SCHEME}://app/`
   let hostUrl: string | undefined
@@ -484,7 +474,9 @@ async function main(): Promise<void> {
     else if (!shuttingDown) backendReady = state.phase === 'ready'
   })
 
+  let installConsentFromDownloadPrompt = false
   const updateErrors = new WeakMap<DesktopUpdateState, Promise<void>>()
+
   const showUpdateFailure = (state: DesktopUpdateState): Promise<void> => {
     if (state.phase !== 'error') return Promise.resolve()
     if (isMandatory()) { mandatoryUI?.sync(); return Promise.resolve() }
@@ -556,12 +548,31 @@ async function main(): Promise<void> {
   const updates = new DesktopUpdateCoordinator(
     publishUpdate,
     async () => {
-      await commandManager.idle()
       await workspaceRecovery
       await startup?.catch(() => undefined)
       const host = backend.host
       if (host === undefined) throw new DesktopUpdatePreparationError('tasks-unavailable', locale.messages.updateTasksUnavailable)
       const active = await host.updateTasks('inspect')
+      // A download-and-install prompt already consented to installing; only a
+      // separate stop-tasks confirmation is needed when tasks are active.
+      if (installConsentFromDownloadPrompt) {
+        installConsentFromDownloadPrompt = false
+        if (!active) {
+          const stillActive = await host.updateTasks('lock')
+          if (stillActive) throw new DesktopUpdatePreparationError('tasks-changed', locale.messages.updateTasksChanged)
+          mandatoryUI?.preparingRestart(false)
+          await platformView.closeAndWait()
+          requireCleanStop = true
+          updateStopFailure = undefined
+          await backend.stop()
+          updateStoppedHost = true
+          const stopFailure = updateStopFailure as DesktopHostUncleanExitError | undefined
+          if (stopFailure !== undefined) throw new DesktopUpdatePreparationError('stop-failed', locale.messages.updateStopFailed, stopFailure.message)
+          updateJournal?.action('install-confirmed')
+          shellInstallerOwnsQuit = true
+          return true
+        }
+      }
       const ready = desktopUpdateReadyConfirmation(locale.messages, updates.state.version ?? '', process.platform)
       const confirmation: Electron.MessageBoxOptions = {
         type: active ? 'warning' : 'info', title: locale.messages.updateTitle,
@@ -611,7 +622,13 @@ async function main(): Promise<void> {
 
   const updateSchedule = new DesktopUpdateSchedule(updates, resolveDesktopUpdateScheduleConfig(process.env))
 
-  const downloadUpdate = async (version: string): Promise<DesktopUpdateState> => {
+  /**
+   * @param version - Updater-owned target version.
+   * @param installAuthorized - Only the accepted main-owned manual available-version prompt grants this;
+   *   it suppresses the separate no-task install confirmation. Status/badge downloads and the mandatory
+   *   window keep their own install confirmation.
+   */
+  const downloadUpdate = async (version: string, installAuthorized = false): Promise<DesktopUpdateState> => {
     void track('desktop_upgrade_click', {})
     updateJournal?.action('download-requested')
     const state = await updates.download(version)
@@ -622,7 +639,14 @@ async function main(): Promise<void> {
     if (!isMandatory()) await windowShown()
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- A quit can begin while the show is awaited.
     if (quitting) return state
-    return updates.install(version)
+    // The accepted manual available-version prompt already consented to install; skip the separate
+    // "ready to install" confirmation when there are no active tasks.
+    installConsentFromDownloadPrompt = installAuthorized
+    try {
+      return await updates.install(version)
+    } finally {
+      installConsentFromDownloadPrompt = false
+    }
   }
   const windowShown = (): Promise<void> => new Promise((resolve) => {
     const window = currentDialogWindow()
@@ -763,6 +787,12 @@ async function main(): Promise<void> {
     assertProductSender(event)
     await openUpdatePrompt()
   })
+  // A manual check from the Settings row is the same main-owned prompt as the
+  // native menu command; the renderer cannot authorize a download or install.
+  ipcMain.handle(DESKTOP_IPC.updatesCheck, async (event) => {
+    assertProductSender(event)
+    await openUpdatePrompt(true)
+  })
 
   let promptOperation: Promise<void> | undefined
   let policyAuthenticationQueued = false
@@ -821,7 +851,9 @@ async function main(): Promise<void> {
         if (!isMandatory() && state.version !== undefined) {
           controller?.abort()
           failedOperation = 'download'
-          await showUpdateFailure(await downloadUpdate(state.version))
+          // Only the accepted main-owned manual available-version prompt authorizes install;
+          // the status/badge (nonmanual) flow keeps its separate install confirmation.
+          await showUpdateFailure(await downloadUpdate(state.version, manual))
         }
       } finally {
         controller?.abort()
@@ -936,8 +968,6 @@ async function main(): Promise<void> {
     },
     { type: 'separator' },
     { label: currentDesktopLocale().messages.checkUpdatesMenu, click: () => { void openUpdatePrompt(true) } },
-    ...process.platform === 'darwin' || process.platform === 'win32'
-      ? [{ label: currentDesktopLocale().messages.cliCommandMenu, click: () => { void commandManager.show() } }] : [],
     ...development ? [
       { type: 'separator' as const },
       { label: currentDesktopLocale().messages.reloadPageMenu, role: 'reload' as const },

@@ -57,6 +57,16 @@ it('limits product documents to update status and a native confirmation action',
   expect(electron.ipcRenderer.off).toHaveBeenCalledWith(DESKTOP_IPC.updatesPresentation, handler)
 })
 
+it('exposes updates.check() that invokes only the updatesCheck channel', async () => {
+  vi.stubGlobal('location', new URL('dsh-app://app/index.html'))
+  await import('../src/preload-app.ts')
+  const api = electron.contextBridge.exposeInMainWorld.mock.calls.find(([name]) => name === 'dshDesktop')?.[1] as DshDesktopProductApi
+  await api.updates.check()
+  expect(electron.ipcRenderer.invoke.mock.calls).toContainEqual([DESKTOP_IPC.updatesCheck])
+  // The preload exposes no direct download or install capability
+  expect(api.updates).not.toHaveProperty('download')
+  expect(api.updates).not.toHaveProperty('install')
+})
 it.each(['dsh-app://shell/plugin-manager.html', 'dsh-app://other/index.html', 'https://shell/startup.html', 'http://example.com/'])('exposes only the carrier marker to %s', async (url) => {
   vi.stubGlobal('location', new URL(url))
   await import('../src/preload-app.ts')
