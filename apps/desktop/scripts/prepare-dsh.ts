@@ -5,9 +5,6 @@ import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { copyFileSync, cpSync, createReadStream, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
-import { Readable } from 'node:stream'
-import { pipeline } from 'node:stream/promises'
-import { TransformStream } from 'node:stream/web'
 import { tmpdir } from 'node:os'
 import { delimiter, join, relative, resolve } from 'node:path'
 import { desktopNodeEnvironment } from '../src/node-environment.ts'
@@ -98,18 +95,19 @@ async function downloadSpeechAsset(asset: SpeechAsset, destination: string): Pro
   mkdirSync(join(destination, '..'), { recursive: true })
   const response = await fetch(asset.url)
   if (!response.ok || !response.body) throw new Error(`speech model download failed: ${asset.name} HTTP ${String(response.status)}`)
-  const digest = createHash('sha256')
-  let received = 0
-  const hashing = new TransformStream<Uint8Array, Uint8Array>({
-    transform(chunk: Uint8Array, controller: TransformStreamDefaultController<Uint8Array>): void {
-      received += chunk.byteLength
-      digest.update(Buffer.from(chunk))
-      controller.enqueue(chunk)
-    },
+  const chunks: Uint8Array[] = []
+  for await (const chunk of response.body) {
+    chunks.push(chunk)
+  }
+  const buffer = Buffer.concat(chunks)
+  const digest = createHash('sha256').update(buffer)
+  await new Promise<void>((resolve, reject) => {
+    const file = createWriteStream(destination)
+    file.once('error', reject)
+    file.once('finish', () => resolve())
+    file.end(buffer)
   })
-  const file = createWriteStream(destination)
-  await pipeline(response.body.pipeThrough(hashing), file)
-  if (received !== asset.bytes || digest.digest('hex') !== asset.sha256) {
+  if (buffer.byteLength !== asset.bytes || digest.digest('hex') !== asset.sha256) {
     throw new Error(`speech model integrity check failed: ${asset.name}`)
   }
 }
