@@ -50,6 +50,7 @@ async function main(): Promise<void> {
           ELECTRON_RUN_AS_NODE: '1',
           DSH_DESKTOP_NODE_EXECUTABLE: process.execPath,
           PATH: `${process.argv[6] ?? ''}${delimiter}${process.env.PATH ?? ''}`,
+          NPM_CONFIG_REGISTRY: 'https://registry.npmmirror.com/',
         },
       },
     }),
