@@ -52,6 +52,7 @@ Learn the workflow and narrow execution primitives from ZCode; do not import its
 - Keep exactly one `ctx.browserUse` registration. Do not add a multi-provider selector or production dependency on `packages/experimental`.
 - Treat page content as untrusted. Existing approval policy applies to consequential actions; a page or model cannot grant approval. Host-level identity validation supplements rather than replaces tool approvals.
 - Use existing durable tool results and attachment storage. Do not persist raw base64, live leases, or Chromium state in Session events. Declare any actual persistence-type change under the repository policy.
+- Cap screenshot IPC payloads at 32 MiB, use V8 advanced serialization to preserve `Uint8Array` bytes, and reject oversized captures before attachment admission.
 - User tab clicks and page scripts can race automation. Serialize provider work per live Session; generation-fence stale targets and snapshots. A successful input dispatch is not proof of the requested result.
 - No arbitrary `evaluate` or Node REPL tool. Read-only observations are fixed protocol operations. No cookie migration, persistent login-state redesign, upload/download enablement, or recording subsystem in this change.
 - New deployment-varying timeouts and snapshot limits are validated Config fields. Adopt the existing branded-ID, effect-registration, export JSDoc, localized UI, and face-specific TypeScript conventions.
@@ -64,27 +65,31 @@ All paths in the task file maps are repository-relative. New paths and signature
 
 ### Task 1: Typed transport and guest identity
 
-**Files:** Create `packages/browser-use/browser-use-desktop/{package.json,tsconfig.json,src/types.ts,src/transport.ts,tests/transport.spec.ts}`. Modify `apps/desktop-host/{package.json,tsconfig.json,src/index.ts}`, `apps/desktop/{package.json,tsconfig.host.json,src/host-process.ts,src/host-protocol.ts,src/main.ts,src/browser-automation-protocol.ts}`, and root `tsconfig.host.json`; add the Host lifecycle tests. Add `apps/desktop-host/src/browser-transport.ts`.
+**Files:** Create `packages/browser-use/browser-use-desktop/{package.json,tsconfig.json,src/{index.ts,types.ts,protocol.ts,transport.ts},tests/transport.spec.ts}`. Modify `apps/desktop-host/{package.json,tsconfig.json,src/index.ts}`, `apps/desktop/{package.json,tsconfig.host.json,src/{host-process.ts,host-protocol.ts,browser-automation-protocol.ts}}`, root `tsconfig.host.json`, and the hand-maintained subpath entries in `tsconfig.base.json`; add Host lifecycle tests. Add `apps/desktop-host/src/browser-transport.ts`.
 
-**Project wiring:** Add project references for the new package in both app/Host TypeScript faces and the root Host aggregate. Add its direct runtime dependency to `apps/desktop-host` and type/build dependency to `apps/desktop`; generate package source aliases with `pnpm run gen-tsconfig-paths` and verify with `pnpm run verify-tsconfig-paths`.
+**Project wiring:** Add project references for the new package in both app/Host TypeScript faces and the root Host aggregate. Add its direct runtime dependency to `apps/desktop-host` and type/build dependency to `apps/desktop`. `gen-tsconfig-paths` owns the bare package alias; hand-maintain the `/types`, `/protocol`, and `/transport` source aliases in `tsconfig.base.json`. Run the generator and verify with `pnpm run verify-tsconfig-paths`.
 
-**Interfaces:** The package publishes type-only `/types`; `desktopBrowserTransport` is a typed Host-provided capability installed through `runProfile.hostSetup` before the provider loads. Node IPC carries a tagged `browser/request`, `browser/result`, or `browser/cancel`; a trusted request carries session ID, live owner generation, request ID, and the validated operation. `AbortSignal` stays local and is represented across IPC by cancellation.
+**Interfaces:** The package publishes type-only `/types`; `desktopBrowserTransport` is a typed Host-provided capability installed through `runProfile.hostSetup` before the provider loads. Node IPC carries `browser/request`, `browser/result`, or `browser/cancel`; requests carry Host-derived Session/owner generation, a monotonic safe-integer request ID, and the validated operation. `AbortSignal` stays local and is represented across IPC by cancellation. The tool call rejects on local cancellation; `releaseOwner` awaits the terminal parent result or IPC disconnection so no disposed owner leaves admitted main-process work. Use V8 advanced serialization so screenshots cross both process directions as `Uint8Array` rather than base64 copies.
 
 - [ ] Define the shared operation/result discriminants and exact validation before implementing either IPC endpoint. Use branded tab/snapshot IDs and derive caller identity outside model parameters.
 
 ```text
-DesktopBrowserTarget = { tabId: DesktopBrowserTabId, generation: number }
-DesktopBrowserCaller = { sessionId: SessionId, ownerGeneration: number }
+DesktopBrowserTarget = { tabId: DesktopBrowserTabId, generation: DesktopBrowserTargetGeneration }
+DesktopBrowserCaller = { sessionId: SessionId, ownerGeneration: DesktopBrowserOwnerGeneration }
 DesktopBrowserTransport.request(caller, operation, signal): Promise<DesktopBrowserResult>
 DesktopBrowserTransport.releaseOwner(caller): Promise<void>
 TabInfo = { target, url, title, active, ownership: "user" | "agent", attached: boolean }
+DesktopBrowserOperation = { kind: "tabs.list" } | { kind: "tabs.open", url, newTab? } | { kind: "tabs.close", target } | { kind: "page.snapshot", target } | { kind: "page.read", target, locator, property, attribute? } | { kind: "page.act", target, locator, action, text?, keys?, values?, observe? } | { kind: "page.actAt", target, screenshotId, action, x?, y?, deltaX?, deltaY?, path?, observe? } | { kind: "page.wait", target, condition } | { kind: "page.screenshot", target }
+DesktopBrowserResult = { status: "success", value: DesktopBrowserValue } | { status: "error", code, message }
 SnapshotResult = { target, snapshotId, text, truncated: boolean }
+DesktopBrowserScreenshot = { target, screenshotId, bytes: Uint8Array, viewport: { width, height } }
+MAX_DESKTOP_BROWSER_SCREENSHOT_BYTES = 32 * 1024 * 1024
 ```
 
 - [ ] Add correlated request handling in `DesktopHostProcess`, with validation in `isDesktopHostEvent`; extend the Host lifecycle protocol version and its release metadata together. Reject orphan, duplicate, late, or wrong-generation results without dispatching another action.
 - [ ] Install transport in `apps/desktop-host/src/index.ts` before composition activation, not after `await application`. The transport must reject missing/disconnected Electron main, abort queued work, and drain its request registry on shutdown.
 - [ ] Regenerate package aliases and verify with `pnpm run verify-tsconfig-paths`; confirm both Desktop Host and Desktop main TypeScript references include the new package.
-- [ ] Cover crossed Session targets, wrong live owner generation, IPC disconnect, canceled queued requests, and a late reply after disposal. Run the new focused transport spec and the affected `apps/desktop/tests/host-process.spec.ts` checks; retain only observable failure/ownership tests.
+- [ ] Cover crossed Session targets, wrong live owner generation, IPC disconnect, canceled queued requests, a late reply after disposal, and out-of-order responses. Verify screenshot bytes survive the child-process IPC round trip as a `Uint8Array` and reject the exact 32 MiB + 1 byte boundary. Run the new focused transport spec and affected `apps/desktop/tests/host-process.spec.ts` checks; retain only observable failure/ownership tests.
 
 **Review checkpoint:** No model-controlled identity fields, no network listener, no guest Electron/Node exposure, and no pending promise survives Host exit.
 
@@ -122,7 +127,7 @@ SnapshotResult = { target, snapshotId, text, truncated: boolean }
 
 ### Task 4: Model tools, policy, and durable evidence
 
-**Files:** Add `packages/browser-use/browser-use-desktop/src/{index.ts,tools.ts,presentation.ts}` and `tests/{tools.spec.ts,lifecycle.spec.ts}`. Modify the new package manifest for production dependencies and the existing skill/tool-result adapters only if a required extension cannot be expressed through their current APIs.
+**Files:** Modify `packages/browser-use/browser-use-desktop/src/index.ts`; add `src/{tools.ts,presentation.ts}` and `tests/{tools.spec.ts,lifecycle.spec.ts}`. Modify the new package manifest for production dependencies and the existing skill/tool-result adapters only if a required extension cannot be expressed through their current APIs.
 
 **Interfaces:** Inject `browserUse`, `tools`, `systemPrompt`, `desktopBrowserTransport`, and `attachments`. Use existing `ImageAttachmentRef` for the `AttachmentRef` shorthand below. Register `BrowserUseProviderName("desktop-internal")` through an ordered effect. Tool parameters do not include caller identity; schemas below define the public operations, with structured canonical results and existing attachment references.
 

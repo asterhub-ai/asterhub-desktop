@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DesktopHostFatalError, DesktopHostProcess, DesktopHostUncleanExitError, QUIT_INSPECTION_DEADLINE_MS } from '../src/host-process.ts'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { DesktopBrowserRequestMessage, DesktopBrowserResult, DesktopBrowserSnapshotId } from '@deepseek-ai/dsh-browser-use-desktop/types'
 
 const roots: string[] = []
 const hosts: DesktopHostProcess[] = []
@@ -49,6 +51,82 @@ process.on('message', message => {
 })
 `
 
+const BROWSER_HOST = `
+import { createServer } from 'node:http'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+const pending = new Map()
+function browserRequest(requestId) {
+  const { promise, resolve } = Promise.withResolvers()
+  pending.set(requestId, resolve)
+  const target = { tabId: 'tab-' + requestId, generation: 1 }
+  const operation = requestId === 42
+    ? { kind: 'page.screenshot', target }
+    : { kind: 'page.read', target,
+      locator: { kind: 'role', snapshotId: 'snapshot-' + requestId, role: 'heading', name: 'Result', exact: true },
+      property: 'text' }
+  process.send({ type: 'browser/request', requestId,
+    caller: { sessionId: 'session-' + requestId, ownerGeneration: 1 }, operation })
+  return promise
+}
+function cancelBrowserRequest(requestId) {
+  const response = browserRequest(requestId)
+  setTimeout(() => process.send({ type: 'browser/cancel', requestId }), 10)
+  return response
+}
+const server = createServer(async (request, response) => {
+  if (request.url === '/browser') {
+    const replies = await Promise.all([browserRequest(41), browserRequest(42)])
+    const summary = replies.map(reply => {
+      const value = reply.result.status === 'success' ? reply.result.value : undefined
+      return {
+        requestId: reply.requestId,
+        kind: value?.kind ?? reply.result.status,
+        ...(value?.kind === 'read' ? { text: value.value } : {}),
+        bytesAreUint8Array: value?.kind === 'screenshot' ? value.screenshot.bytes instanceof Uint8Array : null,
+        bytes: value?.kind === 'screenshot' ? Array.from(value.screenshot.bytes) : [],
+      }
+    })
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify(summary))
+    return
+  }
+  if (request.url === '/cancel') {
+    const reply = await cancelBrowserRequest(43)
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify(reply))
+    return
+  }
+  if (request.url === '/duplicate') {
+    await browserRequest(45)
+    const reply = await browserRequest(45)
+    response.end(JSON.stringify(reply))
+    return
+  }
+  if (request.url === '/wait') {
+    response.end(JSON.stringify(await browserRequest(44)))
+    return
+  }
+  response.end('ok')
+})
+server.listen(0, '127.0.0.1', () => {
+  process.send({ type: 'ready', url: 'http://127.0.0.1:' + server.address().port + '/' })
+})
+process.on('message', message => {
+  if (message.type === 'browser/result') {
+    const resolve = pending.get(message.requestId)
+    if (resolve !== undefined) { pending.delete(message.requestId); resolve(message) }
+    return
+  }
+  if (message.type !== 'shutdown') return
+  server.close(() => {
+    writeFileSync(join(process.argv[3], 'stopped'), '')
+    process.send({ type: 'shutdown-complete' }, () => process.disconnect())
+  })
+  server.closeAllConnections()
+})
+`
+
 function projectWithHost(source = HTTP_HOST): string {
   const project = mkdtempSync(join(tmpdir(), 'dsh-desktop-host-test-'))
   roots.push(project)
@@ -59,10 +137,14 @@ function projectWithHost(source = HTTP_HOST): string {
   return project
 }
 
+type BrowserHandlerFixture = (request: DesktopBrowserRequestMessage, signal: AbortSignal) => Promise<DesktopBrowserResult>
+
 function hostProcess(
   runtime: string, profile = runtime, onFailure?: (error: Error) => void, environment = process.env,
+  onBrowserRequest?: BrowserHandlerFixture,
 ): DesktopHostProcess {
-  const host = new DesktopHostProcess(process.execPath, runtime, profile, undefined, environment, onFailure)
+  const host = new DesktopHostProcess(process.execPath, runtime, profile, undefined, environment, onFailure,
+    undefined, undefined, undefined, onBrowserRequest)
   hosts.push(host)
   return host
 }
@@ -81,6 +163,112 @@ describe('desktop host process', () => {
       .toEqual([false, true, false])
     await host.stop(true)
     await expect(host.updateTasks('inspect')).rejects.toThrow('Host is unavailable')
+  })
+
+  it('returns a correlated closed-capability result for Host browser IPC instead of treating it as a fatal protocol message', async () => {
+    const failure = vi.fn()
+    const host = hostProcess(projectWithHost(BROWSER_HOST), undefined, failure)
+    const { url } = await host.start()
+    const response = await fetch(new URL('/browser', url))
+    expect(await response.json()).toEqual([
+      { requestId: 41, kind: 'error', bytesAreUint8Array: null, bytes: [] },
+      { requestId: 42, kind: 'error', bytesAreUint8Array: null, bytes: [] },
+    ])
+    expect(failure).not.toHaveBeenCalled()
+    await host.stop()
+  })
+
+  it('correlates overlapping browser requests to their exact handler result', async () => {
+    const handlerRequests: number[] = []
+    const handler: BrowserHandlerFixture = async (request, signal) => {
+      handlerRequests.push(request.requestId)
+      expect(signal.aborted).toBe(false)
+      if (request.requestId === 41) {
+        const { promise, resolve } = Promise.withResolvers<void>()
+        setTimeout(resolve, 20)
+        await promise
+      }
+      if (request.operation.kind === 'page.screenshot') {
+        return {
+          status: 'success',
+          value: { kind: 'screenshot', screenshot: {
+            target: request.operation.target,
+            screenshotId: brandString<DesktopBrowserSnapshotId>('snapshot-42'),
+            bytes: new Uint8Array([0, 127, 255]), viewport: { width: 1, height: 1 },
+          } },
+        }
+      }
+      if (request.operation.kind !== 'page.read') throw new Error('fixture request is not a page read')
+      return {
+        status: 'success',
+        value: { kind: 'read', target: request.operation.target, value: request.caller.sessionId },
+      }
+    }
+    const host = hostProcess(projectWithHost(BROWSER_HOST), undefined, undefined, process.env, handler)
+    const { url } = await host.start()
+    const response = await fetch(new URL('/browser', url))
+    expect(await response.json()).toEqual([
+      { requestId: 41, kind: 'read', text: 'session-41', bytesAreUint8Array: null, bytes: [] },
+      { requestId: 42, kind: 'screenshot', bytesAreUint8Array: true, bytes: [0, 127, 255] },
+    ])
+    expect(handlerRequests).toEqual([41, 42])
+    await host.stop()
+  })
+
+  it('rejects a replayed browser request id after its first operation settles', async () => {
+    const handlerRequests: number[] = []
+    const handler: BrowserHandlerFixture = async request => {
+      handlerRequests.push(request.requestId)
+      if (request.operation.kind !== 'page.read') throw new Error('fixture request is not a page read')
+      return { status: 'success', value: { kind: 'read', target: request.operation.target, value: 'done' } }
+    }
+    const host = hostProcess(projectWithHost(BROWSER_HOST), undefined, undefined, process.env, handler)
+    const { url } = await host.start()
+    await expect(fetch(new URL('/duplicate', url))).rejects.toThrow()
+    expect(handlerRequests).toEqual([45])
+    await host.stop()
+  })
+
+  it('aborts the matching browser handler on child cancellation', async () => {
+    const observedAbort = Promise.withResolvers<void>()
+    const handler: BrowserHandlerFixture = async (_request, signal) => {
+      const { promise, resolve } = Promise.withResolvers<DesktopBrowserResult>()
+      signal.addEventListener('abort', () => {
+        observedAbort.resolve()
+        resolve({ status: 'error', code: 'cancelled', message: 'Browser operation was cancelled' })
+      }, { once: true })
+      return promise
+    }
+    const host = hostProcess(projectWithHost(BROWSER_HOST), undefined, undefined, process.env, handler)
+    const { url } = await host.start()
+    const responsePromise = fetch(new URL('/cancel', url))
+    await Promise.race([observedAbort.promise, responsePromise.then(() => {
+      throw new Error('child completed before the Host aborted the browser handler')
+    })])
+    expect(await (await responsePromise).json()).toMatchObject({
+      type: 'browser/result', requestId: 43, result: { status: 'error', code: 'cancelled' },
+    })
+    await host.stop()
+  })
+
+  it('aborts and drains outstanding browser handlers before Host shutdown completes', async () => {
+    const handlerStarted = Promise.withResolvers<void>()
+    const observedAbort = Promise.withResolvers<void>()
+    const handler: BrowserHandlerFixture = async (_request, signal) => {
+      handlerStarted.resolve()
+      const { promise, resolve } = Promise.withResolvers<void>()
+      signal.addEventListener('abort', () => { observedAbort.resolve(); resolve() }, { once: true })
+      await promise
+      return { status: 'error', code: 'cancelled', message: 'Browser operation was cancelled' }
+    }
+    const host = hostProcess(projectWithHost(BROWSER_HOST), undefined, undefined, process.env, handler)
+    const { url } = await host.start()
+    const responsePromise = fetch(new URL('/wait', url)).catch((error: unknown) => error)
+    await Promise.race([handlerStarted.promise, responsePromise.then(() => {
+      throw new Error('Host request did not start before shutdown')
+    })])
+    await host.stop()
+    await observedAbort.promise
   })
 
   it('correlates quit inspections with task requests and fails an unanswered one at its own deadline', async () => {

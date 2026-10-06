@@ -52,6 +52,7 @@ Desktop 默认使用内置浏览器。Web/dev-web 保留原有浏览器配置；
 - 保留唯一 `ctx.browserUse` 注册。不增加多 provider 选择器，不让产品代码依赖 `packages/experimental`。
 - 将页面内容当作不可信数据。有外部影响的操作沿用现有审批策略；页面或模型不能授予批准。Host 身份核验不替代工具审批。
 - 使用现有持久化工具结果与附件存储。不将原始 base64、live 租约或 Chromium 状态存入 Session 事件。若实际修改持久化类型，按仓库规则声明。
+- 将截图 IPC payload 限制为 32 MiB，使用 V8 advanced serialization 保留 `Uint8Array` 字节，并在附件准入前拒绝超大截图。
 - 用户点击和页面脚本可能与自动化竞争。按 live Session 串行执行 provider 操作，以 generation 拒绝过期目标和快照。输入发送成功不等于结果成立。
 - 不提供任意 `evaluate` 或 Node REPL 工具。只读观察采用固定协议操作。本次不加入 cookie 迁移、持久登录态改造、上传/下载解禁或录制子系统。
 - 新增可因部署而变化的超时与快照上限均为经过验证的 Config 字段。沿用品牌 ID、effect 注册、导出 JSDoc、UI 本地化和分 Host/Client TypeScript 配置。
@@ -64,27 +65,31 @@ Desktop 默认使用内置浏览器。Web/dev-web 保留原有浏览器配置；
 
 ### 任务 1：类型化传输与 guest 身份
 
-**文件：** 新建 `packages/browser-use/browser-use-desktop/{package.json,tsconfig.json,src/types.ts,src/transport.ts,tests/transport.spec.ts}`。修改 `apps/desktop-host/{package.json,tsconfig.json,src/index.ts}`、`apps/desktop/{package.json,tsconfig.host.json,src/host-process.ts,src/host-protocol.ts,src/main.ts,src/browser-automation-protocol.ts}`、根 `tsconfig.host.json` 及 Host 生命周期测试。新增 `apps/desktop-host/src/browser-transport.ts`。
+**文件：** 新建 `packages/browser-use/browser-use-desktop/{package.json,tsconfig.json,src/{index.ts,types.ts,protocol.ts,transport.ts},tests/transport.spec.ts}`。修改 `apps/desktop-host/{package.json,tsconfig.json,src/index.ts}`、`apps/desktop/{package.json,tsconfig.host.json,src/{host-process.ts,host-protocol.ts,browser-automation-protocol.ts}}`、根 `tsconfig.host.json` 和 `tsconfig.base.json` 中手工维护的子路径条目，并增加 Host 生命周期测试。新增 `apps/desktop-host/src/browser-transport.ts`。
 
-**项目接线：** 在两个 app/Host TypeScript face 与根 Host aggregate 中添加新包项目引用。`apps/desktop-host` 添加直接运行时依赖；`apps/desktop` 添加类型/构建依赖。通过 `pnpm run gen-tsconfig-paths` 生成包源码别名，并用 `pnpm run verify-tsconfig-paths` 验证生成结果。
+**项目接线：** 在两个 app/Host TypeScript face 与根 Host aggregate 中添加新包项目引用。`apps/desktop-host` 添加直接运行时依赖；`apps/desktop` 添加类型/构建依赖。裸包源码别名由 `gen-tsconfig-paths` 生成；在 `tsconfig.base.json` 手工维护 `/types`、`/protocol` 和 `/transport` 源码别名。执行生成器，并用 `pnpm run verify-tsconfig-paths` 验证。
 
-**接口：** 包通过 `/types` 导出纯类型；`desktopBrowserTransport` 作为类型化 Host 能力，在 provider 加载前通过 `runProfile.hostSetup` 安装。Node IPC 传输带标签的 `browser/request`、`browser/result` 或 `browser/cancel`；可信请求包含 Session ID、live owner generation、request ID 和已验证操作。`AbortSignal` 留在本进程，跨 IPC 通过取消消息表达。
+**接口：** 包通过 `/types` 导出纯类型；`desktopBrowserTransport` 是在 profile 加载 provider 前通过 `runProfile.hostSetup` 安装的类型化 Host 能力。Node IPC 传输 `browser/request`、`browser/result` 或 `browser/cancel`；request 包含 Host 派生的 Session/owner generation、单调递增的安全整数 request ID 和已验证操作。`AbortSignal` 留在本进程，跨 IPC 通过取消消息表达。本地取消会立即拒绝工具调用；`releaseOwner` 等待父进程返回 terminal result 或 IPC 断开，避免已释放 owner 遗留仍被准入的 main-process 操作。使用 V8 advanced serialization，使截图以 `Uint8Array` 跨越两个进程，避免 base64 复制。
 
 - [ ] 在实现 IPC 两端前定义共享操作/结果判别标签及精确校验。使用品牌化 tab/snapshot ID，调用身份从模型参数以外获取。
 
 ```text
-DesktopBrowserTarget = { tabId: DesktopBrowserTabId, generation: number }
-DesktopBrowserCaller = { sessionId: SessionId, ownerGeneration: number }
+DesktopBrowserTarget = { tabId: DesktopBrowserTabId, generation: DesktopBrowserTargetGeneration }
+DesktopBrowserCaller = { sessionId: SessionId, ownerGeneration: DesktopBrowserOwnerGeneration }
 DesktopBrowserTransport.request(caller, operation, signal): Promise<DesktopBrowserResult>
 DesktopBrowserTransport.releaseOwner(caller): Promise<void>
 TabInfo = { target, url, title, active, ownership: "user" | "agent", attached: boolean }
+DesktopBrowserOperation = { kind: "tabs.list" } | { kind: "tabs.open", url, newTab? } | { kind: "tabs.close", target } | { kind: "page.snapshot", target } | { kind: "page.read", target, locator, property, attribute? } | { kind: "page.act", target, locator, action, text?, keys?, values?, observe? } | { kind: "page.actAt", target, screenshotId, action, x?, y?, deltaX?, deltaY?, path?, observe? } | { kind: "page.wait", target, condition } | { kind: "page.screenshot", target }
+DesktopBrowserResult = { status: "success", value: DesktopBrowserValue } | { status: "error", code, message }
 SnapshotResult = { target, snapshotId, text, truncated: boolean }
+DesktopBrowserScreenshot = { target, screenshotId, bytes: Uint8Array, viewport: { width, height } }
+MAX_DESKTOP_BROWSER_SCREENSHOT_BYTES = 32 * 1024 * 1024
 ```
 
 - [ ] 在 `DesktopHostProcess` 增加关联请求处理，并在 `isDesktopHostEvent` 校验；同步更新 Host 生命周期协议版本与发布元数据。拒绝无所属、重复、迟到和 generation 不匹配的结果，不因此补发动作。
 - [ ] 在 `apps/desktop-host/src/index.ts` 的组合激活之前安装 transport，而不是在 `await application` 之后。Electron main 缺失或断连时拒绝请求；取消未执行操作，关闭时清理并等待请求注册表。
 - [ ] 通过现有生成器更新包源码别名，并执行 `pnpm run verify-tsconfig-paths`；确认 Desktop Host 与 Desktop main 的 TypeScript 项目引用都包含新包。
-- [ ] 覆盖跨 Session 目标、错误 live owner generation、IPC 断连、排队请求取消和 dispose 后迟到结果。执行新增 transport 定向测试及受影响的 `apps/desktop/tests/host-process.spec.ts` 检查；只保留验证可观察失败/归属的测试。
+- [ ] 覆盖跨 Session 目标、错误 live owner generation、IPC 断连、排队请求取消、dispose 后迟到回复和乱序响应。验证截图 bytes 通过子进程 IPC 往返后仍为 `Uint8Array`，并拒绝超过 32 MiB 上限 1 byte 的结果。执行新增 transport 定向测试及受影响的 `apps/desktop/tests/host-process.spec.ts` 检查；只保留验证可观察行为/归属的测试。
 
 **审查节点：** 模型不能控制身份字段，无网络监听，不向 guest 暴露 Electron/Node，Host 退出后不遗留 pending promise。
 
@@ -122,7 +127,7 @@ SnapshotResult = { target, snapshotId, text, truncated: boolean }
 
 ### 任务 4：模型工具、策略与持久化证据
 
-**文件：** 新增 `packages/browser-use/browser-use-desktop/src/{index.ts,tools.ts,presentation.ts}` 与 `tests/{tools.spec.ts,lifecycle.spec.ts}`。为新包声明产品依赖；只有现有 API 无法表达必要行为时才修改已有 skill/工具结果适配器。
+**文件：** 修改 `packages/browser-use/browser-use-desktop/src/index.ts`；新增 `src/{tools.ts,presentation.ts}` 与 `tests/{tools.spec.ts,lifecycle.spec.ts}`。为新包声明产品依赖；只有现有 API 无法表达必要行为时才修改已有 skill/工具结果适配器。
 
 **接口：** 注入 `browserUse`、`tools`、`systemPrompt`、`desktopBrowserTransport` 与 `attachments`。下方 `AttachmentRef` 简写采用现有 `ImageAttachmentRef`。通过有序 effect 注册 `BrowserUseProviderName("desktop-internal")`。工具参数不含调用身份；以下 schema 定义公开操作，返回结构化 canonical results 与现有附件引用。
 

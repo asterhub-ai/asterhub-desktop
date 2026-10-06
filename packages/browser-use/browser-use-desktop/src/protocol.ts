@@ -1,0 +1,262 @@
+import type {
+  DesktopBrowserCancelMessage,
+  DesktopBrowserLocator,
+  DesktopBrowserObservation,
+  DesktopBrowserOperation,
+  DesktopBrowserPoint,
+  DesktopBrowserPointerAction,
+  DesktopBrowserReadProperty,
+  DesktopBrowserRequestMessage,
+  DesktopBrowserResult,
+  DesktopBrowserResultMessage,
+  DesktopBrowserSemanticAction,
+  DesktopBrowserTabInfo,
+  DesktopBrowserTarget,
+  DesktopBrowserValue,
+  DesktopBrowserWaitCondition,
+} from './types.ts'
+
+/** Fixed IPC ceiling for screenshots, matching the reviewed ZCode browser bridge bound. */
+export const MAX_DESKTOP_BROWSER_SCREENSHOT_BYTES = 32 * 1024 * 1024
+
+/** Canonical object guard for this package's process-wire validators. */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** Validate the public browser operation at the Host IPC boundary. */
+export function isDesktopBrowserOperation(value: unknown): value is DesktopBrowserOperation {
+  if (!isRecord(value) || typeof value.kind !== 'string') return false
+  switch (value.kind) {
+    case 'tabs.list':
+      return hasOnlyKeys(value, ['kind'])
+    case 'tabs.open':
+      return hasOnlyKeys(value, ['kind', 'url', 'newTab']) && isHttpUrl(value.url)
+        && (value.newTab === undefined || typeof value.newTab === 'boolean')
+    case 'tabs.close':
+    case 'page.snapshot':
+    case 'page.screenshot':
+      return hasOnlyKeys(value, ['kind', 'target']) && isTarget(value.target)
+    case 'page.read':
+      return hasOnlyKeys(value, ['kind', 'target', 'locator', 'property', 'attribute'])
+        && isTarget(value.target) && isLocator(value.locator) && isReadProperty(value.property)
+        && (value.attribute === undefined || typeof value.attribute === 'string')
+        && (value.property !== 'attribute' || typeof value.attribute === 'string')
+    case 'page.act':
+      return hasOnlyKeys(value, ['kind', 'target', 'locator', 'action', 'text', 'keys', 'values', 'observe'])
+        && isTarget(value.target) && isLocator(value.locator) && isAction(value.action)
+        && isSemanticActionPayload(value) && (value.observe === undefined || isObservation(value.observe))
+    case 'page.actAt':
+      return hasOnlyKeys(value, ['kind', 'target', 'screenshotId', 'action', 'x', 'y', 'deltaX', 'deltaY', 'path', 'observe'])
+        && isTarget(value.target) && isNonEmptyString(value.screenshotId) && isPointerAction(value.action)
+        && isPointerActionPayload(value) && (value.observe === undefined || isObservation(value.observe))
+    case 'page.wait':
+      return hasOnlyKeys(value, ['kind', 'target', 'condition'])
+        && isTarget(value.target) && isWaitCondition(value.condition)
+    default:
+      return false
+  }
+}
+
+/** Validate the child-to-parent browser request message. */
+export function isDesktopBrowserRequestMessage(value: unknown): value is DesktopBrowserRequestMessage {
+  return isRecord(value) && hasOnlyKeys(value, ['type', 'requestId', 'caller', 'operation'])
+    && value.type === 'browser/request' && isRequestId(value.requestId)
+    && isCaller(value.caller) && isDesktopBrowserOperation(value.operation)
+}
+
+/** Validate the child-to-parent cancellation message. */
+export function isDesktopBrowserCancelMessage(value: unknown): value is DesktopBrowserCancelMessage {
+  return isRecord(value) && hasOnlyKeys(value, ['type', 'requestId'])
+    && value.type === 'browser/cancel' && isRequestId(value.requestId)
+}
+
+/** Validate the parent-to-child result message before settling a caller. */
+export function isDesktopBrowserResultMessage(value: unknown): value is DesktopBrowserResultMessage {
+  return isRecord(value) && hasOnlyKeys(value, ['type', 'requestId', 'result'])
+    && value.type === 'browser/result' && isRequestId(value.requestId) && isBrowserResult(value.result)
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
+  return Object.keys(value).every(key => allowed.includes(key))
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0
+}
+
+function isRequestId(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+}
+
+function isPositiveSafeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+}
+
+function isGeneration(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
+}
+
+function isCaller(value: unknown): boolean {
+  return isRecord(value) && hasOnlyKeys(value, ['sessionId', 'ownerGeneration'])
+    && isNonEmptyString(value.sessionId) && isGeneration(value.ownerGeneration)
+}
+
+function isTarget(value: unknown): value is DesktopBrowserTarget {
+  return isRecord(value) && hasOnlyKeys(value, ['tabId', 'generation'])
+    && isNonEmptyString(value.tabId) && isGeneration(value.generation)
+}
+
+function isLocator(value: unknown): value is DesktopBrowserLocator {
+  if (!isRecord(value) || !isNonEmptyString(value.snapshotId)) return false
+  if (value.kind === 'ref') {
+    return hasOnlyKeys(value, ['kind', 'snapshotId', 'ref']) && isNonEmptyString(value.ref)
+  }
+  return value.kind === 'role' && hasOnlyKeys(value, ['kind', 'snapshotId', 'role', 'name', 'exact'])
+    && isNonEmptyString(value.role) && typeof value.name === 'string' && value.exact === true
+}
+
+function isReadProperty(value: unknown): value is DesktopBrowserReadProperty {
+  return value === 'text' || value === 'attribute' || value === 'visible' || value === 'enabled' || value === 'checked'
+}
+
+function isAction(value: unknown): value is DesktopBrowserSemanticAction {
+  return value === 'click' || value === 'doubleClick' || value === 'fill' || value === 'type'
+    || value === 'press' || value === 'check' || value === 'uncheck' || value === 'select' || value === 'hover'
+}
+
+function isSemanticActionPayload(value: Record<string, unknown>): boolean {
+  switch (value.action) {
+    case 'fill':
+    case 'type':
+      return typeof value.text === 'string' && value.keys === undefined && value.values === undefined
+    case 'press':
+      return Array.isArray(value.keys) && value.keys.length > 0 && value.keys.every(key => typeof key === 'string')
+        && value.text === undefined && value.values === undefined
+    case 'select':
+      return Array.isArray(value.values) && value.values.length > 0 && value.values.every(option => typeof option === 'string')
+        && value.text === undefined && value.keys === undefined
+    case 'click':
+    case 'doubleClick':
+    case 'check':
+    case 'uncheck':
+    case 'hover':
+      return value.text === undefined && value.keys === undefined && value.values === undefined
+    default:
+      return false
+  }
+}
+
+function isPointerAction(value: unknown): value is DesktopBrowserPointerAction {
+  return value === 'click' || value === 'doubleClick' || value === 'move' || value === 'scroll' || value === 'drag'
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function isPoint(value: unknown): value is DesktopBrowserPoint {
+  return isRecord(value) && hasOnlyKeys(value, ['x', 'y']) && isFiniteNumber(value.x) && isFiniteNumber(value.y)
+}
+
+function isPointerActionPayload(value: Record<string, unknown>): boolean {
+  switch (value.action) {
+    case 'click':
+    case 'doubleClick':
+    case 'move':
+      return isFiniteNumber(value.x) && isFiniteNumber(value.y)
+        && value.deltaX === undefined && value.deltaY === undefined && value.path === undefined
+    case 'scroll':
+      return isFiniteNumber(value.x) && isFiniteNumber(value.y)
+        && isFiniteNumber(value.deltaX) && isFiniteNumber(value.deltaY) && value.path === undefined
+    case 'drag':
+      return Array.isArray(value.path) && value.path.length >= 2 && value.path.every(isPoint)
+        && value.x === undefined && value.y === undefined && value.deltaX === undefined && value.deltaY === undefined
+    default:
+      return false
+  }
+}
+
+function isWaitCondition(value: unknown): value is DesktopBrowserWaitCondition {
+  if (!isRecord(value)) return false
+  if (value.kind === 'load') return hasOnlyKeys(value, ['kind', 'state']) && value.state === 'domcontentloaded'
+  if (value.kind === 'url') return hasOnlyKeys(value, ['kind', 'url']) && isHttpUrl(value.url)
+  return value.kind === 'element' && hasOnlyKeys(value, ['kind', 'locator', 'state'])
+    && isLocator(value.locator) && (value.state === 'visible' || value.state === 'hidden'
+      || value.state === 'enabled' || value.state === 'checked')
+}
+
+function isObservation(value: unknown): value is DesktopBrowserObservation {
+  return isRecord(value) && hasOnlyKeys(value, ['wait', 'screenshot'])
+    && (value.wait === undefined || isWaitCondition(value.wait))
+    && (value.screenshot === undefined || typeof value.screenshot === 'boolean')
+}
+
+function isHttpUrl(value: unknown): value is string {
+  if (!isNonEmptyString(value) || value.length > 16_384) return false
+  try {
+    const url = new URL(value)
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.username === '' && url.password === ''
+  } catch {
+    return false
+  }
+}
+
+function isTabInfo(value: unknown): value is DesktopBrowserTabInfo {
+  return isRecord(value) && hasOnlyKeys(value, ['target', 'url', 'title', 'active', 'ownership', 'attached'])
+    && isTarget(value.target) && isHttpUrl(value.url) && typeof value.title === 'string'
+    && typeof value.active === 'boolean' && (value.ownership === 'user' || value.ownership === 'agent')
+    && typeof value.attached === 'boolean'
+}
+
+function isSnapshot(value: unknown): boolean {
+  return isRecord(value) && hasOnlyKeys(value, ['target', 'snapshotId', 'text', 'truncated'])
+    && isTarget(value.target) && isNonEmptyString(value.snapshotId) && typeof value.text === 'string'
+    && value.text.length <= 1_000_000 && typeof value.truncated === 'boolean'
+}
+
+function isScreenshot(value: unknown): boolean {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['target', 'screenshotId', 'bytes', 'viewport'])
+    || !isTarget(value.target) || !isNonEmptyString(value.screenshotId)
+    || !(value.bytes instanceof Uint8Array) || value.bytes.byteLength > MAX_DESKTOP_BROWSER_SCREENSHOT_BYTES
+    || !isRecord(value.viewport) || !hasOnlyKeys(value.viewport, ['width', 'height'])) return false
+  return isPositiveSafeInteger(value.viewport.width) && isPositiveSafeInteger(value.viewport.height)
+}
+
+function isBrowserValue(value: unknown): value is DesktopBrowserValue {
+  if (!isRecord(value) || typeof value.kind !== 'string') return false
+  switch (value.kind) {
+    case 'tabs':
+      return hasOnlyKeys(value, ['kind', 'tabs']) && Array.isArray(value.tabs) && value.tabs.every(isTabInfo)
+    case 'tab':
+      return hasOnlyKeys(value, ['kind', 'tab']) && isTabInfo(value.tab)
+    case 'closed':
+      return hasOnlyKeys(value, ['kind', 'target', 'closed']) && isTarget(value.target) && value.closed === true
+    case 'snapshot':
+      return hasOnlyKeys(value, ['kind', 'snapshot']) && isSnapshot(value.snapshot)
+    case 'read':
+      return hasOnlyKeys(value, ['kind', 'target', 'value']) && isTarget(value.target)
+        && (typeof value.value === 'string' || typeof value.value === 'boolean' || value.value === null)
+    case 'action':
+      return hasOnlyKeys(value, ['kind', 'target', 'delivered', 'observation', 'screenshot'])
+        && isTarget(value.target) && typeof value.delivered === 'boolean'
+        && (value.observation === undefined || isSnapshot(value.observation))
+        && (value.screenshot === undefined || isScreenshot(value.screenshot))
+    case 'wait':
+      return hasOnlyKeys(value, ['kind', 'target', 'matched']) && isTarget(value.target) && value.matched === true
+    case 'screenshot':
+      return hasOnlyKeys(value, ['kind', 'screenshot']) && isScreenshot(value.screenshot)
+    default:
+      return false
+  }
+}
+
+function isBrowserResult(value: unknown): value is DesktopBrowserResult {
+  if (!isRecord(value)) return false
+  if (value.status === 'success') return hasOnlyKeys(value, ['status', 'value']) && isBrowserValue(value.value)
+  return value.status === 'error' && hasOnlyKeys(value, ['status', 'code', 'message'])
+    && (value.code === 'unavailable' || value.code === 'invalid-request' || value.code === 'invalid-target'
+      || value.code === 'stale-target' || value.code === 'unsupported' || value.code === 'timeout'
+      || value.code === 'cancelled' || value.code === 'failed')
+    && typeof value.message === 'string' && value.message.length <= 4096
+}
