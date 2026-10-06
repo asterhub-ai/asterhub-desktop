@@ -29,6 +29,7 @@ export class SqliteKvUnit implements KvUnit {
   private readonly globalUpsert: StatementSync | undefined
   private readonly globalSelect: StatementSync | undefined
   private closed = false
+  private closing: Promise<void> | undefined
 
   /**
    * @param db - Open database handle owned by the backend (never closed here).
@@ -38,7 +39,7 @@ export class SqliteKvUnit implements KvUnit {
   constructor(
     db: DatabaseSync,
     private readonly descriptor: KvUnitDescriptor,
-    private readonly onClose: () => void,
+    private readonly onClose: () => void | Promise<void>,
   ) {
     for (const table of descriptor.tables) {
       // Both name segments are validated against UNIT_NAME_RE by the backend,
@@ -118,11 +119,8 @@ export class SqliteKvUnit implements KvUnit {
   }
 
   close(): Promise<void> {
-    if (!this.closed) {
-      this.closed = true
-      this.onClose()
-    }
-    return Promise.resolve()
+    this.closed = true
+    return this.closing ??= (async () => { await this.onClose() })()
   }
 
   /**

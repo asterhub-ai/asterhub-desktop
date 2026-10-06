@@ -25,8 +25,9 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-import type {
-  AskUserQuestionAnswer, AskUserQuestionRequestEvent, PendingUserQuestion,
+import {
+  USER_QUESTION_CANCELED_CODE,
+  type AskUserQuestionAnswer, type AskUserQuestionRequestEvent, type PendingUserQuestion,
 } from './types.ts'
 
 export type {
@@ -35,6 +36,7 @@ export type {
   UserQuestionState,
 } from './types.ts'
 export { isTimedAskUserQuestionSchema, TIMED_WAIT_PARAMETER } from './projection.ts'
+export { USER_QUESTION_CANCELED_CODE } from './types.ts'
 
 /** Request for a human answer. */
 export interface AskUserQuestionRequest extends AskUserQuestionRequestEvent {}
@@ -148,6 +150,11 @@ export class UserQuestionService extends TypertRemoteService {
     return (state?.questions.active ?? []).filter(question => question.state === 'continued')
   }
 
+  private isCanceledCall(agent: Agent, callId: ToolCallId): boolean {
+    const canceledCallIds = this.ctx.get('sessionProjections')?.stateOf(agent.session, 'userQuestions')?.canceledCallIds
+    return canceledCallIds?.includes(String(callId)) === true
+  }
+
   /**
    * Answer a continued question. The reply is steered into the agent as a
    * user message whose source names the call; that message is also the
@@ -164,6 +171,11 @@ export class UserQuestionService extends TypertRemoteService {
   @Remote
   answer(agent: Agent, callId: ToolCallId, answer: AskUserQuestionAnswer): boolean {
     this.assertLiveRoot(agent)
+    if (this.isCanceledCall(agent, callId)) {
+      throw new UserQuestionError(
+        `the question ${callId} was canceled and no longer accepts answers`,
+        USER_QUESTION_CANCELED_CODE)
+    }
     const question = this.continued(agent).find(item => item.callId === callId)
     if (question === undefined) return false
     const queued = this.queuedReplies.get(agent.session)
@@ -203,6 +215,42 @@ export class UserQuestionService extends TypertRemoteService {
       throw error
     }
     return true
+  }
+
+  /**
+   * Cancel every open and continued timed question currently pending for one
+   * Session, preventing any later late answer from steering the agent for
+   * those calls. Appends a single durable `user-questions/canceled` event
+   * listing the exact canceled callIds; the projection folds them out of the
+   * active set and records them so late answers reject per-call. Closes every
+   * live foreground wait for this agent so a connected Client countdown ends
+   * immediately. Future questions in the same Session remain usable.
+   * Idempotent: when no questions are pending this is a no-op.
+   * @param agent - Live root agent whose Session's pending timed questions are canceled.
+   */
+  cancelPending(agent: Agent): void {
+    this.assertLiveRoot(agent)
+    const state = this.ctx.get('sessionProjections')?.stateOf(agent.session, 'userQuestions')
+    const active = state?.questions.active ?? []
+    if (active.length === 0) {
+      // No pending questions to cancel; still close any stray foreground waits.
+      const strayCalls = this.waits.get(agent)
+      if (strayCalls !== undefined) {
+        for (const wait of strayCalls.values()) wait.close(abortedQuestion())
+        this.waits.delete(agent)
+      }
+      return
+    }
+    const callIds = active.map(question => question.callId)
+    const calls = this.waits.get(agent)
+    if (calls !== undefined) {
+      for (const callId of callIds) {
+        const wait = calls.get(callId)
+        if (wait !== undefined) wait.close(abortedQuestion())
+      }
+      if (calls.size === 0) this.waits.delete(agent)
+    }
+    agent.session.append('user-questions/canceled', { callIds })
   }
 
   /**

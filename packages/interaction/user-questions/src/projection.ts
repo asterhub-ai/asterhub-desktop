@@ -14,8 +14,16 @@ import type { AskUserQuestionAnswerItem, AskUserQuestionItem, AskUserQuestionOpt
  * timed `ask_user_question` schema, and the question view that schema's
  * calls build. Calls made under the blocking legacy schema never enter it.
  */
+/**
+ * The pure fold state: whether the request header in effect declares the
+ * timed `ask_user_question` schema, and the question view that schema's
+ * calls build. Calls made under the blocking legacy schema never enter it.
+ * `canceledCallIds` records every call explicitly canceled by a
+ * `user-questions/canceled` event so late answers can be rejected per-call.
+ */
 export interface UserQuestionFold {
   readonly timed: boolean
+  readonly canceledCallIds: readonly string[]
   readonly questions: UserQuestionProjectionView
 }
 
@@ -108,12 +116,10 @@ const projectionViewSchema: z.ZodType<UserQuestionProjectionView> = z.object({
 
 /** The `answers` batch as both the in-time tool result and the steered late reply spell it. */
 const answerBatchSchema = z.object({ answers: z.array(answerSchema) }).loose()
-
 /** A Session with no timed `ask_user_question` call yet, shared so the wire value stays referentially stable. */
 const emptyView: UserQuestionProjectionView = { active: [], settled: [] }
 
-const initialFold: UserQuestionFold = { timed: false, questions: emptyView }
-
+const initialFold: UserQuestionFold = { timed: false, canceledCallIds: [], questions: emptyView }
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -298,9 +304,36 @@ export function applyUserQuestionEvent(fold: UserQuestionFold, event: SessionEve
       const questions = settleQuestion(view, source.callId, answerBatchOf(event.data.content) ?? [])
       return questions === view ? fold : { ...fold, questions }
     }
+    case 'user-questions/canceled': {
+      if (event.data.callIds.length === 0) return fold
+      const canceledSet = new Set(event.data.callIds.map(String))
+      const alreadyCanceled = fold.canceledCallIds.filter(id => !canceledSet.has(id))
+      const newCanceled = event.data.callIds.map(String).filter(id => !fold.canceledCallIds.includes(id))
+      if (newCanceled.length === 0) return fold
+      const updatedCanceledCallIds = [...fold.canceledCallIds, ...newCanceled]
+      const remainingActive = view.active.filter(question => !canceledSet.has(String(question.callId)))
+      if (remainingActive.length === view.active.length && alreadyCanceled.length === fold.canceledCallIds.length) {
+        return { ...fold, canceledCallIds: updatedCanceledCallIds }
+      }
+      return {
+        ...fold,
+        canceledCallIds: updatedCanceledCallIds,
+        questions: { active: remainingActive, settled: fold.questions.settled },
+      }
+    }
     default:
       return fold
   }
+}
+
+/**
+ * Whether any timed question in this Session has been canceled by a
+ * `user-questions/canceled` event appended at or before the given event count.
+ * @param events - Session events in append order.
+ * @returns True when a cancel event is present in the prefix.
+ */
+export function hasUserQuestionCancel(events: readonly SessionEvent[]): boolean {
+  return events.some(event => event.type === 'user-questions/canceled')
 }
 
 /**
@@ -318,8 +351,9 @@ export const userQuestionProjectionDefinition = {
   stateSchema: z.object({
     inheritedEventCount: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).transform(SessionLogOffset),
     timed: z.boolean(),
+    canceledCallIds: z.array(z.string()),
     questions: projectionViewSchema,
-  }).strict(),
+  }).strict() as z.ZodType<UserQuestionProjectionState>,
   init: (_header, inheritedEventCount) => ({ inheritedEventCount, ...initialFold }),
   apply: (state, event) => {
     if (event.seq < state.inheritedEventCount) return state
@@ -327,7 +361,7 @@ export const userQuestionProjectionDefinition = {
     return fold === state ? state : { ...state, ...fold }
   },
   wire: { viewSchema: projectionViewSchema, view: state => state.questions },
-  stateVersion: 2,
+  stateVersion: 4,
 } satisfies ProjectionDefinition<'userQuestions', UserQuestionProjectionState>
 
 declare module '@deepseek-ai/dsh-session-projection/types' {

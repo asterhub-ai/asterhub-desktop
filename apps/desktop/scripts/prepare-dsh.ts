@@ -150,6 +150,19 @@ async function main(): Promise<void> {
         throw new Error(`desktop runtime: missing private Host file ${file}`)
       }
     }
+    // The native automation Host, its generated Remote client, and the pure
+    // timing library must all reach the packaged runtime; the Host profile
+    // cannot boot without them.
+    const automationRoot = join(DSH_OUTPUT_ROOT, 'node_modules', '@deepseek-ai', 'dsh-asterhub-automation')
+    for (const file of ['lib/index.js', 'lib/typert.host.js', 'lib/typert.remote-client.js', 'lib/types/timing.js']) {
+      if (!existsSync(join(automationRoot, file))) {
+        throw new Error(`desktop runtime: missing native automation artifact ${file}`)
+      }
+    }
+    const timeContextRoot = join(DSH_OUTPUT_ROOT, 'node_modules', '@deepseek-ai', 'dsh-time-context')
+    if (!existsSync(join(timeContextRoot, 'lib/index.js'))) {
+      throw new Error('desktop runtime: missing native time-context artifact')
+    }
     if (!existsSync(join(DSH_OUTPUT_ROOT, 'node_modules', '@deepseek-ai', `libreoffice-kit-${officeEngine}`, 'prebuilds.json'))) {
       throw new Error(`desktop runtime: missing required LibreOffice engine ${officeEngine}`)
     }

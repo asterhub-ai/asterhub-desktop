@@ -16,6 +16,7 @@ import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typer
 import { credentialKey, credentialRef, type CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import type {
   AccountAuthSettings,
+  AccountAutomationIdentity,
   AccountLoginInput,
   AccountPaymentMethod,
   AccountRegisterInput,
@@ -28,6 +29,16 @@ import type {
   UsagePeriodSnapshot,
 } from './types.ts'
 
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /**
+     * Publish the active account lifetime without credentials.
+     * @param identity - Active identity, or null when acquisition is unavailable.
+     * @mode emit
+     */
+    'asterhub-account/changed'(identity: AccountAutomationIdentity | null): void
+  }
+}
 /** Credential reference holding the sub2api access token. */
 const TOKEN_REF = 'ASTERHUB_ACCOUNT_TOKEN'
 /** Credential reference holding the JSON account identity. */
@@ -50,6 +61,9 @@ const BOUND_KEY_REF = 'ASTERHUB_ACCOUNT_BOUND_MODEL_KEY'
 const BOUND_KEY_USER_REF = 'ASTERHUB_ACCOUNT_BOUND_MODEL_KEY_USER'
 /** JSON map from account id to its retained, Host-only model key. */
 const BOUND_KEYS_REF = 'ASTERHUB_ACCOUNT_BOUND_MODEL_KEYS'
+
+/** Event name for credential-free account identity changes consumed by the scheduler. */
+const ACCOUNT_CHANGED_EVENT = 'asterhub-account/changed'
 
 /** Upstream failure vocabulary the UI maps to copy. */
 export type AccountErrorCode =
@@ -142,6 +156,12 @@ interface Sub2ApiOrder {
   order_id?: string | number
   pay_url?: string
   status?: string
+}
+
+/** One registered automation lease with its stop callback; identity is the Set membership. */
+interface AutomationLease {
+  readonly epoch: number
+  readonly stop: () => Promise<void>
 }
 
 /** Minimal sub2api control-plane client: login, key management, quota, top-up. */
@@ -410,6 +430,19 @@ export class AccountSub2apiService extends TypertRemoteService {
   private readonly client: Sub2ApiClient
   private keyProvisioning: Promise<void> = Promise.resolve()
 
+  /** Automation account epoch for credential isolation. Monotonically increases on each account switch. */
+  private automationEpoch = 0
+  /** Current automation identity; null when logged out. Cleared atomically with epoch advance. */
+  private automationIdentityState: AccountAutomationIdentity | null = null
+  /** Registered automation leases. Set supports simultaneous runs at the same epoch. */
+  private readonly automationLeases = new Set<AutomationLease>()
+  /** Serializes credential transitions so two finishes cannot interleave credential sets. Strictly serial. */
+  private automationTransition: Promise<void> = Promise.resolve()
+  /** True while a credential transition is active. Used to guard reads: status() during
+   * transition returns transitional projection without network/auto-login. */
+  private automationTransitionActive = false
+  /** Resolves when initial identity readiness check completes; prevents stale identity reads during startup. */
+  private automationReadiness: Promise<void>
   constructor(ctx: Context, config: Config) {
     super(ctx, 'accountSub2api')
     this.credentials = ctx.credentials
@@ -418,6 +451,165 @@ export class AccountSub2apiService extends TypertRemoteService {
       ? resolved.authBaseUrl
       : 'https://xapi.fans/api/v1'
     this.client = new Sub2ApiClient({ baseUrl: authBaseUrl, groupId: resolved.groupId })
+    // Awaited readiness: identity is only published after verifying a stored
+    // token AND a bound model key exist locally, without network. Until the
+    // readiness promise resolves, automationIdentity returns null (fail closed).
+    // Guard readiness promise against unhandled rejection: verifyStoredIdentity
+    // catches internally and logs, so the promise always resolves.
+    this.automationReadiness = this.verifyStoredIdentity().catch(error => {
+      this.ctx.logger.warn('account automation readiness check failed', error)
+    })
+  }
+
+  /**
+   * Verify stored credentials form a valid binding before publishing identity.
+   * Requires both a stored token AND a bound model key record (non-blank);
+   * never publishes a user identity without a valid key binding. Logs named
+   * store-read errors instead of silently swallowing them.
+   */
+  private async verifyStoredIdentity(): Promise<void> {
+    const token = await this.token()
+    const keyRecord = await this.credentials.readRecord(MODEL_KEY_RECORD)
+    // Do not publish on blank key record: key must be a non-empty api-key.
+    const keyBound = keyRecord?.kind === 'api-key' && typeof keyRecord.key === 'string' && keyRecord.key.length > 0
+    if (!token || !keyBound) return
+    const user = await this.storedUser()
+    if (user === undefined) return
+    // Only publish if epoch is still 0 (no concurrent transition has advanced it).
+    if (this.automationEpoch === 0 && this.automationIdentityState === null) {
+      this.automationEpoch = 1
+      this.automationIdentityState = { accountId: user.id, epoch: this.automationEpoch }
+      this.ctx.emit(ACCOUNT_CHANGED_EVENT, this.automationIdentityState)
+    }
+  }
+
+
+  /** Advance epoch and block old acquisition; called before credential changes. */
+  private advanceAutomationEpoch(): number {
+    this.automationEpoch += 1
+    return this.automationEpoch
+  }
+
+  /** Publish new automation identity and emit credential-free change event. */
+  private publishAutomationIdentity(accountId: string | null): void {
+    if (accountId === null) {
+      this.automationIdentityState = null
+    } else {
+      this.automationIdentityState = { accountId, epoch: this.automationEpoch }
+    }
+    this.ctx.emit(ACCOUNT_CHANGED_EVENT, this.automationIdentityState)
+  }
+
+  /**
+   * Host-only: Get current automation account identity.
+   * Awaits readiness before returning. If the epoch has been advanced since
+   * the identity was issued (e.g., during a concurrent transition), returns null.
+   * @returns Current identity with epoch, or null if logged out/stale.
+   */
+  async automationIdentity(): Promise<AccountAutomationIdentity | null> {
+    await this.automationReadiness
+    // Return null if the identity is stale (epoch advanced since it was issued).
+    const identity = this.automationIdentityState
+    if (identity === null) return null
+    // Verify the current epoch hasn't advanced past this identity.
+    if (identity.epoch !== this.automationEpoch) return null
+    return identity
+  }
+  /**
+   * Host-only: Assert identity matches current epoch before model requests.
+   * Validates the identity against both the current epoch counter and the active
+   * identity (accountId and epoch must match).
+   * @param identity - The identity to validate.
+   * @throws Error if identity epoch is stale, account mismatch, or epoch does
+   * not match active identity.
+   */
+  assertAutomationIdentity(identity: AccountAutomationIdentity): void {
+    if (this.automationIdentityState === null) {
+      throw new Error('Automation identity assertion failed: no active account')
+    }
+    if (identity.epoch !== this.automationEpoch) {
+      throw new Error(`Automation identity epoch ${identity.epoch} is stale; current epoch is ${this.automationEpoch}`)
+    }
+    if (identity.accountId !== this.automationIdentityState.accountId) {
+      throw new Error('Automation identity account mismatch')
+    }
+    if (identity.epoch !== this.automationIdentityState.epoch) {
+      throw new Error('Automation identity epoch does not match active identity epoch')
+    }
+  }
+
+  /**
+   * Host-only: Register a lease for automation execution.
+   * Synchronous and rejects stale epochs. Validates the identity against both
+   * the current epoch and the active identity (account and epoch).
+   * @param identity - The identity to lease under.
+   * @param stop - Callback to stop/drain the leased work.
+   * @returns Disposer function to unregister the lease.
+   * @throws Error if identity epoch is stale or account mismatch.
+   */
+  registerAutomationLease(identity: AccountAutomationIdentity, stop: () => Promise<void>): () => void {
+    // Validate against the active identity: account must match AND epoch must
+    // match both the active identity epoch and the current epoch counter.
+    const active = this.automationIdentityState
+    if (active === null) {
+      throw new Error('Cannot register lease: no active account')
+    }
+    if (identity.accountId !== active.accountId) {
+      throw new Error(`Cannot register lease: account ${identity.accountId} does not match active ${active.accountId}`)
+    }
+    if (identity.epoch !== this.automationEpoch) {
+      throw new Error(`Cannot register lease for stale epoch ${identity.epoch}; current epoch is ${this.automationEpoch}`)
+    }
+    if (identity.epoch !== active.epoch) {
+      throw new Error(`Cannot register lease: identity epoch ${identity.epoch} does not match active epoch ${active.epoch}`)
+    }
+    const lease: AutomationLease = { epoch: identity.epoch, stop }
+    this.automationLeases.add(lease)
+    return () => {
+      // Set membership is the lease identity; deleting by reference is safe.
+      this.automationLeases.delete(lease)
+    }
+  }
+
+  /**
+   * Await all registered automation leases to quiescence.
+   * Stop callbacks that call status() or automationIdentity() do not deadlock
+   * because those methods do not take the transition lock.
+   * @throws Error if any stop callback fails; the caller must leave credentials
+   * unchanged (fail closed) when drain does not complete.
+   */
+  private async awaitAutomationLeases(): Promise<void> {
+    const leases = Array.from(this.automationLeases)
+    // Do NOT clear before drain: if a stop fails, the leases remain registered
+    // so the caller can retry or the scheduler can re-register.
+    const results = await Promise.allSettled(leases.map(lease => lease.stop()))
+    const failed = results.find(result => result.status === 'rejected')
+    if (failed !== undefined) {
+      throw new Error('Automation lease drain failed; credentials left unchanged')
+    }
+    // Drain succeeded; leases have quiesced and can be released.
+    for (const lease of leases) this.automationLeases.delete(lease)
+  }
+
+  /**
+   * Serialize a credential transition. Two finishes cannot interleave credential
+   * sets: each transition awaits the previous before advancing epoch, draining
+   * leases, and writing credentials. Strictly serial — no reentrancy bypass.
+   * Sets transitionActive flag so reads (status) can return a transitional
+   * projection without network/auto-login, avoiding deadlock when stop callbacks
+   * call status() during drain.
+   */
+  private withAutomationTransition<T>(work: () => Promise<T>): Promise<T> {
+    const previous = this.automationTransition
+    let release!: () => void
+    this.automationTransition = new Promise<void>((resolve) => { release = resolve })
+    return previous.then(() => {
+      this.automationTransitionActive = true
+      return work()
+    }).finally(() => {
+      this.automationTransitionActive = false
+      release()
+    })
   }
 
   private keyName(userId: string): string {
@@ -543,17 +735,60 @@ export class AccountSub2apiService extends TypertRemoteService {
     }
   }
 
-  /** Clear an expired account before returning a safe Remote failure. */
-  private async withAccountSession<T>(operation: () => Promise<T>): Promise<T> {
+  /**
+   * Run an account-scoped operation, invalidating the session only when the
+   * token used for the request is still the current token. A delayed 401 from
+   * account A must never clear credentials that belong to a newly logged-in
+   * account B: the captured token is rechecked inside the transition before
+   * any credential change. During an active credential transition, expiry
+   * must NOT await another transition (deadlock); fail closed by throwing.
+   */
+  private async withAccountSession<T>(requestToken: string, operation: () => Promise<T>): Promise<T> {
     try {
       return await operation()
     } catch (error) {
       if (error instanceof InvalidAccountSessionError) {
-        await this.clearSessionCredentials()
+        if (this.automationTransitionActive) {
+          // Cannot invalidate during active transition; fail closed.
+          throw accountError('登录已失效，请重新登录')
+        }
+        await this.invalidateAutomationSession(requestToken)
         throw accountError('登录已失效，请重新登录')
       }
       throw error
     }
+  }
+
+  /**
+   * Invalidate credentials after server-side session expiry.
+   * Takes the transition lock to serialize with other credential changes.
+   * Called from read paths (withAccountSession, status) that are NOT inside
+   * an active transition. The requestToken is rechecked inside the transition:
+   * if the current token no longer matches, a newer login has already replaced
+   * the account and the stale 401 result must not clear it.
+   */
+  private async invalidateAutomationSession(requestToken?: string): Promise<void> {
+    await this.withAutomationTransition(() => this.invalidateAutomationSessionUnlocked(requestToken))
+  }
+
+  /**
+   * Unlocked core of session invalidation. Only called by the owner of an
+   * active transition (finishLogin/logout) or by invalidateAutomationSession
+   * which holds the lock. Advances epoch, drains leases (fail closed on error),
+   * clears credentials, and publishes null identity. When requestToken is
+   * provided, the current token is rechecked: a mismatch means a newer login
+   * has already replaced the account, so the stale 401 is discarded without
+   * clearing the new account's credentials.
+   */
+  private async invalidateAutomationSessionUnlocked(requestToken?: string): Promise<void> {
+    if (requestToken !== undefined) {
+      const currentToken = await this.token()
+      if (currentToken !== requestToken) return
+    }
+    this.advanceAutomationEpoch()
+    await this.awaitAutomationLeases()
+    await this.clearSessionCredentials()
+    this.publishAutomationIdentity(null)
   }
 
   private async storedUser(): Promise<AccountUser | undefined> {
@@ -568,6 +803,17 @@ export class AccountSub2apiService extends TypertRemoteService {
   }
 
   private async status(): Promise<AccountStatus> {
+    // During a credential transition (e.g. a lease stop callback calling
+    // getStatus), return an explicit non-authenticated transitional projection
+    // without network or auto-login. This avoids deadlock: the transition is
+    // waiting on lease.stop, and status must not enqueue another transition.
+    if (this.automationTransitionActive) {
+      return {
+        loggedIn: false,
+        keyBound: false,
+        ...(await this.signInPreferences()),
+      }
+    }
     const token = await this.token()
     const keyBound = (await this.credentials.readRecord(MODEL_KEY_RECORD))?.kind === 'api-key'
     if (!token) {
@@ -586,14 +832,11 @@ export class AccountSub2apiService extends TypertRemoteService {
       balance = computeCredits(quota.balance)
     } catch (error) {
       if (error instanceof InvalidAccountSessionError) {
-        await this.clearSessionCredentials()
-        const signedIn = await this.automaticSignIn()
-        if (signedIn !== undefined) return signedIn
-        return {
-          loggedIn: false,
-          keyBound: false,
-          ...(await this.signInPreferences()),
-        }
+        // Do not call invalidateAutomationSession from status(): that would take the
+        // transition lock and deadlock if a lease stop callback is awaiting this
+        // status result. Fail closed: throw without clearing credentials. The
+        // next read path (quota, usage) will invalidate via withAccountSession.
+        throw accountError('登录已失效，请重新登录')
       }
       // A transient outage keeps the locally stored account available for retry.
     }
@@ -678,6 +921,8 @@ export class AccountSub2apiService extends TypertRemoteService {
   ): Promise<AccountStatus> {
     const userId = String(auth.user.id)
     const keyName = this.keyName(userId)
+    // Provision the upstream key before entering the transition. Key provisioning
+    // is independent of the active credential set and may re-use a retained key.
     const key = await this.withKeyProvisioning(async () => {
       const previousUser = await this.storedUser()
       const activeRecord = await this.credentials.readRecord(MODEL_KEY_RECORD)
@@ -699,41 +944,54 @@ export class AccountSub2apiService extends TypertRemoteService {
       }
       return (await this.client.createGroupKey(auth.accessToken, keyName)).key
     })
-    // Replace the prior account only after the new upstream key is ready, and
-    // clear all three refs before writing so a partial storage failure cannot
-    // pair one account token with another account's model key.
-    await this.clearSessionCredentials()
-    try {
-      await this.credentials.set(credentialRef(TOKEN_REF), auth.accessToken)
-      await this.credentials.set(credentialRef(USER_REF), JSON.stringify(auth.user))
-      await this.credentials.modifyRecord(MODEL_KEY_RECORD, async () => ({ kind: 'api-key', key }))
-      await this.retainKey(userId, key)
-      if (rememberUsername || autoLogin) {
-        await this.credentials.set(credentialRef(REMEMBERED_USERNAME_REF), email)
-      } else {
-        await this.clearRememberedUsername()
+    // Serialize the credential transition so two finishes cannot interleave.
+    await this.withAutomationTransition(async () => {
+      // Advance epoch first: stale-epoch runs cannot begin new model requests.
+      this.advanceAutomationEpoch()
+      // Await all registered scheduler stop callbacks to exact quiescence before
+      // replacing the key. Stop callbacks may read status/identity without deadlock.
+      await this.awaitAutomationLeases()
+      // Replace the prior account only after the new upstream key is ready, and
+      // clear all three refs before writing so a partial storage failure cannot
+      // pair one account token with another account's model key.
+      await this.clearSessionCredentials()
+      try {
+        await this.credentials.set(credentialRef(TOKEN_REF), auth.accessToken)
+        await this.credentials.set(credentialRef(USER_REF), JSON.stringify(auth.user))
+        await this.credentials.modifyRecord(MODEL_KEY_RECORD, async () => ({ kind: 'api-key', key }))
+        await this.retainKey(userId, key)
+        if (rememberUsername || autoLogin) {
+          await this.credentials.set(credentialRef(REMEMBERED_USERNAME_REF), email)
+        } else {
+          await this.clearRememberedUsername()
+        }
+        if (autoLogin) {
+          await this.credentials.set(credentialRef(AUTO_LOGIN_PASSWORD_REF), password)
+          await this.credentials.set(credentialRef(AUTO_LOGIN_REF), 'true')
+        } else {
+          await this.clearAutoLogin()
+        }
+      } catch {
+        const cleanup = await Promise.allSettled([
+          this.clearLegacyModelKey(),
+          this.credentials.deleteRecord(MODEL_KEY_RECORD),
+          this.credentials.unset(credentialRef(TOKEN_REF)),
+          this.credentials.unset(credentialRef(USER_REF)),
+          this.credentials.unset(credentialRef(REMEMBERED_USERNAME_REF)),
+          this.credentials.unset(credentialRef(AUTO_LOGIN_PASSWORD_REF)),
+          this.credentials.unset(credentialRef(AUTO_LOGIN_REF)),
+        ])
+        if (cleanup.some(result => result.status === 'rejected')) {
+          throw new RemoteError('gateway/internal', '无法安全保存账户凭据，请重试', {})
+        }
+        throw accountServiceUnavailable()
       }
-      if (autoLogin) {
-        await this.credentials.set(credentialRef(AUTO_LOGIN_PASSWORD_REF), password)
-        await this.credentials.set(credentialRef(AUTO_LOGIN_REF), 'true')
-      } else {
-        await this.clearAutoLogin()
-      }
-    } catch {
-      const cleanup = await Promise.allSettled([
-        this.clearLegacyModelKey(),
-        this.credentials.deleteRecord(MODEL_KEY_RECORD),
-        this.credentials.unset(credentialRef(TOKEN_REF)),
-        this.credentials.unset(credentialRef(USER_REF)),
-        this.credentials.unset(credentialRef(REMEMBERED_USERNAME_REF)),
-        this.credentials.unset(credentialRef(AUTO_LOGIN_PASSWORD_REF)),
-        this.credentials.unset(credentialRef(AUTO_LOGIN_REF)),
-      ])
-      if (cleanup.some(result => result.status === 'rejected')) {
-        throw new RemoteError('gateway/internal', '无法安全保存账户凭据，请重试', {})
-      }
-      throw accountServiceUnavailable()
-    }
+      // Publish new automation identity after successful credential storage.
+      // Epoch cannot assign a new account before valid key binding because we
+      // only reach here after the key record is written.
+      this.publishAutomationIdentity(userId)
+    })
+    // Build status outside the transition; no lock held, safe to call status()
     return this.status()
   }
 
@@ -742,8 +1000,14 @@ export class AccountSub2apiService extends TypertRemoteService {
    */
   @Remote
   async logout(): Promise<void> {
-    await this.clearSessionCredentials()
-    await this.clearAutoLogin()
+    await this.withAutomationTransition(async () => {
+      // Advance epoch and await leases before clearing credentials.
+      this.advanceAutomationEpoch()
+      await this.awaitAutomationLeases()
+      await this.clearSessionCredentials()
+      await this.clearAutoLogin()
+      this.publishAutomationIdentity(null)
+    })
   }
 
   /** Read one live quota snapshot.
@@ -753,7 +1017,7 @@ export class AccountSub2apiService extends TypertRemoteService {
   async quota(): Promise<QuotaSnapshot> {
     const token = await this.token()
     if (!token) throw new RemoteError('gateway/bad-request', '尚未登录', {})
-    return this.withAccountSession(async () => {
+    return this.withAccountSession(token, async () => {
       const quota = await this.client.getQuota(token)
       return { balance: computeCredits(quota.balance) }
     })
@@ -766,7 +1030,7 @@ export class AccountSub2apiService extends TypertRemoteService {
   async usage(): Promise<AccountUsageSnapshot> {
     const token = await this.token()
     if (!token) throw new RemoteError('gateway/bad-request', '尚未登录', {})
-    return this.withAccountSession(async () => {
+    return this.withAccountSession(token, async () => {
       const { today: todayDate, last7DaysStart } = this.client.usageDateRange()
       const [dashboard, last7Days, today] = await Promise.all([
         this.client.getDashboardStats(token),
@@ -793,7 +1057,7 @@ export class AccountSub2apiService extends TypertRemoteService {
   async paymentMethods(): Promise<AccountPaymentMethod[]> {
     const token = await this.token()
     if (!token) throw new RemoteError('gateway/bad-request', '尚未登录', {})
-    return this.withAccountSession(() => this.client.getPaymentMethods(token))
+    return this.withAccountSession(token, () => this.client.getPaymentMethods(token))
   }
 
   /** Create one top-up order; open the returned checkout URL in a browser to pay.
@@ -804,7 +1068,7 @@ export class AccountSub2apiService extends TypertRemoteService {
   async topUp(input: { amount: number; paymentType: string }): Promise<TopUpResult> {
     const token = await this.token()
     if (!token) throw new RemoteError('gateway/bad-request', '尚未登录', {})
-    return this.withAccountSession(async () => {
+    return this.withAccountSession(token, async () => {
       const methods = await this.client.getPaymentMethods(token)
       const method = methods.find(entry => entry.id === input.paymentType)
       if (method === undefined) throw accountError('该支付方式暂不可用，请更换后重试')
@@ -824,7 +1088,7 @@ export class AccountSub2apiService extends TypertRemoteService {
   async redeem(input: { code: string }): Promise<RedeemResult> {
     const token = await this.token()
     if (!token) throw new RemoteError('gateway/bad-request', '尚未登录', {})
-    return this.withAccountSession(() => this.client.redeemCode(token, input.code))
+    return this.withAccountSession(token, () => this.client.redeemCode(token, input.code))
   }
 }
 

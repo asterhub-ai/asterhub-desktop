@@ -208,6 +208,45 @@ export interface FileLockOptions {
   waitMs?: number
 }
 
+/** One held writer lock; release is idempotent and reports filesystem failures. */
+export interface FileLockLease {
+  /** @returns After the held lock has been removed. */
+  release(): Promise<void>
+}
+
+/**
+ * Acquire the maintained cross-process lock for a caller-owned lifetime.
+ * @param filename - File whose exclusive owner is being acquired.
+ * @param options - Acquisition wait policy; zero rejects live contention immediately.
+ * @returns Exact lock lease; the caller must await release during teardown.
+ */
+export async function acquireFileLock(filename: string, options?: FileLockOptions): Promise<FileLockLease> {
+  const lockPath = `${filename}.lock`
+  const deadline = Date.now() + (options?.waitMs ?? DEFAULT_LOCK_WAIT_MS)
+  let delay = LOCK_RETRY_INITIAL_MS
+  let retriedUnconfirmedPermissionError = false
+  for (;;) {
+    try {
+      await writeFile(lockPath, `${process.pid}\n`, { mode: 0o600, flag: 'wx' })
+      break
+    } catch (error) {
+      if (!await isLockContention(error, lockPath)) {
+        if (process.platform !== 'win32'
+          || (error as NodeJS.ErrnoException | null)?.code !== 'EPERM'
+          || retriedUnconfirmedPermissionError) throw error
+        retriedUnconfirmedPermissionError = true
+      } else if (await takeOverExitedLock(lockPath)) continue
+    }
+    if (Date.now() >= deadline) throw new Error(`atomic-write: timed out waiting for the writer lock at ${lockPath}`)
+    const waited = Promise.withResolvers<void>()
+    setTimeout(waited.resolve, delay)
+    await waited.promise
+    delay = Math.min(delay * 2, LOCK_RETRY_MAX_MS)
+  }
+  let released: Promise<void> | undefined
+  return { release: () => released ??= rm(lockPath, { force: true }) }
+}
+
 /**
  * Hold the cross-process writer lock for `filename` around one operation. The
  * lock is a `wx`-created sibling (`<filename>.lock`); paired with the
@@ -237,32 +276,10 @@ export async function withFileLock<T>(
   operation: () => Promise<T>,
   options?: FileLockOptions,
 ): Promise<T> {
-  const lockPath = `${filename}.lock`
-  const deadline = Date.now() + (options?.waitMs ?? DEFAULT_LOCK_WAIT_MS)
-  let delay = LOCK_RETRY_INITIAL_MS
-  let retriedUnconfirmedPermissionError = false
-  for (;;) {
-    try {
-      await writeFile(lockPath, `${process.pid}\n`, { mode: 0o600, flag: 'wx' })
-      break
-    } catch (error) {
-      if (!await isLockContention(error, lockPath)) {
-        // Windows can release the competing lock between exclusive create and lstat.
-        if (process.platform !== 'win32'
-          || (error as NodeJS.ErrnoException | null)?.code !== 'EPERM'
-          || retriedUnconfirmedPermissionError) throw error
-        retriedUnconfirmedPermissionError = true
-      } else if (await takeOverExitedLock(lockPath)) continue
-    }
-    if (Date.now() >= deadline) {
-      throw new Error(`atomic-write: timed out waiting for the writer lock at ${lockPath}`)
-    }
-    await new Promise(resolve => setTimeout(resolve, delay))
-    delay = Math.min(delay * 2, LOCK_RETRY_MAX_MS)
-  }
+  const lease = await acquireFileLock(filename, options)
   try {
     return await operation()
   } finally {
-    await rm(lockPath, { force: true })
+    await lease.release()
   }
 }

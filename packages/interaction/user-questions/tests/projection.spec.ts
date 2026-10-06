@@ -204,7 +204,7 @@ describe('userQuestions projection fold', () => {
   })
 
   it('returns the same fold for unrelated events, unreadable calls, and an unchanged header', () => {
-    const fold = [timedHeader, asked].reduce(applyUserQuestionEvent, { timed: false, questions: empty })
+    const fold = [timedHeader, asked].reduce(applyUserQuestionEvent, { timed: false, canceledCallIds: [], questions: empty })
     expect(applyUserQuestionEvent(fold, event(5, 'turn/start', { turn: 2 }))).toBe(fold)
     expect(applyUserQuestionEvent(fold, header(5, [timedSchema]))).toBe(fold)
     expect(applyUserQuestionEvent(fold, event(5, 'tool/call', {
@@ -235,7 +235,7 @@ describe('userQuestions projection fold', () => {
       turn: 1, step: 2, callId: otherId, name: 'ask_user_question',
       arguments: '{"questions":[{"id":"name","question":"Name?"}]}',
     })
-    const both = [timedHeader, asked, other].reduce(applyUserQuestionEvent, { timed: false, questions: empty })
+    const both = [timedHeader, asked, other].reduce(applyUserQuestionEvent, { timed: false, canceledCallIds: [], questions: empty })
     expect(both.questions.active.map(question => question.callId)).toEqual([callId, otherId])
 
     const continued = applyUserQuestionEvent(both, resulted('{"pending":true,"callId":"call_ask_1"}'))
@@ -265,8 +265,8 @@ describe('userQuestions projection fold', () => {
       state: 'continued',
     }
     const view = { active: [full], settled: [{ callId: 'call_ask_0', answers: answerBatch }] }
-    const restored = userQuestionProjectionDefinition.stateSchema.parse({ inheritedEventCount: 3, timed: true, questions: view })
-    expect(restored).toEqual({ inheritedEventCount: SessionLogOffset(3), timed: true, questions: view })
+    const restored = userQuestionProjectionDefinition.stateSchema.parse({ inheritedEventCount: 3, timed: true, canceledCallIds: [], questions: view })
+    expect(restored).toEqual({ inheritedEventCount: SessionLogOffset(3), timed: true, canceledCallIds: [], questions: view })
     expect(restored.questions.active[0]?.questions[1]).not.toHaveProperty('options')
 
     const { viewSchema } = userQuestionProjectionDefinition.wire

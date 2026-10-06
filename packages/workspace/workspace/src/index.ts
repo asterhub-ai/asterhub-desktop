@@ -99,6 +99,12 @@ export interface SessionActivityRequest {
   readonly sessionId: SessionId
 }
 
+/** Archive admission request with caller options for the admit waterfall. */
+export interface SessionArchiveAdmitRequest {
+  readonly sessionId: SessionId
+  /** Whether the caller asked providers to stop running work. */
+  readonly stopActivity: boolean
+}
 /** Caller choices for {@link WorkspaceRegistry.archiveSession}. */
 export interface ArchiveSessionOptions {
   /**
@@ -145,6 +151,22 @@ declare module '@deepseek-ai/cordis' {
      * @mode parallel
      */
     'workspace/session-stop'(request: SessionActivityRequest): Promise<void> | void
+    /**
+     * Admit one archive request before the registry writes the archive set.
+     * Called after the session is known and (when `stopActivity` is false)
+     * after the activity check passes; a listener may stop and await running
+     * work before allowing the write to proceed, or reject to refuse the
+     * archive. The default (no listeners) delegates unchanged. A listener
+     * that needs to await teardown must NOT hold the registry FIFO — it
+     * should release it before awaiting long-running stop operations.
+     * @param request - the session about to be archived, with caller options.
+     * @param next - delegate to the remaining providers.
+     * @mode waterfall
+     */
+    'workspace/session-archive/admit'(
+      request: SessionArchiveAdmitRequest,
+      next: () => Promise<void>,
+    ): Promise<void>
   }
 }
 
@@ -349,13 +371,14 @@ export class WorkspaceRegistry extends Service {
    * Without `stopActivity` the session must also be inactive: the
    * `workspace/session-activity` waterfall is asked once, and any reported
    * activity rejects with {@link WorkspaceActiveSessionError} before anything
-   * is written. With `stopActivity` the archive is written without an
-   * activity check, and the `workspace/session-stop` providers are then asked
-   * to stop the session's work: the durable archive set is what a provider's
-   * `agent/pre-step` gate reads, so every wake the stops induce is already
-   * blocked. Archiving drops the session's pin in the same durable write
-   * (pinning and archival are mutually exclusive). An already archived id
-   * resolves without writing, asking, or stopping.
+   * is written. With `stopActivity` the `workspace/session-archive/admit`
+   * waterfall runs before the durable write: a listener may stop and await
+   * running work (e.g. an automation run) before the archive set is
+   * committed. The default (no listeners) delegates unchanged — the archive
+   * is written and `workspace/session-stop` is dispatched after, as before.
+   * Archiving drops the session's pin in the same durable write (pinning and
+   * archival are mutually exclusive). An already archived id resolves without
+   * writing, asking, or stopping.
    * @param sessionId - The session to archive.
    * @param options - Whether running work is stopped instead of refusing.
    * @returns resolution after durability and, with `stopActivity`, after every stop request was issued.
@@ -374,13 +397,21 @@ export class WorkspaceRegistry extends Service {
         )
         if (activity.length > 0) throw new WorkspaceActiveSessionError(sessionId, activity)
       }
+      // Admit waterfall: a listener may stop and await running work before the
+      // write. The default (no listeners) is a no-op pass-through.
+      const stopActivity = options.stopActivity === true
+      await this.ctx.waterfall(
+        'workspace/session-archive/admit',
+        { sessionId, stopActivity },
+        () => Promise.resolve(),
+      )
       const state = this.requireState()
       await this.setState({
         ...state,
         archivedSessionIds: [...state.archivedSessionIds, sessionId],
         pinnedSessionIds: state.pinnedSessionIds.filter(id => id !== sessionId),
       })
-      if (options.stopActivity === true) await this.stopSessionActivity(sessionId)
+      if (stopActivity) await this.stopSessionActivity(sessionId)
     })
   }
 

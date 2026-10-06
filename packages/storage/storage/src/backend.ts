@@ -28,6 +28,8 @@ export interface StorageBackend {
 
 /** The key-value data shape: whole-unit snapshots plus per-record durable writes. */
 export interface KvFacet {
+  /** True when exclusive requests acquire a physical cross-process unit lease. */
+  readonly supportsExclusive?: true
   /**
    * Open one unit, creating it when the medium holds no trace of it yet
    * (materialization may defer to the first write, but {@link KvUnit.loadAll}
@@ -71,6 +73,18 @@ export interface KvUnitDescriptor {
    * exact-version.
    */
   readonly compatibleVersions?: readonly number[]
+  /**
+   * Request a cross-process exclusive lifetime lock on the physical unit.
+   * When true, the backend must acquire an exclusive lock at the actual
+   * physical unit location (the file or database) before `open` resolves,
+   * hold it for the unit's entire lifetime, and release it on `close`. A
+   * second process opening the same physical unit with `exclusive: true`
+   * must reject with `exclusive-open`. Backends that cannot offer
+   * cross-process exclusivity reject `exclusive: true` with `exclusive-open`
+   * rather than silently degrading to an in-process lock. Omitting the
+   * field (or `false`) preserves the ordinary non-exclusive open behavior.
+   */
+  readonly exclusive?: boolean
 }
 
 /**

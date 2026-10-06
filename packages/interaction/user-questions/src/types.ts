@@ -124,6 +124,20 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
     userQuestions: UserQuestionProjectionView
   }
 }
+declare module '@deepseek-ai/dsh-session/types' {
+  interface SessionEventMap {
+    /**
+     * Log-only event marking that specific timed questions for this Session
+     * have been explicitly canceled by the Host (e.g., run termination).
+     * Invalidates the named open and continued questions; late answers are rejected.
+     * Future questions in the same Session remain usable.
+     */
+    'user-questions/canceled': { callIds: readonly ToolCallId[] }
+  }
+}
+
+/** Error code for attempting to answer a canceled question. */
+export const USER_QUESTION_CANCELED_CODE = 'QUESTION_CANCELED'
 
 /** Client-safe payload declared for the user-question answerer waterfall. */
 export interface AskUserQuestionRequestEvent {

@@ -51,7 +51,7 @@ const SAFE_KEY_RE = /^[a-zA-Z0-9_-]+$/
 export async function openPerRecordUnit(
   descriptor: KvUnitDescriptor,
   root: string,
-  onClose: () => void,
+  onClose: () => void | Promise<void>,
 ): Promise<KvUnit> {
   return new PerRecordJsonUnit(descriptor, join(root, descriptor.name), onClose)
 }
@@ -194,13 +194,14 @@ async function readRecord(path: string, versions: readonly number[]): Promise<un
  */
 export class PerRecordJsonUnit implements KvUnit {
   private closed = false
+  private closing: Promise<void> | undefined
   /** In-flight durable writes; close() drains them before releasing the unit. */
   private readonly inFlight = new Set<Promise<void>>()
 
   constructor(
     private readonly descriptor: KvUnitDescriptor,
     private readonly dir: string,
-    private readonly onClose: () => void,
+    private readonly onClose: () => void | Promise<void>,
   ) {}
 
   /** Re-read the tree: the directory is the authoritative state. */
@@ -255,14 +256,12 @@ export class PerRecordJsonUnit implements KvUnit {
 
   /* jscpd:ignore-start -- the two unit classes are standalone; the drain/guard lifecycle mirrors the shared KvUnit contract */
   /** Drain in-flight writes and release the unit. Idempotent. */
-  async close(): Promise<void> {
-    if (this.closed) {
-      await Promise.allSettled(this.inFlight)
-      return
-    }
+  close(): Promise<void> {
     this.closed = true
-    await Promise.allSettled(this.inFlight)
-    this.onClose()
+    return this.closing ??= (async () => {
+      await Promise.allSettled(this.inFlight)
+      await this.onClose()
+    })()
   }
 
   private assertOpen(): void {

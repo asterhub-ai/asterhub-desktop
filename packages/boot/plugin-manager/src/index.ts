@@ -468,7 +468,9 @@ export class PluginManager extends TypertRemoteService {
       const candidates = rows.filter(row => row.id === actual?.options.id)
       const candidate = candidates[0]
       if (protectedModules.has(entry.moduleName) || protectedEntryIds.has(actual?.options.id ?? '')
-        || entry.entryId === this.ownerEntryId) {
+        || entry.entryId === this.ownerEntryId
+        || (this.profile.startedBundles.includes('@deepseek-ai/dsh-asterhub-desktop-native')
+          && ['@deepseek-ai/dsh-asterhub-automation', '@deepseek-ai/dsh-client-ui-asterhub-automation'].includes(entry.moduleName))) {
         return { ...entry, readOnlyReason: 'management-required' as const }
       }
       if (candidate === undefined || candidates.length > 1 || candidate.name !== entry.moduleName
@@ -494,6 +496,7 @@ export class PluginManager extends TypertRemoteService {
     const names = [...new Set([...selected, ...dependencies, ...Object.keys(installation.dependencies ?? {})])]
     const bundles: BundleInfo[] = []
     for (const name of names) {
+      if (this.profile.startedBundles.includes('@deepseek-ai/dsh-asterhub-desktop-native') && name === '@deepseek-ai/dsh-experimental-schedule-bundle') continue
       const installed = dependencies.includes(name)
       const optional = OPTIONAL_BUNDLES.includes(name)
       const removable = installed && !Object.hasOwn(installation.dependencies ?? {}, name)
@@ -1051,6 +1054,8 @@ export class PluginManager extends TypertRemoteService {
   }
 
   private async selectBundle(name: string, enabled: boolean): Promise<void> {
+    if (enabled && name === '@deepseek-ai/dsh-experimental-schedule-bundle'
+      && this.profile.startedBundles.includes('@deepseek-ai/dsh-asterhub-desktop-native')) throw new ManagementFailure('management-required')
     const manifest = readProfileManifest('dsh', this.profile.dir)
     const previous = manifest.dsh?.profile?.bundles ?? []
     if (enabled || !previous.includes(name)) {
@@ -1083,6 +1088,7 @@ export class PluginManager extends TypertRemoteService {
   }
 
   private protectsManager(name: string): boolean {
+    if (name === '@deepseek-ai/dsh-asterhub-desktop-native' && this.profile.startedBundles.includes(name)) return true
     if (this.managementBundles.has(name)) return true
     let rows: EntryOptions[]
     try { rows = this.bundleRows(name) } catch (_error) {

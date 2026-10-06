@@ -85,6 +85,16 @@ interface DomainSpec {
    * to the rejecting default. The global slot always rejects.
    */
   readonly invalidRecords?: 'backup-and-skip'
+  /**
+   * Request a cross-process exclusive lifetime lock on the physical backend
+   * unit. Projected to {@link KvUnitDescriptor.exclusive}; the backend must
+   * acquire and hold an exclusive lock at the actual physical unit location
+   * for the domain's lifetime. Used by single-owner domains (e.g. the native
+   * scheduler) to reject a second Host sharing the same data root before
+   * dispatch. Backends that cannot offer cross-process exclusivity reject
+   * with `exclusive-open` at open time.
+   */
+  readonly exclusive?: boolean
   /** Optional global singleton slot. */
   readonly global?: DomainGlobalSpec<unknown>
   /** Table declarations keyed by table name; each name must match `UNIT_NAME_RE`. */

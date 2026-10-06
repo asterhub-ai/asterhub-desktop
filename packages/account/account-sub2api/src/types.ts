@@ -89,3 +89,15 @@ export interface RedeemResult {
   readonly status: string
   readonly balance?: number
 }
+
+/**
+ * Host-only account identity for automation credential isolation.
+ * Structurally compatible with @deepseek-ai/dsh-asterhub-automation's AutomationAccountIdentity.
+ * Account package remains scheduler-implementation-independent.
+ */
+export interface AccountAutomationIdentity {
+  /** Stable account identifier. */
+  readonly accountId: string
+  /** Monotonically increasing epoch for credential isolation. */
+  readonly epoch: number
+}

@@ -97,6 +97,48 @@ export interface SessionControllerInternals {
   readonly canOpenPath?: () => boolean
 }
 
+/** Handle returned by {@link SessionController.registerExecutionInputOwner} that
+ * serializes prompt admission and can temporarily block or release it. */
+export interface SessionExecutionInputOwner {
+  /**
+   * Serialize one work unit behind any already-admitted work. If the owner
+   * has already been closed, wait for {@link release} to resolve normally.
+   * When a creation readiness promise was supplied to
+   * {@link SessionController.registerExecutionInputOwner}, this first waits
+   * for that promise (outside the FIFO) before submitting the work, so work
+   * never reaches a Session whose creation has not yet completed.
+   * @param work - async work to execute serially behind already-admitted work.
+   * @param signal - caller cancellation; aborting drops the wait.
+   * @returns the work result.
+   */
+  admit<T>(work: () => Promise<T>, signal: AbortSignal): Promise<T>
+  /**
+   * Wait until all already-admitted work settles, then evaluate the predicate.
+   * If it passes, mark this Session's input as closed; future work waits for
+   * release and then executes normally. Does NOT await the creation readiness
+   * promise: failure cleanup must be able to close the owner before creation
+   * settles.
+   * @param check - synchronous predicate; serialized behind admitted work.
+   * @returns `true` only when the predicate passed and the owner was newly closed.
+   */
+  closeIf(check: () => boolean): Promise<boolean>
+  /**
+   * Release this owner. Pending closed work executes normally; new work
+   * bypasses this owner entirely. When a creation readiness promise was
+   * supplied, releasing it lets a failed creation report not-found without
+   * hanging waiting admits.
+   */
+  release(): void
+}
+
+/** Error thrown when attempting to register an execution input owner for a Session that already has one. */
+export class DuplicateExecutionInputOwnerError extends Error {
+  constructor(sessionId: SessionId) {
+    super(`Execution input owner already registered for session ${sessionId}`)
+    this.name = 'DuplicateExecutionInputOwnerError'
+  }
+}
+
 /** Host service backing the generated `ctx.remote.session` namespace. */
 export class SessionController extends TypertRemoteService {
   static inject = [
@@ -118,6 +160,8 @@ export class SessionController extends TypertRemoteService {
     modelSelectionPolicy: z.union(['session', 'fixed'] as const).default('session'),
   })
 
+  private readonly fixedModelSelection: boolean
+
   private readonly agents: ApiSessionAgentController
   private readonly commands: SessionCommandController
   private readonly controlState: SessionControlController
@@ -128,8 +172,8 @@ export class SessionController extends TypertRemoteService {
   private readonly openFileApplication: typeof openNativeFileApplication
   private readonly revealPath: (path: string, signal: AbortSignal) => Promise<void>
   private readonly canOpenPath: () => boolean
+  private readonly executionInputOwners = new Map<SessionId, SessionExecutionInputOwner>()
   private readonly promotions = new Set<Promise<void>>()
-  private readonly fixedModelSelection: boolean
 
   /**
    * @param ctx - Host context containing the Session capability assembly.
@@ -215,7 +259,112 @@ export class SessionController extends TypertRemoteService {
     this.promotions.add(task)
     void task.finally(() => { this.promotions.delete(task) })
   }
-
+  /**
+   * Register an execution input owner for one Session. The owner serializes work
+   * behind a check predicate: `closeIf` waits until the predicate passes,
+   * then blocks further work until `release` is called. This prevents terminal
+   * scheduler close from overlapping with incoming work and ensures pending
+   * work waits for the owner to release before executing normally.
+   *
+   * When `ready` is supplied, `admit` first awaits it (outside the FIFO) before
+   * submitting work, so work never reaches a Session whose creation has not yet
+   * completed. This lets the caller register the owner before the Session/Agent
+   * is fully created, install observers, enqueue the initial message, and then
+   * resolve `ready`. `closeIf` does NOT await `ready`: failure cleanup must be
+   * able to close the owner before creation settles. Releasing the owner
+   * resolves `ready` so a failed creation does not hang waiting admits; the
+   * normal resolver then reports the Session as not-found.
+   * @param sessionId - Session identity to own.
+   * @param ready - Optional creation readiness promise; `admit` awaits it before
+   *   submitting work. Omit for an already-created Session.
+   * @returns The owner handle that controls work admission for this Session.
+   * @throws {DuplicateExecutionInputOwnerError} when an owner already exists for this Session.
+   */
+  registerExecutionInputOwner(sessionId: SessionId, ready?: Promise<void>): SessionExecutionInputOwner {
+    if (this.executionInputOwners.has(sessionId)) {
+      throw new DuplicateExecutionInputOwnerError(sessionId)
+    }
+    // Work admitted before closeIf runs completes first; the close chain
+    // serializes behind `admitChain`. After `closed` is set, new work waits
+    // on `releaseGate` until release() resolves them, then executes normally.
+    // `readyGate` gates every admit on creation readiness outside the FIFO;
+    // release() resolves it so a failed creation does not hang waiting admits.
+    let admitChain: Promise<void> = Promise.resolve()
+    let closed = false
+    let releaseGate = Promise.withResolvers<void>()
+    const readyGate = Promise.withResolvers<void>()
+    let released = false
+    if (ready !== undefined) {
+      ready.then(() => { readyGate.resolve() }, () => { readyGate.resolve() })
+    } else {
+      readyGate.resolve()
+    }
+    const self = this
+    // Sentinel returned by the FIFO callback when the owner is closed at
+    // execution time. The admit method detects it and awaits release outside
+    // the FIFO before running work, so closure-attributed work never runs
+    // inside the FIFO and never blocks closeIf's chain.
+    const waitForRelease = Symbol('wait-for-release')
+    const owner: SessionExecutionInputOwner = {
+      async admit<T>(work: () => Promise<T>, signal: AbortSignal): Promise<T> {
+        if (released) return work()
+        // Wait for creation readiness outside the FIFO before submitting work.
+        await raceAbort(readyGate.promise, signal)
+        if (released) return work()
+        if (closed) {
+          // Already closed at queue time: wait for release outside FIFO,
+          // then execute work. Aborting drops the wait.
+          await raceAbort(releaseGate.promise, signal)
+          return work()
+        }
+        // Append to FIFO. The callback rechecks closed/signal at EXECUTION
+        // time (not queue time) so it respects races with closeIf/release.
+        // If closed at execution, return the sentinel so admit awaits release
+        // outside the FIFO instead of running work inside it.
+        const fifoResult = admitChain.then(async (): Promise<T | typeof waitForRelease> => {
+          if (signal.aborted) throw signal.reason
+          if (closed || released) return waitForRelease
+          return work()
+        }, async (): Promise<T | typeof waitForRelease> => {
+          if (signal.aborted) throw signal.reason
+          if (closed || released) return waitForRelease
+          return work()
+        })
+        admitChain = fifoResult.then(() => undefined, () => undefined)
+        const result = await raceAbort(fifoResult, signal)
+        if (result === waitForRelease) {
+          // Closed while queued: await release outside FIFO, then run work.
+          await raceAbort(releaseGate.promise, signal)
+          return work()
+        }
+        return result
+      },
+      async closeIf(check: () => boolean): Promise<boolean> {
+        // Append to FIFO as an actual serialized operation: wait for pending
+        // work to complete, then evaluate the predicate. This ensures closeIf
+        // runs serially with admits and no admit queued behind it executes
+        // before the predicate sets `closed`.
+        const closePromise = admitChain.then(() => {
+          if (closed) return false
+          const result = check()
+          if (!result) return false
+          closed = true
+          return true
+        })
+        admitChain = closePromise.then(() => undefined, () => undefined)
+        return closePromise
+      },
+      release(): void {
+        if (released) return
+        released = true
+        releaseGate.resolve()
+        readyGate.resolve()
+        self.executionInputOwners.delete(sessionId)
+      },
+    }
+    this.executionInputOwners.set(sessionId, owner)
+    return owner
+  }
   /**
    * Resolve or resume one ordinary Session for another Host API domain.
    * @param sessionId - Session identity whose Agent owns the operation.
@@ -427,8 +576,15 @@ export class SessionController extends TypertRemoteService {
    * @returns acknowledgement that the Agent accepted the prompt.
    */
   @Remote('prompt')
-  prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue> {
+  async prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue> {
     signal.throwIfAborted()
+    const owner = this.executionInputOwners.get(request.sessionId)
+    if (owner !== undefined) {
+      return owner.admit(() => {
+        signal.throwIfAborted()
+        return this.commands.prompt(request)
+      }, signal)
+    }
     return this.commands.prompt(request)
   }
 
@@ -524,8 +680,21 @@ export class SessionController extends TypertRemoteService {
   control(signal: AbortSignal): AsyncIterable<SessionControlFrame> {
     return this.controlState.control(signal)
   }
+}
 
-
+function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason)
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener('abort', onAbort)
+      reject(signal.reason)
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    promise.then(
+      (value) => { signal.removeEventListener('abort', onAbort); resolve(value) },
+      (error) => { signal.removeEventListener('abort', onAbort); reject(error) },
+    )
+  })
 }
 
 export { buildModelCatalog }
