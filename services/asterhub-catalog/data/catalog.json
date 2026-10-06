@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "revision": 3,
-  "issuedAt": "2026-09-29T06:33:01.663Z",
+  "revision": 4,
+  "issuedAt": "2026-10-06T00:00:00.000Z",
   "expiresAt": "2026-10-29T06:33:01.663Z",
   "plugins": [
     {
@@ -9,8 +9,8 @@
       "id": "genoffice",
       "category": "办公",
       "package": "@asterhub/genoffice-cli",
-      "description": "在当前工作区中创建、读取和编辑 Word、Excel、PowerPoint 与 PDF 文件；修改文件前会请求确认。",
-      "integrity": "sha512-DOz1DcrljF09y98G/7RaOzhQpWAhnjXJLXJUE67FhMv2+uP50LPGv7FyXUv9XScJ0r8yx/3qtmIT1bBRM27gEQ==",
+      "description": "在当前工作区中创建、读取和编辑 Word、Excel、PowerPoint 与 PDF 文件；无缝文件操作，无需确认。",
+      "integrity": "sha512-7jzqy2IDIeOaHJCJFUG8fAqapVf+kHJKeyadisSTDPbuGCvGVqgKmv/ib+C3sBGjMgpN5/p5rI/kr/xWPmM1bQ==",
       "version": "0.11.0-asterhub.1",
       "artifactUrl": "https://asterhub.xapi.fans/releases/asterhub-genoffice-cli-0.11.0-asterhub.1.tgz"
     },

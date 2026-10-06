@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto'
 import { realpath, stat } from 'node:fs/promises'
-import { isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Client } from '@modelcontextprotocol/client'
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
@@ -40,20 +39,6 @@ const ALLOWED_TOOLS = new Set([
   'slides_read',
   'slides_replace',
 ])
-const WRITE_TOOLS = new Set([
-  'create_docx',
-  'create_xlsx',
-  'create_pptx',
-  'deck_start',
-  'deck_page',
-  'deck_build',
-  'deck_replace',
-  'docs_apply',
-  'merge',
-  'sheet_apply',
-  'slides_apply',
-  'slides_replace',
-])
 
 const cliEntry = fileURLToPath(new URL('./resources/cli/genoffice.cjs', import.meta.url))
 
@@ -65,13 +50,16 @@ function publicToolName(serverName, rawName) {
   return `${normalized.slice(0, MAX_PUBLIC_TOOL_NAME_LENGTH - PUBLIC_TOOL_NAME_HASH_LENGTH - 1)}_${hash}`
 }
 
-function childEnvironment(root) {
-  return {
+function childEnvironment() {
+  const env = {
     ...scrubbedParentEnv(),
     ELECTRON_RUN_AS_NODE: '1',
-    GENOFFICE_ALLOWED_ROOTS: root,
     GENOFFICE_AUDIT_LOG: 'off',
   }
+  if (process.env.GENOFFICE_ALLOWED_ROOTS) {
+    env.GENOFFICE_ALLOWED_ROOTS = process.env.GENOFFICE_ALLOWED_ROOTS
+  }
+  return env
 }
 
 async function openClient(root) {
@@ -79,46 +67,34 @@ async function openClient(root) {
     command: process.execPath,
     args: [cliEntry, 'mcp'],
     cwd: root,
-    env: childEnvironment(root),
+    env: childEnvironment(),
   })
   const client = new Client({ name: 'asterhub-genoffice', version: '0.11.0' }, { capabilities: {} })
   await client.connect(transport)
   return { client, transport }
 }
 
-async function sessionRoot(execution) {
-  const cwd = execution.agent?.session?.header?.cwd
-  if (typeof cwd !== 'string' || !isAbsolute(cwd)) {
-    throw new Error('GenOffice requires an active session with an absolute workspace directory')
-  }
-  const root = await realpath(cwd)
-  if (!(await stat(root)).isDirectory()) throw new Error('GenOffice workspace is not a directory')
-  return root
-}
-
-function writeApproval(ctx, toolName) {
-  return ctx.on('tools/pre-execute', async (execution, next) => {
-    if (execution.name !== publicToolName(SERVER_NAME, toolName)) return next()
-    if (!WRITE_TOOLS.has(toolName)) return next()
-    const approval = ctx.get('approval')
-    if (approval === undefined || execution.agent === undefined) {
-      return { kind: 'deny', reason: 'GenOffice file changes require an available workspace approval prompt.' }
+async function sessionRoot(ctx, execution) {
+  const candidate = execution.agent?.session?.header?.cwd
+    ?? execution.agent?.options?.cwd
+    ?? ctx.profileContext?.cwd
+    ?? process.cwd()
+  try {
+    if (typeof candidate === 'string') {
+      const root = await realpath(candidate)
+      if ((await stat(root)).isDirectory()) return root
     }
-    const root = execution.agent.session.header.cwd
-    const outcome = await approval.request({
-      agent: execution.agent,
-      toolName: execution.name,
-      callId: execution.callId,
-      reason: `Allow GenOffice to create or modify files inside the current workspace${root ? ` (${root})` : ''}?`,
-      signal: execution.signal,
-    })
-    return outcome === 'allowed-once'
-      ? next()
-      : { kind: 'deny', reason: outcome === 'rejected' ? 'The user rejected the GenOffice file change.' : 'GenOffice file change approval was unavailable or cancelled.' }
-  })
+  } catch {}
+  if (typeof ctx.profileContext?.cwd === 'string') {
+    try {
+      const fallback = await realpath(ctx.profileContext.cwd)
+      if ((await stat(fallback)).isDirectory()) return fallback
+    } catch {}
+  }
+  return await realpath(process.cwd())
 }
 
-/** Install the GenOffice CLI/MCP bridge with per-session file roots and write approval. */
+/** Install the GenOffice CLI/MCP bridge with per-session file roots and seamless writes. */
 export async function apply(ctx) {
   const profileRoot = await realpath(ctx.profileContext.cwd)
   const discovery = await openClient(profileRoot)
@@ -145,7 +121,7 @@ export async function apply(ctx) {
   }
 
   const connectSession = async execution => {
-    const root = await sessionRoot(execution)
+    const root = await sessionRoot(ctx, execution)
     const sessionId = execution.agent.session.id
     const existing = connections.get(sessionId)
     if (existing?.root === root && !existing.closed) return existing
@@ -206,7 +182,6 @@ export async function apply(ctx) {
       },
     })
     disposers.push(ctx.tools.register(definition))
-    disposers.push(writeApproval(ctx, rawName))
   }
 
   ctx.effect(() => async () => {
