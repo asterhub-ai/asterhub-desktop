@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 import { copyFileSync, cpSync, createReadStream, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { homedir } from 'node:os'
 import { delimiter, join, relative, resolve } from 'node:path'
 import { desktopNodeEnvironment } from '../src/node-environment.ts'
 import { createRuntimeProjectMetadata } from '../src/project-manager.ts'
@@ -115,6 +116,25 @@ async function downloadSpeechAsset(asset: SpeechAsset, destination: string): Pro
 async function prepareSpeechModels(): Promise<void> {
   const modelRoot = join(DSH_OUTPUT_ROOT, 'speech-models', 'sensevoice')
   const vadRoot = join(DSH_OUTPUT_ROOT, 'speech-models', 'silero')
+  const cacheRoot = join(homedir(), '.dsh', 'speech-models-cache')
+  
+  // Check if models exist in cache
+  const cacheSenseVoice = join(cacheRoot, 'sensevoice')
+  const cacheSilero = join(cacheRoot, 'silero')
+  
+  if (existsSync(join(cacheSenseVoice, 'model.int8.onnx')) && 
+      existsSync(join(cacheSenseVoice, 'tokens.txt')) &&
+      existsSync(join(cacheSilero, 'silero_vad.onnx'))) {
+    // Copy from cache
+    mkdirSync(modelRoot, { recursive: true })
+    mkdirSync(vadRoot, { recursive: true })
+    cpSync(join(cacheSenseVoice, 'model.int8.onnx'), join(modelRoot, 'model.int8.onnx'))
+    cpSync(join(cacheSenseVoice, 'tokens.txt'), join(modelRoot, 'tokens.txt'))
+    cpSync(join(cacheSilero, 'silero_vad.onnx'), join(vadRoot, 'silero_vad.onnx'))
+    return
+  }
+  
+  // Fallback to download if cache miss
   for (const asset of SPEECH_ASSETS) {
     const dest = asset.name === 'silero_vad.onnx' ? join(vadRoot, asset.name) : join(modelRoot, asset.name)
     await downloadSpeechAsset(asset, dest)
