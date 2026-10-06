@@ -296,7 +296,8 @@
       name: '@deepseek-ai/dsh-client-ui-attachment'
 
     # Native voice input is part of the AsterHub workbench. Model assets are
-    # downloaded on first use; the model weights are not part of the app bundle.
+    # pre-bundled in the Desktop installation; the env-injected paths below
+    # point the provider at the bundled files so no first-use download is needed.
     - id: speech-to-text
       name: '@deepseek-ai/dsh-experimental-speech-to-text'
       config:
@@ -306,6 +307,8 @@
       name: '@deepseek-ai/dsh-experimental-speech-to-text-sensevoice'
       config:
         dataRoot: !!js dshHomePath('speech-to-text', 'sensevoice')
+        modelDirectory: !!js "process.env.DSH_SPEECH_MODEL_DIRECTORY || undefined"
+        vadModelPath: !!js "process.env.DSH_SPEECH_VAD_MODEL_PATH || undefined"
 
     - id: api-speech-to-text
       name: '@deepseek-ai/dsh-experimental-api-speech-to-text'

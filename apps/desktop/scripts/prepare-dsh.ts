@@ -2,7 +2,11 @@
 
 import { packagingStep } from './packaging-step.mjs'
 import { spawn } from 'node:child_process'
-import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { copyFileSync, cpSync, createReadStream, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { stat } from 'node:fs/promises'
+import { Readable, TransformStream } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import { tmpdir } from 'node:os'
 import { delimiter, join, relative, resolve } from 'node:path'
 import { desktopNodeEnvironment } from '../src/node-environment.ts'
@@ -48,6 +52,73 @@ function manifestVersion(path: string, subject: string): string {
   const manifest = JSON.parse(readFileSync(path, 'utf8')) as { version?: unknown }
   if (typeof manifest.version !== 'string') throw new Error(`desktop runtime: ${subject} has no version`)
   return manifest.version
+}
+
+interface SpeechAsset {
+  readonly name: string
+  readonly url: string
+  readonly sha256: string
+  readonly bytes: number
+}
+
+const SPEECH_ASSETS: readonly SpeechAsset[] = [
+  {
+    name: 'model.int8.onnx',
+    url: 'https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/2365baeacb507f821a0c8120fcee3d484dba7a07/model.int8.onnx',
+    sha256: 'c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51',
+    bytes: 239_233_841,
+  },
+  {
+    name: 'tokens.txt',
+    url: 'https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/2365baeacb507f821a0c8120fcee3d484dba7a07/tokens.txt',
+    sha256: 'f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc',
+    bytes: 315_894,
+  },
+  {
+    name: 'silero_vad.onnx',
+    url: 'https://huggingface.co/csukuangfj/vad/resolve/fba88cd2e921609e7675c3aaf51e0b9b295da4bc/silero_vad.onnx',
+    sha256: 'a35ebf52fd3ce5f1469b2a36158dba761bc47b973ea3382b3186ca15b1f5af28',
+    bytes: 1_807_522,
+  },
+]
+
+async function downloadSpeechAsset(asset: SpeechAsset, destination: string): Promise<void> {
+  if (existsSync(destination)) {
+    const info = await stat(destination)
+    if (info.size === asset.bytes) {
+      const digest = createHash('sha256')
+      for await (const chunk of Readable.toWeb(createReadStream(destination))) {
+        digest.update(Buffer.from(chunk))
+      }
+      if (digest.digest('hex') === asset.sha256) return
+    }
+  }
+  mkdirSync(join(destination, '..'), { recursive: true })
+  const response = await fetch(asset.url)
+  if (!response.ok || !response.body) throw new Error(`speech model download failed: ${asset.name} HTTP ${String(response.status)}`)
+  const digest = createHash('sha256')
+  let received = 0
+  const hashing = new TransformStream({
+    transform(chunk: Uint8Array, controller: TransformStreamDefaultController): void {
+      received += chunk.byteLength
+      digest.update(Buffer.from(chunk))
+      controller.enqueue(chunk)
+    },
+  })
+  const file = createWriteStream(destination)
+  await pipeline(Readable.fromWeb(response.body.pipeThrough(hashing) as ReadableStream<Uint8Array>), file)
+  if (received !== asset.bytes || digest.digest('hex') !== asset.sha256) {
+    throw new Error(`speech model integrity check failed: ${asset.name}`)
+  }
+}
+
+async function prepareSpeechModels(): Promise<void> {
+  const modelRoot = join(DSH_OUTPUT_ROOT, 'speech-models', 'sensevoice')
+  const vadRoot = join(DSH_OUTPUT_ROOT, 'speech-models', 'silero')
+  for (const asset of SPEECH_ASSETS) {
+    const dest = asset.name === 'silero_vad.onnx' ? join(vadRoot, asset.name) : join(modelRoot, asset.name)
+    await downloadSpeechAsset(asset, dest)
+  }
 }
 
 function desktopRelease(): DesktopRelease {
@@ -166,6 +237,7 @@ async function main(): Promise<void> {
     if (!existsSync(join(DSH_OUTPUT_ROOT, 'node_modules', '@deepseek-ai', `libreoffice-kit-${officeEngine}`, 'prebuilds.json'))) {
       throw new Error(`desktop runtime: missing required LibreOffice engine ${officeEngine}`)
     }
+    await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:speech-models', () => prepareSpeechModels())
     if (process.platform === 'darwin') {
       await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'sign:dsh-native', () => signMacOSRuntime(DSH_OUTPUT_ROOT, resolveDesktopAppId(process.env), resolveMacOSSigningEnvironment(process.env), target.arch, join(BUILD_PATHS.root, 'signature-cache')))
       await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'sign:primary-native', () => signMacOSRuntime(join(RUNTIME_ROOT, 'primary-runtime'), resolveDesktopAppId(process.env), resolveMacOSSigningEnvironment(process.env), target.arch, join(BUILD_PATHS.root, 'signature-cache')))

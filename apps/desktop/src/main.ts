@@ -436,7 +436,7 @@ async function main(): Promise<void> {
   const backend = new DesktopBackendController((onFailure) => {
     const hostInspectPort = developmentHostInspectPort(development)
     const host = new DesktopHostProcess(resources.node, resources.dsh, activeProject,
-      hostInspectPort, { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion() }, onFailure,
+      hostInspectPort, { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion(), DSH_SPEECH_MODEL_DIRECTORY: join(resources.dsh, 'speech-models', 'sensevoice'), DSH_SPEECH_VAD_MODEL_PATH: join(resources.dsh, 'speech-models', 'silero', 'silero_vad.onnx') }, onFailure,
       primaryRuntime,
       resources, (next) => { platformView.setSession(next) })
     return {
