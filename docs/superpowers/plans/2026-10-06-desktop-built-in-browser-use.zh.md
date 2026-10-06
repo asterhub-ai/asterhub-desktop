@@ -64,7 +64,9 @@ Desktop 默认使用内置浏览器。Web/dev-web 保留原有浏览器配置；
 
 ### 任务 1：类型化传输与 guest 身份
 
-**文件：** 新建 `packages/browser-use/browser-use-desktop/{package.json,tsconfig.json,src/types.ts,src/transport.ts,tests/transport.spec.ts}`。修改 `apps/desktop-host/{package.json,src/index.ts}`、`apps/desktop/src/{host-process.ts,host-protocol.ts,main.ts}` 及已有生命周期测试。新增 `apps/desktop-host/src/browser-transport.ts` 与 `apps/desktop/src/browser-automation-protocol.ts`。本任务声明 Desktop Host 对新包的直接运行时依赖，因为此处会导入 provider 所属的 transport 类型与适配器。
+**文件：** 新建 `packages/browser-use/browser-use-desktop/{package.json,tsconfig.json,src/types.ts,src/transport.ts,tests/transport.spec.ts}`。修改 `apps/desktop-host/{package.json,tsconfig.json,src/index.ts}`、`apps/desktop/{package.json,tsconfig.host.json,src/host-process.ts,src/host-protocol.ts,src/main.ts,src/browser-automation-protocol.ts}`、根 `tsconfig.host.json` 及 Host 生命周期测试。新增 `apps/desktop-host/src/browser-transport.ts`。
+
+**项目接线：** 在两个 app/Host TypeScript face 与根 Host aggregate 中添加新包项目引用。`apps/desktop-host` 添加直接运行时依赖；`apps/desktop` 添加类型/构建依赖。通过 `pnpm run gen-tsconfig-paths` 生成包源码别名，并用 `pnpm run verify-tsconfig-paths` 验证生成结果。
 
 **接口：** 包通过 `/types` 导出纯类型；`desktopBrowserTransport` 作为类型化 Host 能力，在 provider 加载前通过 `runProfile.hostSetup` 安装。Node IPC 传输带标签的 `browser/request`、`browser/result` 或 `browser/cancel`；可信请求包含 Session ID、live owner generation、request ID 和已验证操作。`AbortSignal` 留在本进程，跨 IPC 通过取消消息表达。
 
@@ -81,6 +83,7 @@ SnapshotResult = { target, snapshotId, text, truncated: boolean }
 
 - [ ] 在 `DesktopHostProcess` 增加关联请求处理，并在 `isDesktopHostEvent` 校验；同步更新 Host 生命周期协议版本与发布元数据。拒绝无所属、重复、迟到和 generation 不匹配的结果，不因此补发动作。
 - [ ] 在 `apps/desktop-host/src/index.ts` 的组合激活之前安装 transport，而不是在 `await application` 之后。Electron main 缺失或断连时拒绝请求；取消未执行操作，关闭时清理并等待请求注册表。
+- [ ] 通过现有生成器更新包源码别名，并执行 `pnpm run verify-tsconfig-paths`；确认 Desktop Host 与 Desktop main 的 TypeScript 项目引用都包含新包。
 - [ ] 覆盖跨 Session 目标、错误 live owner generation、IPC 断连、排队请求取消和 dispose 后迟到结果。执行新增 transport 定向测试及受影响的 `apps/desktop/tests/host-process.spec.ts` 检查；只保留验证可观察失败/归属的测试。
 
 **审查节点：** 模型不能控制身份字段，无网络监听，不向 guest 暴露 Electron/Node，Host 退出后不遗留 pending promise。

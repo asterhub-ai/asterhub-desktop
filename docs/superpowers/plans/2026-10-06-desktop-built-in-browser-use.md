@@ -64,7 +64,9 @@ All paths in the task file maps are repository-relative. New paths and signature
 
 ### Task 1: Typed transport and guest identity
 
-**Files:** Create `packages/browser-use/browser-use-desktop/{package.json,tsconfig.json,src/types.ts,src/transport.ts,tests/transport.spec.ts}`. Modify `apps/desktop-host/{package.json,src/index.ts}`, `apps/desktop/src/{host-process.ts,host-protocol.ts,main.ts}` and their existing lifecycle tests. Add `apps/desktop-host/src/browser-transport.ts` and `apps/desktop/src/browser-automation-protocol.ts`. The direct Host runtime dependency belongs here because this task imports the provider-owned transport types and adapter.
+**Files:** Create `packages/browser-use/browser-use-desktop/{package.json,tsconfig.json,src/types.ts,src/transport.ts,tests/transport.spec.ts}`. Modify `apps/desktop-host/{package.json,tsconfig.json,src/index.ts}`, `apps/desktop/{package.json,tsconfig.host.json,src/host-process.ts,src/host-protocol.ts,src/main.ts,src/browser-automation-protocol.ts}`, and root `tsconfig.host.json`; add the Host lifecycle tests. Add `apps/desktop-host/src/browser-transport.ts`.
+
+**Project wiring:** Add project references for the new package in both app/Host TypeScript faces and the root Host aggregate. Add its direct runtime dependency to `apps/desktop-host` and type/build dependency to `apps/desktop`; generate package source aliases with `pnpm run gen-tsconfig-paths` and verify with `pnpm run verify-tsconfig-paths`.
 
 **Interfaces:** The package publishes type-only `/types`; `desktopBrowserTransport` is a typed Host-provided capability installed through `runProfile.hostSetup` before the provider loads. Node IPC carries a tagged `browser/request`, `browser/result`, or `browser/cancel`; a trusted request carries session ID, live owner generation, request ID, and the validated operation. `AbortSignal` stays local and is represented across IPC by cancellation.
 
@@ -81,6 +83,7 @@ SnapshotResult = { target, snapshotId, text, truncated: boolean }
 
 - [ ] Add correlated request handling in `DesktopHostProcess`, with validation in `isDesktopHostEvent`; extend the Host lifecycle protocol version and its release metadata together. Reject orphan, duplicate, late, or wrong-generation results without dispatching another action.
 - [ ] Install transport in `apps/desktop-host/src/index.ts` before composition activation, not after `await application`. The transport must reject missing/disconnected Electron main, abort queued work, and drain its request registry on shutdown.
+- [ ] Regenerate package aliases and verify with `pnpm run verify-tsconfig-paths`; confirm both Desktop Host and Desktop main TypeScript references include the new package.
 - [ ] Cover crossed Session targets, wrong live owner generation, IPC disconnect, canceled queued requests, and a late reply after disposal. Run the new focused transport spec and the affected `apps/desktop/tests/host-process.spec.ts` checks; retain only observable failure/ownership tests.
 
 **Review checkpoint:** No model-controlled identity fields, no network listener, no guest Electron/Node exposure, and no pending promise survives Host exit.
