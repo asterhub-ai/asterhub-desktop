@@ -145,7 +145,10 @@ function runPnpm(args: readonly string[]): Promise<void> {
     const config = join(PNPM_BUILD_STATE, 'config')
     const userConfig = join(config, 'npmrc')
     mkdirSync(config, { recursive: true })
-    writeFileSync(userConfig, '')
+    const npmrcLines: string[] = []
+    if (typeof process.env.HTTP_PROXY === 'string') npmrcLines.push(`proxy=${process.env.HTTP_PROXY}`)
+    if (typeof process.env.HTTPS_PROXY === 'string') npmrcLines.push(`https-proxy=${process.env.HTTPS_PROXY}`)
+    writeFileSync(userConfig, npmrcLines.join('\n'))
     const child = spawn(NODE, [
       '--expose-internals',
       PNPM,
