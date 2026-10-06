@@ -64,7 +64,7 @@ All paths in the task file maps are repository-relative. New paths and signature
 
 ### Task 1: Typed transport and guest identity
 
-**Files:** Create `packages/browser-use/browser-use-desktop/{package.json,tsconfig.json,src/types.ts,src/transport.ts,tests/transport.spec.ts}`. Modify `apps/desktop-host/src/index.ts`, `apps/desktop/src/{host-process.ts,host-protocol.ts,main.ts}` and their existing lifecycle tests. Add `apps/desktop-host/src/browser-transport.ts` and `apps/desktop/src/browser-automation-protocol.ts`.
+**Files:** Create `packages/browser-use/browser-use-desktop/{package.json,tsconfig.json,src/types.ts,src/transport.ts,tests/transport.spec.ts}`. Modify `apps/desktop-host/{package.json,src/index.ts}`, `apps/desktop/src/{host-process.ts,host-protocol.ts,main.ts}` and their existing lifecycle tests. Add `apps/desktop-host/src/browser-transport.ts` and `apps/desktop/src/browser-automation-protocol.ts`. The direct Host runtime dependency belongs here because this task imports the provider-owned transport types and adapter.
 
 **Interfaces:** The package publishes type-only `/types`; `desktopBrowserTransport` is a typed Host-provided capability installed through `runProfile.hostSetup` before the provider loads. Node IPC carries a tagged `browser/request`, `browser/result`, or `browser/cancel`; a trusted request carries session ID, live owner generation, request ID, and the validated operation. `AbortSignal` stays local and is represented across IPC by cancellation.
 
@@ -149,7 +149,7 @@ browser_close({ target }) -> { tabId, closed: true }
 
 ### Task 5: Shipped workflows and Desktop-only composition
 
-**Files:** Add `packages/browser-use/browser-use-desktop/src/skills.ts` and `assets/{control-browser,web-gui-tester}/SKILL.md`. Modify `packages/bundle/asterhub-desktop-native/{package.json,cordis.patch.yml}`, `apps/desktop-host/package.json`, and Desktop runtime dependency metadata only where the new package or DOM asset must be included. Regenerate tsconfig/catalog outputs with their existing generators, never by editing generated tables.
+**Files:** Add `packages/browser-use/browser-use-desktop/src/skills.ts` and `assets/{control-browser,web-gui-tester}/SKILL.md`. Modify `packages/bundle/asterhub-desktop-native/{package.json,cordis.patch.yml}` and Desktop runtime dependency metadata only where the DOM asset must be included. Regenerate tsconfig/catalog outputs with their existing generators, never by editing generated tables.
 
 **Interfaces:** Consume Task 4 tools and the existing `ctx.skills.registerProvider`/bundled-rank mechanism used by `packages/skill/skill-office/src/index.ts`. Skills are product runtime assets, not merely repository `.agents/skills` instructions. Mount the provider only in the Desktop native bundle.
 

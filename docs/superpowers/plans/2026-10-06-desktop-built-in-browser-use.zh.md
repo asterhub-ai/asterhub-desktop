@@ -64,7 +64,7 @@ Desktop 默认使用内置浏览器。Web/dev-web 保留原有浏览器配置；
 
 ### 任务 1：类型化传输与 guest 身份
 
-**文件：** 新建 `packages/browser-use/browser-use-desktop/{package.json,tsconfig.json,src/types.ts,src/transport.ts,tests/transport.spec.ts}`。修改 `apps/desktop-host/src/index.ts`、`apps/desktop/src/{host-process.ts,host-protocol.ts,main.ts}` 及已有生命周期测试。新增 `apps/desktop-host/src/browser-transport.ts` 与 `apps/desktop/src/browser-automation-protocol.ts`。
+**文件：** 新建 `packages/browser-use/browser-use-desktop/{package.json,tsconfig.json,src/types.ts,src/transport.ts,tests/transport.spec.ts}`。修改 `apps/desktop-host/{package.json,src/index.ts}`、`apps/desktop/src/{host-process.ts,host-protocol.ts,main.ts}` 及已有生命周期测试。新增 `apps/desktop-host/src/browser-transport.ts` 与 `apps/desktop/src/browser-automation-protocol.ts`。本任务声明 Desktop Host 对新包的直接运行时依赖，因为此处会导入 provider 所属的 transport 类型与适配器。
 
 **接口：** 包通过 `/types` 导出纯类型；`desktopBrowserTransport` 作为类型化 Host 能力，在 provider 加载前通过 `runProfile.hostSetup` 安装。Node IPC 传输带标签的 `browser/request`、`browser/result` 或 `browser/cancel`；可信请求包含 Session ID、live owner generation、request ID 和已验证操作。`AbortSignal` 留在本进程，跨 IPC 通过取消消息表达。
 
@@ -149,7 +149,7 @@ browser_close({ target }) -> { tabId, closed: true }
 
 ### 任务 5：随产品发布的工作流与 Desktop 专用组合
 
-**文件：** 新增 `packages/browser-use/browser-use-desktop/src/skills.ts` 与 `assets/{control-browser,web-gui-tester}/SKILL.md`。修改 `packages/bundle/asterhub-desktop-native/{package.json,cordis.patch.yml}`、`apps/desktop-host/package.json`，仅在新包或 DOM asset 需要纳入时修改 Desktop runtime 依赖元数据。通过现有生成器更新 tsconfig/catalog，不手改生成表。
+**文件：** 新增 `packages/browser-use/browser-use-desktop/src/skills.ts` 与 `assets/{control-browser,web-gui-tester}/SKILL.md`。修改 `packages/bundle/asterhub-desktop-native/{package.json,cordis.patch.yml}`；仅在 DOM asset 需要时修改 Desktop runtime 依赖元数据。通过现有生成器更新 tsconfig/catalog，不手改生成表。
 
 **接口：** 使用任务 4 工具与 `packages/skill/skill-office/src/index.ts` 使用的 `ctx.skills.registerProvider`/bundled-rank 机制。skill 是产品 runtime 资源，不只是仓库 `.agents/skills` 指令。provider 仅在 Desktop native bundle 挂载。
 
