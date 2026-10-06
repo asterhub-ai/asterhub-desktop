@@ -50,6 +50,14 @@ export type { AutomationTaskTable } from './store.ts'
 export { AutomationSchemaError, validateTaskAggregate } from './schema.ts'
 export { registerAutomationTools } from './tools.ts'
 export type { AutomationManageOutput, AutomationReadOutput } from './tools.ts'
+
+declare module '@deepseek-ai/dsh-workspace/types' {
+  interface SessionActivityKindMap {
+    /** Active scheduled-task automation runs on this session. */
+    'automation-run': true
+  }
+}
+
 /**
  * Configuration for the automation service.
  *
