@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { describe, expect, it } from 'vitest'
-import { isDesktopBrowserResultMessage, MAX_DESKTOP_BROWSER_SCREENSHOT_BYTES } from '../src/protocol.ts'
+import { isDesktopBrowserOperation, isDesktopBrowserResultMessage, MAX_DESKTOP_BROWSER_SCREENSHOT_BYTES } from '../src/protocol.ts'
 import { brandNumber, brandString } from '@deepseek-ai/dsh-brand'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type {
@@ -80,11 +80,12 @@ function readOperation(tab: string, generation: number, snapshot: string): Deskt
       exact: true,
     },
     property: 'text',
+    maxChars: 50_000,
   }
 }
 
 function readResult(tab: string, generation: number, value: string): DesktopBrowserResult {
-  return { status: 'success', value: { kind: 'read', target: target(tab, generation), value } }
+  return { status: 'success', value: { kind: 'read', target: target(tab, generation), value, truncated: false } }
 }
 
 function resultMessage(requestId: number, result: DesktopBrowserResult): DesktopBrowserResultMessage {
@@ -203,6 +204,27 @@ describe('Desktop Browser transport', () => {
 
     await expect(pending).rejects.toThrow('different browser target')
     await port.transport.dispose()
+  })
+
+  it('bounds text results and tab inventories at the IPC boundary', () => {
+    const pageTarget = target('tab-a', 1)
+    const read = readOperation('tab-a', 1, 'snapshot-a')
+    expect(isDesktopBrowserOperation(read)).toBe(true)
+    expect(isDesktopBrowserOperation({ ...read, maxChars: 1_000_001 })).toBe(false)
+    const textResult = (value: string, truncated: boolean): unknown => ({
+      type: 'browser/result', requestId: 1,
+      result: { status: 'success', value: { kind: 'read', target: pageTarget, value, truncated } },
+    })
+    expect(isDesktopBrowserResultMessage(textResult('x'.repeat(1_000_000), false))).toBe(true)
+    expect(isDesktopBrowserResultMessage(textResult('x'.repeat(1_000_001), true))).toBe(false)
+
+    const tab = { target: pageTarget, url: 'https://example.test/', title: 'Example', active: false, ownership: 'user', attached: true }
+    const tabsResult = (tabs: unknown[], truncated: boolean): unknown => ({
+      type: 'browser/result', requestId: 2,
+      result: { status: 'success', value: { kind: 'tabs', tabs, truncated } },
+    })
+    expect(isDesktopBrowserResultMessage(tabsResult(new Array(256).fill(tab), false))).toBe(true)
+    expect(isDesktopBrowserResultMessage(tabsResult(new Array(257).fill(tab), true))).toBe(false)
   })
 
   it('rejects an invalid reply without resolving another request', async () => {

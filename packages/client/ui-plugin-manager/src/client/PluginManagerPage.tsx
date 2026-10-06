@@ -38,6 +38,12 @@ export function PluginManagerPage(props: PluginManagerPageProps) {
       <div className={css.list}>
         {catalog?.plugins.map((entry) => {
           const isInstalled = entry.installed === true
+          const status = entry.installStatus ?? (isInstalled ? 'installed' : 'not-installed')
+          const buttonLabel = props.busy === entry.id ? t('installing')
+            : status === 'installed' ? t('installed')
+              : status === 'update-available' ? t('updateAvailable')
+                : status === 'reinstall' ? t('reinstall')
+                  : t('install')
           return (
             <article className={css.card} key={entry.id}>
               <div className={css.copy}>
@@ -50,7 +56,7 @@ export function PluginManagerPage(props: PluginManagerPageProps) {
                 disabled={isInstalled || props.busy !== undefined || props.loading}
                 onClick={() => { void props.onInstall?.(entry) }}
               >
-                {props.busy === entry.id ? t('installing') : isInstalled ? t('installed') : t('install')}
+                {buttonLabel}
               </button>
             </article>
           )

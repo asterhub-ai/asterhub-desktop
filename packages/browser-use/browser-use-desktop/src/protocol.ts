@@ -19,6 +19,12 @@ import type {
 /** Fixed IPC ceiling for screenshots, matching the reviewed ZCode browser bridge bound. */
 export const MAX_DESKTOP_BROWSER_SCREENSHOT_BYTES = 32 * 1024 * 1024
 
+/** Hard ceiling for one browser text result before it crosses the process boundary. */
+export const MAX_DESKTOP_BROWSER_TEXT_RESULT_CHARS = 1_000_000
+
+/** Maximum tab inventory returned to one model call; truncation is reported explicitly. */
+export const MAX_DESKTOP_BROWSER_TABS = 256
+
 /** Canonical object guard for this package's process-wire validators. */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -38,9 +44,10 @@ export function isDesktopBrowserOperation(value: unknown): value is DesktopBrows
     case 'page.screenshot':
       return hasOnlyKeys(value, ['kind', 'target']) && isTarget(value.target)
     case 'page.read':
-      return hasOnlyKeys(value, ['kind', 'target', 'locator', 'property', 'attribute'])
+      return hasOnlyKeys(value, ['kind', 'target', 'locator', 'property', 'maxChars', 'attribute'])
         && isTarget(value.target) && isLocator(value.locator) && isReadProperty(value.property)
-        && (value.attribute === undefined || typeof value.attribute === 'string')
+        && isPositiveSafeInteger(value.maxChars) && value.maxChars <= MAX_DESKTOP_BROWSER_TEXT_RESULT_CHARS
+        && (value.attribute === undefined || isBoundedString(value.attribute, 16_384))
         && (value.property !== 'attribute' || typeof value.attribute === 'string')
     case 'page.act':
       return hasOnlyKeys(value, ['kind', 'target', 'locator', 'action', 'text', 'keys', 'values', 'observe'])
@@ -104,16 +111,16 @@ function isCaller(value: unknown): boolean {
 
 function isTarget(value: unknown): value is DesktopBrowserTarget {
   return isRecord(value) && hasOnlyKeys(value, ['tabId', 'generation'])
-    && isNonEmptyString(value.tabId) && isGeneration(value.generation)
+    && isBoundedString(value.tabId, 256) && value.tabId.length > 0 && isGeneration(value.generation)
 }
 
 function isLocator(value: unknown): value is DesktopBrowserLocator {
-  if (!isRecord(value) || !isNonEmptyString(value.snapshotId)) return false
+  if (!isRecord(value) || !isBoundedString(value.snapshotId, 256) || value.snapshotId.length === 0) return false
   if (value.kind === 'ref') {
-    return hasOnlyKeys(value, ['kind', 'snapshotId', 'ref']) && isNonEmptyString(value.ref)
+    return hasOnlyKeys(value, ['kind', 'snapshotId', 'ref']) && isBoundedString(value.ref, 256) && value.ref.length > 0
   }
   return value.kind === 'role' && hasOnlyKeys(value, ['kind', 'snapshotId', 'role', 'name', 'exact'])
-    && isNonEmptyString(value.role) && typeof value.name === 'string' && value.exact === true
+    && isBoundedString(value.role, 256) && value.role.length > 0 && isBoundedString(value.name, 16_384) && value.exact === true
 }
 
 function isReadProperty(value: unknown): value is DesktopBrowserReadProperty {
@@ -129,12 +136,14 @@ function isSemanticActionPayload(value: Record<string, unknown>): boolean {
   switch (value.action) {
     case 'fill':
     case 'type':
-      return typeof value.text === 'string' && value.keys === undefined && value.values === undefined
+      return isBoundedString(value.text, MAX_DESKTOP_BROWSER_TEXT_RESULT_CHARS) && value.keys === undefined && value.values === undefined
     case 'press':
-      return Array.isArray(value.keys) && value.keys.length > 0 && value.keys.every(key => typeof key === 'string')
+      return Array.isArray(value.keys) && value.keys.length > 0 && value.keys.length <= 64
+        && value.keys.every(key => isBoundedString(key, 64))
         && value.text === undefined && value.values === undefined
     case 'select':
-      return Array.isArray(value.values) && value.values.length > 0 && value.values.every(option => typeof option === 'string')
+      return Array.isArray(value.values) && value.values.length > 0 && value.values.length <= 256
+        && value.values.every(option => isBoundedString(option, 16_384))
         && value.text === undefined && value.keys === undefined
     case 'click':
     case 'doubleClick':
@@ -145,6 +154,10 @@ function isSemanticActionPayload(value: Record<string, unknown>): boolean {
     default:
       return false
   }
+}
+
+function isBoundedString(value: unknown, maximum: number): value is string {
+  return typeof value === 'string' && value.length <= maximum
 }
 
 function isPointerAction(value: unknown): value is DesktopBrowserPointerAction {
@@ -170,7 +183,7 @@ function isPointerActionPayload(value: Record<string, unknown>): boolean {
       return isFiniteNumber(value.x) && isFiniteNumber(value.y)
         && isFiniteNumber(value.deltaX) && isFiniteNumber(value.deltaY) && value.path === undefined
     case 'drag':
-      return Array.isArray(value.path) && value.path.length >= 2 && value.path.every(isPoint)
+      return Array.isArray(value.path) && value.path.length >= 2 && value.path.length <= 256 && value.path.every(isPoint)
         && value.x === undefined && value.y === undefined && value.deltaX === undefined && value.deltaY === undefined
     default:
       return false
@@ -204,20 +217,20 @@ function isHttpUrl(value: unknown): value is string {
 
 function isTabInfo(value: unknown): value is DesktopBrowserTabInfo {
   return isRecord(value) && hasOnlyKeys(value, ['target', 'url', 'title', 'active', 'ownership', 'attached'])
-    && isTarget(value.target) && isHttpUrl(value.url) && typeof value.title === 'string'
+    && isTarget(value.target) && isHttpUrl(value.url) && isBoundedString(value.title, 16_384)
     && typeof value.active === 'boolean' && (value.ownership === 'user' || value.ownership === 'agent')
     && typeof value.attached === 'boolean'
 }
 
 function isSnapshot(value: unknown): boolean {
   return isRecord(value) && hasOnlyKeys(value, ['target', 'snapshotId', 'text', 'truncated'])
-    && isTarget(value.target) && isNonEmptyString(value.snapshotId) && typeof value.text === 'string'
-    && value.text.length <= 1_000_000 && typeof value.truncated === 'boolean'
+    && isTarget(value.target) && isBoundedString(value.snapshotId, 256) && value.snapshotId.length > 0
+    && isBoundedString(value.text, MAX_DESKTOP_BROWSER_TEXT_RESULT_CHARS) && typeof value.truncated === 'boolean'
 }
 
 function isScreenshot(value: unknown): boolean {
   if (!isRecord(value) || !hasOnlyKeys(value, ['target', 'screenshotId', 'bytes', 'viewport'])
-    || !isTarget(value.target) || !isNonEmptyString(value.screenshotId)
+    || !isTarget(value.target) || !isBoundedString(value.screenshotId, 256) || value.screenshotId.length === 0
     || !(value.bytes instanceof Uint8Array) || value.bytes.byteLength > MAX_DESKTOP_BROWSER_SCREENSHOT_BYTES
     || !isRecord(value.viewport) || !hasOnlyKeys(value.viewport, ['width', 'height'])) return false
   return isPositiveSafeInteger(value.viewport.width) && isPositiveSafeInteger(value.viewport.height)
@@ -227,7 +240,8 @@ function isBrowserValue(value: unknown): value is DesktopBrowserValue {
   if (!isRecord(value) || typeof value.kind !== 'string') return false
   switch (value.kind) {
     case 'tabs':
-      return hasOnlyKeys(value, ['kind', 'tabs']) && Array.isArray(value.tabs) && value.tabs.every(isTabInfo)
+      return hasOnlyKeys(value, ['kind', 'tabs', 'truncated']) && Array.isArray(value.tabs)
+        && value.tabs.length <= MAX_DESKTOP_BROWSER_TABS && value.tabs.every(isTabInfo) && typeof value.truncated === 'boolean'
     case 'tab':
       return hasOnlyKeys(value, ['kind', 'tab']) && isTabInfo(value.tab)
     case 'closed':
@@ -235,8 +249,9 @@ function isBrowserValue(value: unknown): value is DesktopBrowserValue {
     case 'snapshot':
       return hasOnlyKeys(value, ['kind', 'snapshot']) && isSnapshot(value.snapshot)
     case 'read':
-      return hasOnlyKeys(value, ['kind', 'target', 'value']) && isTarget(value.target)
-        && (typeof value.value === 'string' || typeof value.value === 'boolean' || value.value === null)
+      return hasOnlyKeys(value, ['kind', 'target', 'value', 'truncated']) && isTarget(value.target)
+        && (isBoundedString(value.value, MAX_DESKTOP_BROWSER_TEXT_RESULT_CHARS) || typeof value.value === 'boolean' || value.value === null)
+        && typeof value.truncated === 'boolean'
     case 'action':
       return hasOnlyKeys(value, ['kind', 'target', 'delivered', 'observation', 'screenshot'])
         && isTarget(value.target) && typeof value.delivered === 'boolean'

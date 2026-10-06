@@ -24,6 +24,8 @@ export interface CuratedPluginEntry {
   artifactUrl: string
   /** Whether this exact package version and integrity is installed from the current profile lockfile. */
   installed?: boolean
+  /** Install status distinguishing exact match, version drift, lockfile mismatch, and absent. */
+  installStatus?: 'installed' | 'update-available' | 'reinstall' | 'not-installed'
   /** Optional icon URL restricted by the Host to same-origin HTTPS. */
   iconUrl?: string
 }

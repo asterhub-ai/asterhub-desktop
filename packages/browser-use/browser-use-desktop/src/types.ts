@@ -79,19 +79,19 @@ export type DesktopBrowserPointerAction = 'click' | 'doubleClick' | 'move' | 'sc
 /** Fixed browser interaction actions supported by the Desktop provider. */
 export type DesktopBrowserAction = DesktopBrowserSemanticAction | DesktopBrowserPointerAction
 
-/** One browser operation admitted by the Desktop Host transport. */
+/** Host-admitted operations; `page.read.maxChars` is bounded by `MAX_DESKTOP_BROWSER_TEXT_RESULT_CHARS`. */
 export type DesktopBrowserOperation =
   | { readonly kind: 'tabs.list' }
   | { readonly kind: 'tabs.open'; readonly url: string; readonly newTab?: boolean }
   | { readonly kind: 'tabs.close'; readonly target: DesktopBrowserTarget }
   | { readonly kind: 'page.snapshot'; readonly target: DesktopBrowserTarget }
-  | { readonly kind: 'page.read'; readonly target: DesktopBrowserTarget; readonly locator: DesktopBrowserLocator; readonly property: DesktopBrowserReadProperty; readonly attribute?: string }
+  | { readonly kind: 'page.read'; readonly target: DesktopBrowserTarget; readonly locator: DesktopBrowserLocator; readonly property: DesktopBrowserReadProperty; readonly maxChars: number; readonly attribute?: string }
   | { readonly kind: 'page.act'; readonly target: DesktopBrowserTarget; readonly locator: DesktopBrowserLocator; readonly action: DesktopBrowserSemanticAction; readonly text?: string; readonly keys?: readonly string[]; readonly values?: readonly string[]; readonly observe?: DesktopBrowserObservation }
   | { readonly kind: 'page.actAt'; readonly target: DesktopBrowserTarget; readonly screenshotId: DesktopBrowserSnapshotId; readonly action: DesktopBrowserPointerAction; readonly x?: number; readonly y?: number; readonly deltaX?: number; readonly deltaY?: number; readonly path?: readonly DesktopBrowserPoint[]; readonly observe?: DesktopBrowserObservation }
   | { readonly kind: 'page.wait'; readonly target: DesktopBrowserTarget; readonly condition: DesktopBrowserWaitCondition }
   | { readonly kind: 'page.screenshot'; readonly target: DesktopBrowserTarget }
 
-/** Compact accessible tree associated with its live guest and document. */
+/** Accessible tree for one document; the text result is bounded and reports truncation. */
 export interface DesktopBrowserSnapshot {
   readonly target: DesktopBrowserTarget
   readonly snapshotId: DesktopBrowserSnapshotId
@@ -107,13 +107,13 @@ export interface DesktopBrowserScreenshot {
   readonly viewport: { readonly width: number; readonly height: number }
 }
 
-/** A successful browser operation result. */
+/** Successful operation value; text reads and tab inventories report truncation explicitly when capped. */
 export type DesktopBrowserValue =
-  | { readonly kind: 'tabs'; readonly tabs: readonly DesktopBrowserTabInfo[] }
+  | { readonly kind: 'tabs'; readonly tabs: readonly DesktopBrowserTabInfo[]; readonly truncated: boolean }
   | { readonly kind: 'tab'; readonly tab: DesktopBrowserTabInfo }
   | { readonly kind: 'closed'; readonly target: DesktopBrowserTarget; readonly closed: true }
   | { readonly kind: 'snapshot'; readonly snapshot: DesktopBrowserSnapshot }
-  | { readonly kind: 'read'; readonly target: DesktopBrowserTarget; readonly value: string | boolean | null }
+  | { readonly kind: 'read'; readonly target: DesktopBrowserTarget; readonly value: string | boolean | null; readonly truncated: boolean }
   | { readonly kind: 'action'; readonly target: DesktopBrowserTarget; readonly delivered: boolean; readonly observation?: DesktopBrowserSnapshot; readonly screenshot?: DesktopBrowserScreenshot }
   | { readonly kind: 'wait'; readonly target: DesktopBrowserTarget; readonly matched: true }
   | { readonly kind: 'screenshot'; readonly screenshot: DesktopBrowserScreenshot }

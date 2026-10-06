@@ -13,6 +13,8 @@ export const zh = {
   installFailed: '安装未完成，请检查网络连接或权限后重试。',
   catalogChanged: '精选列表已更新，请核对新版本后再次点击安装。',
   installedVersion: '版本',
+  updateAvailable: '可更新',
+  reinstall: '重新安装',
 } as const
 
 /** The locale key union. */
@@ -31,4 +33,6 @@ export const en = {
   installFailed: 'Installation did not complete. Check your connection or permissions and try again.',
   catalogChanged: 'The curated list changed. Review the new version and click Install again.',
   installedVersion: 'Version',
+  updateAvailable: 'Update',
+  reinstall: 'Reinstall',
 } as const satisfies Record<PluginManagerLocaleKey, string>

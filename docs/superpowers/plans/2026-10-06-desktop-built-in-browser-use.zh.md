@@ -52,10 +52,11 @@ Desktop 默认使用内置浏览器。Web/dev-web 保留原有浏览器配置；
 - 保留唯一 `ctx.browserUse` 注册。不增加多 provider 选择器，不让产品代码依赖 `packages/experimental`。
 - 将页面内容当作不可信数据。有外部影响的操作沿用现有审批策略；页面或模型不能授予批准。Host 身份核验不替代工具审批。
 - 使用现有持久化工具结果与附件存储。不将原始 base64、live 租约或 Chromium 状态存入 Session 事件。若实际修改持久化类型，按仓库规则声明。
-- 将截图 IPC payload 限制为 32 MiB，使用 V8 advanced serialization 保留 `Uint8Array` 字节，并在附件准入前拒绝超大截图。
+- 截图 IPC payload 限制为 32 MiB，使用 V8 advanced serialization 保留 `Uint8Array` 字节，并在附件准入前拒绝超大截图。
+- 浏览器文本值在 IPC 前不得超过 `MAX_DESKTOP_BROWSER_TEXT_RESULT_CHARS`（1,000,000 字符）；验证 `snapshotMaxChars` 和 `readResultMaxChars` 均不超过该上限。标签清单最多返回 256 项；有更多标签时设置 `truncated`。
 - 用户点击和页面脚本可能与自动化竞争。按 live Session 串行执行 provider 操作，以 generation 拒绝过期目标和快照。输入发送成功不等于结果成立。
 - 不提供任意 `evaluate` 或 Node REPL 工具。只读观察采用固定协议操作。本次不加入 cookie 迁移、持久登录态改造、上传/下载解禁或录制子系统。
-- 新增可因部署而变化的超时与快照上限均为经过验证的 Config 字段。沿用品牌 ID、effect 注册、导出 JSDoc、UI 本地化和分 Host/Client TypeScript 配置。
+- 新增可因部署而变化的超时及快照/读取结果上限均为经过验证的 Config 字段。沿用品牌 ID、effect 注册、导出 JSDoc、UI 本地化和分 Host/Client TypeScript 配置。
 
 <a id="task-execution"></a>
 
@@ -79,17 +80,19 @@ DesktopBrowserCaller = { sessionId: SessionId, ownerGeneration: DesktopBrowserOw
 DesktopBrowserTransport.request(caller, operation, signal): Promise<DesktopBrowserResult>
 DesktopBrowserTransport.releaseOwner(caller): Promise<void>
 TabInfo = { target, url, title, active, ownership: "user" | "agent", attached: boolean }
-DesktopBrowserOperation = { kind: "tabs.list" } | { kind: "tabs.open", url, newTab? } | { kind: "tabs.close", target } | { kind: "page.snapshot", target } | { kind: "page.read", target, locator, property, attribute? } | { kind: "page.act", target, locator, action, text?, keys?, values?, observe? } | { kind: "page.actAt", target, screenshotId, action, x?, y?, deltaX?, deltaY?, path?, observe? } | { kind: "page.wait", target, condition } | { kind: "page.screenshot", target }
+DesktopBrowserOperation = { kind: "tabs.list" } | { kind: "tabs.open", url, newTab? } | { kind: "tabs.close", target } | { kind: "page.snapshot", target } | { kind: "page.read", target, locator, property, maxChars, attribute? } | { kind: "page.act", target, locator, action, text?, keys?, values?, observe? } | { kind: "page.actAt", target, screenshotId, action, x?, y?, deltaX?, deltaY?, path?, observe? } | { kind: "page.wait", target, condition } | { kind: "page.screenshot", target }
+DesktopBrowserValue includes { kind: "tabs", tabs: TabInfo[], truncated } and { kind: "read", target, value, truncated } variants.
 DesktopBrowserResult = { status: "success", value: DesktopBrowserValue } | { status: "error", code, message }
 SnapshotResult = { target, snapshotId, text, truncated: boolean }
 DesktopBrowserScreenshot = { target, screenshotId, bytes: Uint8Array, viewport: { width, height } }
 MAX_DESKTOP_BROWSER_SCREENSHOT_BYTES = 32 * 1024 * 1024
+MAX_DESKTOP_BROWSER_TEXT_RESULT_CHARS = 1_000_000; MAX_DESKTOP_BROWSER_TABS = 256
 ```
 
 - [ ] 在 `DesktopHostProcess` 增加关联请求处理，并在 `isDesktopHostEvent` 校验；同步更新 Host 生命周期协议版本与发布元数据。拒绝无所属、重复、迟到和 generation 不匹配的结果，不因此补发动作。
 - [ ] 在 `apps/desktop-host/src/index.ts` 的组合激活之前安装 transport，而不是在 `await application` 之后。Electron main 缺失或断连时拒绝请求；取消未执行操作，关闭时清理并等待请求注册表。
 - [ ] 通过现有生成器更新包源码别名，并执行 `pnpm run verify-tsconfig-paths`；确认 Desktop Host 与 Desktop main 的 TypeScript 项目引用都包含新包。
-- [ ] 覆盖跨 Session 目标、错误 live owner generation、IPC 断连、排队请求取消、dispose 后迟到回复和乱序响应。验证截图 bytes 通过子进程 IPC 往返后仍为 `Uint8Array`，并拒绝超过 32 MiB 上限 1 byte 的结果。执行新增 transport 定向测试及受影响的 `apps/desktop/tests/host-process.spec.ts` 检查；只保留验证可观察行为/归属的测试。
+- [ ] 覆盖跨 Session 目标、错误 live owner generation、IPC 断连、排队请求取消、dispose 后迟到回复和乱序响应。验证截图 bytes 通过子进程 IPC 往返后仍为 `Uint8Array`；拒绝超过 32 MiB 上限 1 byte 的截图、超限文本和超过 256 项的标签清单。执行新增 transport 定向测试及受影响的 `apps/desktop/tests/host-process.spec.ts` 检查；只保留验证可观察行为/归属的测试。
 
 **审查节点：** 模型不能控制身份字段，无网络监听，不向 guest 暴露 Electron/Node，Host 退出后不遗留 pending promise。
 
@@ -120,7 +123,7 @@ MAX_DESKTOP_BROWSER_SCREENSHOT_BYTES = 32 * 1024 * 1024
 - [ ] 移植前审查 ZCode 的必要 snapshot/locator/input 适配器。保留源自 Playwright 的可访问名称、role、可见性、严格匹配基数、actionability 和 open-shadow 语义。实际复制代码时保留 Apache 声明和修改归属；不复制约 180 KB 的 browser manager 或 ZCode workspace imports。
 - [ ] 将 ref 绑定到 `snapshotId`、tab generation、document/frame 身份和引擎节点成员资格。导航/重挂载或成员资格无效时返回明确过期目标错误；不把过期 ref 重新指向别的元素。frame 遍历使用 main 授权的 frame 身份；不支持的 frame 场景明确报告限制，不伪造空白页面。 每个 document/frame 的快照与 ref 动作共享同一个 isolated-world 引擎实例；AsterHub 工具返回 ref 时，不复制 ZCode 移除 ref 的快照归一化。
 - [ ] 经同一 guest 的真实输入路径实现 click/double-click/fill/type/press/check/uncheck/select/hover/scroll/drag，不使用 `element.click()` 或事件派发捷径。等待可见、enabled、唯一且不被遮挡的目标；遵守键盘/IME 行为。必要时使用私有 `webContents.debugger` 输入，按租约管理 attach/teardown；不暴露原始 debugger 命令。
-- [ ] 实现固定 text/attribute/visible/enabled/checked 读取以及具体 URL/load/element 等待。坐标动作必须携带同 target generation 的 screenshot ID，并正确映射 CSS 像素 viewport；拒绝过期或越界坐标。明确请求瞬态证据时，在同一次操作中完成动作、具体状态等待和截图。
+- [ ] 实现固定 text/attribute/visible/enabled/checked 读取以及具体 URL/load/element 等待。文本读取遵守 `operation.maxChars` 并明确标记截断。坐标动作必须携带同 target generation 的 screenshot ID，并正确映射 CSS 像素 viewport；拒绝过期或越界坐标。明确请求瞬态证据时，在同一次操作中完成动作、具体状态等待和截图。
 - [ ] 用 port-0 loopback fixture 验证真实行为：重复标签拒绝严格选择；延迟表单可填写；遮挡按钮不能穿透点击；Unicode 输入到达应用；open shadow DOM 可观察；iframe 目标属于正确 frame；弹窗结果可发现；canvas 输入与截图坐标一致；导航后旧 ref 被拒绝。测试使用独立 profile/端口并等待 Electron 退出，保证确定性。
 
 **审查节点：** 输入走真实前端事件路径；截图与 DOM 来自实际 Sidebar guest，涵盖打包环境与隐藏窗口。
@@ -129,14 +132,14 @@ MAX_DESKTOP_BROWSER_SCREENSHOT_BYTES = 32 * 1024 * 1024
 
 **文件：** 修改 `packages/browser-use/browser-use-desktop/src/index.ts`；新增 `src/{tools.ts,presentation.ts}` 与 `tests/{tools.spec.ts,lifecycle.spec.ts}`。为新包声明产品依赖；只有现有 API 无法表达必要行为时才修改已有 skill/工具结果适配器。
 
-**接口：** 注入 `browserUse`、`tools`、`systemPrompt`、`desktopBrowserTransport` 与 `attachments`。下方 `AttachmentRef` 简写采用现有 `ImageAttachmentRef`。通过有序 effect 注册 `BrowserUseProviderName("desktop-internal")`。工具参数不含调用身份；以下 schema 定义公开操作，返回结构化 canonical results 与现有附件引用。
+**接口：** 注入 `browserUse`、`tools`、`systemPrompt`、`desktopBrowserTransport` 与 `attachments`。下方 `AttachmentRef` 简写采用现有 `ImageAttachmentRef`。通过有序 effect 注册 `BrowserUseProviderName("desktop-internal")`。provider 的经过验证的 `readResultMaxChars` 配置决定发给 Host 的 `page.read.maxChars`。工具参数不含调用身份；以下 schema 定义公开操作，返回结构化 canonical results 与现有附件引用。
 
 ```text
-browser_tabs() -> { backend: "desktop-internal", capabilities, tabs: TabInfo[] }
+browser_tabs() -> { backend: "desktop-internal", capabilities, tabs: TabInfo[], truncated: boolean }
 browser_open({ url, newTab?: boolean }) -> TabInfo
 browser_snapshot({ target }) -> SnapshotResult
 Locator = { snapshotId, ref } | { snapshotId, role, name, exact: true }
-browser_read({ target, locator, property: "text"|"attribute"|"visible"|"enabled"|"checked", attribute?: string }) -> { target, value }
+browser_read({ target, locator, property: "text"|"attribute"|"visible"|"enabled"|"checked", attribute?: string }) -> { target, value, truncated: boolean }
 browser_act({ target, locator, action: "click"|"doubleClick"|"fill"|"type"|"press"|"check"|"uncheck"|"select"|"hover", text?: string, keys?: string[], values?: string[], observe?: Observation }) -> { target, delivered, observation? }
 browser_act({ target, screenshotId, action: "click"|"doubleClick"|"move"|"scroll"|"drag", x?, y?, deltaX?, deltaY?, path?, observe?: Observation }) -> { target, delivered, observation? }
 Observation = { wait?: WaitCondition, screenshot?: boolean }
@@ -171,9 +174,10 @@ browser_close({ target }) -> { tabId, closed: true }
     operationTimeoutMs: 3000
     navigationTimeoutMs: 30000
     snapshotMaxChars: 50000
+    readResultMaxChars: 50000
 ```
 
-- [ ] YAML 表示拟议条目内容，不是完整 patch：用现有 bundle overlay 语法插入，避免重复已有 registry 条目。Config 校验要求正整数；快照截断必须在结果中明确标识。这些数值是部署默认值，不是隐藏常量。
+- [ ] YAML 是拟议条目内容，不是完整 patch 文件：使用现有 bundle overlay 语法插入，避免重复已有 registry 条目。Config 要求两项文本上限为正整数且不超过 IPC 硬上限；返回结果必须明确标记截断。数值是部署默认值，不是隐藏常量。
 - [ ] 根据任务 4 的八个真实工具编写 control-browser 指令。涵盖能力发现、显式后端选择、当前标签检查、精确/同 host 复用、等待/快照/严格定位、单动作后验证、弹窗观察、过期目标恢复、canvas 截图、用户标签交接和拒绝报告。不复制 ZCode fresh-kernel bootstrap 或不支持的 API 名。
 - [ ] 编写 web-gui-tester，包含 P0 主流程、P1 反馈、P2 边界、P3 布局；区分环境准备与正式 GUI 测试。正式测试只使用正常前端交互，同时核查语义状态和实际查看过的截图，分别记录阻塞/不支持项，不修改待测代码，也不强迫失败流程通过。
 - [ ] 注册 model/user invocation 元数据，将资源纳入开发与打包 runtime 闭包。复制上游文本时保留许可并适配；新增文本描述 AsterHub 工具与限制。网页交互优先 Browser Use，而非 Computer Use；用户显式选择 Computer Use 或目标属于桌面原生界面时除外。

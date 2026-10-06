@@ -64,7 +64,7 @@ function browserRequest(requestId) {
     ? { kind: 'page.screenshot', target }
     : { kind: 'page.read', target,
       locator: { kind: 'role', snapshotId: 'snapshot-' + requestId, role: 'heading', name: 'Result', exact: true },
-      property: 'text' }
+      property: 'text', maxChars: 50000 }
   process.send({ type: 'browser/request', requestId,
     caller: { sessionId: 'session-' + requestId, ownerGeneration: 1 }, operation })
   return promise
@@ -201,7 +201,7 @@ describe('desktop host process', () => {
       if (request.operation.kind !== 'page.read') throw new Error('fixture request is not a page read')
       return {
         status: 'success',
-        value: { kind: 'read', target: request.operation.target, value: request.caller.sessionId },
+        value: { kind: 'read', target: request.operation.target, value: request.caller.sessionId, truncated: false },
       }
     }
     const host = hostProcess(projectWithHost(BROWSER_HOST), undefined, undefined, process.env, handler)

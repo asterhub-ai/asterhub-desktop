@@ -18,26 +18,26 @@
   en: bcf6db5592edb9c2
   zh: b8864fcbb2f9a17d
 /desktop-built-in-browser-use-implementation-plan/global-constraints:
-  en: 5782b3d231d50e43
-  zh: b0f53208950916fe
+  en: b583e0887a433575
+  zh: d4ca242447993f7c
 /desktop-built-in-browser-use-implementation-plan/task-execution:
   en: 3ae0239a6b3795af
   zh: da7efaaa2033d279
 /desktop-built-in-browser-use-implementation-plan/task-execution/task-1-typed-transport-and-guest-identity:
-  en: cd153517aafa6ae2
-  zh: 537f7c30bf9e8dab
+  en: 75bd97f4b6ee5afc
+  zh: e1b5336dd33a89d3
 /desktop-built-in-browser-use-implementation-plan/task-execution/task-2-sidebar-tab-discovery-opening-and-ownership:
   en: 79cd7e9b22a45105
   zh: 506a298ef9bedff4
 /desktop-built-in-browser-use-implementation-plan/task-execution/task-3-dom-semantics-and-real-guest-interaction:
-  en: f9918280b74cae2c
-  zh: 73923be20807af38
+  en: 491349a2fe12629c
+  zh: 8f6278ed6da75f70
 /desktop-built-in-browser-use-implementation-plan/task-execution/task-4-model-tools-policy-and-durable-evidence:
-  en: f508c2972cfdc907
-  zh: 6a4f077d0b8a4896
+  en: ad424a414283592c
+  zh: fe049d0dde595c94
 /desktop-built-in-browser-use-implementation-plan/task-execution/task-5-shipped-workflows-and-desktop-only-composition:
-  en: 1f6efe45c808f022
-  zh: 3db28776d2c1d2a3
+  en: 815d02eeb456fb81
+  zh: 514db4b95d89fd63
 /desktop-built-in-browser-use-implementation-plan/task-execution/task-6-end-to-end-acceptance-and-release-documentation:
   en: a97526ff86d533a6
   zh: c59d08402174f5d7

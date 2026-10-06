@@ -53,9 +53,10 @@ Learn the workflow and narrow execution primitives from ZCode; do not import its
 - Treat page content as untrusted. Existing approval policy applies to consequential actions; a page or model cannot grant approval. Host-level identity validation supplements rather than replaces tool approvals.
 - Use existing durable tool results and attachment storage. Do not persist raw base64, live leases, or Chromium state in Session events. Declare any actual persistence-type change under the repository policy.
 - Cap screenshot IPC payloads at 32 MiB, use V8 advanced serialization to preserve `Uint8Array` bytes, and reject oversized captures before attachment admission.
+- Cap browser text values at `MAX_DESKTOP_BROWSER_TEXT_RESULT_CHARS` (1,000,000 characters) before IPC; validate `snapshotMaxChars` and `readResultMaxChars` at or below that ceiling. Return at most 256 tab entries and set `truncated` when more exist.
 - User tab clicks and page scripts can race automation. Serialize provider work per live Session; generation-fence stale targets and snapshots. A successful input dispatch is not proof of the requested result.
 - No arbitrary `evaluate` or Node REPL tool. Read-only observations are fixed protocol operations. No cookie migration, persistent login-state redesign, upload/download enablement, or recording subsystem in this change.
-- New deployment-varying timeouts and snapshot limits are validated Config fields. Adopt the existing branded-ID, effect-registration, export JSDoc, localized UI, and face-specific TypeScript conventions.
+- New deployment-varying timeouts and snapshot/read-result limits are validated Config fields. Adopt the existing branded-ID, effect-registration, export JSDoc, localized UI, and face-specific TypeScript conventions.
 
 <a id="task-execution"></a>
 
@@ -79,17 +80,19 @@ DesktopBrowserCaller = { sessionId: SessionId, ownerGeneration: DesktopBrowserOw
 DesktopBrowserTransport.request(caller, operation, signal): Promise<DesktopBrowserResult>
 DesktopBrowserTransport.releaseOwner(caller): Promise<void>
 TabInfo = { target, url, title, active, ownership: "user" | "agent", attached: boolean }
-DesktopBrowserOperation = { kind: "tabs.list" } | { kind: "tabs.open", url, newTab? } | { kind: "tabs.close", target } | { kind: "page.snapshot", target } | { kind: "page.read", target, locator, property, attribute? } | { kind: "page.act", target, locator, action, text?, keys?, values?, observe? } | { kind: "page.actAt", target, screenshotId, action, x?, y?, deltaX?, deltaY?, path?, observe? } | { kind: "page.wait", target, condition } | { kind: "page.screenshot", target }
+DesktopBrowserOperation = { kind: "tabs.list" } | { kind: "tabs.open", url, newTab? } | { kind: "tabs.close", target } | { kind: "page.snapshot", target } | { kind: "page.read", target, locator, property, maxChars, attribute? } | { kind: "page.act", target, locator, action, text?, keys?, values?, observe? } | { kind: "page.actAt", target, screenshotId, action, x?, y?, deltaX?, deltaY?, path?, observe? } | { kind: "page.wait", target, condition } | { kind: "page.screenshot", target }
+DesktopBrowserValue includes { kind: "tabs", tabs: TabInfo[], truncated } and { kind: "read", target, value, truncated } variants.
 DesktopBrowserResult = { status: "success", value: DesktopBrowserValue } | { status: "error", code, message }
 SnapshotResult = { target, snapshotId, text, truncated: boolean }
 DesktopBrowserScreenshot = { target, screenshotId, bytes: Uint8Array, viewport: { width, height } }
 MAX_DESKTOP_BROWSER_SCREENSHOT_BYTES = 32 * 1024 * 1024
+MAX_DESKTOP_BROWSER_TEXT_RESULT_CHARS = 1_000_000; MAX_DESKTOP_BROWSER_TABS = 256
 ```
 
 - [ ] Add correlated request handling in `DesktopHostProcess`, with validation in `isDesktopHostEvent`; extend the Host lifecycle protocol version and its release metadata together. Reject orphan, duplicate, late, or wrong-generation results without dispatching another action.
 - [ ] Install transport in `apps/desktop-host/src/index.ts` before composition activation, not after `await application`. The transport must reject missing/disconnected Electron main, abort queued work, and drain its request registry on shutdown.
 - [ ] Regenerate package aliases and verify with `pnpm run verify-tsconfig-paths`; confirm both Desktop Host and Desktop main TypeScript references include the new package.
-- [ ] Cover crossed Session targets, wrong live owner generation, IPC disconnect, canceled queued requests, a late reply after disposal, and out-of-order responses. Verify screenshot bytes survive the child-process IPC round trip as a `Uint8Array` and reject the exact 32 MiB + 1 byte boundary. Run the new focused transport spec and affected `apps/desktop/tests/host-process.spec.ts` checks; retain only observable failure/ownership tests.
+- [ ] Cover crossed Session targets, wrong live owner generation, IPC disconnect, canceled queued requests, a late reply after disposal, and out-of-order responses. Verify screenshot bytes survive the child-process IPC round trip as a `Uint8Array`; reject the 32 MiB + 1 byte screenshot, over-limit text, and tab inventories above 256. Run the new focused transport spec and affected `apps/desktop/tests/host-process.spec.ts` checks; retain only observable failure/ownership tests.
 
 **Review checkpoint:** No model-controlled identity fields, no network listener, no guest Electron/Node exposure, and no pending promise survives Host exit.
 
@@ -120,7 +123,7 @@ MAX_DESKTOP_BROWSER_SCREENSHOT_BYTES = 32 * 1024 * 1024
 - [ ] Inspect the narrow ZCode snapshot/locator/input adapters before porting. Preserve Playwright-derived accessible names, roles, visibility, strict cardinality, actionability and open-shadow semantics. Keep Apache notices and modification attribution for any actual copied code; do not copy the 180 KB browser manager or ZCode workspace imports.
 - [ ] Bind refs to `snapshotId`, tab generation, document/frame identity and engine node membership. Return a clear stale-target error after navigation/remount or invalid membership; never retarget a stale ref to a different element. Frame traversal must use main-authorized frame identities; unsupported frame cases return an explicit limitation, not a fabricated empty page. Snapshot and ref actions share one isolated-world engine instance per document/frame; do not copy ZCode normalization that strips refs if the AsterHub tool returns refs.
 - [ ] Implement actual click/double-click/fill/type/press/check/uncheck/select/hover/scroll/drag through the same guest input path, not `element.click()` or event-dispatch shortcuts. Wait for visible, enabled, unique, non-occluded targets; respect keyboard/IME behavior. Use private `webContents.debugger` input where necessary, with lease-scoped attachment and teardown; never expose raw debugger commands.
-- [ ] Implement fixed text/attribute/visible/enabled/checked reads and concrete URL/load/element waits. Coordinate actions require a screenshot ID from the same target generation and CSS-pixel viewport mapping; reject stale or out-of-bounds coordinates. Capture a transient-state screenshot in the same operation as action + concrete wait when explicitly requested.
+- [ ] Implement fixed text/attribute/visible/enabled/checked reads and concrete URL/load/element waits. Text reads obey `operation.maxChars` and report truncation. Coordinate actions require a screenshot ID from the same tab generation and CSS-pixel viewport mapping; reject stale or out-of-bounds coordinates. Capture a transient-state screenshot in the same operation as action + concrete wait when explicitly requested.
 - [ ] Prove real behaviors with a port-0 loopback fixture: duplicated labels fail strict selection; a delayed form is fillable; a covered button is not clicked through; Unicode input reaches the app; open shadow DOM is observed; an iframe target belongs to the correct frame; popup results are discoverable; canvas input matches screenshot coordinates; a post-navigation old ref fails. Keep tests deterministic, with per-test profiles/ports and awaited Electron shutdown.
 
 **Review checkpoint:** Input exercises the frontend event path; screenshot/DOM truth comes from the actual Sidebar guest, including packaged and hidden-window behavior.
@@ -129,14 +132,14 @@ MAX_DESKTOP_BROWSER_SCREENSHOT_BYTES = 32 * 1024 * 1024
 
 **Files:** Modify `packages/browser-use/browser-use-desktop/src/index.ts`; add `src/{tools.ts,presentation.ts}` and `tests/{tools.spec.ts,lifecycle.spec.ts}`. Modify the new package manifest for production dependencies and the existing skill/tool-result adapters only if a required extension cannot be expressed through their current APIs.
 
-**Interfaces:** Inject `browserUse`, `tools`, `systemPrompt`, `desktopBrowserTransport`, and `attachments`. Use existing `ImageAttachmentRef` for the `AttachmentRef` shorthand below. Register `BrowserUseProviderName("desktop-internal")` through an ordered effect. Tool parameters do not include caller identity; schemas below define the public operations, with structured canonical results and existing attachment references.
+**Interfaces:** Inject `browserUse`, `tools`, `systemPrompt`, `desktopBrowserTransport`, and `attachments`. Use existing `ImageAttachmentRef` for the `AttachmentRef` shorthand below. Register `BrowserUseProviderName("desktop-internal")` through an ordered effect. The provider's validated `readResultMaxChars` config sets the `page.read.maxChars` sent to the Host. Tool parameters do not include caller identity; schemas below define the public operations, with structured canonical results and existing attachment references.
 
 ```text
-browser_tabs() -> { backend: "desktop-internal", capabilities, tabs: TabInfo[] }
+browser_tabs() -> { backend: "desktop-internal", capabilities, tabs: TabInfo[], truncated: boolean }
 browser_open({ url, newTab?: boolean }) -> TabInfo
 browser_snapshot({ target }) -> SnapshotResult
 Locator = { snapshotId, ref } | { snapshotId, role, name, exact: true }
-browser_read({ target, locator, property: "text"|"attribute"|"visible"|"enabled"|"checked", attribute?: string }) -> { target, value }
+browser_read({ target, locator, property: "text"|"attribute"|"visible"|"enabled"|"checked", attribute?: string }) -> { target, value, truncated: boolean }
 browser_act({ target, locator, action: "click"|"doubleClick"|"fill"|"type"|"press"|"check"|"uncheck"|"select"|"hover", text?: string, keys?: string[], values?: string[], observe?: Observation }) -> { target, delivered, observation? }
 browser_act({ target, screenshotId, action: "click"|"doubleClick"|"move"|"scroll"|"drag", x?, y?, deltaX?, deltaY?, path?, observe?: Observation }) -> { target, delivered, observation? }
 Observation = { wait?: WaitCondition, screenshot?: boolean }
@@ -171,9 +174,10 @@ browser_close({ target }) -> { tabId, closed: true }
     operationTimeoutMs: 3000
     navigationTimeoutMs: 30000
     snapshotMaxChars: 50000
+    readResultMaxChars: 50000
 ```
 
-- [ ] The YAML is the proposed row content, not the whole patch file: insert it using the existing bundle overlay syntax and avoid duplicating any pre-existing registry row. Config validators require positive integers; snapshot truncation must be explicit in returned evidence. The exact values are deployment defaults, not hidden constants.
+- [ ] The YAML is the proposed row content, not the whole patch file: insert it using the existing bundle overlay syntax and avoid duplicating any pre-existing registry row. Config validates both text limits as positive integers no greater than the IPC hard ceiling; truncation is explicit in returned evidence. These values are deployment defaults, not hidden constants.
 - [ ] Author control-browser instructions against the eight real tools in Task 4. Include discovery, explicit backend selection, current-tab inspection, exact/same-host reuse, wait/snapshot/strict targeting, one action then verification, popup observation, stale-target recovery, canvas screenshots, user-tab handoff, and refusal reporting. Do not copy ZCode's fresh-kernel bootstrap or unsupported API names.
 - [ ] Author web-gui-tester with P0 main flow, P1 feedback, P2 boundaries and P3 layout; distinguish environment preparation from formal GUI testing. Formal testing only uses normal frontend interactions, checks semantic state and actually viewed screenshots, records blocked/unsupported cases separately, and never changes the code under test or forces a failed flow to pass.
 - [ ] Register model/user invocation metadata and copy assets into both development and packaged runtime closure. Adapt upstream prose with retained licenses only when copying it; new prose describes AsterHub tools and restrictions. Public webpage interactions prefer this browser over Computer Use, except when the user explicitly chooses Computer Use or a desktop-native target.
