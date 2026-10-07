@@ -49,9 +49,11 @@ guest 创建、attach、paint 订阅、debugger attach、取消和销毁都按 l
 
 ## 无障碍与交互影响
 
-canvas 是像素视图，不是原生 DOM 子树。它不会自动提供网页文本选择、原生浏览器 context menu 或网页 Accessibility tree 给桌面屏幕阅读器。Browser automation engine 可以向模型提供 DOM snapshot，但这不能替代面向 Sidebar 用户的无障碍支持。实现必须在发布前定义用户可访问的操作路径；不能将 canvas 描述成与原生 `<webview>` 对 assistive technology 等效。
+canvas 是像素视图，不是原生 DOM 子树。它不会自动提供网页文本选择或原生浏览器 context menu。Browser automation engine 可以向模型暴露 DOM snapshot，但这不能替代面向 Sidebar 用户的无障碍支持。
 
-canvas 的键盘和指针事件必须映射到同一个离屏页面，且不得聚焦或选择其他 Session。设计必须保留 Sidebar toolbar 现有的本地化标签与焦点行为。页面隐藏或未聚焦时，不得将 Browser 输入错误地传到 conversation composer。
+canvas 设置 `aria-hidden="true"`。Sidebar 还会根据同一 lease-bound Playwright Accessibility snapshot 的有界结构化投影渲染视觉隐藏的语义 DOM 镜像。每个节点携带 snapshot ID、ref、role、accessible name、支持的 text/value、states 和 children。该镜像只对当前可见的 Sidebar pane 暴露；隐藏和后台 view 不进入焦点顺序。
+
+屏幕阅读器焦点、激活和文本输入通过固定且经 owner 核验的操作路由到同一个离屏 `WebContents`；不会创建第二个页面，也不接受任意脚本。Canvas 指针事件映射到页面 CSS 像素。焦点和输入不得切换 Session 或进入 conversation composer。Sidebar toolbar 标签和焦点行为保持现有本地化。snapshot 过期时镜像必须刷新；无法安全路由的交互能力不得标记为可操作。canvas 展示仍不支持原生网页文本选择和浏览器原生 context menu.
 
 ## 实施前验证
 

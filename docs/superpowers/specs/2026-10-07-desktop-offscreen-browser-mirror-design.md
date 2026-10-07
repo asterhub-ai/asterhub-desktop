@@ -49,9 +49,11 @@ Each BrowserWindow uses the existing per-workspace in-memory session partition, 
 
 ## Accessibility and interaction consequences
 
-The canvas is a pixel view, not a native DOM subtree. It does not automatically provide page text selection, browser-native context menus, or the page's accessibility tree to desktop screen readers. The Browser automation engine can expose its DOM snapshot to the model, but that is not an accessibility substitute for the user-facing Sidebar. The implementation must define an accessible user path before shipping; it must not present the canvas as equivalent to the native `<webview>` for assistive technology.
+The canvas is a pixel view, not a native DOM subtree. It does not automatically provide page text selection or browser-native context menus. The Browser automation engine can expose a DOM snapshot to the model, but that is not an accessibility substitute for the user-facing Sidebar.
 
-Keyboard and pointer events from the canvas must map to the same offscreen page without focusing or selecting a different Session. The design must preserve the Sidebar toolbar's existing localized labels and focus behavior. It must not silently forward browser input to the conversation composer when the page is hidden or unfocused.
+The canvas is `aria-hidden="true"`. The Sidebar also renders a visually hidden semantic DOM mirror from a bounded, structured projection of the same lease-bound Playwright accessibility snapshot. Each node carries the snapshot ID, ref, role, accessible name, supported text/value, states, and children. The mirror is exposed only for the active visible Sidebar pane; hidden and background views stay out of the focus order.
+
+Screen-reader focus, activation, and text input use fixed, owner-checked operations on the same offscreen `WebContents`; they do not create a second page or accept arbitrary scripts. Canvas pointer events map to page CSS pixels. Focus and input never select a different Session or reach the conversation composer. Sidebar toolbar labels and focus behavior remain localized and unchanged. The mirror refreshes when its snapshot expires and omits unsupported interactive behavior. Native page text selection and browser-native context menus remain unsupported.
 
 ## Verification before implementation
 
