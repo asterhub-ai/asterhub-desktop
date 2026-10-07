@@ -13,7 +13,7 @@
 
 真实 Desktop Sidebar `<webview>` guest 支持 `Page.createIsolatedWorld`、Accessibility tree、可信鼠标和文本输入，以及可见状态下的 `WebContents.capturePage()` 截图。折叠 Sidebar 后，guest 仍然存活，但 `WebContents.capturePage()` 和 CDP `Page.captureScreenshot` 都超时。
 
-一个实际离屏 `BrowserWindow` 原型使用了 `show:false`、`offscreen:true`、`devTools:false`、`sandbox:true`、`contextIsolation:true`、`nodeIntegration:false` 和 loopback fixture。它产生了四个 `paint` 帧，通过 Accessibility 暴露名为 `Name` 的 textbox，接受可信输入和点击事件，生成了 fixture 成功结果，并返回 800×600 PNG。该原型未使用打包应用，也未集成 Sidebar。
+一个实际离屏 `BrowserWindow` 原型使用了 `show:false`、`skipTaskbar:true`、`offscreen:true`、`backgroundThrottling:true`、`devTools:false`、`sandbox:true`、`contextIsolation:true`、`nodeIntegration:false` 和 loopback fixture。未聚焦窗口产生了两个 `paint` 帧，通过 Accessibility 暴露名为 `Name` 的 textbox，接受可信输入和点击事件，生成了 fixture 成功结果，并通过 `capturePage()` 返回 800×600 PNG。该原型未使用打包应用，也未集成 Sidebar。
 
 Electron 文档说明 `BrowserWindow` 支持 offscreen paint。对现有 `<webview>` guest 设置 `offscreen:true` 后，页面未加载，也未产生 paint 帧。
 
@@ -23,7 +23,7 @@ Electron 主进程仍是 `(application window, Session, Sidebar tab) → lease �
 
 离屏窗口使用 lease 的 workspace partition，以及现有 URL 限制、权限拒绝、popup 策略、Session 成员关系、导航 generation 和 lease 取消规则。主进程只向 product renderer 暴露按 lease 限定的 Browser 操作和图像帧，不向 renderer 或模型暴露 Electron 对象或任意 CDP 命令。
 
-离屏 `BrowserWindow` 不加载 preload，并使用 `show:false`、`offscreen:true`、`devTools:false`、`sandbox:true`、`contextIsolation:true`、`nodeIntegration:false` 和 `webSecurity:true`。Host 拒绝权限和原生窗口，拒绝不支持的 scheme 与带凭据 URL，并将允许的 popup 关联到源 lease。
+离屏 `BrowserWindow` 不加载 preload，并使用 `show:false`、`skipTaskbar:true`、`offscreen:true`、`backgroundThrottling:true`、`devTools:false`、`sandbox:true`、`contextIsolation:true`、`nodeIntegration:false` 和 `webSecurity:true`。Host 拒绝权限和原生窗口，拒绝不支持的 scheme 与带凭据 URL，并将允许的 popup 关联到源 lease。
 
 ## Sidebar 展示与帧传输
 
@@ -72,6 +72,7 @@ canvas 设置 `aria-hidden="true"`。Sidebar 还会根据同一 lease-bound Play
 
 - Electron 文档说明 `BrowserWindow` 支持 offscreen rendering，但没有说明当前 `<webview>` 实现支持。打包后的 Sidebar 集成必须验证真实 guest preferences 和生命周期。
 - 帧复制与编码在动画页面和高 DPI 显示器上会消耗 CPU、内存和 IPC 带宽。
+- 后台节流保持开启；隐藏页面的计时器和动画可能更慢。等待操作在超时时明确报告，不会关闭节流或移动窗口焦点。
 - 用 canvas 替换原生网页内容会改变文本选择、屏幕阅读器与 context menu 行为。
 - offscreen 原型设置了 `devTools:false` 并通过 private debugger 完成 attach，但没有测试打包启动或 Desktop guest policy。当前 Client 聚合构建仍因其他 `SessionStore`/`ClientSessions` 测试类型不匹配而失败，因此无法进行打包验收。
 

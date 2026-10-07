@@ -13,7 +13,7 @@ Keep the existing browser automation scope while supporting DOM inspection, trus
 
 A real Desktop Sidebar `<webview>` guest supported `Page.createIsolatedWorld`, an Accessibility tree, trusted mouse and text input, and a visible `WebContents.capturePage()` screenshot. After collapsing the Sidebar, the guest remained alive but both `WebContents.capturePage()` and CDP `Page.captureScreenshot` timed out.
 
-An actual offscreen `BrowserWindow` prototype used `show:false`, `offscreen:true`, `devTools:false`, `sandbox:true`, `contextIsolation:true`, `nodeIntegration:false`, and a loopback fixture. It emitted four `paint` frames, exposed a textbox named `Name`, accepted trusted input and click events, produced the fixture's success result, and returned an 800×600 PNG. This prototype did not exercise the packaged application or the Sidebar integration.
+An actual offscreen `BrowserWindow` prototype used `show:false`, `skipTaskbar:true`, `offscreen:true`, `backgroundThrottling:true`, `devTools:false`, `sandbox:true`, `contextIsolation:true`, `nodeIntegration:false`, and a loopback fixture. The unfocused window emitted two `paint` frames, exposed a textbox named `Name`, accepted trusted input and click events, produced the fixture's success result, and returned an 800×600 PNG through `capturePage()`. This prototype did not exercise the packaged application or Sidebar integration.
 
 Electron documents offscreen paint on `BrowserWindow`. Setting `offscreen:true` on the existing `<webview>` guest did not load the page or emit paint events.
 
@@ -23,7 +23,7 @@ Electron main remains authoritative for `(application window, Session, Sidebar t
 
 The offscreen window uses the lease's workspace partition and the current URL restrictions, permission denials, popup policy, Session membership, navigation generations, and lease cancellation rules. The main process exposes only lease-bound Browser operations and image frames to the product renderer. It never exposes Electron objects or arbitrary CDP commands to the renderer or model.
 
-The offscreen `BrowserWindow` has no preload and uses `show:false`, `offscreen:true`, `devTools:false`, `sandbox:true`, `contextIsolation:true`, `nodeIntegration:false`, and `webSecurity:true`. The host denies permissions and native windows, rejects unsupported schemes and credential-bearing URLs, and correlates permitted popups to the source lease.
+The offscreen `BrowserWindow` has no preload and uses `show:false`, `skipTaskbar:true`, `offscreen:true`, `backgroundThrottling:true`, `devTools:false`, `sandbox:true`, `contextIsolation:true`, `nodeIntegration:false`, and `webSecurity:true`. The host denies permissions and native windows, rejects unsupported schemes and credential-bearing URLs, and correlates permitted popups to the source lease.
 
 ## Sidebar presentation and frame delivery
 
@@ -72,6 +72,7 @@ Do not begin the Playwright engine or model tools until the integrated, packaged
 
 - Offscreen rendering is documented for `BrowserWindow`, not the current `<webview>` implementation. The packaged Sidebar integration must validate the real guest preferences and lifecycle.
 - Frame copying and encoding can consume CPU, memory, and IPC bandwidth, particularly on animated pages and high-DPI displays.
+- Background throttling remains enabled; page timers and animations may advance more slowly while hidden. Waits return explicit timeouts rather than disabling throttling or moving window focus.
 - Replacing native web content with a canvas changes selection, screen-reader, and context-menu behavior.
 - The offscreen prototype set `devTools:false` and attached through the private debugger, but did not exercise packaged startup or Desktop guest policy. The full Client aggregate currently fails on unrelated `SessionStore`/`ClientSessions` test type mismatches, so the packaged acceptance run remains unavailable.
 
