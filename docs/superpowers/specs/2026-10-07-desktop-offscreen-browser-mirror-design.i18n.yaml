@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for 2026-10-07-desktop-offscreen-browser-mirror-design.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/specs/2026-10-07-desktop-offscreen-browser-mirror-design.md
+/desktop-offscreen-browserwindow-mirror-design:
+  en: 481be811a52b7066
+  zh: 6d7aa07b91bfebd1
+/desktop-offscreen-browserwindow-mirror-design/goal:
+  en: f4eababc1d546c9d
+  zh: 5782118b97890faf
+/desktop-offscreen-browserwindow-mirror-design/evidence:
+  en: 9aa6f06b2a342ea2
+  zh: 1ce4e044420b0328
+/desktop-offscreen-browserwindow-mirror-design/ownership-and-creation:
+  en: ad853a5c9dd15c1c
+  zh: dcb1c67a6be93cbf
+/desktop-offscreen-browserwindow-mirror-design/sidebar-presentation-and-frame-delivery:
+  en: acc6687c8246af48
+  zh: fc59165d813d4417
+/desktop-offscreen-browserwindow-mirror-design/page-operations-and-results:
+  en: d869c3d04ee4a1d1
+  zh: ed226428881a3cc8
+/desktop-offscreen-browserwindow-mirror-design/lifecycle-and-isolation:
+  en: 494eacf6a885790a
+  zh: e8f2619353e4d04a
+/desktop-offscreen-browserwindow-mirror-design/accessibility-and-interaction-consequences:
+  en: 5d4b132f76c558ff
+  zh: 416693aba555eca5
+/desktop-offscreen-browserwindow-mirror-design/verification-before-implementation:
+  en: 0843e5a1a34b4188
+  zh: f053ed13c9937b76
+/desktop-offscreen-browserwindow-mirror-design/risks:
+  en: c650934283f75950
+  zh: a16c0788dc2cc09a
+/desktop-offscreen-browserwindow-mirror-design/non-goals:
+  en: b9c107b15a33dae5
+  zh: 61647f93aef28a74
