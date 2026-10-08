@@ -245,30 +245,30 @@ export class AutomationService extends TypertRemoteService implements Automation
    * @param ctx - Host context supplying storage, workspace, account, and llm services.
    * @param config - Validated configuration (Schemastery resolves defaults).
    */
-  constructor(ctx: Context, config: Required<Config>) {
+  constructor(ctx: Context, config: Config) {
     super(ctx, 'asterhubAutomation', { namespace: 'automation' })
+    const effective: Required<Config> = { ...DEFAULT_LIMITS, ...config }
     this.runtimeId = `runtime-${randomUUID()}`
     this.limitsCache = {
-      maxConcurrent: config.maxConcurrent,
-      runTimeoutMs: config.runTimeoutMs,
-      historyDays: config.historyDays,
-      historyRecords: config.historyRecords,
-      historyBytes: config.historyBytes,
-      receiptDays: config.receiptDays,
-      receiptRecords: config.receiptRecords,
-      receiptBytes: config.receiptBytes,
-      maxTaskBytes: config.maxTaskBytes,
-      maxTasksPerAccount: config.maxTasksPerAccount,
-      maxTasks: config.maxTasks,
-      maxInstructionChars: config.maxInstructionChars,
-      maxInstructionBytes: config.maxInstructionBytes,
-      confirmationTimeoutMs: config.confirmationTimeoutMs,
+      maxConcurrent: effective.maxConcurrent,
+      runTimeoutMs: effective.runTimeoutMs,
+      historyDays: effective.historyDays,
+      historyRecords: effective.historyRecords,
+      historyBytes: effective.historyBytes,
+      receiptDays: effective.receiptDays,
+      receiptRecords: effective.receiptRecords,
+      receiptBytes: effective.receiptBytes,
+      maxTaskBytes: effective.maxTaskBytes,
+      maxTasksPerAccount: effective.maxTasksPerAccount,
+      maxTasks: effective.maxTasks,
+      maxInstructionChars: effective.maxInstructionChars,
+      maxInstructionBytes: effective.maxInstructionBytes,
+      confirmationTimeoutMs: effective.confirmationTimeoutMs,
     }
 
     // Validate cross-budget constraint after Schemastery resolves defaults:
-    // one max snapshot + one active run + receipt budget must fit inside the aggregate hard limit.
-    const reserved = config.receiptBytes + 64 * 1024
-    if (reserved >= config.maxTaskBytes) {
+    const reserved = effective.receiptBytes + 64 * 1024
+    if (reserved >= effective.maxTaskBytes) {
       throw new Error('asterhubAutomation: maxTaskBytes must exceed receiptBytes plus one active-run overhead')
     }
 
@@ -277,7 +277,8 @@ export class AutomationService extends TypertRemoteService implements Automation
       const identityProvider = async (): Promise<AutomationAccountIdentity | null> => {
         return ctx.accountSub2api.automationIdentity()
       }
-      this.operations = new AutomationOperations(ctx, store, config, identityProvider, this.runtimeId, <T>(work: () => Promise<T>) => this.transact(work))
+      this.operations = new AutomationOperations(ctx, store, effective, identityProvider,
+        this.runtimeId, <T>(work: () => Promise<T>) => this.transact(work))
       // AutomationRuntime takes only the frozen AutomationRuntimeHost; execution
       // APIs are resolved internally via host.ctx (webhook session pattern).
       this.runtime = new AutomationRuntime(this)
@@ -567,6 +568,6 @@ export class AutomationService extends TypertRemoteService implements Automation
  * the service. The accountSub2api, storageDomain, workspace, llm, and agents
  * services must be present (declared via {@link AutomationService.inject}).
  */
-export function apply(ctx: Context, config: Required<Config>): void {
+export function apply(ctx: Context, config: Config): void {
   ctx.plugin(AutomationService, config)
 }

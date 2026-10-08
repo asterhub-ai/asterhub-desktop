@@ -15,7 +15,13 @@ import { browserAddressCheckpoint, type BrowserTabState } from '../src/client/br
 import type { BrowserPageFactory, BrowserPageOptions } from '../src/client/browser/BrowserPage.ts'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { emptyBrowserFrame, type BrowserFrameState } from '../src/client/browser/BrowserFrame.ts'
-
+import type {
+  DesktopBrowserAccessibleSnapshot,
+  DesktopBrowserLeaseId,
+  DesktopBrowserRef,
+  DesktopBrowserSnapshotId,
+  DesktopBrowserTargetGeneration,
+} from '../src/types.ts'
 const SESSION = 'session' as SessionId
 const TAB = 'tab' as TabId
 const messages: Readonly<Record<string, string>> = zh
@@ -278,6 +284,107 @@ describe('BrowserBody', () => {
     await waitFor(() => { expect(remounted.container.querySelector('iframe')?.getAttribute('src')).toBe('https://latest.example/path') })
     expect(remounted.getByRole('textbox')).toHaveProperty('value', 'https://latest.example/path')
     expect(mounted.store.getSnapshot().byTab[TAB]?.entries.at(-1)?.url).toBe('https://latest.example/path')
+  })
+
+  it('renders accessible mirror and dispatches semantic actions', async () => {
+    const accessibleActionSpy = vi.fn().mockResolvedValue(undefined)
+    const snapshotId = 'snapshot-1' as DesktopBrowserSnapshotId
+    const buttonRef = 'ref-btn' as DesktopBrowserRef
+    const inputRef = 'ref-inp' as DesktopBrowserRef
+    const checkRef = 'ref-chk' as DesktopBrowserRef
+    const snapshot: DesktopBrowserAccessibleSnapshot = {
+      lease: 'lease-1' as DesktopBrowserLeaseId,
+      snapshotId,
+      generation: 1 as DesktopBrowserTargetGeneration,
+      truncated: false,
+      nodes: [
+        {
+          snapshotId,
+          ref: buttonRef,
+          role: 'button',
+          name: 'Submit Button',
+          states: [],
+          children: [],
+        },
+        {
+          snapshotId,
+          ref: inputRef,
+          role: 'textbox',
+          name: 'Username',
+          value: 'alice',
+          states: [],
+          children: [],
+        },
+        {
+          snapshotId,
+          ref: checkRef,
+          role: 'checkbox',
+          name: 'Agree',
+          states: ['checked'],
+          children: [],
+        },
+        {
+          snapshotId,
+          role: 'generic',
+          name: 'Truncated Content',
+          text: 'Inert non-interactive text',
+          states: [],
+          children: [],
+        },
+      ],
+    }
+
+    const frameStore = createSnapshotStore<BrowserFrameState>({
+      ...emptyBrowserFrame(),
+      target: { kind: 'https', url: 'https://test.example/app', title: 'Test App' },
+      accessibleSnapshot: snapshot,
+    })
+
+    const customPageFactory: BrowserPageFactory = () => ({
+      frame: {
+        getSnapshot: () => frameStore.getSnapshot(),
+        subscribe: listener => frameStore.subscribe(listener),
+        loadUrl: vi.fn(),
+        goBack: vi.fn(),
+        goForward: vi.fn(),
+        reload: vi.fn(),
+        dispose: vi.fn().mockResolvedValue(undefined),
+        accessibleAction: accessibleActionSpy,
+      },
+      presentation: {
+        mount: (viewportId) => {
+          const container = document.getElementById(viewportId)
+          const canvas = document.createElement('canvas')
+          canvas.setAttribute('aria-hidden', 'true')
+          container?.appendChild(canvas)
+          return () => { canvas.remove() }
+        },
+        dispose: vi.fn(),
+      },
+    })
+
+    const mounted = mountBrowser({ url: 'https://test.example/app' }, { createPage: customPageFactory })
+
+    await waitFor(() => {
+      expect(mounted.view.container.querySelector('canvas')).not.toBeNull()
+    })
+    expect(mounted.view.container.querySelector('canvas')?.getAttribute('aria-hidden')).toBe('true')
+
+    const btn = mounted.view.getByRole('button', { name: 'Submit Button' })
+    fireEvent.click(btn)
+    expect(accessibleActionSpy).toHaveBeenCalledWith(snapshotId, buttonRef, { kind: 'click' })
+
+    const inp = mounted.view.getByRole('textbox', { name: 'Username' })
+    expect(inp).toHaveProperty('value', 'alice')
+    fireEvent.change(inp, { target: { value: 'bob' } })
+    expect(accessibleActionSpy).toHaveBeenCalledWith(snapshotId, inputRef, { kind: 'fill', text: 'bob' })
+
+    const chk = mounted.view.getByRole('checkbox', { name: 'Agree' })
+    expect(chk).toHaveProperty('checked', true)
+    fireEvent.click(chk)
+    expect(accessibleActionSpy).toHaveBeenCalledWith(snapshotId, checkRef, { kind: 'uncheck' })
+
+    expect(mounted.view.getByText('Inert non-interactive text')).toBeDefined()
   })
 
 })

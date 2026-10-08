@@ -15,6 +15,8 @@ import { installPlatformSessionPublisher } from './platform-session.ts'
 import { installOfficeEngineResolution } from './office-engine.ts'
 import { ASTERHUB_CATALOG_PUBLIC_KEY } from './catalog-trust.ts'
 
+import { createDesktopHostBrowserTransport } from './browser-transport.ts'
+
 async function main(): Promise<void> {
   const runtimeDir = process.argv[2] as string
   const projectDir = process.argv[3] as string
@@ -22,6 +24,8 @@ async function main(): Promise<void> {
   const installAnchor = join(runtimeDir, 'node_modules', '@deepseek-ai', 'dsh', 'package.json')
   const profile = loadProfileDirectory('dsh', projectDir, installAnchor)
   reportSkippedBundles('dsh', profile)
+  const desktopBrowserTransport = createDesktopHostBrowserTransport()
+
   const application = runProfile({
     environment: loadLayeredEnv('dsh'),
     profile: 'desktop',
@@ -40,6 +44,7 @@ async function main(): Promise<void> {
         maxTokens: 32768,
       }))
       hostCtx.provide('applicationCatalogPublicKey', ASTERHUB_CATALOG_PUBLIC_KEY)
+      hostCtx.provide('desktopBrowserTransport', desktopBrowserTransport)
     },
     args: ['--no-open', '--port', '0'],
     ...(process.argv[5] === undefined ? {} : {
@@ -68,6 +73,7 @@ async function main(): Promise<void> {
     // Startup failure is reported by main; shutdown only owns a tree that booted.
     const running = await application.catch(() => undefined)
     await running?.shutdown.shutdown(0)
+    await desktopBrowserTransport.dispose()
     await send({ type: 'shutdown-complete' })
     if (process.connected) process.disconnect()
   })()

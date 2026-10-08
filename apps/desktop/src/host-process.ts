@@ -4,6 +4,8 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
 import type { PlatformSession } from '@deepseek-ai/dsh-deepseek-account'
 import { desktopNodeEnvironment } from './node-environment.ts'
+import { isDesktopBrowserCancelMessage, isDesktopBrowserRequestMessage, isDesktopBrowserResultMessage } from './browser-automation-protocol.ts'
+import type { DesktopBrowserCancelMessage, DesktopBrowserRequestHandler, DesktopBrowserRequestMessage, DesktopBrowserResult } from './browser-automation-protocol.ts'
 
 interface ReadyEvent {
   readonly type: 'ready'
@@ -34,10 +36,10 @@ type DesktopHostEvent = ReadyEvent | FatalEvent | PlatformSessionEvent | { reado
   readonly activeTasks: boolean
   readonly scheduledTasks: boolean
   readonly error?: string
-}
+} | DesktopBrowserRequestMessage | DesktopBrowserCancelMessage
 
 /** Correlated answer to one shell control request. */
-type DesktopHostControlResponse = Extract<DesktopHostEvent, { readonly requestId: number }>
+type DesktopHostControlResponse = Extract<DesktopHostEvent, { readonly type: 'update-tasks' | 'quit-inspection' }>
 
 /** What quitting now would affect, as reported by the Host. */
 export interface DesktopQuitInspection {
@@ -49,6 +51,10 @@ export interface DesktopQuitInspection {
 export const QUIT_INSPECTION_DEADLINE_MS = 2_000
 
 const MAX_HOST_DIAGNOSTIC_CHARS = 64 * 1024
+
+function browserError(code: 'unavailable' | 'invalid-request' | 'cancelled' | 'failed', message: string): DesktopBrowserResult {
+  return { status: 'error', code, message }
+}
 
 function isDesktopHostEvent(message: unknown): message is DesktopHostEvent {
   if (typeof message !== 'object' || message === null || !('type' in message)) return false
@@ -79,6 +85,10 @@ function isDesktopHostEvent(message: unknown): message is DesktopHostEvent {
     }
     case 'fatal':
       return typeof candidate.message === 'string' && (candidate.diagnostic === undefined || typeof candidate.diagnostic === 'string')
+    case 'browser/request':
+      return isDesktopBrowserRequestMessage(message)
+    case 'browser/cancel':
+      return isDesktopBrowserCancelMessage(message)
     case 'update-tasks':
       return Number.isSafeInteger(candidate.requestId) && typeof candidate.active === 'boolean'
         && (candidate.error === undefined || typeof candidate.error === 'string')
@@ -149,10 +159,12 @@ export class DesktopHostProcess {
   private stopping = false
   private shutdownCompleted = false
   private nextControlId = 1
+  private lastBrowserRequestId = 0
   private readonly controlRequests = new Map<number, {
     resolve: (response: DesktopHostControlResponse) => void
     reject: (error: Error) => void
   }>()
+  private readonly browserRequests = new Map<number, { controller: AbortController; completion: Promise<void> }>()
 
   /**
    * @param node - Absolute Electron executable in Node mode.
@@ -165,6 +177,7 @@ export class DesktopHostProcess {
    *   `office-skills` resources fail Host startup.
    * @param packageManager - Bundled pnpm entry and Node launcher directory, scoped to package operations.
    * @param onPlatformSession - Private credential updates for embedded Platform views.
+   * @param onBrowserRequest - Main-owned receiver for one validated browser command; absent rejects commands safely.
    */
   constructor(
     private readonly node: string,
@@ -177,6 +190,7 @@ export class DesktopHostProcess {
     private readonly packageManager?: { readonly pnpm: string; readonly nodeBin: string },
 
     private readonly onPlatformSession?: (session: PlatformSession | null) => void,
+    private readonly onBrowserRequest?: DesktopBrowserRequestHandler,
   ) {}
 
   /**
@@ -198,6 +212,7 @@ export class DesktopHostProcess {
       cwd: this.projectDir,
       env: desktopNodeEnvironment(this.node, undefined, this.environment),
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+      serialization: 'advanced',
     })
     this.child = child
     child.stderr?.setEncoding('utf8')
@@ -216,6 +231,8 @@ export class DesktopHostProcess {
         else this.fail(new Error('dsh desktop host acknowledged an unrequested shutdown'))
       }
       else if (message.type === 'fatal') this.fail(new DesktopHostFatalError(message.message, message.diagnostic))
+      else if (message.type === 'browser/request') this.beginBrowserRequest(message)
+      else if (message.type === 'browser/cancel') this.cancelBrowserRequest(message.requestId)
       else {
         const request = this.controlRequests.get(message.requestId)
         if (message.error === undefined) request?.resolve(message)
@@ -278,7 +295,69 @@ export class DesktopHostProcess {
       this.controlRequests.delete(requestId)
     }
   }
+  private abortBrowserRequests(): void {
+    for (const request of this.browserRequests.values()) request.controller.abort()
+  }
 
+  private beginBrowserRequest(message: DesktopBrowserRequestMessage): void {
+    const child = this.child
+    if (child === undefined || !child.connected || this.stopping || this.failureReported) {
+      const code = this.stopping ? 'cancelled' : 'unavailable'
+      void this.sendBrowserResult(message.requestId, browserError(code, 'Desktop Browser is unavailable'))
+        .catch(error => { if (!this.stopping) this.fail(error instanceof Error ? error : new Error('dsh desktop browser reply failed')) })
+      return
+    }
+    if (message.requestId <= this.lastBrowserRequestId) {
+      this.fail(new Error('dsh desktop host sent a non-increasing browser request id'))
+      child.kill('SIGTERM')
+      return
+    }
+    this.lastBrowserRequestId = message.requestId
+    if (this.browserRequests.has(message.requestId)) {
+      this.fail(new Error('dsh desktop host sent a duplicate browser request id'))
+      child.kill('SIGTERM')
+      return
+    }
+    const state = { controller: new AbortController(), completion: Promise.resolve() }
+    this.browserRequests.set(message.requestId, state)
+    state.completion = Promise.resolve().then(async () => {
+      let result: DesktopBrowserResult
+      if (this.onBrowserRequest === undefined) {
+        result = browserError('unavailable', 'Desktop Browser automation is unavailable')
+      } else {
+        try {
+          result = await this.onBrowserRequest(message, state.controller.signal)
+        } catch {
+          result = browserError(state.controller.signal.aborted ? 'cancelled' : 'failed',
+            state.controller.signal.aborted ? 'Browser operation was cancelled' : 'Browser operation failed')
+        }
+      }
+      if (state.controller.signal.aborted) result = browserError('cancelled', 'Browser operation was cancelled')
+      if (!isDesktopBrowserResultMessage({ type: 'browser/result', requestId: message.requestId, result })) {
+        result = browserError('failed', 'Browser operation returned an invalid result')
+      }
+      await this.sendBrowserResult(message.requestId, result)
+    }).catch(error => {
+      if (!this.stopping) this.fail(error instanceof Error ? error : new Error('dsh desktop browser result send failed'))
+    }).finally(() => {
+      if (this.browserRequests.get(message.requestId) === state) this.browserRequests.delete(message.requestId)
+    })
+  }
+
+  private cancelBrowserRequest(requestId: number): void {
+    this.browserRequests.get(requestId)?.controller.abort()
+  }
+
+  private async sendBrowserResult(requestId: number, result: DesktopBrowserResult): Promise<void> {
+    const child = this.child
+    if (child === undefined || !child.connected) return
+    const { promise, resolve, reject } = Promise.withResolvers<void>()
+    child.send({ type: 'browser/result', requestId, result }, error => {
+      if (error !== null) reject(error)
+      else resolve()
+    })
+    await promise
+  }
   /**
    * Request teardown and await child exit, escalating termination when needed.
    * @param requireGraceful - Reject update handoff after forced termination or unsuccessful child exit.
@@ -289,6 +368,7 @@ export class DesktopHostProcess {
     const child = this.child
     if (child === undefined) return
     this.stopping = true
+    this.abortBrowserRequests()
     this.onPlatformSession?.(null)
     if (child.connected) child.send({ type: 'shutdown' }, (error) => { if (error !== null) this.fail(error) })
     const exited = this.exitPromise ?? Promise.resolve()
@@ -299,6 +379,11 @@ export class DesktopHostProcess {
       if (!await exitsWithin(exited, 5_000)) {
         throw new Error('dsh desktop host did not exit after SIGKILL')
       }
+    }
+    const browserDrain = Promise.all([...this.browserRequests.values()].map(request => request.completion)).then(() => {})
+    if (!await exitsWithin(browserDrain, 10_000)) {
+      this.child = undefined
+      throw new Error('dsh desktop browser operations did not drain during shutdown')
     }
     this.child = undefined
     if (requireGraceful && (!graceful || child.exitCode !== 0 || !this.shutdownCompleted)) {
@@ -312,6 +397,7 @@ export class DesktopHostProcess {
     this.readyReject(error)
     for (const request of this.controlRequests.values()) request.reject(error)
     this.controlRequests.clear()
+    this.abortBrowserRequests()
     if (!this.failureReported && !this.stopping) {
       this.failureReported = true
       try { this.onFailure?.(error) } catch (listenerError) {

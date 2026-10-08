@@ -30,3 +30,16 @@
     # apply kept addressable by this overlay.
     - id: ui-asterhub-automation
       name: '@deepseek-ai/dsh-client-ui-asterhub-automation'
+
+    # Desktop-only browser-use capability: exclusive browser-use registry slot.
+    - id: browser-use
+      name: '@deepseek-ai/dsh-browser-use'
+
+    # Desktop-only built-in Sidebar Browser provider: operations, tools, and skills.
+    - id: browser-use-desktop
+      name: '@deepseek-ai/dsh-browser-use-desktop'
+      config:
+        operationTimeoutMs: 3000
+        navigationTimeoutMs: 30000
+        snapshotMaxChars: 50000
+        readResultMaxChars: 50000

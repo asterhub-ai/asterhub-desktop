@@ -10,6 +10,7 @@
 
 | 提供方 | 集成方式 |
 |---|---|
+| [Desktop 侧边栏浏览器](../../packages/browser-use/browser-use-desktop/README.zh.md) | 内置 Desktop 侧边栏浏览器自动化，支持离屏画布镜像、类型化工具与发布 skill |
 | [Playwright MCP](../../packages/experimental/browser-use-playwright-mcp/README.zh.md) | Playwright 的浏览器控制 MCP 工具 |
 | [Chrome DevTools MCP](../../packages/experimental/browser-use-chrome-devtools-mcp/README.zh.md) | 通过 MCP 进行 Chrome DevTools 检查与控制 |
 | [Stagehand](../../packages/experimental/browser-use-stagehand-native/README.zh.md) | 原生浏览器操作，支持 AI（人工智能）辅助的动作、观测与提取 |

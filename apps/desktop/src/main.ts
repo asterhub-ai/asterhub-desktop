@@ -438,7 +438,17 @@ async function main(): Promise<void> {
     const host = new DesktopHostProcess(resources.node, resources.dsh, activeProject,
       hostInspectPort, { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion(), DSH_SPEECH_MODEL_DIRECTORY: join(app.isPackaged ? join(process.resourcesPath, 'app.asar.unpacked', 'dsh') : resources.dsh, 'speech-models', 'sensevoice'), DSH_SPEECH_VAD_MODEL_PATH: join(app.isPackaged ? join(process.resourcesPath, 'app.asar.unpacked', 'dsh') : resources.dsh, 'speech-models', 'silero', 'silero_vad.onnx') }, onFailure,
       primaryRuntime,
-      resources, (next) => { platformView.setSession(next) })
+      resources, (next) => { platformView.setSession(next) },
+      (request, signal) => {
+        if (mainWindow === undefined || mainWindow.isDestroyed()) {
+          return Promise.resolve({
+            status: 'error',
+            code: 'unavailable',
+            message: 'Main window is not available',
+          })
+        }
+        return browserGuests.handleBrowserRequest(mainWindow.webContents, request, signal)
+      })
     return {
       start: async () => {
         const ready = await host.start()
@@ -637,7 +647,6 @@ async function main(): Promise<void> {
     // A confirmation on a hidden window would go unseen, so it waits for the next show; the mandatory
     // flow keeps its own taskbar and Dock attention instead.
     if (!isMandatory()) await windowShown()
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- A quit can begin while the show is awaited.
     if (quitting) return state
     // The accepted manual available-version prompt already consented to install; skip the separate
     // "ready to install" confirmation when there are no active tasks.
@@ -694,13 +703,56 @@ async function main(): Promise<void> {
     reportFatal(new Error(message), 'web-boot')
   })
 
-  ipcMain.handle(DESKTOP_IPC.browserAcquire, (event, workspace: unknown) => {
+  ipcMain.handle(DESKTOP_IPC.browserAcquire, (event, workspace: unknown, sessionId?: unknown, tabId?: unknown) => {
     assertProductSender(event)
-    return browserGuests.acquire(event.sender, workspace)
+    return browserGuests.acquire(event.sender, workspace, sessionId, tabId)
   })
   ipcMain.handle(DESKTOP_IPC.browserRelease, (event, lease: unknown) => {
     assertProductSender(event)
     return browserGuests.release(event.sender, lease)
+  })
+  ipcMain.handle(DESKTOP_IPC.browserNavigate, (event, lease: unknown, url: unknown) => {
+    assertProductSender(event)
+    return browserGuests.navigate(event.sender, lease, url)
+  })
+  ipcMain.handle(DESKTOP_IPC.browserGoBack, (event, lease: unknown) => {
+    assertProductSender(event)
+    return browserGuests.goBack(event.sender, lease)
+  })
+  ipcMain.handle(DESKTOP_IPC.browserGoForward, (event, lease: unknown) => {
+    assertProductSender(event)
+    return browserGuests.goForward(event.sender, lease)
+  })
+  ipcMain.handle(DESKTOP_IPC.browserReload, (event, lease: unknown) => {
+    assertProductSender(event)
+    return browserGuests.reload(event.sender, lease)
+  })
+  ipcMain.handle(DESKTOP_IPC.browserSetViewport, (event, lease: unknown, viewport: unknown) => {
+    assertProductSender(event)
+    return browserGuests.setViewport(event.sender, lease, viewport)
+  })
+  ipcMain.handle(DESKTOP_IPC.browserDispatchInput, (event, lease: unknown, input: unknown) => {
+    assertProductSender(event)
+    return browserGuests.dispatchInput(event.sender, lease, input)
+  })
+  ipcMain.handle(
+    DESKTOP_IPC.browserAccessibleAction,
+    (event, lease: unknown, snapshotId: unknown, ref: unknown, action: unknown) => {
+      assertProductSender(event)
+      return browserGuests.accessibleAction(event.sender, lease, snapshotId, ref, action)
+    },
+  )
+  ipcMain.on(DESKTOP_IPC.browserSubscribeFrames, (event, lease: unknown) => {
+    assertProductSender(event)
+    browserGuests.subscribeFrames(event.sender, lease)
+  })
+  ipcMain.on(DESKTOP_IPC.browserUnsubscribeFrames, (event, lease: unknown) => {
+    assertProductSender(event)
+    browserGuests.unsubscribeFrames(event.sender, lease)
+  })
+  ipcMain.on(DESKTOP_IPC.browserAutomationReply, (event, reply: unknown) => {
+    assertProductSender(event)
+    browserGuests.resolveRendererReply(event.sender, reply)
   })
 
   session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['ws://127.0.0.1/*'] }, (details, callback) => {

@@ -292,7 +292,10 @@ interface CuratedLockfile {
     readonly devDependencies?: Readonly<Record<string, { readonly specifier?: unknown; readonly version?: unknown }>>
     readonly optionalDependencies?: Readonly<Record<string, { readonly specifier?: unknown; readonly version?: unknown }>>
   }>>
-  readonly packages?: Readonly<Record<string, { readonly version?: unknown; readonly resolution?: { readonly integrity?: unknown; readonly tarball?: unknown } }>>
+  readonly packages?: Readonly<Record<string, {
+    readonly version?: unknown
+    readonly resolution?: { readonly integrity?: unknown; readonly tarball?: unknown }
+  }>>
 }
 
 /** Check the profile's direct exact dependency and its resolved registry tarball integrity.
@@ -874,10 +877,17 @@ export class PluginManager extends TypertRemoteService {
     const bundles = await this.listBundles()
     return {
       ...catalog,
-      plugins: catalog.plugins.map(entry => ({
-        ...entry,
-        installed: isExactCuratedInstallation(entry, bundles, lockfile),
-      })),
+      plugins: catalog.plugins.map((entry) => {
+        const exact = isExactCuratedInstallation(entry, bundles, lockfile)
+        const bundle = bundles.find(candidate => candidate.name === entry.package)
+        const installed = bundle?.installed === true
+        const installStatus: CuratedPluginEntry['installStatus'] = exact
+          ? 'installed'
+          : installed
+            ? bundle?.version === entry.version ? 'reinstall' : 'update-available'
+            : 'not-installed'
+        return { ...entry, installed: exact, installStatus }
+      }),
     }
   }
 

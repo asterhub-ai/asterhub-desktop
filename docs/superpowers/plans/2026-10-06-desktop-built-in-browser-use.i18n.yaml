@@ -1,0 +1,55 @@
+# Bilingual-pair consistency record for 2026-10-06-desktop-built-in-browser-use.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/plans/2026-10-06-desktop-built-in-browser-use.md
+/desktop-built-in-browser-use-implementation-plan:
+  en: e65cfb9d41c9459c
+  zh: aa02270ceb05aa3a
+/desktop-built-in-browser-use-implementation-plan/summary:
+  en: c13cdcf869b84d7f
+  zh: f7e57034f67a2d51
+/desktop-built-in-browser-use-implementation-plan/table-of-contents:
+  en: 9d83f5a8e0dcbd44
+  zh: 92dd084b2f2e3b18
+/desktop-built-in-browser-use-implementation-plan/approved-design:
+  en: 3bb24099065b45ea
+  zh: 46413896bb679b96
+/desktop-built-in-browser-use-implementation-plan/approved-design/workflow-to-preserve:
+  en: 16067b15ede7125e
+  zh: 0458adb572c95916
+/desktop-built-in-browser-use-implementation-plan/global-constraints:
+  en: 4fe00c1ccd04e728
+  zh: b84cad84efc9a8ac
+/desktop-built-in-browser-use-implementation-plan/task-execution:
+  en: 34776b632f68aa3b
+  zh: 56e09ae1f50c380b
+/desktop-built-in-browser-use-implementation-plan/task-execution/task-1-typed-transport-and-guest-identity:
+  en: 86fcf226ecbd719f
+  zh: 7b41fd80f14fd912
+/desktop-built-in-browser-use-implementation-plan/task-execution/task-2-sidebar-tab-discovery-opening-and-ownership:
+  en: 5c79cb5dda018855
+  zh: ece0be337adbef9c
+/desktop-built-in-browser-use-implementation-plan/task-execution/task-3-offscreen-browserwindow-and-sidebar-canvas:
+  en: e423baf1c2905be4
+  zh: 2c4964b87c04750a
+/desktop-built-in-browser-use-implementation-plan/task-execution/task-4-dom-semantics-trusted-input-and-accessible-mirror:
+  en: cbd09ef0855db5ba
+  zh: 47a13c62e0a578b2
+/desktop-built-in-browser-use-implementation-plan/task-execution/task-5-model-tools-approvals-and-durable-screenshots:
+  en: fdc9968f310d6aa2
+  zh: b515377f59376480
+/desktop-built-in-browser-use-implementation-plan/task-execution/task-6-desktop-skills-and-composition-wiring:
+  en: 28b08bfec03dc6e6
+  zh: 12d234837a6abee4
+/desktop-built-in-browser-use-implementation-plan/task-execution/task-7-end-to-end-acceptance-and-release-documentation:
+  en: 6eea78622559dff0
+  zh: b6dfa244892bd74d
+/desktop-built-in-browser-use-implementation-plan/acceptance-and-handoff:
+  en: 15db3959fe9b1a3c
+  zh: 360e6c3acd1f5159
+/desktop-built-in-browser-use-implementation-plan/evidence-sources:
+  en: 29328f9d011254d4
+  zh: ea79aa4b1ebcdf53
+/desktop-built-in-browser-use-implementation-plan/dev-note:
+  en: f8c20386f18c9c69
+  zh: 8fcbd8b9aab7c698
