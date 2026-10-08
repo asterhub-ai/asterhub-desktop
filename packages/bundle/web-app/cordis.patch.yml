@@ -40,7 +40,24 @@
 
 # `dsh.client` rows are the browser roster the modules node half scans into
 # window.__DSH_BOOT__; the modules row is simultaneously a host row.
+
+- id: session-persistence-jsonl
+  disabled: true
 - insert:
+    - id: project-storage
+      name: '@deepseek-ai/dsh-project-storage'
+      config:
+        sessionMode: project-local
+        locatorPath: !!js dshHomePath('locator.json')
+        legacySessionRoot: !!js dshHomePath('sessions')
+        metadataLimitBytes: 1048576
+        lockDeadlineMs: 5000
+
+    - id: session-persistence-project
+      name: '@deepseek-ai/dsh-project-storage/persistence'
+      config:
+        compression: zstd
+
     - id: message-feedback
       name: '@deepseek-ai/dsh-message-feedback'
       config:

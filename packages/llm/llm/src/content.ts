@@ -4,7 +4,7 @@ import type { ContentBlock, ImageBlock, LlmImageRequestBudget, ToolSchema, ToolU
 import type { RequestMessage } from './types.ts'
 import type { Message } from './message.ts'
 import type {
-  AttachmentStore, FileAttachmentRef, ImageAttachmentRef, ImageMediaType, RequestImageAttachment,
+  AttachmentScope, AttachmentStore, FileAttachmentRef, ImageAttachmentRef, ImageMediaType, RequestImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 
@@ -19,7 +19,7 @@ export interface ImageAttachmentAccess {
  * @param ref - durable normalized attachment reference.
  * @returns a read-only execution-world path, or undefined when unavailable.
  */
-export type ImageAttachmentAccessResolver = (ref: ImageAttachmentRef) => ImageAttachmentAccess | undefined
+export type ImageAttachmentAccessResolver = (ref: ImageAttachmentRef, scope?: AttachmentScope) => ImageAttachmentAccess | undefined
 
 /**
  * Bridge one attachment provider's host object location into the mounted
@@ -35,8 +35,9 @@ export function resolveImageAttachmentAccess(
   attachments: AttachmentStore,
   mapHostPath: (hostPath: string) => string | undefined,
   ref: ImageAttachmentRef,
+  scope?: AttachmentScope,
 ): ImageAttachmentAccess | undefined {
-  const hostPath = attachments.imageHostPath(ref)
+  const hostPath = attachments.imageHostPath(ref, scope)
   if (hostPath === undefined) return undefined
   const readonlyPath = mapHostPath(hostPath)
   return readonlyPath === undefined ? undefined : { readonlyPath }

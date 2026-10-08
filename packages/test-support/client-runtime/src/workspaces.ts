@@ -1,7 +1,7 @@
 /** Test-owned workspaces face: the renderer standard-kit observable plus recorded actions. */
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type {
-  IWorkspaces, WorkspaceId, WorkspaceSnapshot, WorkspaceView,
+  IWorkspaces, WorkspaceId, WorkspaceInspectionView, WorkspaceSnapshot, WorkspaceView,
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -78,6 +78,35 @@ export class TestWorkspaces implements IWorkspaces {
       path: input.path,
       sessionIds: [],
     } as unknown as WorkspaceView
+  }
+
+  /**
+   * Inspect a directory before creating or adopting a Workspace.
+   * @param input - Host inspect payload.
+   * @param signal - optional caller lifetime.
+   * @returns the inspection view.
+   */
+  async inspect(input: { path: string }, signal?: AbortSignal): Promise<WorkspaceInspectionView> {
+    this.calls.push({ method: 'inspect', args: [input, signal] })
+    const stub = this.stubs.get('inspect' as WorkspaceAction)
+    if (stub !== undefined) return await (stub(input, signal) as Promise<WorkspaceInspectionView>)
+    return { kind: 'new', root: input.path }
+  }
+
+  /**
+   * Confirm and open an existing, legacy, or new project workspace.
+   * @param input - confirmed parameters.
+   * @param signal - optional caller lifetime.
+   * @returns the created or resolved Workspace.
+   */
+  async openProject(
+    input: { path: string; mode: 'new' | 'existing' | 'legacy'; expectedId?: string; expectedDigest?: string },
+    signal?: AbortSignal,
+  ): Promise<WorkspaceView> {
+    this.calls.push({ method: 'openProject', args: [input, signal] })
+    const stub = this.stubs.get('openProject' as WorkspaceAction)
+    if (stub !== undefined) return await (stub(input, signal) as Promise<WorkspaceView>)
+    return await this.create({ path: input.path })
   }
 
   /**

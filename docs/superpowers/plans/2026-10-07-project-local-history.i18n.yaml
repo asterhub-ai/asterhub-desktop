@@ -1,0 +1,52 @@
+# Bilingual-pair consistency record for 2026-10-07-project-local-history.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/plans/2026-10-07-project-local-history.md
+/project-local-history-implementation-plan:
+  en: 29228155c6fc7877
+  zh: b3cf40a28f8484b7
+/project-local-history-implementation-plan/summary:
+  en: acc2102769a3918a
+  zh: 672571330f78e84c
+/project-local-history-implementation-plan/table-of-contents:
+  en: 78f40ea8d1c7d447
+  zh: 28ffa893ab49f32f
+/project-local-history-implementation-plan/global-constraints:
+  en: 5df6d6ea7c00cd4b
+  zh: 72625f611cc4083c
+/project-local-history-implementation-plan/goal-request:
+  en: c67f14bbefc2e9d0
+  zh: 71f178d9cdf6f1bb
+/project-local-history-implementation-plan/interfaces-and-file-ownership:
+  en: c9540a393fa80382
+  zh: 34da266b60e42df6
+/project-local-history-implementation-plan/task-execution:
+  en: 82ff2c92fef1750b
+  zh: 0b7b4825428025a0
+/project-local-history-implementation-plan/task-execution/task-1-branded-global-home-and-safe-default-migration:
+  en: 1cedd42976002ba1
+  zh: 40e0d6ca4c1960a6
+/project-local-history-implementation-plan/task-execution/task-2-portable-project-metadata-locator-index-and-git-exclusion:
+  en: 88d786b2b9779953
+  zh: 296f1f26347affda
+/project-local-history-implementation-plan/task-execution/task-3-project-routed-immutable-session-persistence-and-legacy-adoption:
+  en: 1c7ada6aff390be8
+  zh: c192e16b963be83a
+/project-local-history-implementation-plan/task-execution/task-4-workspace-membership-and-current-execution-directory-cutover:
+  en: 70280174fa18d2a1
+  zh: 202e6bdbdf05dc51
+/project-local-history-implementation-plan/task-execution/task-5-project-owned-original-attachments-and-scoped-reads-writes:
+  en: b5adb427065e9775
+  zh: e5ca821318ce0f2b
+/project-local-history-implementation-plan/task-execution/task-6-directory-discovery-and-existing-project-confirmation-ui:
+  en: 10c8ace5073359d5
+  zh: 33c327c554143ff6
+/project-local-history-implementation-plan/task-execution/task-7-product-composition-startup-migration-docs-and-contract-completion:
+  en: 9e47ce1114730024
+  zh: 0f5f8a625b3e3050
+/project-local-history-implementation-plan/task-execution/task-8-end-to-end-portability-git-privacy-and-packaged-acceptance:
+  en: 3d1423012c9aad35
+  zh: 22c982ae6d28a7aa
+/project-local-history-implementation-plan/verification-and-integration:
+  en: 906d7d205ac5a8cf
+  zh: 04e9aa2d778ca401

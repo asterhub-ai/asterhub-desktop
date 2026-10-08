@@ -47,6 +47,7 @@ import {
 import type {
   GenerateOptions,
   ImageAttachmentAccess,
+  ImageAttachmentAccessResolver,
   LlmDiscoveredModel,
   LlmModelInfo,
   LlmProviderInfo,
@@ -56,7 +57,8 @@ import type {
   ResolvedRetryPolicy,
   StreamChunk,
 } from '@deepseek-ai/dsh-llm'
-import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import type { AttachmentScope, AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ResolvedPiAiProviderProfile } from './config.ts'
 import { toPiContext } from './context.ts'
@@ -97,8 +99,10 @@ export interface PiAiAdapterOptions {
   auth: PiAiAuthInjection
   /** Resolve the optional durable attachment service at request time. */
   resolveAttachments?: () => AttachmentStore | undefined
+  /** Resolve the registered project scope for a trusted Session address. */
+  resolveAttachmentScope?: (sessionId: SessionId) => AttachmentScope | undefined
   /** Bridge one attachment reference into the current model-tool execution world. */
-  resolveImageAccess?: (attachments: AttachmentStore, ref: ImageAttachmentRef) => ImageAttachmentAccess | undefined
+  resolveImageAccess?: (attachments: AttachmentStore, ref: ImageAttachmentRef, scope?: AttachmentScope) => ImageAttachmentAccess | undefined
   /**
    * Observe one assistant history message degrading to provider-neutral
    * conversion because its stored replay state is unusable by this build.
@@ -445,11 +449,18 @@ export class PiAiAdapter extends LlmAdapter {
       const onReplayDegrade = (reason: string): void => {
         this.config.onReplayDegrade?.({ provider: options.provider, model: options.model, reason })
       }
+      const scope = options.sessionId === undefined ? undefined : this.config.resolveAttachmentScope?.(options.sessionId)
+      const resolveImageAccess: ImageAttachmentAccessResolver = (ref) => {
+        if (attachments === undefined) return undefined
+        if (scope === undefined && this.config.resolveAttachmentScope !== undefined) return undefined
+        return this.config.resolveImageAccess?.(attachments, ref, scope)
+      }
       const context = attachments === undefined
         ? toPiContext(options, undefined, onReplayDegrade)
         : await toPiContext({ ...options, signal: watchdog.signal }, {
           attachments,
-          resolveImageAccess: ref => this.config.resolveImageAccess?.(attachments, ref),
+          resolveImageAccess,
+          ...scope === undefined ? {} : { scope },
           maxRequestImageBytes: profile.maxRequestImageBytes,
           requestImagePolicy: {
             maxPixels: profile.requestImagePixelBudget,

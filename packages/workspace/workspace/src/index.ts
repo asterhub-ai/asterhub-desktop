@@ -115,6 +115,20 @@ export interface ArchiveSessionOptions {
    */
   readonly stopActivity?: boolean
 }
+export interface ProjectStorageLocator {
+  locateSession(id: SessionId): { projectRoot: string } | undefined
+  executionCwd?(header: SessionHeader): string | undefined
+  inspect(root: string, signal?: AbortSignal): Promise<
+    | { readonly kind: 'new'; readonly root: string }
+    | { readonly kind: 'existing'; readonly root: string; readonly manifest: { id: string; title: string; sessions: readonly unknown[] }; readonly digest: string }
+    | { readonly kind: 'registered'; readonly binding: { id: string; root: string }; readonly manifest: { id: string; title: string; sessions: readonly unknown[] }; readonly digest: string }
+    | { readonly kind: 'legacy'; readonly root: string; readonly proposal: { projectId: string; title: string; sessions: readonly unknown[] }; readonly digest: string }
+  >
+  open(
+    request: { root: string; mode: 'new' | 'existing' | 'legacy'; expectedId?: string; expectedDigest?: string },
+    signal?: AbortSignal,
+  ): Promise<unknown>
+}
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -835,6 +849,18 @@ export class WorkspaceRegistry extends Service {
   private async indexHeader(header: SessionHeader): Promise<void> {
     this.headers.set(header.id, header)
     this.sessionPaths.delete(header.id)
+    const projectStorage = this.ctx.get('projectStorage', false) as ProjectStorageLocator | undefined
+    const location = projectStorage?.locateSession(header.id)
+    if (location !== undefined) {
+      try {
+        const path = await realpathNormalize(location.projectRoot)
+        this.sessionPaths.set(header.id, path)
+        this.invalidSessionPaths.delete(header.id)
+        return
+      } catch {
+        // Fall through to header.cwd resolution when projectRoot does not resolve
+      }
+    }
     if (header.cwd === undefined) {
       this.invalidSessionPaths.set(header.id, 'header has no cwd')
       return

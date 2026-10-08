@@ -1,0 +1,35 @@
+{
+  "name": "@deepseek-ai/dsh-project-storage",
+  "description": "Portable project metadata, local Session membership, and machine-local project locator",
+  "version": "0.2.0-rc.3",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.js" },
+    "./types": { "types": "./lib/types/types.d.ts", "default": "./lib/types/types.js" },
+    "./manifest": { "types": "./lib/types/manifest.d.ts", "default": "./lib/manifest.js" },
+    "./attachments": { "types": "./lib/types/attachments.d.ts", "default": "./lib/attachments.js" },
+    "./persistence": { "types": "./lib/types/persistence.d.ts", "default": "./lib/persistence.js" },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": ["lib/index.js", "lib/manifest.js", "lib/registry.js", "lib/git-exclusion.js", "lib/attachments.js", "lib/persistence.js", "lib/types/**/*.js", "lib/types/**/*.d.ts"],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-session": "workspace:*",
+    "@deepseek-ai/dsh-session-persistence": "workspace:*",
+    "@deepseek-ai/dsh-session-persistence-jsonl": "workspace:*"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-brand": "workspace:*",
+    "@deepseek-ai/schemastery": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-session": "workspace:*",
+    "@deepseek-ai/dsh-session-persistence": "workspace:*",
+    "@deepseek-ai/dsh-session-persistence-jsonl": "workspace:*"
+  }
+}

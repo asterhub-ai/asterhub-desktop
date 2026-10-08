@@ -1,7 +1,9 @@
 import { Context } from '@deepseek-ai/cordis'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
+import ProjectStorage from '@deepseek-ai/dsh-project-storage'
+import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import { existsSync } from 'node:fs'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -104,6 +106,64 @@ describe('local attachment service', () => {
       expect(Buffer.concat(streamed)).toEqual(Buffer.from(fileData))
     } finally {
       await rm(dshHome, { recursive: true, force: true })
+    }
+  })
+  it('stores scoped originals under the owning project and rejects missing scope', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-project-attachment-'))
+    const project = join(root, 'project'), dshHome = join(root, 'home')
+    await mkdir(project)
+    const ctx = new Context()
+    await ctx.plugin(ProjectStorage, {
+      sessionMode: 'project-local', locatorPath: join(dshHome, 'projects.json'),
+      legacySessionRoot: '', metadataLimitBytes: 1024 * 1024, lockDeadlineMs: 5000,
+    })
+    const binding = await ctx.projectStorage.open({ root: project, mode: 'new' })
+    const sessionId = SessionId('scoped-file-session')
+    await ctx.projectStorage.bindSession({
+      version: SESSION_FORMAT_VERSION, id: sessionId, createdAt: 10, cwd: project, isSeeded: false, delegationDepth: 0,
+    })
+    const scope = { projectId: binding.id, sessionId }
+    const store = new LocalAttachmentStore(ctx, { dshHome, projectLocal: true })
+    const data = Uint8Array.of(0, 1, 2, 255)
+    try {
+      const ref = await store.saveFile({ data, name: 'notes.bin' }, scope)
+      expect(store.fileHostPath(ref, scope)).toBe(join(project, '.aster', 'attachments', 'v1', 'files', String(ref.attachmentId).slice(7, 9), String(ref.attachmentId).slice(7), ref.name))
+      await expect(readFile(store.fileHostPath(ref, scope))).resolves.toEqual(Buffer.from(data))
+      const chunks: Uint8Array[] = []
+      for await (const chunk of store.readFileStream(ref, undefined, scope)) chunks.push(chunk)
+      const encoded = await store.admitEncodedFile({ data: Buffer.from(data).toString('base64'), name: 'encoded.bin' }, scope)
+      await expect(readFile(store.fileHostPath(encoded, scope))).resolves.toEqual(Buffer.from(data))
+      const streamed = await store.saveFileStream({
+        data: (async function* (): AsyncIterable<Uint8Array> { yield data })(), name: 'streamed.bin',
+      }, scope)
+      const streamedChunks: Uint8Array[] = []
+      for await (const chunk of store.readFileStream(streamed, undefined, scope)) streamedChunks.push(chunk)
+      expect(Buffer.concat(streamedChunks)).toEqual(Buffer.from(data))
+      expect(Buffer.concat(chunks)).toEqual(Buffer.from(data))
+      const imageData = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWNgZGIGAAAOAAeCcsnOAAAAAElFTkSuQmCC', 'base64'))
+      const image = await store.saveImage({ data: imageData, mediaType: 'image/png' }, scope)
+      expect(store.imageHostPath(image, scope)).toContain(join(project, '.aster', 'attachments', 'v1', 'objects'))
+      await expect(store.readImage(image, undefined, scope)).resolves.toEqual({ ref: image, data: imageData })
+      await expect(store.readImageRequest(image, { width: 1, height: 1, maxBytes: 1024 }, undefined, scope))
+        .resolves.toMatchObject({ attachment: image })
+      const secondProject = join(root, 'second-project')
+      await mkdir(secondProject)
+      const secondBinding = await ctx.projectStorage.open({ root: secondProject, mode: 'new' })
+      const secondSession = SessionId('second-scoped-file-session')
+      await ctx.projectStorage.bindSession({
+        version: SESSION_FORMAT_VERSION, id: secondSession, createdAt: 11,
+        cwd: secondProject, isSeeded: false, delegationDepth: 0,
+      })
+      const secondScope = { projectId: secondBinding.id, sessionId: secondSession }
+      const duplicate = await store.saveFile({ data, name: 'notes.bin' }, secondScope)
+      expect(duplicate.attachmentId).toBe(ref.attachmentId)
+      expect(store.fileHostPath(duplicate, secondScope)).not.toBe(store.fileHostPath(ref, scope))
+      await expect(store.saveFile({ data, name: 'mismatched.bin' }, { ...scope, projectId: 'not-the-owner' }))
+        .rejects.toMatchObject({ code: 'ATTACHMENT_SCOPE_UNAVAILABLE' })
+      await expect(store.saveFile({ data, name: 'unscoped.bin' })).rejects.toThrow(/scope/i)
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
     }
   })
 

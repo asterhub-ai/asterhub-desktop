@@ -63,7 +63,9 @@ import { credentialKey } from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-credentials'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import { assertUsableApiKey, LlmError, resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm'
+import { resolveProjectAttachmentScope } from '@deepseek-ai/dsh-project-storage'
 import type { AdapterRegistrationHandle, DirectoryRegistrationHandle, LlmConfigurableProvider } from '@deepseek-ai/dsh-llm'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-fs'
 import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 import { PiAiAdapter } from './adapter.ts'
@@ -251,6 +253,9 @@ export function apply(ctx: Context, config: Config): void {
   // through `ctx` per call, so they stay correct across the collection rebuilds
   // a configuration change causes, and a sign-in survives one.
   const auth = { credentials: credentialStoreFrom(ctx), authContext: authContextFrom(ctx) }
+  const attachmentScope = ctx.get('projectStorage', false) === undefined
+    ? undefined
+    : (sessionId: SessionId) => resolveProjectAttachmentScope(ctx, sessionId)
   const adapter = new PiAiAdapter({
     profiles,
     resolveApiKey,
@@ -265,11 +270,10 @@ export function apply(ctx: Context, config: Config): void {
     })),
     auth,
     resolveAttachments: () => ctx.get('attachments'),
-    resolveImageAccess: (attachments, ref) => resolveImageAttachmentAccess(
-      attachments,
-      hostPath => ctx.get('fs')?.processPathFromHostPath(hostPath),
-      ref,
-    ),
+    ...attachmentScope === undefined ? {} : { resolveAttachmentScope: attachmentScope },
+    resolveImageAccess: (attachments, ref, scope) => scope === undefined && attachmentScope !== undefined
+      ? undefined
+      : resolveImageAttachmentAccess(attachments, hostPath => ctx.get('fs')?.processPathFromHostPath(hostPath), ref, scope),
     onReplayDegrade: ({ provider, model, reason }) => {
       ctx.logger.warn(
         `llm-pi-ai: unusable replay state on assistant history for route "${provider}/${model}";`

@@ -59,6 +59,8 @@ Exact-version exemptions live in the profile's own `compatibility.json`, not in 
 
 Your machine-local preferences also live in the Harness home:
 
+Call `prepareAsterHubHome({ userHome, configuredHome?, env?, signal? })` before resolving profile, config, or other home-relative paths. It returns `{ home, migration }`, where `migration` describes this call: `copied` only when it publishes a copy, `none` when no copy is performed (including a valid completed migration), and `explicit` for an authoritative configured home or nonblank `$DSH_HOME`; pass the returned path explicitly to downstream consumers. Otherwise the helper stages and verifies a copy from `~/.dsh` to `~/.asterhub`, preserves the source, rejects competing populated roots and unsafe links, and records completion so later starts do not recopy. Failures retain source and staging evidence; resolve conflicts deliberately rather than merging homes.
+
 - **`.env`** — your ordinary environment layers: the invoking directory's file outranks the Harness-home file, and both sit below the inherited environment. Variables that decide how the process starts (`PATH`, `DSH_*`, `XDG_*` and similar) are rejected from files: export them instead. The four proxy names (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`) are accepted from the Harness-home file only, never from the invoking directory's, which arrives with a clone. For a non-product bin that just wants one directory's `.env`, a missing file is fine and an unloadable one prints one labelled warning line.
 - **`cordis.patch.yml`** — your tweak layer, applied after every bundle layer (per-profile first, then the home-level file, which therefore outranks it): replace one entry's whole config (restating the fields you keep), insert new entries, or interpolate `!!js` expressions at boot. A patch naming an entry that does not exist prints a stderr warning; an empty or comments-only file fails boot — disable the layer with `[]` instead.
 
@@ -204,6 +206,7 @@ These limits describe when this boot library is a poor fit or needs special care
 - **Source launches use an ESM-only hook** — CommonJS requests still need the JavaScript files selected by package exports; resolution does not supply missing build outputs.
 - **Snapshot replay swapping is basename-specific** — only a config ending in `cordis.yml` or `cordis.yaml` maps to the sibling `cordis.snapshot.yml`; custom config names require caller-managed selection.
 - **Environment discovery is launch-scoped** — `loadLayeredEnv` reads only the invocation directory and Harness home once; it does not search parents or follow a workspace selected later. `loadEnv` remains the one-directory helper for non-product bins.
+- **Home preparation is separate** — `prepareAsterHubHome` must run before home-relative consumers; `resolveDshHome` remains a pure path resolver and performs no filesystem migration.
 - **A user patch replaces the whole matched config** — an id-targeted patch does not deep-merge, so a profile override restates the bundle fields it keeps.
 
 <a id="dev-note"></a>

@@ -49,6 +49,12 @@
     },
     {
       "path": "../../settings/settings"
+    },
+    {
+      "path": "../../workspace/project-storage"
+    },
+    {
+      "path": "../../core/session"
     }
   ]
 }

@@ -10,6 +10,9 @@ import type {
   WorkspaceBaseline,
   WorkspaceCreateRequest,
   WorkspaceCreateValue,
+  WorkspaceInspectRequest,
+  WorkspaceInspectionView,
+  WorkspaceOpenProjectRequest,
   WorkspaceDeleteValue,
   WorkspaceInsertSessionBeforeRequest,
   WorkspaceOrderValue,
@@ -97,6 +100,28 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
    */
   async create(input: WorkspaceCreateRequest): Promise<RemoteResult<WorkspaceCreateValue>> {
     const result = await this.remote.create(input)
+    if (result.ok) this.upsert(result.value.workspace)
+    return result
+  }
+
+  /**
+   * Inspect a directory before creating or adopting a Workspace.
+   * @param input - directory path to inspect.
+   * @param signal - optional cancellation.
+   * @returns generated Remote result.
+   */
+  inspect(input: WorkspaceInspectRequest, signal?: AbortSignal): Promise<RemoteResult<WorkspaceInspectionView>> {
+    return this.remote.inspect(input, signal ?? new AbortController().signal)
+  }
+
+  /**
+   * Confirm and open an existing, legacy, or new project directory.
+   * @param input - confirmed parameters.
+   * @param signal - optional cancellation.
+   * @returns generated Remote result.
+   */
+  async openProject(input: WorkspaceOpenProjectRequest, signal?: AbortSignal): Promise<RemoteResult<WorkspaceCreateValue>> {
+    const result = await this.remote.openProject(input, signal ?? new AbortController().signal)
     if (result.ok) this.upsert(result.value.workspace)
     return result
   }

@@ -8,6 +8,7 @@ import type {} from '@deepseek-ai/dsh-client-connection'
 import type { CommandFileReceiptResolver } from '@deepseek-ai/dsh-commands'
 import { scopeOf } from '@deepseek-ai/dsh-scope'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+import { resolveProjectAttachmentScope } from '@deepseek-ai/dsh-project-storage'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { handleFileUploadHttp } from './http-route.ts'
 import { FILE_UPLOAD_PATH } from './protocol.ts'
@@ -105,10 +106,13 @@ export class FileUploads extends TypertRemoteService {
   @Remote('upload')
   upload(agent: Agent, request: EncodedFileUploadRequest, signal: AbortSignal): Promise<FileUploadValue> {
     signal.throwIfAborted()
-    return this.commit(agent, async () => this.ctx.attachments.admitEncodedFile({
-      data: request.data,
-      ...(request.name === undefined ? {} : { name: request.name }),
-    }))
+    return this.commit(agent, async () => {
+      const scope = this.attachmentScope(agent.session.id)
+      return this.ctx.attachments.admitEncodedFile({
+        data: request.data,
+        ...(request.name === undefined ? {} : { name: request.name }),
+      }, scope)
+    })
   }
 
   /**
@@ -123,11 +127,14 @@ export class FileUploads extends TypertRemoteService {
     readonly name?: string
   }): Promise<FileUploadValue> {
     const agent = await this.resolveAgent(request.sessionId)
-    return this.commit(agent, async () => this.ctx.attachments.saveFileStream({
-      data: request.data,
-      ...(request.signal === undefined ? {} : { signal: request.signal }),
-      ...(request.name === undefined ? {} : { name: request.name }),
-    }))
+    return this.commit(agent, async () => {
+      const scope = this.attachmentScope(agent.session.id)
+      return this.ctx.attachments.saveFileStream({
+        data: request.data,
+        ...(request.signal === undefined ? {} : { signal: request.signal }),
+        ...(request.name === undefined ? {} : { name: request.name }),
+      }, scope)
+    })
   }
 
   /**
@@ -251,6 +258,10 @@ export class FileUploads extends TypertRemoteService {
       if (upload.requestId === requestId) staged.delete(receiptId)
     }
     if (staged.size === 0) this.stagedFiles.delete(session)
+  }
+  private attachmentScope(sessionId: SessionId) {
+    if (this.ctx.get('projectStorage', false) === undefined) return undefined
+    return resolveProjectAttachmentScope(this.ctx, sessionId)
   }
 }
 

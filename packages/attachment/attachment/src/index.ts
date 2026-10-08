@@ -5,6 +5,7 @@ import { admitEncodedFile as admitFileInput, admitEncodedImages } from './admiss
 import { AttachmentError, isAttachmentError as matchesAttachmentError } from './error.ts'
 import type {
   AdmittedPromptContentPart,
+  AttachmentScope,
   AttachmentAdmissionPart,
   EncodedFileAttachment,
   FileAttachmentRef,
@@ -26,6 +27,7 @@ export { longEdgeDimensions, requestImageDimensions } from './request-projection
 export type { ProjectedDimensions } from './request-projection.ts'
 export type {
   AttachmentId as AttachmentIdType,
+  AttachmentScope,
   AdmittedPromptContentPart,
   AttachmentAdmissionPart,
   EncodedFileAttachment,
@@ -93,14 +95,15 @@ export abstract class AttachmentStore extends Service {
   /**
    * Validate and durably commit one ordered image batch.
    * @param inputs - encoded images in owning-message order.
+   * @param scope - trusted project Session scope; required by project-local providers.
    * @returns durable normalized attachment references in the same order after every member succeeds.
    */
-  async saveImages(inputs: readonly SaveImageAttachment[]): Promise<readonly ImageAttachmentRef[]> {
+  async saveImages(inputs: readonly SaveImageAttachment[], scope?: AttachmentScope): Promise<readonly ImageAttachmentRef[]> {
     this.validateImageBatch(inputs)
     for (const input of inputs) await this.validateImage(input)
 
     const refs: ImageAttachmentRef[] = []
-    for (const input of inputs) refs.push(await this.saveImage(input))
+    for (const input of inputs) refs.push(await this.saveImage(input, scope))
     return refs
   }
 
@@ -108,18 +111,20 @@ export abstract class AttachmentStore extends Service {
    * Admit one Host prompt and replace each uploaded image with its durable reference.
    * Text and durable file references pass through unchanged. A prompt without image parts performs no storage operation.
    * @param content - prompt parts in message order after file receipt resolution.
+   * @param scope - trusted project Session scope; required by project-local providers.
    * @returns admitted prompt parts in the same order as `content`.
    * @throws AttachmentError when the image batch is refused.
    */
   async admitPromptContent(
     content: readonly AttachmentAdmissionPart[],
+    scope?: AttachmentScope,
   ): Promise<AdmittedPromptContentPart[]> {
     if (content.every(part => part.type !== 'image')) {
       return content.map(part => part.type === 'text'
         ? { type: 'text', text: part.text }
         : { type: 'file', attachment: part.attachment })
     }
-    const refs = await admitEncodedImages(this, content.filter(part => part.type === 'image'))
+    const refs = await admitEncodedImages(this, content.filter(part => part.type === 'image'), scope)
     let next = 0
     return content.map((part) => {
       if (part.type === 'text') return { type: 'text', text: part.text }
@@ -131,11 +136,12 @@ export abstract class AttachmentStore extends Service {
   /**
    * Decode and durably commit one canonical base64 file upload.
    * @param input - canonical base64 bytes and optional display name.
+   * @param scope - trusted project Session scope; required by project-local providers.
    * @returns the durable content-addressed file reference.
    * @throws AttachmentError when the encoding or storage operation is refused.
    */
-  admitEncodedFile(input: EncodedFileAttachment): Promise<FileAttachmentRef> {
-    return admitFileInput(this, input)
+  admitEncodedFile(input: EncodedFileAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef> {
+    return admitFileInput(this, input, scope)
   }
 
   /**
@@ -153,27 +159,31 @@ export abstract class AttachmentStore extends Service {
    * normalization reduces the raster, its `originalDimensions` records the
    * orientation-applied input dimensions.
    * @param input - encoded bytes, declared media type, and optional display name.
+   * @param scope - trusted project Session scope; required by project-local providers.
    * @returns the durable content-addressed normalized image reference.
    */
-  abstract saveImage(input: SaveImageAttachment): Promise<ImageAttachmentRef>
+  abstract saveImage(input: SaveImageAttachment, scope?: AttachmentScope): Promise<ImageAttachmentRef>
 
   /**
    * Read one image and verify that bytes still match the recorded reference.
    * @param ref - durable reference from the session log.
    * @param signal - optional cancellation for backend read and verification work.
+   * @param scope - trusted project Session scope; required by project-local providers.
    * @returns the verified bytes and normalized attachment reference.
    * @throws the signal reason when aborted, or a storage error when verification fails.
    */
-  abstract readImage(ref: ImageAttachmentRef, signal?: AbortSignal): Promise<StoredImageAttachment>
+  abstract readImage(ref: ImageAttachmentRef, signal?: AbortSignal, scope?: AttachmentScope): Promise<StoredImageAttachment>
 
   /**
    * Locate the provider-owned normalized object in the harness host filesystem.
    * @param ref - durable normalized attachment reference.
+   * @param scope - trusted project Session scope; required by project-local providers.
    * @returns an absolute host path, or undefined when this backend is not host-file-backed.
-   * @throws an AttachmentError when the durable reference is invalid.
+   * @throws an AttachmentError when the durable reference or scope is invalid.
    */
-  imageHostPath(ref: ImageAttachmentRef): string | undefined {
+  imageHostPath(ref: ImageAttachmentRef, scope?: AttachmentScope): string | undefined {
     void ref
+    void scope
     return undefined
   }
 
@@ -183,10 +193,12 @@ export abstract class AttachmentStore extends Service {
    * accepted, and the stored object is the exact submitted bytes. Backends
    * without verbatim file storage keep this default rejection.
    * @param input - exact bytes and optional display name.
+   * @param scope - trusted project Session scope; required by project-local providers.
    * @returns the durable content-addressed file reference.
    */
-  saveFile(input: SaveFileAttachment): Promise<FileAttachmentRef> {
+  saveFile(input: SaveFileAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef> {
     void input
+    void scope
     return Promise.reject(new AttachmentError(
       'The mounted attachment provider cannot store verbatim files.',
       'ATTACHMENT_FILES_UNSUPPORTED',
@@ -198,10 +210,12 @@ export abstract class AttachmentStore extends Service {
    * apply backpressure and must not collect the complete file in memory.
    * Backends without streamed verbatim storage keep this default rejection.
    * @param input - ordered exact bytes, optional cancellation, and display name.
+   * @param scope - trusted project Session scope; required by project-local providers.
    * @returns the durable content-addressed file reference.
    */
-  saveFileStream(input: SaveFileStreamAttachment): Promise<FileAttachmentRef> {
+  saveFileStream(input: SaveFileStreamAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef> {
     void input
+    void scope
     return Promise.reject(new AttachmentError(
       'The mounted attachment provider cannot stream verbatim files.',
       'ATTACHMENT_FILES_UNSUPPORTED',
@@ -214,14 +228,17 @@ export abstract class AttachmentStore extends Service {
    * reads keep this default rejection.
    * @param ref - durable reference from the session log.
    * @param signal - optional cancellation for backend reads and verification work.
+   * @param scope - trusted project Session scope; required by project-local providers.
    * @returns exact file bytes in order; integrity failures reject the iteration.
    */
   async *readFileStream(
     ref: FileAttachmentRef,
     signal?: AbortSignal,
+    scope?: AttachmentScope,
   ): AsyncIterable<Uint8Array> {
     signal?.throwIfAborted()
     void ref
+    void scope
     await Promise.reject(new AttachmentError(
       'The mounted attachment provider cannot read verbatim files.',
       'ATTACHMENT_FILES_UNSUPPORTED',
@@ -229,13 +246,15 @@ export abstract class AttachmentStore extends Service {
   }
 
   /**
-   * Locate the verbatim stored file object in the harness host filesystem.
    * @param ref - durable file reference.
+   * @param scope - trusted project Session scope; required by project-local providers.
    * @returns an absolute host path, or undefined when this backend is not host-file-backed.
-   * @throws an AttachmentError when the durable reference is invalid.
+   * @throws an AttachmentError when the durable reference or scope is invalid.
    */
-  fileHostPath(ref: FileAttachmentRef): string | undefined {
+  // oxlint-disable-next-line sonarjs/no-identical-functions
+  fileHostPath(ref: FileAttachmentRef, scope?: AttachmentScope): string | undefined {
     void ref
+    void scope
     return undefined
   }
 
@@ -244,14 +263,17 @@ export abstract class AttachmentStore extends Service {
    * @param ref - durable provider-independent normalized attachment reference.
    * @param target - route-chosen dimensions and byte target; an unmet byte target yields the smallest ladder output.
    * @param signal - optional cancellation.
+   * @param scope - trusted project Session scope; required by project-local providers.
    * @returns request bytes and the cache/upload identity covering every transform input.
    */
   readImageRequest(
     ref: ImageAttachmentRef,
     target: ImageRequestTarget,
     signal?: AbortSignal,
+    scope?: AttachmentScope,
   ): Promise<RequestImageAttachment> {
     signal?.throwIfAborted()
+    void scope
     void ref
     void target
     return Promise.reject(new AttachmentError(

@@ -234,7 +234,7 @@ describe('desktop host process', () => {
     const handler: BrowserHandlerFixture = async (_request, signal) => {
       const { promise, resolve } = Promise.withResolvers<DesktopBrowserResult>()
       signal.addEventListener('abort', () => {
-        observedAbort.resolve()
+        observedAbort.resolve(undefined)
         resolve({ status: 'error', code: 'cancelled', message: 'Browser operation was cancelled' })
       }, { once: true })
       return promise
@@ -255,9 +255,9 @@ describe('desktop host process', () => {
     const handlerStarted = Promise.withResolvers<undefined>()
     const observedAbort = Promise.withResolvers<undefined>()
     const handler: BrowserHandlerFixture = async (_request, signal) => {
-      handlerStarted.resolve()
+      handlerStarted.resolve(undefined)
       const { promise, resolve } = Promise.withResolvers<undefined>()
-      signal.addEventListener('abort', () => { observedAbort.resolve(); resolve() }, { once: true })
+      signal.addEventListener('abort', () => { observedAbort.resolve(undefined); resolve(undefined) }, { once: true })
       await promise
       return { status: 'error', code: 'cancelled', message: 'Browser operation was cancelled' }
     }

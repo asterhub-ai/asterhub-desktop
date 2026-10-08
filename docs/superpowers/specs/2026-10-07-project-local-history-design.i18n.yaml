@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for 2026-10-07-project-local-history-design.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/specs/2026-10-07-project-local-history-design.md
+/project-local-history-and-portable-attachments-design:
+  en: a609db60e38bda3d
+  zh: 43e2eb68cd0995e5
+/project-local-history-and-portable-attachments-design/summary:
+  en: 1f82232a01c49a9e
+  zh: fe089c9659dc5f0d
+/project-local-history-and-portable-attachments-design/data-ownership:
+  en: 3217ffc3a44c325a
+  zh: 4b9b9821877a48cd
+/project-local-history-and-portable-attachments-design/identity-and-current-location:
+  en: f5521f4a62faa3ea
+  zh: 793600e5e5e5d4db
+/project-local-history-and-portable-attachments-design/persistence-and-runtime-integration:
+  en: 96e5973ef3ce0acf
+  zh: 545489b68fd56fb7
+/project-local-history-and-portable-attachments-design/attachments:
+  en: c33969a48d7ed49a
+  zh: 5e760073524a32e1
+/project-local-history-and-portable-attachments-design/discovery-and-confirmation:
+  en: 9c6411d76258a123
+  zh: 56ac169d960586d8
+/project-local-history-and-portable-attachments-design/git-exclusion:
+  en: 36c68e7584ec6d1c
+  zh: 2cafe570c7b79add
+/project-local-history-and-portable-attachments-design/migration-and-failure-rules:
+  en: 24f7ad6b5f3ee846
+  zh: 07bb6a0c314b7b60
+/project-local-history-and-portable-attachments-design/acceptance-and-limits:
+  en: 0944a44cb071c5f4
+  zh: 4e61282620b74c30

@@ -1,6 +1,7 @@
 /** Durable attachment vocabulary. @module @deepseek-ai/dsh-attachment/types */
 
 import type { AttachmentId, ImageVariantId } from './brand.ts'
+import type { Branded } from '@deepseek-ai/dsh-brand'
 
 export type { AttachmentId } from './brand.ts'
 
@@ -70,6 +71,17 @@ export interface SaveFileStreamAttachment {
   name?: string
 }
 
+
+/**
+ * Trusted project and Session address used by project-local attachment storage.
+ * Project-local providers route durable object reads and writes to the owning
+ * project's `.aster` trees through this scope; grouped providers ignore it.
+ * Callers obtain it from the Host or live Agent for a trusted Session address.
+ */
+export interface AttachmentScope {
+  readonly projectId: string
+  readonly sessionId: Branded<'SessionId'>
+}
 /** Deployment-resolved limits used by upload admission and request buffering. */
 export interface ImageAttachmentLimits {
   maxImageBytes: number

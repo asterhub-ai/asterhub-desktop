@@ -48,7 +48,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { SessionSearchResultItem } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { RemoteHostFacts } from '@deepseek-ai/dsh-api-remotes/client'
-import type { SessionActivity, WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { SessionActivity, WorkspaceId, WorkspaceInspectionView, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { WorkspaceShortcutState } from '../shortcuts.ts'
@@ -269,6 +269,12 @@ export type WorkspaceBrowserInjected = {
   unarchiveSession: (sessionId: SessionId) => Promise<void>
   /** Adopt a picked host directory as a real Workspace before targeting a Session. */
   createWorkspace: (input: { path: string }) => Promise<WorkspaceView>
+  /** Inspect a directory before creating or adopting a Workspace. */
+  inspectWorkspace?: ((input: { path: string }, signal?: AbortSignal) => Promise<WorkspaceInspectionView>) | undefined
+  /** Confirm and adopt or create a project workspace. */
+  openProjectWorkspace?: (
+    (input: { path: string; mode: 'new' | 'existing' | 'legacy'; expectedId?: string; expectedDigest?: string }, signal?: AbortSignal) => Promise<WorkspaceView>
+  ) | undefined
 }
 
 /** The browser's declared viewing store handle, shared with the row actions that write view state. */
@@ -473,6 +479,12 @@ export type WorkspaceBrowserProps =
 export type WorkspacePickerInjected = DirectoryPickingInjected & {
   /** Adopt a picked host directory as a real Workspace before targeting a Session. */
   createWorkspace: (input: { path: string }) => Promise<WorkspaceView>
+  /** Inspect a directory before creating or adopting a Workspace. */
+  inspectWorkspace?: ((input: { path: string }, signal?: AbortSignal) => Promise<WorkspaceInspectionView>) | undefined
+  /** Confirm and adopt or create a project workspace. */
+  openProjectWorkspace?: (
+    (input: { path: string; mode: 'new' | 'existing' | 'legacy'; expectedId?: string; expectedDigest?: string }, signal?: AbortSignal) => Promise<WorkspaceView>
+  ) | undefined
 }
 
 /**

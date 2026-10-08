@@ -10,6 +10,9 @@ import type {
   WorkspaceDeleteRequest,
   WorkspaceDeleteValue,
   WorkspaceFollowFrame,
+  WorkspaceInspectRequest,
+  WorkspaceInspectionView,
+  WorkspaceOpenProjectRequest,
   WorkspaceInsertBeforeRequest,
   WorkspaceInsertSessionBeforeRequest,
   WorkspaceOrderValue,
@@ -103,6 +106,15 @@ class FakeWorkspaceRemote implements WorkspaceRemote {
   ) => Promise<RemoteResult<WorkspacePinValue>> = () =>
     Promise.resolve(remoteOk({ pinnedSessionIds: [] }))
 
+  inspect(request: WorkspaceInspectRequest): Promise<RemoteResult<WorkspaceInspectionView>> {
+    this.record('inspect', request)
+    return Promise.resolve(remoteOk({ kind: 'new', root: request.path }))
+  }
+
+  openProject(request: WorkspaceOpenProjectRequest): Promise<RemoteResult<WorkspaceCreateValue>> {
+    this.record('openProject', request)
+    return Promise.resolve(remoteOk({ workspace: workspace(request.path.split('/').pop() ?? 'workspace'), created: true }))
+  }
   create(request: WorkspaceCreateRequest): Promise<RemoteResult<WorkspaceCreateValue>> {
     this.record('create', request)
     return this.onCreate(request)

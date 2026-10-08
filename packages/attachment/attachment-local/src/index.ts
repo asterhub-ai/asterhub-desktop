@@ -3,8 +3,9 @@
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { AttachmentStore } from '@deepseek-ai/dsh-attachment'
+import { AttachmentError, AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import type {
+  AttachmentScope,
   FileAttachmentRef,
   ImageAttachmentLimits,
   ImageAttachmentRef,
@@ -15,6 +16,8 @@ import type {
   SaveImageAttachment,
   StoredImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
+import type {} from '@deepseek-ai/dsh-project-storage'
+import type { ProjectSessionLocation } from '@deepseek-ai/dsh-project-storage/types'
 import { dshCachePath, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { NormalizationPolicy } from './normalization.ts'
 import { CompressionLimiter, compressionFailure } from './compression-limiter.ts'
@@ -59,7 +62,7 @@ export const MAX_IMAGE_COMPRESSION_CONCURRENCY = 8
 
 /** Local attachment backend configuration. */
 export interface Config {
-  /** Explicit harness home; omitted follows `DSH_HOME`, then `~/.dsh`. */
+  /** Explicit harness home; omitted follows `DSH_HOME`, then `~/.asterhub`. */
   dshHome?: string
   /** Maximum encoded bytes accepted for one submitted image. Default: 20 MiB. */
   maxImageBytes?: number
@@ -82,6 +85,8 @@ export interface Config {
   normalizedImageMaxBytes?: number
   /** Maximum simultaneous normalization or request-image transformations in this service instance. */
   imageCompressionConcurrency?: number
+  /** Require a verified project Session scope for every durable attachment operation. */
+  projectLocal?: boolean
 }
 
 function abortReason(signal: AbortSignal): Error {
@@ -157,6 +162,7 @@ export class LocalAttachmentStore extends AttachmentStore {
     normalizedImageMaxBytes: z.number().step(1).min(1).default(DEFAULT_NORMALIZED_IMAGE_MAX_BYTES),
     imageCompressionConcurrency: z.number().step(1).min(1).max(MAX_IMAGE_COMPRESSION_CONCURRENCY)
       .default(DEFAULT_IMAGE_COMPRESSION_CONCURRENCY),
+    projectLocal: z.boolean().default(false),
   })
 
   /** Absolute versioned storage root. */
@@ -169,10 +175,12 @@ export class LocalAttachmentStore extends AttachmentStore {
   private readonly cacheRoot: string
   private readonly compression: CompressionLimiter
   private readonly requestInflight = new Map<string, SharedRequest<RequestImageAttachment>>()
+  private readonly projectLocal: boolean
 
   constructor(ctx: Context, config: Config) {
     super(ctx)
     const dshHome = resolveDshHome(config.dshHome)
+    this.projectLocal = config.projectLocal ?? false
     this.root = join(dshHome, 'attachments', 'v1')
     this.cacheRoot = dshCachePath({ dshHome }, 'attachments')
     this.imageLimits = Object.freeze({
@@ -204,53 +212,65 @@ export class LocalAttachmentStore extends AttachmentStore {
     await this.compression.run(() => validateImageFile(input, this.imageLimits, this.normalizationPolicy))
   }
 
-  override async saveImages(inputs: readonly SaveImageAttachment[]): Promise<readonly ImageAttachmentRef[]> {
+  override async saveImages(inputs: readonly SaveImageAttachment[], scope?: AttachmentScope): Promise<readonly ImageAttachmentRef[]> {
+    const root = await this.rootFor(scope, true)
     this.validateImageBatch(inputs)
     const prepared = await Promise.all(inputs.map(input => this.compression.run(
       () => prepareImageFile(input, this.imageLimits, this.normalizationPolicy),
     )))
     const refs: ImageAttachmentRef[] = []
-    for (const image of prepared) refs.push(await commitPreparedImageFile(this.root, image))
+    for (const image of prepared) refs.push(await commitPreparedImageFile(root, image))
     return refs
   }
 
-  async saveImage(input: SaveImageAttachment): Promise<ImageAttachmentRef> {
+  async saveImage(input: SaveImageAttachment, scope?: AttachmentScope): Promise<ImageAttachmentRef> {
+    const root = await this.rootFor(scope, true)
     const prepared = await this.compression.run(
       () => prepareImageFile(input, this.imageLimits, this.normalizationPolicy),
     )
-    return commitPreparedImageFile(this.root, prepared)
+    return commitPreparedImageFile(root, prepared)
   }
 
-  async readImage(ref: ImageAttachmentRef, signal?: AbortSignal): Promise<StoredImageAttachment> {
-    return readImageFile(this.root, ref, signal)
+  async readImage(ref: ImageAttachmentRef, signal?: AbortSignal, scope?: AttachmentScope): Promise<StoredImageAttachment> {
+    return readImageFile(await this.rootFor(scope, false), ref, signal)
   }
 
-  override imageHostPath(ref: ImageAttachmentRef): string {
-    return normalizedImagePath(this.root, ref)
+  override imageHostPath(ref: ImageAttachmentRef, scope?: AttachmentScope): string {
+    return normalizedImagePath(this.locationForScope(scope)?.attachmentsRoot ?? this.root, ref)
   }
 
-  override async saveFile(input: SaveFileAttachment): Promise<FileAttachmentRef> {
-    return saveFileVerbatim(this.root, input)
+  override async saveFile(input: SaveFileAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef> {
+    return saveFileVerbatim(await this.rootFor(scope, true), input)
   }
 
-  override async saveFileStream(input: SaveFileStreamAttachment): Promise<FileAttachmentRef> {
-    return saveFileStreamVerbatim(this.root, input)
+  override async saveFileStream(input: SaveFileStreamAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef> {
+    return saveFileStreamVerbatim(await this.rootFor(scope, true), input)
   }
 
-  override readFileStream(ref: FileAttachmentRef, signal?: AbortSignal): AsyncIterable<Uint8Array> {
-    return readFileStreamVerbatim(this.root, ref, signal)
+  override async *readFileStream(
+    ref: FileAttachmentRef,
+    signal?: AbortSignal,
+    scope?: AttachmentScope,
+  ): AsyncIterable<Uint8Array> {
+    yield* readFileStreamVerbatim(await this.rootFor(scope, false), ref, signal)
   }
 
-  override fileHostPath(ref: FileAttachmentRef): string {
-    return storedFilePath(this.root, ref)
+  override fileHostPath(ref: FileAttachmentRef, scope?: AttachmentScope): string {
+    return storedFilePath(this.locationForScope(scope)?.attachmentsRoot ?? this.root, ref)
   }
 
   override async readImageRequest(
     ref: ImageAttachmentRef,
     target: ImageRequestTarget,
     signal?: AbortSignal,
+    scope?: AttachmentScope,
   ): Promise<RequestImageAttachment> {
-    return this.requestVersion(ref, target, undefined, signal)
+    const location = this.locationForScope(scope)
+    const attachmentsRoot = await this.rootFor(scope, false, location)
+    const requestCacheRoot = location === undefined
+      ? this.cacheRoot
+      : join(this.cacheRoot, 'projects', String(location.projectId))
+    return this.requestVersion(ref, target, undefined, signal, attachmentsRoot, requestCacheRoot, location?.projectId)
   }
 
   private requestVersion(
@@ -258,10 +278,13 @@ export class LocalAttachmentStore extends AttachmentStore {
     target: ImageRequestTarget,
     stored: StoredImageAttachment | undefined,
     signal: AbortSignal | undefined,
+    attachmentsRoot: string,
+    requestCacheRoot: string,
+    projectId: string | undefined,
   ): Promise<RequestImageAttachment> {
     signal?.throwIfAborted()
     const variantId = requestImageVariantId(ref, target)
-    const key = String(variantId)
+    const key = `${projectId ?? 'global'}:${String(variantId)}`
     let operation = this.requestInflight.get(key)
     if (operation?.controller.signal.aborted) {
       this.requestInflight.delete(key)
@@ -270,8 +293,8 @@ export class LocalAttachmentStore extends AttachmentStore {
     if (operation === undefined) {
       const shared = new SharedRequest<RequestImageAttachment>(sharedSignal => this.compression.run(async () => {
         const request = await readRequestImageFile(
-          this.cacheRoot,
-          stored ?? await this.readImage(ref, sharedSignal),
+          requestCacheRoot,
+          stored ?? await readImageFile(attachmentsRoot, ref, sharedSignal),
           target,
           sharedSignal,
         )
@@ -284,6 +307,40 @@ export class LocalAttachmentStore extends AttachmentStore {
       }).catch(() => {})
     }
     return operation.wait(signal)
+  }
+
+  private locationForScope(scope?: AttachmentScope): ProjectSessionLocation | undefined {
+    if (scope === undefined) {
+      if (this.projectLocal) throw new AttachmentError('A project Session scope is required.', 'ATTACHMENT_SCOPE_REQUIRED')
+      return undefined
+    }
+    const storage = this.ctx.get('projectStorage', false)
+    if (storage === undefined) throw new AttachmentError('Project storage is unavailable for this attachment scope.', 'ATTACHMENT_SCOPE_UNAVAILABLE')
+    let location: ProjectSessionLocation | undefined
+    try {
+      location = storage.locateSession(scope.sessionId)
+    } catch (error) {
+      throw new AttachmentError('Project attachment ownership is unavailable.', 'ATTACHMENT_SCOPE_UNAVAILABLE', { cause: error })
+    }
+    if (location === undefined || String(location.projectId) !== scope.projectId) {
+      throw new AttachmentError(`Session ${scope.sessionId} has no matching project attachment owner.`, 'ATTACHMENT_SCOPE_UNAVAILABLE')
+    }
+    return location
+  }
+
+  private async rootFor(
+    scope: AttachmentScope | undefined,
+    writing: boolean,
+    location = this.locationForScope(scope),
+  ): Promise<string> {
+    if (location === undefined) return this.root
+    const storage = this.ctx.get('projectStorage', false)
+    if (storage === undefined) throw new AttachmentError('Project storage is unavailable for this attachment scope.', 'ATTACHMENT_SCOPE_UNAVAILABLE')
+    const status = await storage.status(location.projectId)
+    if (status === 'missing' || (writing && status !== 'available')) {
+      throw new AttachmentError(`Project ${location.projectId} is ${status}; attachment access is unavailable.`, 'ATTACHMENT_SCOPE_UNAVAILABLE')
+    }
+    return location.attachmentsRoot
   }
 
 }
