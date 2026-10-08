@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import { smokePreparedRuntime } from '../scripts/smoke-prepared-runtime.ts'
-import { smokeDesktopRuntime } from '../scripts/smoke-runtime.ts'
 import { verifyDesktopRuntime, writeDesktopRuntime } from '../src/runtime-tree.ts'
 import { runtimeFixture } from './runtime-fixture.ts'
 
@@ -36,9 +35,21 @@ it('smokes an x64 target verified on an arm64 build host without revalidating ag
   const electron = join(root, 'target-electron')
   const resources = join(root, 'runtime')
   await smokePreparedRuntime(root, electron, resources, descriptor)
-  expect(payload.mock.calls[0]![0]).toBe(electron)
-  expect(payload.mock.calls[0]![1]).toEqual(expect.arrayContaining([root, resources]))
-  expect(smokeDesktopRuntime).toHaveBeenCalledWith(root, electron, descriptor, expect.any(Object), resources)
-  const environment = vi.mocked(smokeDesktopRuntime).mock.calls[0]![3]
-  expect(existsSync(environment.NARB_NATIVE_CACHE_DIR!)).toBe(false)
+  expect(payload).toHaveBeenCalledTimes(2)
+  const [payloadNode, payloadArgs] = payload.mock.calls[0]!
+  expect(payloadNode).toBe(electron)
+  expect(payloadArgs).toEqual(expect.arrayContaining([root, resources]))
+  const [smokeNode, smokeArgs, smokeOptions] = payload.mock.calls[1]!
+  expect(smokeNode).toBe(electron)
+  expect(smokeArgs).toEqual(expect.arrayContaining([
+    '--import', 'tsx/esm', expect.stringContaining('smoke-runtime-entry.ts'),
+    root, resources, descriptor.release.version, target.platform, target.arch,
+  ]))
+  expect(smokeOptions).toMatchObject({ env: expect.objectContaining({ ELECTRON_RUN_AS_NODE: '1' }) })
+  if (typeof smokeOptions !== 'object' || smokeOptions === null || !('env' in smokeOptions)
+    || typeof smokeOptions.env !== 'object' || smokeOptions.env === null
+    || !('NARB_NATIVE_CACHE_DIR' in smokeOptions.env) || typeof smokeOptions.env.NARB_NATIVE_CACHE_DIR !== 'string') {
+    throw new Error('prepared runtime smoke must pass its private native cache to the matching Electron runtime')
+  }
+  expect(existsSync(smokeOptions.env.NARB_NATIVE_CACHE_DIR)).toBe(false)
 })

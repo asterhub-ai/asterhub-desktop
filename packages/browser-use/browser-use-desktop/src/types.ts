@@ -1,5 +1,5 @@
 import type { Branded, BrandedNumber } from '@deepseek-ai/dsh-brand'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {

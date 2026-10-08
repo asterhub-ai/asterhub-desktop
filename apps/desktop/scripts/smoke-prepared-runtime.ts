@@ -8,7 +8,6 @@ import { runtimeArchivePath } from '../../desktop-host/src/office-engine.ts'
 import { desktopNodeEnvironment } from '../src/node-environment.ts'
 import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 import { scrubWindowsSigningEnvironment } from './windows-sign.mjs'
-import { smokeDesktopRuntime } from './smoke-runtime.ts'
 import { verifyRuntimeArchive } from './verify-runtime-archive.ts'
 
 /**
@@ -33,7 +32,12 @@ export async function smokePreparedRuntime(
     ], { timeout: 120_000, windowsHide: true,
       env: desktopNodeEnvironment(node, join(resourcesRuntime, 'bin'), environment) })
     process.stdout.write(stdout)
-    await smokeDesktopRuntime(root, node, descriptor, environment, resourcesRuntime)
+    const smoke = await promisify(execFile)(node, [
+      '--import', 'tsx/esm', resolve(import.meta.dirname, 'smoke-runtime-entry.ts'),
+      root, node, resourcesRuntime, descriptor.release.version, descriptor.platform, descriptor.arch,
+    ], { cwd: resolve(import.meta.dirname, '../../..'), windowsHide: true,
+      env: desktopNodeEnvironment(node, undefined, environment) })
+    process.stdout.write(smoke.stdout)
   } finally {
     await rm(cache, { recursive: true, force: true })
   }
