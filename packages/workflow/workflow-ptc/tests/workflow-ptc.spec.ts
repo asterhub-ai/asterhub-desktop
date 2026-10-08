@@ -11,6 +11,7 @@ import * as ptcEngineModule from '../src/index.ts'
 import PtcWorkflowEngine, { type Config } from '../src/index.ts'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import LlmRuntime from '@deepseek-ai/dsh-llm'
 
 import { fakeParent, mountPtcRuntime } from './setup.ts'
 
@@ -130,12 +131,17 @@ interface SetupOptions {
   deferStart?: boolean
   onChildAbortString?: (reason: string | undefined, index: number) => void
   onChildSignalAbort?: (reason: unknown, index: number) => void
+  fixedModelRoute?: boolean
 }
 
 async function setup(options?: SetupOptions) {
   const ctx = new Context()
   await ctx.plugin(SessionProjectionRegistry)
   await mountPtcRuntime(ctx)
+  if (options?.fixedModelRoute) {
+    ctx.provide('applicationModelRoute', Object.freeze({ provider: 'sub2api', model: 'aster' }))
+    await ctx.plugin(LlmRuntime)
+  }
   await ctx.plugin(SubagentRuntime)
   const provider = new StubProvider(
     'stub',
@@ -243,6 +249,14 @@ describe('dsh-workflow-ptc', { timeout: 120_000 }, () => {
 
       expect(result.value).toBe('stub reply')
       expect(provider.runs[0]!.request.agentOptions).toEqual({ provider: 'openai' })
+    })
+
+    it('rejects a forged child provider/model override when the Host route is fixed', async () => {
+      const { ctx, parent, provider } = await setup({ fixedModelRoute: true })
+      const result = await run(ctx, parent, scripted("return await agent('try another model', { provider: 'other', model: 'model-x' })"))
+      expect(result.stopReason).toBe('error')
+      expect(result.error).toContain('workflow child model route is fixed')
+      expect(provider.runs).toHaveLength(0)
     })
 
     it('a start-request provider override selects every child without changing the engine default', async () => {
@@ -556,7 +570,6 @@ describe('dsh-workflow-ptc', { timeout: 120_000 }, () => {
           localAgent: undefined,
           result: Promise.resolve({ output: [{ type: 'text', text: 'fine' }], stopReason: 'completed' }),
           cancel: () => { /* settled already */ },
-          // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- the non-Error rejection IS the scenario under test
           dispose: () => Promise.reject({ toString: () => { throw new Error('coercion trap') } }),
         }),
       }

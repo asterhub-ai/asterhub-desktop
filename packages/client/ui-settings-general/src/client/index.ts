@@ -3,7 +3,7 @@
  * `sidebar.settings` occupant — panel chrome, section navigation, and the
  * onboarding stage — and registers everything on the Settings pages that
  * belongs to no single feature: the trigger/header chrome content,
- * local-document action, General section, and `settings` dictionaries.
+ * General section, and `settings` dictionaries.
  * Feature-owned rows and sections stay with their features.
  * Export discipline: packages/client/AGENTS.md.
  */
@@ -34,9 +34,6 @@ import { CloseLabel, HeaderContent, TriggerContent } from './chrome.tsx'
 import { GeneralSection } from './GeneralSection.tsx'
 import { CurrentVersionRow } from './CurrentVersionRow.tsx'
 import { DeveloperToolsRow, type DeveloperToolsRowInjected } from './DeveloperToolsRow.tsx'
-import { SettingsDocumentAction } from './SettingsDocumentAction.tsx'
-import type { SettingsDocumentActionInjected } from './SettingsDocumentAction.tsx'
-import { SettingsDocumentStore } from './settings-document-store.ts'
 import { en, zh, type SettingsKey } from './locales.ts'
 
 export type {
@@ -45,9 +42,6 @@ export type {
 export type {
   GeneralSectionComponentProps,
 } from './GeneralSection.tsx'
-export type { SettingsDocumentActionInjected, SettingsDocumentActionProps } from './SettingsDocumentAction.tsx'
-export type { SettingsDocumentState } from './settings-document-store.ts'
-export { SettingsDocumentStore } from './settings-document-store.ts'
 export type { SettingsKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -80,15 +74,18 @@ export function apply(ctx: ClientContext): void {
       setEnabled: enabled => ctx.configForms.developerTools.setEnabled(enabled),
     }),
   }, DeveloperToolsRow))
-  // Last row: every feature-registered preference row orders below 100.
-  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
-    name: 'settings.general.item', id: 'current-version', order: 100, locale: NS,
-  }, CurrentVersionRow))
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-settings-general: dictionaries')
   const connection = ctx.get('connection') as ConnectionHandle
   const carrier = (globalThis as typeof globalThis & { dshDesktop?: { protocolVersion: number; updates?: DesktopUpdateBridge } }).dshDesktop
-  const desktopUpdate = new DesktopUpdateSource(carrier?.protocolVersion === 1 ? carrier.updates : undefined)
+  const desktopBridge = carrier?.protocolVersion === 1 ? carrier.updates : undefined
+  const desktopUpdate = new DesktopUpdateSource(desktopBridge)
   ctx.effect(() => () => { desktopUpdate.dispose() }, 'ui-settings-general: desktop update carrier')
+  // Version information follows the core preferences; on Desktop with a bridge
+  // the row also binds the manual check-and-consent operation.
+  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+    name: 'settings.general.item', id: 'current-version', order: 100, locale: NS,
+    inject: () => (desktopBridge === undefined ? {} : { checkUpdates: desktopUpdate.check.bind(desktopUpdate) }),
+  }, CurrentVersionRow))
   ctx.slots.inject('sidebar.toggle.badge', () => ctx.slots.register({
     name: 'sidebar.toggle.badge', locale: NS,
     inject: () => ({ hooks: { desktopUpdate: desktopUpdate.store, connectionState: connection.state } }),
@@ -98,17 +95,6 @@ export function apply(ctx: ClientContext): void {
   // seat, and the nav label is a thunk the owner resolves per render — no
   // locale/change re-registration wiring.
   const t = ctx.locale.bind(NS)
-  // The shared ConfigForm mirror updates after document commits and reconnects.
-  const documentController = ctx.remote.$host.isLoopback
-    ? new SettingsDocumentStore(ctx, ctx.configForms.describe())
-    : undefined
-  const documentInjected = documentController === undefined
-    ? undefined
-    : (): SettingsDocumentActionInjected => ({
-      controller: documentController,
-      hooks: { snapshot: documentController.store },
-    })
-  ctx.effect(() => () => { documentController?.dispose() }, 'ui-settings-general: document action directory')
   // The settings shell: this package occupies the sidebar-owned hole and
   // declares the settings slots. Ledger → nav-row projection as an observable
   // source (uSES contract: getSnapshot returns the cached rows until the
@@ -182,8 +168,8 @@ export function apply(ctx: ClientContext): void {
         'desktop:macos': { code: 'Comma', modifiers: ['primary'] },
         'desktop:windows': { code: 'Comma', modifiers: ['primary'] },
         'desktop:linux': { code: 'Comma', modifiers: ['primary'] },
-        'web:macos': { code: 'Comma', modifiers: ['primary'] },
-        'web:windows': { code: 'Comma', modifiers: ['primary'] },
+        'web:macos': { code: 'Comma', modifiers: ['primary', 'alt'] },
+        'web:windows': { code: 'Comma', modifiers: ['primary', 'alt'] },
       },
       regions: ['page', 'editable', 'terminal'], modals: ['settings'],
       resolve: ({ modal }) => {
@@ -217,15 +203,6 @@ export function apply(ctx: ClientContext): void {
     ctx.slots.register({ name: 'settings.trigger', locale: NS }, TriggerContent))
   ctx.slots.inject('settings.header', () =>
     ctx.slots.register({ name: 'settings.header', locale: NS }, HeaderContent))
-  if (documentInjected !== undefined) {
-    ctx.slots.inject('settings.action', () => ctx.slots.register({
-      name: 'settings.action',
-      id: 'open-document',
-      order: 0,
-      locale: NS,
-      inject: documentInjected,
-    }, SettingsDocumentAction))
-  }
   ctx.slots.inject('settings.close', () =>
     ctx.slots.register({ name: 'settings.close', locale: NS }, CloseLabel))
   ctx.slots.inject('settings.section', () => ctx.slots.register({

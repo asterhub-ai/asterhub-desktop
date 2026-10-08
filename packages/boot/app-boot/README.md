@@ -20,6 +20,8 @@ English | [中文](README.zh.md)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 - [Dev Note](#dev-note)
 
+`ProfileRuntimeResolution` retains its source inputs and can recompute a successor from the current installation, profile manifest, and selected bundles. Publishing it may remove stopped profile mappings while preserving installation mappings and loaded modules.
+
 -----
 
 <a id="use-this-package"></a>
@@ -193,7 +195,6 @@ Boot itself changes no request prefix. `addHarnessSourceSection` places its sour
 ## Known Limitations and Deferred Work
 
 <a id="known-limitations-and-deferred-work"></a>
-
 
 These limits describe when this boot library is a poor fit or needs special care. They are current package constraints, not a task backlog.
 

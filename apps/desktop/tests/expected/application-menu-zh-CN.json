@@ -1,7 +1,10 @@
 [
   {
+    "label": "检查更新…"
+  },
+  {
     "role": "hide",
-    "label": "隐藏 DeepSeek Harness"
+    "label": "隐藏 AsterHub"
   },
   {
     "role": "hideOthers",
@@ -13,6 +16,6 @@
   },
   {
     "role": "quit",
-    "label": "退出 DeepSeek Harness"
+    "label": "退出 AsterHub"
   }
 ]

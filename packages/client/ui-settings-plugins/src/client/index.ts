@@ -1,11 +1,4 @@
-/**
- * Built-in plugins settings section, browser half: the shell around the
- * feature-owned tabs registered into `settings.plugins.tab` (the read-only
- * inventory ships one). The configuration pages of the host-plane plugins
- * live in their own companion packages, which register into the Plugins
- * page; this section owns the Settings navigation entry and the tab chrome
- * only.
- */
+/** Curated plugins Settings section and the tab extension point for feature-owned pages. */
 
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -29,7 +22,7 @@ const NS = 'settings.plugins'
 export const inject = ['slots', 'locale']
 
 /**
- * Mount the built-in plugins section.
+ * Mount the curated plugins section.
  * @param ctx - the browser plugin context.
  */
 export function apply(ctx: ClientContext): void {
@@ -71,8 +64,7 @@ export function apply(ctx: ClientContext): void {
     },
   })
 
-  // This package owns the one Built-in plugins navigation entry and the tab
-  // chrome; feature plugins contribute pages without competing for Settings nav rows.
+  // Feature pages share one Settings navigation entry and its tab chrome.
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'plugins',

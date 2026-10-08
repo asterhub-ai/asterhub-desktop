@@ -28,7 +28,7 @@ import type { UnitState } from './format.ts'
 export async function openSingleUnit(
   descriptor: KvUnitDescriptor,
   root: string,
-  onClose: () => void,
+  onClose: () => void | Promise<void>,
 ): Promise<KvUnit> {
   const path = join(root, `${descriptor.name}.json`)
   let text: string | undefined
@@ -51,6 +51,7 @@ export async function openSingleUnit(
 
 class SingleJsonUnit implements KvUnit {
   private closed = false
+  private closing: Promise<void> | undefined
   /** In-flight publishes; close() drains them before releasing the unit. */
   private readonly inFlight = new Set<Promise<void>>()
 
@@ -58,7 +59,7 @@ class SingleJsonUnit implements KvUnit {
     private readonly descriptor: KvUnitDescriptor,
     private readonly path: string,
     private readonly state: UnitState,
-    private readonly onClose: () => void,
+    private readonly onClose: () => void | Promise<void>,
   ) {}
 
   // oxlint-disable-next-line typescript/require-await -- async keeps the closed guard a rejection, not a synchronous throw
@@ -112,14 +113,12 @@ class SingleJsonUnit implements KvUnit {
   }
 
   /* jscpd:ignore-start -- the two unit classes are standalone; the drain/guard lifecycle mirrors the shared KvUnit contract */
-  async close(): Promise<void> {
-    if (this.closed) {
-      await Promise.allSettled(this.inFlight)
-      return
-    }
+  close(): Promise<void> {
     this.closed = true
-    await Promise.allSettled(this.inFlight)
-    this.onClose()
+    return this.closing ??= (async () => {
+      await Promise.allSettled(this.inFlight)
+      await this.onClose()
+    })()
   }
 
   private assertOpen(): void {

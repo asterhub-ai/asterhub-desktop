@@ -20,6 +20,8 @@ kind: "package-reference"
 - [已知限制与延期工作](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
+AsterHub 路由锁定时，只允许保存供应商与应用路由一致、且 ID 存在于账户目录中的用户模型选择；保存后仍保留路由锁。新安装要求用户显式选择模型，不把旧别名作为默认值发送。
+
 -----
 
 <a id="use-this-package"></a>

@@ -1,0 +1,10 @@
+# Bilingual-pair consistency record for account.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/subsystems/account.md
+/account-service:
+  en: 9f26fa99c061b7a1
+  zh: fa9bddb3c01843c4
+/account-service/public-types:
+  en: 514e3a869e355a86
+  zh: 4b6f416f8ff3847f

@@ -2,8 +2,11 @@
 
 import { packagingStep } from './packaging-step.mjs'
 import { spawn } from 'node:child_process'
-import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { copyFileSync, cpSync, createReadStream, createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { homedir } from 'node:os'
 import { delimiter, join, relative, resolve } from 'node:path'
 import { desktopNodeEnvironment } from '../src/node-environment.ts'
 import { createRuntimeProjectMetadata } from '../src/project-manager.ts'
@@ -29,7 +32,7 @@ import {
 import {
   signMacOSRuntime,
 } from './macos-runtime.ts'
-import { resolveDesktopBuildTarget, resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
+import { desktopTargetPlatform, resolveDesktopBuildTarget, resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { desktopRuntimeFileExclusion } from './runtime-file-policy.ts'
 import { selectOfficeEngine } from '../../../scripts/libreoffice-packages.mjs'
 
@@ -48,6 +51,94 @@ function manifestVersion(path: string, subject: string): string {
   const manifest = JSON.parse(readFileSync(path, 'utf8')) as { version?: unknown }
   if (typeof manifest.version !== 'string') throw new Error(`desktop runtime: ${subject} has no version`)
   return manifest.version
+}
+
+interface SpeechAsset {
+  readonly name: string
+  readonly url: string
+  readonly sha256: string
+  readonly bytes: number
+}
+
+const SPEECH_ASSETS: readonly SpeechAsset[] = [
+  {
+    name: 'model.int8.onnx',
+    url: 'https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/2365baeacb507f821a0c8120fcee3d484dba7a07/model.int8.onnx',
+    sha256: 'c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51',
+    bytes: 239_233_841,
+  },
+  {
+    name: 'tokens.txt',
+    url: 'https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/2365baeacb507f821a0c8120fcee3d484dba7a07/tokens.txt',
+    sha256: 'f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc',
+    bytes: 315_894,
+  },
+  {
+    name: 'silero_vad.onnx',
+    url: 'https://huggingface.co/csukuangfj/vad/resolve/fba88cd2e921609e7675c3aaf51e0b9b295da4bc/silero_vad.onnx',
+    sha256: 'a35ebf52fd3ce5f1469b2a36158dba761bc47b973ea3382b3186ca15b1f5af28',
+    bytes: 1_807_522,
+  },
+]
+
+async function downloadSpeechAsset(asset: SpeechAsset, destination: string): Promise<void> {
+  if (existsSync(destination)) {
+    const info = await stat(destination)
+    if (info.size === asset.bytes) {
+      const digest = createHash('sha256')
+      const stream = createReadStream(destination)
+      for await (const chunk of stream) {
+        digest.update(chunk as Buffer)
+      }
+      if (digest.digest('hex') === asset.sha256) return
+    }
+  }
+  mkdirSync(join(destination, '..'), { recursive: true })
+  const response = await fetch(asset.url)
+  if (!response.ok || !response.body) throw new Error(`speech model download failed: ${asset.name} HTTP ${String(response.status)}`)
+  const chunks: Uint8Array[] = []
+  for await (const chunk of response.body) {
+    chunks.push(chunk)
+  }
+  const buffer = Buffer.concat(chunks)
+  const digest = createHash('sha256').update(buffer)
+  await new Promise<void>((resolve, reject) => {
+    const file = createWriteStream(destination)
+    file.once('error', reject)
+    file.once('finish', () => resolve())
+    file.end(buffer)
+  })
+  if (buffer.byteLength !== asset.bytes || digest.digest('hex') !== asset.sha256) {
+    throw new Error(`speech model integrity check failed: ${asset.name}`)
+  }
+}
+
+async function prepareSpeechModels(): Promise<void> {
+  const modelRoot = join(DSH_OUTPUT_ROOT, 'speech-models', 'sensevoice')
+  const vadRoot = join(DSH_OUTPUT_ROOT, 'speech-models', 'silero')
+  const cacheRoot = join(homedir(), '.dsh', 'speech-models-cache')
+  
+  // Check if models exist in cache
+  const cacheSenseVoice = join(cacheRoot, 'sensevoice')
+  const cacheSilero = join(cacheRoot, 'silero')
+  
+  if (existsSync(join(cacheSenseVoice, 'model.int8.onnx')) && 
+      existsSync(join(cacheSenseVoice, 'tokens.txt')) &&
+      existsSync(join(cacheSilero, 'silero_vad.onnx'))) {
+    // Copy from cache
+    mkdirSync(modelRoot, { recursive: true })
+    mkdirSync(vadRoot, { recursive: true })
+    cpSync(join(cacheSenseVoice, 'model.int8.onnx'), join(modelRoot, 'model.int8.onnx'))
+    cpSync(join(cacheSenseVoice, 'tokens.txt'), join(modelRoot, 'tokens.txt'))
+    cpSync(join(cacheSilero, 'silero_vad.onnx'), join(vadRoot, 'silero_vad.onnx'))
+    return
+  }
+  
+  // Fallback to download if cache miss
+  for (const asset of SPEECH_ASSETS) {
+    const dest = asset.name === 'silero_vad.onnx' ? join(vadRoot, asset.name) : join(modelRoot, asset.name)
+    await downloadSpeechAsset(asset, dest)
+  }
 }
 
 function desktopRelease(): DesktopRelease {
@@ -74,7 +165,10 @@ function runPnpm(args: readonly string[]): Promise<void> {
     const config = join(PNPM_BUILD_STATE, 'config')
     const userConfig = join(config, 'npmrc')
     mkdirSync(config, { recursive: true })
-    writeFileSync(userConfig, '')
+    const npmrcLines: string[] = []
+    if (typeof process.env.HTTP_PROXY === 'string') npmrcLines.push(`proxy=${process.env.HTTP_PROXY}`)
+    if (typeof process.env.HTTPS_PROXY === 'string') npmrcLines.push(`https-proxy=${process.env.HTTPS_PROXY}`)
+    writeFileSync(userConfig, npmrcLines.join('\n'))
     const child = spawn(NODE, [
       '--expose-internals',
       PNPM,
@@ -130,7 +224,7 @@ async function main(): Promise<void> {
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:install', () => runPnpm(['install', '--prod', '--frozen-lockfile', '--trust-lockfile']))
     const packageSet = readDesktopCorePackageSet(BUILD_ROOT, release.version)
     const targetName = resolveDesktopBuildTarget()
-    const target = { platform: process.platform, arch: targetName.endsWith('arm64') ? 'arm64' : 'x64' }
+    const target = { platform: process.platform, arch: desktopTargetPlatform(targetName).arch }
     const modules = join(BUILD_ROOT, 'node_modules')
     const officeManifest = JSON.parse(readFileSync(join(modules, '@deepseek-ai/libreoffice-kit/package.json'), 'utf8'))
     const officeEngine = selectOfficeEngine(officeManifest, target)
@@ -150,12 +244,26 @@ async function main(): Promise<void> {
         throw new Error(`desktop runtime: missing private Host file ${file}`)
       }
     }
+    // The native automation Host, its generated Remote client, and the pure
+    // timing library must all reach the packaged runtime; the Host profile
+    // cannot boot without them.
+    const automationRoot = join(DSH_OUTPUT_ROOT, 'node_modules', '@deepseek-ai', 'dsh-asterhub-automation')
+    for (const file of ['lib/index.js', 'lib/typert.host.js', 'lib/typert.remote-client.js', 'lib/types/timing.js']) {
+      if (!existsSync(join(automationRoot, file))) {
+        throw new Error(`desktop runtime: missing native automation artifact ${file}`)
+      }
+    }
+    const timeContextRoot = join(DSH_OUTPUT_ROOT, 'node_modules', '@deepseek-ai', 'dsh-time-context')
+    if (!existsSync(join(timeContextRoot, 'lib/index.js'))) {
+      throw new Error('desktop runtime: missing native time-context artifact')
+    }
     if (!existsSync(join(DSH_OUTPUT_ROOT, 'node_modules', '@deepseek-ai', `libreoffice-kit-${officeEngine}`, 'prebuilds.json'))) {
       throw new Error(`desktop runtime: missing required LibreOffice engine ${officeEngine}`)
     }
+    await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:speech-models', () => prepareSpeechModels())
     if (process.platform === 'darwin') {
-      await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'sign:dsh-native', () => signMacOSRuntime(DSH_OUTPUT_ROOT, resolveDesktopAppId(process.env), resolveMacOSSigningEnvironment(process.env), join(BUILD_PATHS.root, 'signature-cache')))
-      await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'sign:primary-native', () => signMacOSRuntime(join(RUNTIME_ROOT, 'primary-runtime'), resolveDesktopAppId(process.env), resolveMacOSSigningEnvironment(process.env), join(BUILD_PATHS.root, 'signature-cache')))
+      await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'sign:dsh-native', () => signMacOSRuntime(DSH_OUTPUT_ROOT, resolveDesktopAppId(process.env), resolveMacOSSigningEnvironment(process.env), target.arch, join(BUILD_PATHS.root, 'signature-cache')))
+      await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'sign:primary-native', () => signMacOSRuntime(join(RUNTIME_ROOT, 'primary-runtime'), resolveDesktopAppId(process.env), resolveMacOSSigningEnvironment(process.env), target.arch, join(BUILD_PATHS.root, 'signature-cache')))
     }
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:manifests', () => prepareRuntimeManifests(DSH_OUTPUT_ROOT))
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:primary-smoke', async () => smokePrimaryRuntime(join(RUNTIME_ROOT, 'primary-runtime')))

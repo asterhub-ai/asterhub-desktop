@@ -23,6 +23,8 @@ Manage the current profile's plugins without editing configuration by hand. Enab
 - [Failure behavior](#failure-behavior)
 - [Dev Note](#dev-note)
 
+Package installation and enablement refresh the live runtime package resolution before activation. Disablement and removal refresh it after plugins stop; changing a loaded package directory or version still requires a process restart.
+
 -----
 
 <a id="use-this-package"></a>

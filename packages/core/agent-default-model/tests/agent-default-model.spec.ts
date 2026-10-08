@@ -67,3 +67,30 @@ it('serializes overlapping saves and continues after a rejected write', async ()
   expect(calls).toEqual(['rejected', 'saved'])
   expect(ctx.agentDefaultModel.currentSelection()).toEqual({ provider: 'test', model: 'final' })
 })
+
+it('rejects model changes when the deployment locks the default route', async () => {
+  const ctx = new Context()
+  onTestFinished(() => ctx.fiber.dispose())
+  await ctx.plugin(DefaultModel, { provider: 'sub2api', model: 'aster', locked: true })
+  expect(ctx.agentDefaultModel.currentSelection()).toEqual({ provider: 'sub2api', model: 'aster' })
+  await expect(ctx.agentDefaultModel.saveSelection({ provider: 'other', model: 'other' }))
+    .rejects.toThrow('model selection is deployment-locked')
+})
+
+
+it('persists an account catalog model while keeping the application provider locked', async () => {
+  const { configurationFixture } = await import('../../../settings/settings/tests/configuration-fixture.ts')
+  const { readFile } = await import('node:fs/promises')
+  const { ctx, profile } = await configurationFixture({ hmr: false })
+  ctx.provide('applicationModelRoute', { provider: 'sub2api', model: '__unselected__', selectableModels: true })
+  ctx.provide('llm', { listModels: async () => [{ provider: 'sub2api', id: 'allowed', name: 'Allowed' }] } as never)
+  const entry = [...ctx.loader.entries()].find(entry => entry.options.id === 'default-model')!
+  await ctx.configEditor.edit(entry, () => ({ provider: 'sub2api', model: '__unselected__', locked: true }))
+  await expect(ctx.agentDefaultModel.saveSelection({ provider: 'other', model: 'allowed' }))
+    .rejects.toThrow('deployment-locked')
+  await expect(ctx.agentDefaultModel.saveSelection({ provider: 'sub2api', model: 'aster' }))
+    .rejects.toThrow('unavailable')
+  await ctx.agentDefaultModel.saveSelection({ provider: 'sub2api', model: 'allowed' })
+  expect(ctx.agentDefaultModel.currentSelection()).toEqual({ provider: 'sub2api', model: 'allowed' })
+  expect(await readFile(profile.patchPath, 'utf8')).toContain('locked: true')
+})

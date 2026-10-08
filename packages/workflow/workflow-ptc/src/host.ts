@@ -128,6 +128,7 @@ export class PtcWorkflowRun implements WorkflowRun {
     readonly id: WorkflowRunId,
     readonly meta: WorkflowMeta,
     private readonly parent: Agent,
+    private readonly fixedModelRoute: boolean,
     private readonly init: WorkerInit,
     private readonly provider: string,
     private readonly policy: SandboxExecutionPolicy,
@@ -196,6 +197,9 @@ export class PtcWorkflowRun implements WorkflowRun {
 
   private async startChild(request: ChildStartRequest): Promise<PtcJsonValue> {
     this.requireActive()
+    if (this.fixedModelRoute && (request.provider !== undefined || request.model !== undefined)) {
+      throw new Error('workflow child model route is fixed by this application')
+    }
     const callId = ++this.started
     const run = await this.subagents.start(this.provider, {
       prompt: [{ type: 'text', text: request.prompt }],

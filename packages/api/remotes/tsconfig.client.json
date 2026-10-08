@@ -102,10 +102,7 @@
       "path": "../../document/office-to-pdf"
     },
     {
-      "path": "../account-controller"
-    },
-    {
-      "path": "../../credentials/deepseek-account"
+      "path": "../../account/account-sub2api"
     }
   ]
 }

@@ -1,0 +1,3 @@
+- insert:
+    - id: asterhub-genoffice-cli
+      name: '@asterhub/genoffice-cli'

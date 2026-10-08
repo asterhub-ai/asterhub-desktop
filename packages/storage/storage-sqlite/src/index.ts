@@ -8,6 +8,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { DatabaseSync } from 'node:sqlite'
+import { acquireFileLock, type FileLockLease } from '@deepseek-ai/dsh-atomic-write'
 import { StorageError, UNIT_NAME_RE, storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
 import type { KvFacet, KvUnit, KvUnitDescriptor, StorageBackend } from '@deepseek-ai/dsh-storage'
 import { openDatabase, recordTableName, type JournalMode } from './schema.ts'
@@ -54,17 +55,20 @@ export const Config: z<Config> = z.object({
  */
 export class SqliteStorageBackend implements StorageBackend {
   /** The key-value facet; the only shape this backend serves. */
-  readonly kv: KvFacet = { open: descriptor => this.openUnit(descriptor) }
+  readonly kv: KvFacet = { supportsExclusive: true, open: descriptor => this.openUnit(descriptor) }
 
   private readonly ready: Promise<DatabaseSync>
   /** Open (or still-opening) units by name; presence is the double-open guard. */
   private readonly units = new Map<string, Promise<SqliteKvUnit>>()
   private closing: Promise<void> | undefined
+  /** Database file path for exclusive lock computation. */
+  private readonly path: string
 
   /**
    * @param config - Validated plugin configuration.
    */
   constructor(config: Config) {
+    this.path = config.path
     this.ready = openDatabase(config.path, (config as Required<Config>).journalMode)
     // Mark the rejection handled: every primitive re-awaits `ready`, so an
     // open failure still surfaces to each caller; this guard only prevents an
@@ -91,35 +95,38 @@ export class SqliteStorageBackend implements StorageBackend {
     // name rejects instead of racing past the guard during the awaits below.
     const pending = this.materializeUnit(descriptor)
     this.units.set(descriptor.name, pending)
-    pending.catch(() => this.units.delete(descriptor.name))
+    void pending.catch(() => { this.units.delete(descriptor.name) })
     return pending
   }
 
   private async materializeUnit(descriptor: KvUnitDescriptor): Promise<SqliteKvUnit> {
     const db = await this.ready
-    const row = db.prepare('SELECT version FROM units WHERE name = ?').get(descriptor.name) as
-      | { version: number }
-      | undefined
-    if (row === undefined) {
-      db.prepare('INSERT INTO units (name, version) VALUES (?, ?)').run(descriptor.name, descriptor.version)
-    } else if (row.version !== descriptor.version) {
-      throw new StorageError(
-        'version-mismatch',
-        `kv unit '${descriptor.name}' is stamped version ${row.version} on the medium, incompatible with descriptor version ${descriptor.version}`,
-      )
+    let lease: FileLockLease | undefined
+    if (descriptor.exclusive === true) {
+      if (this.path === ':memory:') throw new StorageError('exclusive-open', 'in-memory SQLite cannot provide cross-process unit ownership')
+      try { lease = await acquireFileLock(`${this.path}.${descriptor.name}.owner`, { waitMs: 0 }) }
+      catch (error) { throw new StorageError('exclusive-open', `sqlite unit '${descriptor.name}' cannot acquire exclusive ownership`, { cause: error }) }
     }
-    for (const table of descriptor.tables) {
-      // Both segments passed UNIT_NAME_RE, so the identifier is safe in DDL.
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS "${recordTableName(descriptor.name, table)}" (
-          key   TEXT PRIMARY KEY,
-          value TEXT NOT NULL
-        ) STRICT
-      `)
+    try {
+      const row = db.prepare('SELECT version FROM units WHERE name = ?').get(descriptor.name) as
+        | { version: number }
+        | undefined
+      if (row === undefined) {
+        db.prepare('INSERT INTO units (name, version) VALUES (?, ?)').run(descriptor.name, descriptor.version)
+      } else if (row.version !== descriptor.version) {
+        throw new StorageError('version-mismatch', `kv unit '${descriptor.name}' is stamped version ${row.version} on the medium, incompatible with descriptor version ${descriptor.version}`)
+      }
+      for (const table of descriptor.tables) {
+        db.exec(`CREATE TABLE IF NOT EXISTS "${recordTableName(descriptor.name, table)}" (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT`)
+      }
+      return new SqliteKvUnit(db, descriptor, async () => {
+        await lease?.release()
+        this.units.delete(descriptor.name)
+      })
+    } catch (error) {
+      await lease?.release()
+      throw error
     }
-    return new SqliteKvUnit(db, descriptor, () => {
-      this.units.delete(descriptor.name)
-    })
   }
 
   /**

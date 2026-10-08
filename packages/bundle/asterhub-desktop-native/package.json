@@ -1,0 +1,42 @@
+{
+  "name": "@deepseek-ai/dsh-asterhub-desktop-native",
+  "description": "Desktop-only composition that mounts the native AsterHub automation Host service and task panel, replacing the optional Schedule Bundle for the desktop product",
+  "version": "0.2.0-rc.3",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "cordis.patch.yml",
+    "lib/types/**/*.d.ts"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-asterhub-automation": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-asterhub-automation": "workspace:*",
+    "@deepseek-ai/dsh-time-context": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/cordis-plugin-include": "workspace:~",
+    "js-yaml": "^4.2.0"
+  }
+}

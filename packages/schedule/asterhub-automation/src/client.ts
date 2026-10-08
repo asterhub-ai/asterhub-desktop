@@ -1,0 +1,31 @@
+/** Browser-safe automation vocabulary. @module @deepseek-ai/dsh-asterhub-automation/client */
+export type {
+  AutomationManageOutput,
+  AutomationReadOutput,
+} from './tools.ts'
+export type {
+  AutomationTaskId,
+  AutomationRunId,
+  AutomationAccountIdentity,
+  AutomationTimingInput,
+  AutomationTiming,
+  AutomationDraft,
+  AutomationSnapshot,
+  AutomationRunState,
+  AutomationRun,
+  AutomationReceipt,
+  AutomationTask,
+  AutomationOperation,
+  AutomationPreparedOperation,
+  AutomationCommitRequest,
+  AutomationMutationResult,
+  AutomationPreview,
+  AutomationListRequest,
+  AutomationTaskPage,
+  AutomationGetRequest,
+  AutomationRunsRequest,
+  AutomationRunsPage,
+  AutomationChoices,
+  AutomationLimits,
+  AutomationLifecycle,
+} from './types.ts'

@@ -4,7 +4,7 @@ import type { AfterPackContext, BeforePackContext } from 'app-builder-lib'
 export interface DesktopElectronBuilderConfig {
   readonly appId: string
   readonly artifactName: string
-  readonly protocols: readonly [{ readonly name: 'DeepSeek Harness'; readonly schemes: readonly ['dsh'] }]
+  readonly protocols: readonly [{ readonly name: 'AsterHub'; readonly schemes: readonly ['asterhub'] }]
   readonly directories: {
     readonly output: string
   }
@@ -25,6 +25,8 @@ export interface DesktopElectronBuilderConfig {
   ]
   readonly mac: {
     readonly extendInfo: { readonly NSMicrophoneUsageDescription: string }
+    readonly entitlements: string
+    readonly entitlementsInherit: string
     readonly identity: string | undefined
     readonly forceCodeSigning: boolean
     readonly notarize: boolean

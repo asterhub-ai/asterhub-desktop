@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/account/account-sub2api/README.md
+/:
+  en: 06e33c1b97441663
+  zh: 86455be4deb7c53c
+/deepseek-ai-dsh-account-sub2api:
+  en: 841ed37a9831fb1a
+  zh: fa44543dc6aeedb7
+/deepseek-ai-dsh-account-sub2api/summary:
+  en: 79bd1867ab66406b
+  zh: e94955a4c5fff338
+/deepseek-ai-dsh-account-sub2api/table-of-contents:
+  en: 8005298bf43acbf1
+  zh: b3b297d62c48e184
+/deepseek-ai-dsh-account-sub2api/use-this-package:
+  en: 1e5a01f85c69da98
+  zh: ceb978d1973fc8d4
+/deepseek-ai-dsh-account-sub2api/use-this-package/account-model-key:
+  en: a6a6708279d6a1c9
+  zh: 58fd74561615c472
+/deepseek-ai-dsh-account-sub2api/use-this-package/configuration:
+  en: 2b82bb401da53661
+  zh: a021fcbfb1efdce7
+/deepseek-ai-dsh-account-sub2api/use-this-package/remote-operations:
+  en: 58ca8c56fa163817
+  zh: 27394a69b98f67c0
+/deepseek-ai-dsh-account-sub2api/understand-the-implementation:
+  en: 6f9accb4cb859536
+  zh: b66c41b6ac30eb5f
+/deepseek-ai-dsh-account-sub2api/further-exploration:
+  en: dbdadf8a2a9d2263
+  zh: 5ed4e14674fc18ec
+/deepseek-ai-dsh-account-sub2api/known-limitations-and-deferred-work:
+  en: 295f59686e7168ae
+  zh: 2338480a1b29f48c
+/deepseek-ai-dsh-account-sub2api/known-limitations-and-deferred-work/failure-behavior:
+  en: 96a5043531119655
+  zh: fbc78f6cf6e324ca
+/deepseek-ai-dsh-account-sub2api/known-limitations-and-deferred-work/dev-note:
+  en: b441521ccbf70b59
+  zh: 9756721a76b258f1

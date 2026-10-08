@@ -9,9 +9,6 @@
   ],
   "references": [
     {
-      "path": "../../util/package-manifest"
-    },
-    {
       "path": "../../../vendor/cordis"
     },
     {
@@ -24,25 +21,13 @@
       "path": "../ui-settings/tsconfig.client.json"
     },
     {
-      "path": "../ui-agent-preset"
-    },
-    {
-      "path": "../../preset/agent-preset-registry"
-    },
-    {
-      "path": "../ui-primitives"
-    },
-    {
       "path": "../ui-renderer"
     },
     {
       "path": "../ui-slots"
     },
     {
-      "path": "../modules"
-    },
-    {
-      "path": "../store"
+      "path": "../../boot/plugin-manager"
     }
   ]
 }

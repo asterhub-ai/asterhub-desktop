@@ -15,7 +15,7 @@ const UPDATE_ENVIRONMENTS = {
   },
   production: {
     originEnvName: undefined,
-    fixedOrigin: 'https://download.deepseek.com',
+    fixedOrigin: 'https://asterhub.xapi.fans',
     bucketEnvName: 'DOWNLOAD_PROD_COS_BUCKET',
     secretIdEnvName: 'DOWNLOAD_PROD_COS_SECRET_ID',
     secretKeyEnvName: 'DOWNLOAD_PROD_COS_SECRET_KEY',
@@ -35,6 +35,14 @@ export function resolveDesktopAutoUpdateEnvironment(env) {
     throw new Error(`desktop auto-update: ${DESKTOP_AUTO_UPDATE_ENV} must be "test" or "production"`)
   }
   return value
+}
+
+/** Resolve the selected metadata/feed origin without requiring a target or private upload credentials. */
+export function resolveDesktopAutoUpdateOrigin(env) {
+  const deployment = UPDATE_ENVIRONMENTS[resolveDesktopAutoUpdateEnvironment(env)]
+  if (deployment.fixedOrigin !== undefined) return deployment.fixedOrigin
+  if (deployment.originEnvName === undefined) throw new Error('desktop auto-update: selected deployment has no origin')
+  return httpsOrigin(requiredEnvironmentValue(env, deployment.originEnvName), deployment.originEnvName)
 }
 
 /**
@@ -131,12 +139,7 @@ export function resolveDesktopAutoUpdateConfig(env, platform, arch) {
   const environment = resolveDesktopAutoUpdateEnvironment(env)
   const target = resolveDesktopAutoUpdateTarget(platform, arch)
   const deployment = UPDATE_ENVIRONMENTS[environment]
-  let origin = deployment.fixedOrigin
-  if (origin === undefined) {
-    const { originEnvName } = deployment
-    if (originEnvName === undefined) throw new Error('desktop auto-update: selected deployment has no origin')
-    origin = httpsOrigin(requiredEnvironmentValue(env, originEnvName), originEnvName)
-  }
+  const origin = resolveDesktopAutoUpdateOrigin(env)
   let releasePrefix = 'dsh-desk'
   if (environment === 'test') {
     const releaseId = requiredEnvironmentValue(env, 'DOWNLOAD_TEST_RELEASE_ID')

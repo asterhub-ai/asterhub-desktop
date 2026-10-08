@@ -128,6 +128,13 @@ export class MemoryStorageBackend implements StorageBackend {
         if (this.closed) {
           throw new StorageError('closed', 'memory backend is closed')
         }
+        // Memory backend cannot offer cross-process exclusivity; reject loudly.
+        if (descriptor.exclusive === true) {
+          throw new StorageError(
+            'exclusive-open',
+            `memory backend cannot offer exclusive lifetime lock for unit '${descriptor.name}'`,
+          )
+        }
         // Double-open is a caller bug per the backend contract; no dedicated
         // StorageError code exists for it, so a plain Error is correct.
         if (this.openUnits.has(descriptor.name)) {

@@ -7,6 +7,8 @@
  */
 
 import { mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
+import { acquireFileLock, type FileLockLease } from '@deepseek-ai/dsh-atomic-write'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { StorageError, UNIT_NAME_RE, storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
@@ -46,6 +48,7 @@ export class JsonStorageBackend implements StorageBackend {
   constructor(private readonly root: string) {}
 
   readonly kv: KvFacet = {
+    supportsExclusive: true,
     // The body up to the first await runs synchronously, so the opening-slot
     // reservation below still excludes a concurrent open of the same unit.
     open: async (descriptor: KvUnitDescriptor): Promise<KvUnit> => {
@@ -63,20 +66,29 @@ export class JsonStorageBackend implements StorageBackend {
 
   private async openUnit(descriptor: KvUnitDescriptor): Promise<KvUnit> {
     await mkdir(this.root, { recursive: true, mode: 0o700 })
-    // The two layouts differ in medium shape only; each opener owns its own
-    // path convention under the shared root.
-    const onClose = () => this.open.delete(descriptor.name)
-    const unit = descriptor.layout === 'per-record'
-      ? await openPerRecordUnit(descriptor, this.root, onClose)
-      : await openSingleUnit(descriptor, this.root, onClose)
-    if (this.closed) {
-      // The backend closed while this open was in flight: do not hand out a
-      // live unit past close().
-      await unit.close()
-      throw new StorageError('closed', 'json backend is closed')
+    let lease: FileLockLease | undefined
+    if (descriptor.exclusive === true) {
+      try { lease = await acquireFileLock(join(this.root, `${descriptor.name}.owner`), { waitMs: 0 }) }
+      catch (error) { throw new StorageError('exclusive-open', `json unit '${descriptor.name}' cannot acquire exclusive ownership`, { cause: error }) }
     }
-    this.open.set(descriptor.name, unit)
-    return unit
+    try {
+      const onClose = async (): Promise<void> => {
+        await lease?.release()
+        this.open.delete(descriptor.name)
+      }
+      const unit = descriptor.layout === 'per-record'
+        ? await openPerRecordUnit(descriptor, this.root, onClose)
+        : await openSingleUnit(descriptor, this.root, onClose)
+      if (this.closed) {
+        await unit.close()
+        throw new StorageError('closed', 'json backend is closed')
+      }
+      this.open.set(descriptor.name, unit)
+      return unit
+    } catch (error) {
+      await lease?.release()
+      throw error
+    }
   }
 
   async close(): Promise<void> {

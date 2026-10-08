@@ -23,6 +23,8 @@ kind: "package-reference"
 - [失败行为](#failure-behavior)
 - [开发备注](#dev-note)
 
+安装和启用插件时，激活前刷新运行时包解析；停用和卸载时，停止插件后刷新。已加载包的目录或版本变化仍要求重启进程。
+
 -----
 
 <a id="use-this-package"></a>

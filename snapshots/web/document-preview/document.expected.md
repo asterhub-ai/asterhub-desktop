@@ -60,6 +60,8 @@
 
 - Table selection: forward and backward drags exclude later sections
 - Line-break highlight: transparent
+- Text selection: translucent blue in light and dark themes; canvas text remains visible
+- Mouse release preserves the selected text
 
 ## Image zoom
 
@@ -79,7 +81,7 @@
 ## Office unavailable
 
 - DOC, DOCX, PPT, PPTX viewer menus: 0 | 0 | 0 | 0
-- Guidance: Read failed: Office previews are unavailable. Enable the document preview service on the computer running DeepSeek Harness.
+- Guidance: Read failed: Office previews are unavailable. Enable the document preview service on the computer running AsterHub.
 - Binary text shown: false
 - Plain-text option and viewer picker: hidden
 

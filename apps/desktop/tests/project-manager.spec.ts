@@ -310,6 +310,90 @@ describe.each(['applyRelease', 'disableAllPlugins'] as const)('desktop profile l
   })
 })
 
+describe('desktop automation cutover marker', () => {
+  it('writes the cutover marker on first applyRelease', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    const manifest = JSON.parse(readFileSync(join(manager.paths.profile, 'package.json'), 'utf8')) as { asterhubAutomationCutover?: number }
+    expect(manifest.asterhubAutomationCutover).toBe(1)
+  })
+
+  it('rejects a future cutover marker instead of silently downgrading', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    const manifestPath = join(manager.paths.profile, 'package.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { asterhubAutomationCutover?: number }
+    manifest.asterhubAutomationCutover = 999
+    writeFileSync(manifestPath, JSON.stringify(manifest))
+    await expect(manager.applyRelease()).rejects.toThrow('newer than this build supports')
+  })
+
+  it('preserves an existing valid cutover marker without rewriting', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    const manifestPath = join(manager.paths.profile, 'package.json')
+    const before = readFileSync(manifestPath, 'utf8')
+    await manager.applyRelease()
+    expect(readFileSync(manifestPath, 'utf8')).toBe(before)
+  })
+})
+
+describe('desktop automation legacy conflict rejection', () => {
+  it('rejects a user patch with an enabled schedule row', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    writeFileSync(join(manager.paths.profile, 'cordis.patch.yml'), '- id: schedule\n  name: \'@deepseek-ai/dsh-schedule\'\n')
+    await expect(manager.applyRelease()).rejects.toThrow('conflicting old row \'schedule\'')
+  })
+
+  it('rejects a user patch with an enabled ui-schedule row', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    writeFileSync(join(manager.paths.profile, 'cordis.patch.yml'), '- id: ui-schedule\n  name: \'@deepseek-ai/dsh-client-ui-schedule\'\n')
+    await expect(manager.applyRelease()).rejects.toThrow('conflicting old row \'ui-schedule\'')
+  })
+
+  it('allows a user patch with a disabled schedule row', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    writeFileSync(join(manager.paths.profile, 'cordis.patch.yml'), '- id: schedule\n  name: \'@deepseek-ai/dsh-schedule\'\n  disabled: true\n')
+    await expect(manager.applyRelease()).resolves.toBeUndefined()
+  })
+
+  it('allows a user patch with a disabled ui-schedule row', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    writeFileSync(join(manager.paths.profile, 'cordis.patch.yml'), '- id: ui-schedule\n  name: \'@deepseek-ai/dsh-client-ui-schedule\'\n  disabled: true\n')
+    await expect(manager.applyRelease()).resolves.toBeUndefined()
+  })
+
+  it('rejects a user patch with a duplicate time-context row when native bundle provides it', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    writeFileSync(join(manager.paths.profile, 'cordis.patch.yml'), '- id: time-context\n  name: \'@deepseek-ai/dsh-time-context\'\n')
+    await expect(manager.applyRelease()).rejects.toThrow('duplicate time-context row')
+  })
+
+  it('allows a user patch with a disabled time-context row', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    writeFileSync(join(manager.paths.profile, 'cordis.patch.yml'), '- id: time-context\n  name: \'@deepseek-ai/dsh-time-context\'\n  disabled: true\n')
+    await expect(manager.applyRelease()).resolves.toBeUndefined()
+  })
+
+  it('preserves unrelated user plugin selections through the cutover', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    seedPlugin(manager)
+    await manager.applyRelease()
+    const manifest = JSON.parse(readFileSync(join(manager.paths.profile, 'package.json'), 'utf8')) as {
+      dsh: { profile: { bundles: string[] } }
+    }
+    expect(manifest.dsh.profile.bundles).toContain('plugin')
+    expect(manifest.dsh.profile.bundles).toContain('@deepseek-ai/dsh-asterhub-desktop-native')
+    expect(manifest.dsh.profile.bundles).not.toContain('@deepseek-ai/dsh-experimental-schedule-bundle')
+  })
+})
 describe('desktop link-backend projections', () => {
   it('removes .dsh-module-fallback projections when preparing a launch', async () => {
     const { manager } = setup()

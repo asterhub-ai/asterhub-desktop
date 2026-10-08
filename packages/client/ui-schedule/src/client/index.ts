@@ -39,6 +39,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
+import scheduleRemote from '@deepseek-ai/dsh-schedule/remote'
+import type {} from '@deepseek-ai/dsh-schedule/remote'
 import type {} from '@deepseek-ai/dsh-client-connection/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ScheduleCatalogEntry, ScheduleDeliveryHistoryRequest, ScheduleId, ScheduleUpdateRequest } from '@deepseek-ai/dsh-schedule/client'
@@ -75,7 +77,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** Required services for catalogs, ambient Session marks, the right Sidebar, Remote queries, and original-Session navigation. */
 export const inject = [
-  'slots', 'locale', 'remote', 'remote.schedule', 'conversation', 'uiConversation', 'uiWorkspace', 'sessions',
+  'remote', 'slots', 'locale', 'conversation', 'uiConversation', 'uiWorkspace', 'sessions',
   'workspaces', 'sidebarRightTabs', 'sidebarRight',
 ]
 
@@ -85,7 +87,17 @@ export const inject = [
  * one created task.
  * @param ctx - browser services used by these contributions.
  */
-export function apply(ctx: ClientContext): void {
+export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
+  const disposeRemote = await ctx.remote.$mount(scheduleRemote)
+  const ui = ctx.inject([
+    'remote.schedule', 'slots', 'locale', 'conversation', 'uiConversation', 'uiWorkspace', 'sessions',
+    'workspaces', 'sidebarRightTabs', 'sidebarRight',
+  ], registerUi)
+  try { await ui } catch (error) { await ui.dispose(); await disposeRemote(); throw error }
+  return async () => { await ui.dispose(); await disposeRemote() }
+}
+
+function registerUi(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-schedule: dictionaries')
   ctx.effect(() => ctx.locale.register(MANAGER_NS, { zh: managerZh, en: managerEn }), 'ui-schedule: manager dictionaries')
   const t = ctx.locale.bind(MANAGER_NS)

@@ -6,7 +6,6 @@ import { loadLayeredEnv, loadProfileDirectory, reportSkippedBundles } from '@dee
 import { runProfile } from '@deepseek-ai/dsh/profile-boot'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
-import type {} from '@deepseek-ai/dsh-deepseek-account'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import * as desktopOffice from './office.ts'
 
@@ -14,6 +13,7 @@ import { installDesktopUpdateTaskControl } from './update-tasks.ts'
 import { installDesktopQuitInspection } from './quit-inspection.ts'
 import { installPlatformSessionPublisher } from './platform-session.ts'
 import { installOfficeEngineResolution } from './office-engine.ts'
+import { ASTERHUB_CATALOG_PUBLIC_KEY } from './catalog-trust.ts'
 
 async function main(): Promise<void> {
   const runtimeDir = process.argv[2] as string
@@ -27,7 +27,21 @@ async function main(): Promise<void> {
     profile: 'desktop',
     resolvedProfile: { profile, installAnchor },
     patchFiles: [],
-    args: ['--no-open', '--port', '19387'],
+    hostSetup: (hostCtx) => {
+      hostCtx.provide('applicationModelRoute', Object.freeze({
+        provider: 'sub2api',
+        model: '__unselected__',
+        selectableModels: true,
+        syncModels: true,
+        baseURL: 'https://xapi.fans/v1',
+        api: 'openai-completions',
+        credentialRecord: 'asterhub-account/model-api-key',
+        contextWindow: 262144,
+        maxTokens: 32768,
+      }))
+      hostCtx.provide('applicationCatalogPublicKey', ASTERHUB_CATALOG_PUBLIC_KEY)
+    },
+    args: ['--no-open', '--port', '0'],
     ...(process.argv[5] === undefined ? {} : {
       packageManager: {
         command: process.execPath,
@@ -36,6 +50,7 @@ async function main(): Promise<void> {
           ELECTRON_RUN_AS_NODE: '1',
           DSH_DESKTOP_NODE_EXECUTABLE: process.execPath,
           PATH: `${process.argv[6] ?? ''}${delimiter}${process.env.PATH ?? ''}`,
+          NPM_CONFIG_REGISTRY: 'https://registry.npmmirror.com/',
         },
       },
     }),

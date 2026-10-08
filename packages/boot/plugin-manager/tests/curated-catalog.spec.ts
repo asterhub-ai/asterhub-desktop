@@ -1,0 +1,280 @@
+import { generateKeyPairSync, sign } from 'node:crypto'
+import { expect, it } from 'vitest'
+import { isExactCuratedInstallation, resolveCuratedInstallRequest, verifyCuratedCatalogEnvelope } from '../src/index.ts'
+
+const catalogUrl = 'https://asterhub.xapi.fans/api/v1/catalog.json'
+
+function envelope(payload: object) {
+  const bytes = Buffer.from(JSON.stringify(payload))
+  const keys = generateKeyPairSync('ed25519')
+  return {
+    publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+    envelope: { payload: bytes.toString('base64'), signature: sign(null, bytes, keys.privateKey).toString('base64') },
+  }
+}
+
+const payload = {
+  schemaVersion: 1,
+  revision: 3,
+  issuedAt: '2026-09-28T00:00:00.000Z',
+  expiresAt: '2026-10-28T00:00:00.000Z',
+  plugins: [{
+    id: 'office-tools', name: 'Office tools', description: 'Read office documents.',
+    package: '@asterhub/office-tools', version: '1.2.3', integrity: 'sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+    artifactUrl: 'https://asterhub.xapi.fans/releases/office-tools-1.2.3.tgz',
+    iconUrl: 'https://evil.example/icon.png',
+  }],
+}
+
+it('verifies the raw signed payload and accepts only well-formed exact package identities', () => {
+  const signed = envelope(payload)
+  expect(verifyCuratedCatalogEnvelope(signed.envelope, signed.publicKey, catalogUrl, Date.parse('2026-10-01T00:00:00.000Z')))
+    .toEqual({
+      revision: 3,
+      generatedAt: payload.issuedAt,
+      plugins: [{
+        id: 'office-tools', name: 'Office tools', description: 'Read office documents.',
+        package: '@asterhub/office-tools', version: '1.2.3', integrity: 'sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+        artifactUrl: 'https://asterhub.xapi.fans/releases/office-tools-1.2.3.tgz',
+      }],
+    })
+})
+
+it('rejects altered signatures, expired payloads, duplicate package identities and non-registry specs', () => {
+  const signed = envelope(payload)
+  expect(() => verifyCuratedCatalogEnvelope({ ...signed.envelope, signature: Buffer.alloc(64).toString('base64') }, signed.publicKey, catalogUrl, Date.parse('2026-10-01T00:00:00.000Z')))
+    .toThrow(/signature verification/u)
+  const expired = envelope({ ...payload, expiresAt: '2026-09-28T00:00:00.000Z' })
+  expect(() => verifyCuratedCatalogEnvelope(expired.envelope, expired.publicKey, catalogUrl, Date.parse('2026-10-01T00:00:00.000Z')))
+    .toThrow(/not currently valid/u)
+  const duplicated = envelope({ ...payload, plugins: [payload.plugins[0], payload.plugins[0]] })
+  expect(() => verifyCuratedCatalogEnvelope(duplicated.envelope, duplicated.publicKey, catalogUrl, Date.parse('2026-10-01T00:00:00.000Z')))
+    .toThrow(/identity/u)
+  const path = envelope({ ...payload, plugins: [{ ...payload.plugins[0], package: 'file:../../evil' }] })
+  expect(() => verifyCuratedCatalogEnvelope(path.envelope, path.publicKey, catalogUrl, Date.parse('2026-10-01T00:00:00.000Z')))
+    .toThrow(/identity/u)
+})
+
+it.each([
+  'http://asterhub.xapi.fans/releases/office-tools.tgz',
+  'https://evil.example/releases/office-tools.tgz',
+  'https://asterhub.xapi.fans/other/office-tools.tgz',
+  'https://asterhub.xapi.fans/releases/%2e%2e/office-tools.tgz',
+  'https://asterhub.xapi.fans/releases/office-tools.tgz?mirror=1',
+  'https://asterhub.xapi.fans/releases/office-tools.zip',
+])('rejects an unsafe signed artifact URL %s', (artifactUrl) => {
+  const signed = envelope({ ...payload, plugins: [{ ...payload.plugins[0], artifactUrl }] })
+  expect(() => verifyCuratedCatalogEnvelope(signed.envelope, signed.publicKey, catalogUrl, Date.parse('2026-10-01T00:00:00.000Z')))
+    .toThrow(/artifact URL/u)
+})
+
+it('accepts a same-origin release tarball in the signed catalog', () => {
+  const artifactUrl = 'https://asterhub.xapi.fans/releases/genoffice-1.2.3.tgz'
+  const signed = envelope({ ...payload, plugins: [{ ...payload.plugins[0], artifactUrl }] })
+  expect(verifyCuratedCatalogEnvelope(signed.envelope, signed.publicKey, catalogUrl, Date.parse('2026-10-01T00:00:00.000Z')).plugins[0])
+    .toMatchObject({ artifactUrl })
+})
+
+it('rejects a page click after its displayed catalogue revision or signed package facts change', () => {
+  const signed = envelope(payload)
+  const catalog = verifyCuratedCatalogEnvelope(signed.envelope, signed.publicKey, catalogUrl, Date.parse('2026-10-01T00:00:00.000Z'))
+  const request = { id: 'office-tools', revision: 3, package: '@asterhub/office-tools', version: '1.2.3', integrity: 'sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=', artifactUrl: 'https://asterhub.xapi.fans/releases/office-tools-1.2.3.tgz' }
+  expect(resolveCuratedInstallRequest(catalog, request)).toMatchObject({ package: request.package, version: request.version })
+  expect(() => resolveCuratedInstallRequest(catalog, { ...request, revision: 2 })).toThrow(/stale-approval/u)
+  expect(() => resolveCuratedInstallRequest(catalog, { ...request, version: '1.2.4' })).toThrow(/stale-approval/u)
+  const withArtifact = { ...payload.plugins[0], artifactUrl: 'https://asterhub.xapi.fans/releases/office-tools-1.2.3.tgz' }
+  const signedArtifact = envelope({ ...payload, plugins: [withArtifact] })
+  const artifactCatalog = verifyCuratedCatalogEnvelope(signedArtifact.envelope, signedArtifact.publicKey, catalogUrl, Date.parse('2026-10-01T00:00:00.000Z'))
+  const artifactRequest = { ...request, artifactUrl: withArtifact.artifactUrl }
+  expect(resolveCuratedInstallRequest(artifactCatalog, artifactRequest)).toMatchObject({ artifactUrl: withArtifact.artifactUrl })
+  expect(() => resolveCuratedInstallRequest(artifactCatalog, { ...artifactRequest, artifactUrl: 'https://asterhub.xapi.fans/releases/replaced.tgz' }))
+    .toThrow(/stale-approval/u)
+})
+
+it('requires a matching root importer resolution and integrity for curated installed state', () => {
+  const entry = {
+    id: 'office-tools', name: 'Office tools', description: 'Read office documents.',
+    package: '@asterhub/office-tools', version: '1.2.3', integrity: 'sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+    artifactUrl: 'https://asterhub.xapi.fans/releases/office-tools-1.2.3.tgz',
+  }
+  const lockfile = {
+    importers: { '.': { dependencies: { [entry.package]: { specifier: entry.artifactUrl, version: '1.2.3(peer@4.0.0)' } } } },
+    packages: { [`${entry.package}@${entry.artifactUrl}(peer@4.0.0)`]: { resolution: { integrity: entry.integrity, tarball: entry.artifactUrl } } },
+  }
+  const exactBundle = [{
+    name: entry.package, version: entry.version, enabled: true, installed: true, optional: false, removable: true, rows: [], overrides: [],
+  }]
+  expect(isExactCuratedInstallation(entry, exactBundle, lockfile)).toBe(true)
+  expect(isExactCuratedInstallation(entry, [{ ...exactBundle[0]!, version: '1.2.2' }], lockfile)).toBe(false)
+  expect(isExactCuratedInstallation(entry, [], lockfile)).toBe(false)
+
+  const transitiveOnly = {
+    importers: { '.': { dependencies: { unrelated: { specifier: '1.0.0', version: '1.0.0' } } } },
+    packages: { '@asterhub/office-tools@1.2.3': { resolution: { integrity: entry.integrity } } },
+  }
+  expect(isExactCuratedInstallation(entry, exactBundle, transitiveOnly)).toBe(false)
+  expect(isExactCuratedInstallation(entry, exactBundle, { packages: transitiveOnly.packages })).toBe(false)
+
+  const wrongSpecifier = {
+    importers: { '.': { dependencies: { [entry.package]: { specifier: '^1.2.3', version: '1.2.3' } } } },
+    packages: { '@asterhub/office-tools@1.2.3': { resolution: { integrity: entry.integrity } } },
+  }
+  expect(isExactCuratedInstallation(entry, exactBundle, wrongSpecifier)).toBe(false)
+
+  const localDirectDependency = {
+    importers: { '.': { dependencies: { [entry.package]: { specifier: entry.artifactUrl, version: 'link:../office-tools' } } } },
+    packages: { '@asterhub/office-tools@1.2.3': { resolution: { integrity: entry.integrity } } },
+  }
+  expect(isExactCuratedInstallation(entry, exactBundle, localDirectDependency)).toBe(false)
+
+  const wrongIntegrity = {
+    ...lockfile,
+    packages: { [`${entry.package}@${entry.artifactUrl}(peer@4.0.0)`]: { resolution: { integrity: 'sha512-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=' } } },
+  }
+  expect(isExactCuratedInstallation(entry, exactBundle, wrongIntegrity)).toBe(false)
+})
+
+it('requires the direct importer and tarball resolution to match a curated artifact URL and sha512', () => {
+  const entry = {
+    id: 'office-tools', name: 'Office tools', description: 'Read office documents.', package: '@asterhub/office-tools',
+    version: '1.2.3', artifactUrl: 'https://asterhub.xapi.fans/releases/office-tools-1.2.3.tgz',
+    integrity: 'sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+  }
+  const bundle = [{
+    name: entry.package, version: entry.version, enabled: true, installed: true, optional: false, removable: true, rows: [], overrides: [],
+  }]
+  const lockfile = {
+    importers: { '.': { dependencies: { [entry.package]: { specifier: entry.artifactUrl, version: entry.version } } } },
+    packages: { [`${entry.package}@${entry.artifactUrl}`]: { resolution: { integrity: entry.integrity } } },
+  }
+  expect(isExactCuratedInstallation(entry, bundle, lockfile)).toBe(true)
+  expect(isExactCuratedInstallation(entry, bundle, {
+    ...lockfile,
+    importers: { '.': { dependencies: { [entry.package]: { specifier: '1.2.3', version: entry.version } } } },
+  })).toBe(false)
+  expect(isExactCuratedInstallation(entry, bundle, {
+    ...lockfile,
+    packages: { [`${entry.package}@${entry.artifactUrl}`]: { resolution: { integrity: 'sha512-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=' } } },
+  })).toBe(false)
+  expect(isExactCuratedInstallation(entry, bundle, {
+    ...lockfile,
+    packages: { [`${entry.package}@https://asterhub.xapi.fans/releases/other.tgz`]: { resolution: { integrity: entry.integrity } } },
+  })).toBe(false)
+})
+
+it('matches real pnpm tarball URL resolutions with and without peer dependencies', () => {
+  const entry = {
+    id: 'genoffice', name: 'GenOffice', description: 'Office CLI tools.',
+    package: '@asterhub/genoffice-cli', version: '0.11.0-asterhub.1',
+    artifactUrl: 'https://asterhub.xapi.fans/releases/asterhub-genoffice-cli-0.11.0-asterhub.1.tgz',
+    integrity: 'sha512-DOz1DcrljF09y98G/7RaOzhQpWAhnjXJLXJUE67FhMv2+uP50LPGv7FyXUv9XScJ0r8yx/3qtmIT1bBRM27gEQ==',
+  }
+  const bundle = [{
+    name: entry.package, version: entry.version, enabled: true, installed: true, optional: false, removable: true, rows: [], overrides: [],
+  }]
+  // Real pnpm lockfile when tarball is installed with hoisted peer dependencies:
+  // direct.version is the artifactUrl followed by peer dependencies, while packages key is the bare artifact URL.
+  const lockWithPeers = {
+    importers: {
+      '.': {
+        dependencies: {
+          [entry.package]: {
+            specifier: entry.artifactUrl,
+            version: `${entry.artifactUrl}(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-attachment@0.1.6-alpha.2)`,
+          },
+        },
+      },
+    },
+    packages: {
+      [`${entry.package}@${entry.artifactUrl}`]: {
+        resolution: { integrity: entry.integrity, tarball: entry.artifactUrl },
+        version: entry.version,
+      },
+    },
+  }
+  expect(isExactCuratedInstallation(entry, bundle, lockWithPeers)).toBe(true)
+
+  // Real pnpm lockfile without peer dependencies:
+  // direct.version is the plain artifactUrl.
+  const lockPlainTarball = {
+    importers: {
+      '.': {
+        dependencies: {
+          [entry.package]: {
+            specifier: entry.artifactUrl,
+            version: entry.artifactUrl,
+          },
+        },
+      },
+    },
+    packages: {
+      [`${entry.package}@${entry.artifactUrl}`]: {
+        resolution: { integrity: entry.integrity, tarball: entry.artifactUrl },
+        version: entry.version,
+      },
+    },
+  }
+  expect(isExactCuratedInstallation(entry, bundle, lockPlainTarball)).toBe(true)
+
+  // Real pnpm lockfile where the packages key retains the peer suffix:
+  const lockWithKeySuffix = {
+    importers: {
+      '.': {
+        dependencies: {
+          [entry.package]: {
+            specifier: entry.artifactUrl,
+            version: `${entry.artifactUrl}(debug@4.4.3)`,
+          },
+        },
+      },
+    },
+    packages: {
+      [`${entry.package}@${entry.artifactUrl}(debug@4.4.3)`]: {
+        resolution: { integrity: entry.integrity, tarball: entry.artifactUrl },
+        version: entry.version,
+      },
+    },
+  }
+  expect(isExactCuratedInstallation(entry, bundle, lockWithKeySuffix)).toBe(true)
+
+  // Newly added future plugin with custom tarball and package name:
+  const futureEntry = {
+    id: 'future-plugin', name: 'Future Plugin', description: 'Future curated extension.',
+    package: '@asterhub/future-plugin', version: '1.0.0-beta.1',
+    artifactUrl: 'https://asterhub.xapi.fans/releases/future-plugin-1.0.0-beta.1.tgz',
+    integrity: 'sha512-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=',
+  }
+  const futureBundle = [{
+    name: futureEntry.package, version: futureEntry.version, enabled: true, installed: true, optional: false, removable: true, rows: [], overrides: [],
+  }]
+  const futureLock = {
+    importers: {
+      '.': {
+        dependencies: {
+          [futureEntry.package]: {
+            specifier: futureEntry.artifactUrl,
+            version: futureEntry.artifactUrl,
+          },
+        },
+      },
+    },
+    packages: {
+      [`${futureEntry.package}@${futureEntry.artifactUrl}`]: {
+        resolution: { integrity: futureEntry.integrity, tarball: futureEntry.artifactUrl },
+        version: futureEntry.version,
+      },
+    },
+  }
+  expect(isExactCuratedInstallation(futureEntry, futureBundle, futureLock)).toBe(true)
+
+  // Integrity mismatch on future plugin MUST fail:
+  expect(isExactCuratedInstallation(futureEntry, futureBundle, {
+    ...futureLock,
+    packages: {
+      [`${futureEntry.package}@${futureEntry.artifactUrl}`]: {
+        resolution: { integrity: 'sha512-TAMPERED_HASH==============================', tarball: futureEntry.artifactUrl },
+        version: futureEntry.version,
+      },
+    },
+  })).toBe(false)
+})

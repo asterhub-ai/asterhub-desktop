@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write services/asterhub-catalog/README.md
+/asterhub-catalog-and-release-metadata-service:
+  en: d19fcb1285feea65
+  zh: ad19dc34d1ef60e5
+/asterhub-catalog-and-release-metadata-service/public-contract:
+  en: d3eb22006536485a
+  zh: d5ae58bac1d6bf21
+/asterhub-catalog-and-release-metadata-service/public-contract/offline-catalog-signing:
+  en: ae752fbdd5a0b628
+  zh: 7decfe2fd778e1f1
+/asterhub-catalog-and-release-metadata-service/desktop-updater-integration:
+  en: 38902e749c8b8e34
+  zh: 303262f040f8a4dc
+/asterhub-catalog-and-release-metadata-service/run-locally:
+  en: 5b2f9ab8014ddd7e
+  zh: be6eee3e1efcef6e

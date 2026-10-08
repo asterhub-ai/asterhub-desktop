@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { execa } from 'execa'
 import type { Context } from '@deepseek-ai/cordis'
-import { expect, it, onTestFinished, vi } from 'vitest'
+import { afterAll, beforeAll, expect, it, onTestFinished, vi } from 'vitest'
 import {
   boot, composeEntries, initProfile, loadProfileDirectory, readProfilePatches, readProfileManifest,
   reconcileProfilePatches, OPTIONAL_BUNDLES, PluginPackages, readPluginMeta, getDshRuntimeVersion,
@@ -23,6 +23,12 @@ import { Group } from '@deepseek-ai/cordis-plugin-loader'
 import * as operations from '../src/operations.ts'
 import * as githubConnection from '../src/github-connection.ts'
 import { parse, parseDocument } from 'yaml'
+import { isolateGitCommandLineConfig } from './git-environment.ts'
+
+// These cases install through real Git and pnpm, so the host's command-line configuration group must not reach their children.
+let restoreGitCommandLineConfig: () => void
+beforeAll(() => { restoreGitCommandLineConfig = isolateGitCommandLineConfig() })
+afterAll(() => { restoreGitCommandLineConfig() })
 
 async function fixture(reload: 'live' | 'startup' = 'live', overlay = false, prepare?: (ctx: Context) => void, config: Config = {}, packageManager?: ProfileContext['packageManager'], prepareFiles?: (dir: string) => void) {
   const temporaryHome = mkdtempSync(join(tmpdir(), 'plugin-manager-'))
@@ -550,7 +556,7 @@ it('runs a real pnpm dependency script only after approval and retry', async () 
   const allowed = await manager.installBundle('file:./addon', { enabled: false, approvedBuilds: blocked.pendingBuilds! })
   expect(allowed, JSON.stringify(allowed)).toMatchObject({ application: 'restart-required', packageResult: { exitCode: 0 } })
   expect(readFileSync(built, 'utf8')).toBe('built')
-})
+}, 30_000)
 
 it.each(['[', 'allowBuilds: false\n'])('preserves pnpm diagnostics when pending approvals cannot be read: %s', async (policy) => {
   const { manager, dir } = await fixture()
@@ -677,6 +683,186 @@ it('refuses management bundle disablement and permits repeated bundle selections
   const { manager } = await fixture()
   expect(await manager.setBundleEnabled('core', false)).toMatchObject({ application: 'failed', changed: false })
   expect(await manager.setBundleEnabled('extra', true)).toMatchObject({ application: 'applied', changed: false })
+})
+
+it('refuses a user bundle that tries to override the application model route rows', async () => {
+  const { manager, bundle } = await fixture('startup')
+  bundle('model-override', [
+    { id: 'llm-pi-ai', disabled: true },
+    { id: 'agent-default-model', disabled: true },
+  ])
+  expect(await manager.setBundleEnabled('model-override', true)).toMatchObject({
+    application: 'failed', error: { code: 'management-required' },
+  })
+})
+
+it('does not request the curated catalogue when no release-pinned key is configured', async () => {
+  const { manager } = await fixture()
+  const fetcher = vi.spyOn(globalThis, 'fetch')
+  onTestFinished(() => fetcher.mockRestore())
+  await expect(manager.curatedCatalog()).rejects.toThrow(/not configured/u)
+  expect(fetcher).not.toHaveBeenCalled()
+})
+
+it('does not start pnpm for a stale curated install request and verifies integrity before activation', async () => {
+  const { manager, dir, bundle } = await fixture()
+  const entry = {
+    id: 'curated-fixture', name: 'Curated fixture', description: 'Test bundle',
+    package: 'curated-fixture', version: '1.0.0', integrity: 'sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+    artifactUrl: 'https://asterhub.xapi.fans/releases/curated-fixture-1.0.0.tgz',
+  }
+  const catalog = { revision: 4, generatedAt: '2026-09-28T00:00:00.000Z', plugins: [entry] }
+  const readCatalog = vi.spyOn(manager, 'curatedCatalog').mockResolvedValue(catalog)
+  const manifestBefore = readFileSync(join(dir, 'package.json'), 'utf8')
+  const lockPath = join(dir, 'pnpm-lock.yaml')
+  writeFileSync(lockPath, JSON.stringify({ lockfileVersion: '9.0', packages: {} }))
+  const lockBefore = readFileSync(lockPath, 'utf8')
+  const bundlesBefore = await manager.listBundles()
+  const pnpm = vi.spyOn(operations, 'runProfilePnpm')
+  onTestFinished(() => { readCatalog.mockRestore(); pnpm.mockRestore() })
+
+  expect(await manager.installCuratedBundle({ ...entry, revision: 3 })).toMatchObject({
+    changed: false, application: 'failed', error: { code: 'stale-approval' },
+  })
+  expect(pnpm).not.toHaveBeenCalled()
+  expect(readFileSync(join(dir, 'package.json'), 'utf8')).toBe(manifestBefore)
+  expect(readFileSync(lockPath, 'utf8')).toBe(lockBefore)
+
+  pnpm.mockImplementationOnce(async (_context, args) => {
+    expect(args).toEqual(['add', entry.artifactUrl, '--ignore-scripts', '--config.node-linker=isolated'])
+    bundle('curated-fixture', [{ id: 'curated-fixture', name: './plugin.mjs', config: { service: 'curatedFixtureProbe' } }])
+    const manifest = readProfileManifest('test', dir)
+    manifest.dependencies = { ...manifest.dependencies, 'curated-fixture': entry.artifactUrl }
+    writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest))
+    writeFileSync(lockPath, JSON.stringify({ lockfileVersion: '9.0', importers: { '.': { dependencies: {
+      'curated-fixture': { specifier: entry.artifactUrl, version: '1.0.0' },
+    } } }, packages: {
+      [`${entry.package}@${entry.artifactUrl}`]: { resolution: { integrity: entry.integrity, tarball: 'https://evil.example/other.tgz' } },
+    } }))
+    return { exitCode: 0, output: 'installed from a local source', truncated: false, logPath: join(dir, 'pnpm.log') }
+  })
+  const mismatchedResult = await manager.installCuratedBundle({ ...entry, revision: 4 })
+  expect(mismatchedResult).toMatchObject({ application: 'failed', stage: 'install', error: { code: 'invalid-spec' } })
+  expect(pnpm).toHaveBeenCalledOnce()
+  expect(readFileSync(join(dir, 'package.json'), 'utf8')).toBe(manifestBefore)
+  expect(readFileSync(lockPath, 'utf8')).toBe(lockBefore)
+  expect(await manager.listBundles()).toEqual(bundlesBefore)
+
+  pnpm.mockImplementation(async (_context, args) => {
+    expect(args).toEqual(['add', entry.artifactUrl, '--ignore-scripts', '--config.node-linker=isolated'])
+    bundle('curated-fixture', [{ id: 'curated-fixture', name: './plugin.mjs', config: { service: 'curatedFixtureProbe' } }])
+    const manifest = readProfileManifest('test', dir)
+    manifest.dependencies = { ...manifest.dependencies, 'curated-fixture': entry.artifactUrl }
+    writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest))
+    writeFileSync(lockPath, JSON.stringify({ lockfileVersion: '9.0', importers: { '.': { dependencies: {
+      'curated-fixture': { specifier: entry.artifactUrl, version: '1.0.0' },
+    } } }, packages: {
+      [`${entry.package}@${entry.artifactUrl}`]: { resolution: { integrity: entry.integrity, tarball: entry.artifactUrl } },
+    } }))
+    return { exitCode: 0, output: 'installed', truncated: false, logPath: join(dir, 'pnpm.log') }
+  })
+  const curatedResult = await manager.installCuratedBundle({ ...entry, revision: 4 })
+  expect(curatedResult).toMatchObject({
+    application: 'applied', bundle: 'curated-fixture', packageResult: { exitCode: 0 },
+  })
+  expect(pnpm).toHaveBeenCalledTimes(2)
+  expect(readCatalog).toHaveBeenCalledTimes(3)
+})
+
+it('installs the signed curated artifact URL with scripts disabled and checks its direct lock provenance', async () => {
+  const { manager, dir, bundle } = await fixture()
+  const entry = {
+    id: 'curated-artifact', name: 'Curated artifact', description: 'Test release tarball',
+    package: 'curated-artifact', version: '1.0.0',
+    artifactUrl: 'https://asterhub.xapi.fans/releases/curated-artifact-1.0.0.tgz',
+    integrity: 'sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+  }
+  vi.spyOn(manager, 'curatedCatalog').mockResolvedValue({ revision: 8, generatedAt: '2026-09-28T00:00:00.000Z', plugins: [entry] })
+  const lockPath = join(dir, 'pnpm-lock.yaml')
+  let installedVersion = '2.0.0'
+  const pnpm = vi.spyOn(operations, 'runProfilePnpm').mockImplementation(async (_context, args) => {
+    expect(args).toEqual(['add', entry.artifactUrl, '--ignore-scripts', '--config.node-linker=isolated'])
+    bundle(entry.package, [{ id: 'curated-artifact', name: './plugin.mjs', config: { service: 'curatedArtifactProbe' } }])
+    const installedManifestPath = join(dir, 'node_modules', entry.package, 'package.json')
+    const installedManifest = JSON.parse(readFileSync(installedManifestPath, 'utf8')) as Record<string, unknown>
+    writeFileSync(installedManifestPath, JSON.stringify({ ...installedManifest, version: installedVersion }))
+    const manifest = readProfileManifest('test', dir)
+    manifest.dependencies = { ...manifest.dependencies, [entry.package]: entry.version }
+    writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest))
+    writeFileSync(lockPath, JSON.stringify({
+      lockfileVersion: '9.0',
+      importers: { '.': { dependencies: {
+        [entry.package]: { specifier: entry.artifactUrl, version: entry.version },
+      } } },
+      packages: {
+        [`${entry.package}@${entry.artifactUrl}`]: { resolution: { integrity: entry.integrity } },
+      },
+    }))
+    return { exitCode: 0, output: 'installed signed artifact', truncated: false, logPath: join(dir, 'pnpm.log') }
+  })
+  onTestFinished(() => pnpm.mockRestore())
+
+  const stale = await manager.installCuratedBundle({ ...entry, artifactUrl: 'https://asterhub.xapi.fans/releases/replaced.tgz', revision: 8 })
+  expect(stale).toMatchObject({ application: 'failed', error: { code: 'stale-approval' } })
+  expect(pnpm).not.toHaveBeenCalled()
+
+  const mismatchedVersion = await manager.installCuratedBundle({ ...entry, revision: 8 })
+  expect(mismatchedVersion).toMatchObject({ application: 'failed', error: { code: 'invalid-spec' } })
+  expect(readProfileManifest('test', dir).dependencies?.[entry.package]).toBeUndefined()
+
+  installedVersion = entry.version
+  const installed = await manager.installCuratedBundle({ ...entry, revision: 8 })
+  expect(installed).toMatchObject({ application: 'applied', bundle: entry.package, packageResult: { exitCode: 0 } })
+  expect(pnpm).toHaveBeenCalledTimes(2)
+})
+
+it('successfully installs curated bundles when pnpm writes real tarball URL versions into lockfile', async () => {
+  const { manager, dir, bundle } = await fixture()
+  const entry = {
+    id: 'genoffice', name: 'GenOffice', description: 'Office CLI tools',
+    package: '@asterhub/genoffice-cli', version: '0.11.0-asterhub.1',
+    artifactUrl: 'https://asterhub.xapi.fans/releases/asterhub-genoffice-cli-0.11.0-asterhub.1.tgz',
+    integrity: 'sha512-DOz1DcrljF09y98G/7RaOzhQpWAhnjXJLXJUE67FhMv2+uP50LPGv7FyXUv9XScJ0r8yx/3qtmIT1bBRM27gEQ==',
+  }
+  vi.spyOn(manager, 'curatedCatalog').mockResolvedValue({ revision: 9, generatedAt: '2026-10-01T00:00:00.000Z', plugins: [entry] })
+  const lockPath = join(dir, 'pnpm-lock.yaml')
+  const pnpm = vi.spyOn(operations, 'runProfilePnpm').mockImplementation(async (_context, args) => {
+    expect(args).toEqual(['add', entry.artifactUrl, '--ignore-scripts', '--config.node-linker=isolated'])
+    bundle(entry.package, [{ id: 'genoffice-cli', name: './plugin.mjs', config: { service: 'officeProbe' } }])
+    const installedManifestPath = join(dir, 'node_modules', entry.package, 'package.json')
+    const installedManifest = JSON.parse(readFileSync(installedManifestPath, 'utf8')) as Record<string, unknown>
+    writeFileSync(installedManifestPath, JSON.stringify({ ...installedManifest, version: entry.version }))
+    const manifest = readProfileManifest('test', dir)
+    manifest.dependencies = { ...manifest.dependencies, [entry.package]: entry.artifactUrl }
+    writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest))
+    // This reflects real pnpm lockfile output when adding a remote tarball:
+    writeFileSync(lockPath, JSON.stringify({
+      lockfileVersion: '9.0',
+      importers: { '.': { dependencies: {
+        [entry.package]: {
+          specifier: entry.artifactUrl,
+          version: `${entry.artifactUrl}(@deepseek-ai/cordis@4.0.4)`,
+        },
+      } } },
+      packages: {
+        [`${entry.package}@${entry.artifactUrl}`]: {
+          resolution: { integrity: entry.integrity, tarball: entry.artifactUrl },
+          version: entry.version,
+        },
+      },
+    }))
+    return { exitCode: 0, output: 'installed curated tarball', truncated: false, logPath: join(dir, 'pnpm.log') }
+  })
+  onTestFinished(() => pnpm.mockRestore())
+
+  const result = await manager.installCuratedBundle({ ...entry, revision: 9 })
+  expect(result).toMatchObject({
+    application: 'applied',
+    bundle: entry.package,
+    packageResult: { exitCode: 0 },
+  })
+  expect(readProfileManifest('test', dir).dsh?.profile?.bundles).toContain(entry.package)
+  expect(readProfileManifest('test', dir).dependencies?.[entry.package]).toBe(entry.artifactUrl)
 })
 
 it.each([

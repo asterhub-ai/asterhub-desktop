@@ -1,0 +1,32 @@
+# Desktop-only native composition: the built-in AsterHub automation Host
+# service, the native task panel, and a Desktop-owned clock row. This bundle
+# is appended after the shared Web composition (dsh-base + dsh-web-app) only
+# in the Desktop-owned profile, dev, and runtime metadata. It is never added
+# to the shared web/headless/SDK templates or to OPTIONAL_BUNDLES.
+#
+# The automation and panel rows replace the optional Schedule Bundle's
+# `schedule` and `ui-schedule` rows. The `asterhub-time-context` row provides
+# the clock/timezone context that native chat authoring needs for relative
+# dates, independent of the old Schedule Bundle's `time-context`. A user patch
+# that re-declares the legacy `time-context` id is rejected as a duplicate
+# clock registration, distinct from the old Schedule service conflict.
+- insert:
+    # Desktop-owned clock context: current time, browser zone, and elapsed
+    # time for native chat authoring. Uses the maintained time-context
+    # package under a Desktop-only row id so the native bundle owns the
+    # single clock registration.
+    - id: asterhub-time-context
+      name: '@deepseek-ai/dsh-time-context'
+
+    # Native AsterHub automation Host service: durable task management,
+    # timer-driven runtime, account-scoped execution, and the typed
+    # `automation` Remote namespace consumed by the panel below.
+    - id: asterhub-automation
+      name: '@deepseek-ai/dsh-asterhub-automation'
+
+    # Native task management panel: a main keyed panel registered directly
+    # below Plugins (order 10) plus the sidebar entry. The browser half
+    # consumes the Host `automation` Remote; the node half is the empty
+    # apply kept addressable by this overlay.
+    - id: ui-asterhub-automation
+      name: '@deepseek-ai/dsh-client-ui-asterhub-automation'

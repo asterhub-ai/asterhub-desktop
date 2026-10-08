@@ -3,6 +3,8 @@
 import type { Scoped } from '@deepseek-ai/dsh-scope'
 import type { Agent } from '@deepseek-ai/dsh-agent/types'
 import type { ToolCallId } from '@deepseek-ai/dsh-llm/brand'
+import type {} from '@deepseek-ai/dsh-session/types'
+import type {} from '@deepseek-ai/dsh-session-projection/types'
 
 /** One selectable answer offered to the user. */
 export interface AskUserQuestionOption {
@@ -66,6 +68,77 @@ export interface AskUserQuestionAnswer {
   answers: AskUserQuestionAnswerItem[]
 }
 
+/** `open` while the tool call may still return the answer; `continued` once the answer can only arrive as a new turn. */
+export type UserQuestionState = 'open' | 'continued'
+
+/** One unanswered timed `ask_user_question` call reconstructed from the Session log. */
+export interface PendingUserQuestion {
+  readonly callId: ToolCallId
+  readonly questions: readonly AskUserQuestionItem[]
+  readonly state: UserQuestionState
+}
+
+/**
+ * One timed `ask_user_question` call and the answers it settled with: the
+ * batch its own result carried when the user answered inside the window,
+ * otherwise the batch its late reply carried, because that call's own result
+ * recorded the timeout. A transcript row reads what the user finally answered
+ * from here, and only a call listed here was a timed one.
+ */
+export interface SettledUserQuestion {
+  /** The settled call. */
+  readonly callId: ToolCallId
+  /** The recorded batch, one entry per question; empty when the late reply carried none. */
+  readonly answers: readonly AskUserQuestionAnswerItem[]
+}
+
+/**
+ * Both halves of one Session's timed `ask_user_question` state, as every
+ * Client reads them. A call made while the blocking legacy tool was in
+ * effect appears in neither half.
+ */
+export interface UserQuestionProjectionView {
+  /** Calls that can still take an answer, in ask order. */
+  readonly active: readonly PendingUserQuestion[]
+  /** Calls an answer settled, in settlement order. */
+  readonly settled: readonly SettledUserQuestion[]
+}
+
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    /**
+     * Late reply to a continued `ask_user_question` call, steered into the
+     * agent by `dsh-user-questions` as an answer batch. Closing a question
+     * panel persists no reply. Readers preserve this message without the
+     * producer; only the `userQuestions` projection reads the kind to close
+     * the question and record its answers.
+     * @persistenceAttribution
+     */
+    'user-question-reply': { kind: 'user-question-reply'; callId: ToolCallId; outcome: 'answered' }
+  }
+}
+
+declare module '@deepseek-ai/dsh-session-projection/types' {
+  interface SessionProjectionMap {
+    /** Timed questions that remain answerable in this Session, and the ones a late reply settled. */
+    userQuestions: UserQuestionProjectionView
+  }
+}
+declare module '@deepseek-ai/dsh-session/types' {
+  interface SessionEventMap {
+    /**
+     * Log-only event marking that specific timed questions for this Session
+     * have been explicitly canceled by the Host (e.g., run termination).
+     * Invalidates the named open and continued questions; late answers are rejected.
+     * Future questions in the same Session remain usable.
+     */
+    'user-questions/canceled': { callIds: readonly ToolCallId[] }
+  }
+}
+
+/** Error code for attempting to answer a canceled question. */
+export const USER_QUESTION_CANCELED_CODE = 'QUESTION_CANCELED'
+
 /** Client-safe payload declared for the user-question answerer waterfall. */
 export interface AskUserQuestionRequestEvent {
   /** Questions to display. */
@@ -74,6 +147,16 @@ export interface AskUserQuestionRequestEvent {
   agent?: Agent
   /** Cancellation lifetime of the pending request. */
   signal?: AbortSignal
+  /**
+   * Tool call the Client card is keyed by. Timed answerers attach to the
+   * business wait stream before starting their local countdown.
+   */
+  wait?: {
+    /** Tool call the Client card is keyed by. */
+    callId: ToolCallId
+    /** True for a foreground wait that requires a Client claim; absent for indefinite waits. */
+    timed?: boolean
+  }
 }
 
 declare module '@deepseek-ai/cordis' {

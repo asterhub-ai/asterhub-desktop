@@ -5,52 +5,37 @@ import { BootPage } from '../src/boot-page.ts'
 afterEach(() => { document.body.innerHTML = '' })
 
 function mount() {
+  document.documentElement.lang = 'zh-CN'
   const el = document.createElement('div')
   document.body.append(el)
   return { el, page: new BootPage(el) }
 }
 
 describe('BootPage', () => {
-  it('draws the loading skeleton before any plugin state arrives', () => {
+  it('shows a static product mark without a loading animation or vendor names', () => {
     const { el } = mount()
-    expect(el.firstElementChild?.getAttribute('data-dsh-boot')).toBe('')
-    expect(el.textContent).toContain('HARNESS')
-    expect(el.textContent).toContain('Loading plugins…')
+    expect(el.textContent).toContain('AsterHub')
+    expect(el.querySelector('[data-dsh-boot-spinner]')).toBeNull()
+    expect(el.textContent).not.toMatch(/loading|deepseek|harness|sub2api|\bdsh\b/iu)
   })
 
-  it('keeps loading while entries are active or loading', () => {
+  it('keeps the static product mark while entries activate', () => {
     const { el, page } = mount()
     page.setTotal(2)
-    const spinner = el.querySelector<HTMLElement>('[data-dsh-boot-spinner]')
-    expect(spinner?.style.getPropertyValue('--dsh-boot-arc')).toBe('72deg')
-    page.setState('a', 'active')
-    expect(spinner?.style.getPropertyValue('--dsh-boot-arc')).toBe('180deg')
-    page.setState('b', 'loading')
-    expect(el.querySelector('[data-dsh-boot-spinner]')).toBe(spinner)
-    page.setState('b', 'active')
-    expect(spinner?.style.getPropertyValue('--dsh-boot-arc')).toBe('288deg')
-    expect(el.textContent).toContain('Loading plugins…')
-    expect(el.textContent).not.toContain('Failed to load plugins')
+    page.setState('one', 'active')
+    page.setState('two', 'loading')
+    expect(el.textContent).toBe('AsterHub')
+    page.setState('two', 'active')
+    expect(el.querySelector('[data-dsh-boot-spinner]')).toBeNull()
   })
 
-  it('lists failed entries', () => {
+  it('shows a generic startup failure without module names or raw details', () => {
     const { el, page } = mount()
-    page.setState('@deepseek-ai/dsh-client-ui-layout', 'failed')
-    page.setState('ok', 'active')
-    page.setState('@deepseek-ai/dsh-client-ui-tool', 'failed')
-    expect(el.textContent).toContain('@deepseek-ai/dsh-client-ui-layout')
-    expect(el.textContent).toContain('@deepseek-ai/dsh-client-ui-tool')
-    expect(el.textContent).not.toContain('ok')
-    expect(el.textContent).not.toContain('Loading plugins…')
-  })
-
-  it('shows the complete sweep report', () => {
-    const { el, page } = mount()
-    const report = 'web boot: 1 entry did not activate\nx: pending (waiting for service: y)'
-    page.fail(report)
-    page.setState('a', 'active')
-    expect(el.textContent).toContain(report)
-    expect(el.textContent).not.toContain('Loading plugins…')
+    page.setState('@internal/plugin-name', 'failed')
+    page.fail('internal endpoint and secret detail')
+    expect(el.textContent).toContain('AsterHub 无法启动')
+    expect(el.textContent).not.toContain('@internal/plugin-name')
+    expect(el.textContent).not.toContain('internal endpoint')
   })
 
   it('detaches on disposal', () => {

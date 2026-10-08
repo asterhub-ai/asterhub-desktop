@@ -9,8 +9,8 @@ export type DomainErrorCode =
   | 'facet-unsupported'
   | 'invalid-record'
   | 'missing-key'
+  | 'exclusive-open'
   | 'closed'
-
 /** Location of the record that failed schema validation at the durable boundary. */
 export interface InvalidRecordDetail {
   /** Table holding the rejected record; `''` for the global singleton. */

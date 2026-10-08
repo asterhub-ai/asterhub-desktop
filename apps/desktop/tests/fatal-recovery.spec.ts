@@ -27,7 +27,7 @@ async function shown(operations: { show: ReturnType<typeof vi.fn> }): Promise<vo
   await vi.waitFor(() => { expect(operations.show).toHaveBeenCalled() })
 }
 
-const REPORT_PATH = 'C:\\Users\\someone\\AppData\\Roaming\\DeepSeek Harness\\logs\\crash-2026-09-22T10-30-00-000Z-host.log'
+const REPORT_PATH = 'C:\\Users\\someone\\AppData\\Roaming\\AsterHub\\logs\\crash-2026-09-22T10-30-00-000Z-host.log'
 
 afterEach(() => { vi.restoreAllMocks() })
 
@@ -80,7 +80,7 @@ it('locks the first report before the dialog settles and never resets after an a
   await shown(operations)
   await recovery.report(new Error('second failure'), 'main')
   expect(operations.show).toHaveBeenCalledOnce()
-  expect(operations.show.mock.calls[0]![0].detail).toContain('first failure')
+  expect(operations.show.mock.calls[0]![0].detail).toBe(operations.messages().startupReinstallAdvice)
   choice.resolve({ response: 1, checkboxChecked: false })
   stopped.resolve(undefined)
   await pending
@@ -114,7 +114,7 @@ it('reports a user-requested disable failure and allows exit without restarting'
   stopped.resolve(undefined)
   await recovery.report(new Error('fatal'), 'main')
   expect(operations.show).toHaveBeenCalledTimes(2)
-  expect(operations.show.mock.calls[1]![0].detail).toContain('profile is read-only')
+  expect(operations.show.mock.calls[1]![0].detail).toBe(operations.messages().startupReinstallAdvice)
   expect(operations.restart).not.toHaveBeenCalled()
   expect(operations.exit).toHaveBeenCalledOnce()
 })
@@ -129,7 +129,7 @@ it('allows exit after shutdown cleanup fails', async () => {
   expect(operations.exit).toHaveBeenCalledOnce()
 })
 
-it.each(['en', 'zh-CN'])('bounds long diagnostics and recovery-operation errors in %s', async (locale) => {
+it.each(['en', 'zh-CN'])('keeps raw diagnostics out of the recovery dialog in %s', async (locale) => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
   const { operations, stopped, recovery } = fixture(locale)
   operations.show.mockResolvedValueOnce({ response: 2, checkboxChecked: false })
@@ -138,14 +138,10 @@ it.each(['en', 'zh-CN'])('bounds long diagnostics and recovery-operation errors 
   stopped.resolve(undefined)
   await recovery.report(new Error('😀'.repeat(32768) + '\nfinal backend failure'), 'main')
   for (const [options] of operations.show.mock.calls) {
-    expect(options.detail!.length).toBeLessThanOrEqual(1200)
-    expect(options.detail!.split('\n').length).toBeLessThanOrEqual(12)
-    expect(options.detail).toContain(operations.messages().diagnosticTruncated)
-    expect(options.detail).toContain(operations.messages().startupReinstallAdvice)
-    expect(options.detail!.isWellFormed()).toBe(true)
+    expect(options.detail).toBe(operations.messages().startupReinstallAdvice)
+    expect(options.detail).not.toContain('final backend failure')
+    expect(options.detail).not.toContain('final write failure')
   }
-  expect(operations.show.mock.calls[0]![0].detail).toContain('final backend failure')
-  expect(operations.show.mock.calls[1]![0].detail).toContain('final write failure')
 })
 
 it.each(['en', 'zh-CN'])('names the report file even when the error is short enough to show whole, in %s', async (locale) => {

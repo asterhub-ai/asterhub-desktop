@@ -1,0 +1,6 @@
+- region "AsterHub 精选插件":
+  - article:
+    - heading "Server Office" [level=2]
+    - paragraph: Office tools from the signed server catalogue
+    - text: "办公 版本: 1.0.0"
+    - button "安装"
