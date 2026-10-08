@@ -18,29 +18,44 @@
     },
     "./transport": {
       "types": "./lib/types/transport.d.ts",
-      "default": "./lib/transport.js"
+      "default": "./lib/types/transport.js"
     },
     "./protocol": {
       "types": "./lib/types/protocol.d.ts",
-      "default": "./lib/protocol.js"
+      "default": "./lib/types/protocol.js"
     },
     "./package.json": "./package.json"
   },
   "files": [
     "lib/index.js",
-    "lib/transport.js",
-    "lib/protocol.js",
+    "assets",
     "lib/types/**/*.js",
     "lib/types/**/*.d.ts"
   ],
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-agent": "workspace:*",
+    "@deepseek-ai/dsh-attachment": "workspace:*",
     "@deepseek-ai/dsh-brand": "workspace:*",
-    "@deepseek-ai/dsh-session": "workspace:*"
+    "@deepseek-ai/dsh-browser-use": "workspace:*",
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-session": "workspace:*",
+    "@deepseek-ai/dsh-skill": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "workspace:~",
+    "js-yaml": "^4.2.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-agent": "workspace:*",
+    "@deepseek-ai/dsh-attachment": "workspace:*",
     "@deepseek-ai/dsh-brand": "workspace:*",
-    "@deepseek-ai/dsh-session": "workspace:*"
+    "@deepseek-ai/dsh-browser-use": "workspace:*",
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-session": "workspace:*",
+    "@deepseek-ai/dsh-skill": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*"
   }
 }

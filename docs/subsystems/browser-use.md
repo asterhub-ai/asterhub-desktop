@@ -10,6 +10,7 @@ Mount [`dsh-browser-use`](../../packages/browser-use/browser-use/README.md) and 
 
 | Provider | Integration |
 |---|---|
+| [Desktop Sidebar Browser](../../packages/browser-use/browser-use-desktop/README.md) | Built-in Desktop Sidebar Browser automation with offscreen canvas mirror, typed tools, and bundled skills |
 | [Playwright MCP](../../packages/experimental/browser-use-playwright-mcp/README.md) | Playwright's browser-control MCP tools |
 | [Chrome DevTools MCP](../../packages/experimental/browser-use-chrome-devtools-mcp/README.md) | Chrome DevTools inspection and control through MCP |
 | [Stagehand](../../packages/experimental/browser-use-stagehand-native/README.md) | Native browser operations with AI-assisted actions, observation, and extraction |

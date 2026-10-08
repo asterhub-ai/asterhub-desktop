@@ -2,6 +2,11 @@
 import { createSnapshotStore, type BoundActions, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
+import type {
+  DesktopBrowserAccessibleAction,
+  DesktopBrowserRef,
+  DesktopBrowserSnapshotId,
+} from '../../types.ts'
 import type { BrowserFrameState } from './BrowserFrame.ts'
 import type { BrowserPage, BrowserPageFactory } from './BrowserPage.ts'
 import { currentBrowserTarget, type BrowserTabState } from './BrowserPersistence.ts'
@@ -11,6 +16,7 @@ import { parseBrowserAddress, type BrowserAddressFailure, type BrowserTarget } f
 /** Live tab state; navigation comes from its provider and draft validation stays local. */
 export interface BrowserControllerState {
   readonly frame: BrowserFrameState
+  readonly visible: boolean
   /** Saved address offered for explicit restoration before any page has been requested. */
   readonly restoreTarget: BrowserTarget | undefined
   readonly addressFailure: BrowserAddressFailure | undefined
@@ -46,6 +52,7 @@ export class BrowserController implements HostObservable<BrowserControllerState>
     this.checkpoint = options.initial
     this.page = options.createPage({
       initial: options.initial,
+      tabId: options.tabId,
       persist: (state) => {
         if (this.disposed) return
         this.checkpoint = state
@@ -59,13 +66,14 @@ export class BrowserController implements HostObservable<BrowserControllerState>
       },
     })
     this.store = createSnapshotStore({ frame: this.page.frame.getSnapshot(),
+      visible: false,
       restoreTarget: currentBrowserTarget(this.checkpoint), addressFailure: undefined, addressRevision: 0 })
     this.unsubscribe = this.page.frame.subscribe(() => {
       if (this.disposed) return
       const current = this.store.getSnapshot()
       const frame = this.page.frame.getSnapshot()
       const changed = frame.target?.url !== current.frame.target?.url
-      this.store.set({ frame, restoreTarget: frame.target === undefined ? currentBrowserTarget(this.checkpoint) : undefined,
+      this.store.set({ ...current, frame, restoreTarget: frame.target === undefined ? currentBrowserTarget(this.checkpoint) : undefined,
         addressFailure: changed ? undefined : current.addressFailure,
         addressRevision: current.addressRevision + Number(changed) })
     })
@@ -84,7 +92,12 @@ export class BrowserController implements HostObservable<BrowserControllerState>
    */
   mount(viewportId: string): () => void {
     this.publishSaved()
-    return this.page.presentation.mount(viewportId)
+    this.setVisible(true)
+    const unmount = this.page.presentation.mount(viewportId)
+    return () => {
+      unmount()
+      this.setVisible(false)
+    }
   }
 
   /**
@@ -133,11 +146,29 @@ export class BrowserController implements HostObservable<BrowserControllerState>
     if (sandbox !== undefined) this.command(() => { sandbox.setEnabled(enabled) })
   }
 
+
+  /** Update the active visibility of this tab occurrence. */
+  setVisible(visible: boolean): void {
+    if (this.disposed) return
+    const current = this.store.getSnapshot()
+    if (current.visible === visible) return
+    this.store.set({ ...current, visible })
+  }
   /**
    * Redirect future checkpoint writes to a replacement Session binding.
    * @param actions - replacement persistence writer.
    */
   rebind(actions: BoundActions<BrowserStore>): void { this.actions = actions }
+
+  /** Execute a semantic action on a snapshot ref. */
+  accessibleAction(
+    snapshotId: DesktopBrowserSnapshotId,
+    ref: DesktopBrowserRef,
+    action: DesktopBrowserAccessibleAction,
+  ): Promise<void> {
+    if (this.disposed || typeof this.page.frame.accessibleAction !== 'function') return Promise.resolve()
+    return this.page.frame.accessibleAction(snapshotId, ref, action)
+  }
 
   /**
    * Release the page and detach occurrence and state listeners.
@@ -184,6 +215,7 @@ export interface BrowserInjected {
   readonly keyedHooks: {
     readonly browserState: (key: string) => HostObservable<BrowserControllerState> | undefined
   }
+  readonly controllerChanges: HostObservable<number>
   /** @param request - committed tab and container. @returns ends physical attachment without closing the tab. */
   mount(request: BrowserMountRequest): () => void
   /** @returns after every page has been disposed. */
@@ -202,6 +234,15 @@ export interface BrowserInjected {
   reload(tabId: TabId): void
   /** @param tabId - owning tab. @param enabled - provider's optional sandbox control. */
   setSandbox(tabId: TabId, enabled: boolean): void
+  /** @param tabId - owning tab. @param visible - whether the tab view is mounted/shown. */
+  setVisible(tabId: TabId, visible: boolean): void
+  /** @param tabId - owning tab. @param snapshotId - active snapshot. @param ref - target element ref. @param action - semantic action. */
+  accessibleAction?(
+    tabId: TabId,
+    snapshotId: DesktopBrowserSnapshotId,
+    ref: DesktopBrowserRef,
+    action: DesktopBrowserAccessibleAction,
+  ): Promise<void>
 }
 
 /**
@@ -214,6 +255,7 @@ export interface BrowserInjected {
 export function createBrowserControllers(actions: BoundActions<BrowserStore>, createPage: BrowserPageFactory,
   isTabOpen: (tabId: TabId) => boolean): BrowserInjected {
   let currentActions = actions
+  const controllerChanges = createSnapshotStore(0)
   const controllers = new Map<TabId, {
     readonly signal: AbortSignal
     readonly controller: BrowserController
@@ -222,6 +264,12 @@ export function createBrowserControllers(actions: BoundActions<BrowserStore>, cr
   const controller = (id: TabId): BrowserController | undefined => controllers.get(id)?.controller
   return {
     keyedHooks: { browserState: key => controller(key as TabId) },
+    controllerChanges,
+    accessibleAction(tabId, snapshotId, ref, action) {
+      const held = controllers.get(tabId)
+      if (held === undefined) return Promise.resolve()
+      return held.controller.accessibleAction(snapshotId, ref, action)
+    },
     mount(request) {
       const { tabId, signal } = request
       if (signal.aborted) return () => {}
@@ -234,11 +282,13 @@ export function createBrowserControllers(actions: BoundActions<BrowserStore>, cr
         const created = new BrowserController({ ...request, actions: currentActions, createPage })
         const forget = (): void => {
           controllers.delete(tabId)
+          controllerChanges.set(controllerChanges.getSnapshot() + 1)
           // Plugin unload also aborts occurrences; only layout removal deletes saved navigation.
           if (!isTabOpen(tabId)) currentActions.forget(tabId)
         }
         held = { signal, controller: created, forget }
         controllers.set(tabId, held)
+        controllerChanges.set(controllerChanges.getSnapshot() + 1)
         signal.addEventListener('abort', forget, { once: true })
       }
       const hide = held.controller.mount(request.viewportId)
@@ -251,6 +301,7 @@ export function createBrowserControllers(actions: BoundActions<BrowserStore>, cr
         return controller.dispose()
       })
       controllers.clear()
+      controllerChanges.set(controllerChanges.getSnapshot() + 1)
       await Promise.all(pending)
     },
     rebind: (actions) => {
@@ -263,5 +314,6 @@ export function createBrowserControllers(actions: BoundActions<BrowserStore>, cr
     goForward: (id) => { controller(id)?.goForward() },
     reload: (id) => { controller(id)?.reload() },
     setSandbox: (id, enabled) => { controller(id)?.setSandbox(enabled) },
+    setVisible: (id, visible) => { controller(id)?.setVisible(visible) },
   }
 }

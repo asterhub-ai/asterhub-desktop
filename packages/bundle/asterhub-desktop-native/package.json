@@ -28,6 +28,8 @@
   },
   "dependencies": {
     "@deepseek-ai/dsh-asterhub-automation": "workspace:*",
+    "@deepseek-ai/dsh-browser-use": "workspace:*",
+    "@deepseek-ai/dsh-browser-use-desktop": "workspace:*",
     "@deepseek-ai/dsh-client-ui-asterhub-automation": "workspace:*",
     "@deepseek-ai/dsh-time-context": "workspace:*"
   },

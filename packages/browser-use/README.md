@@ -27,6 +27,7 @@ Choose one provider and mount the shared registration service.
 | Package | Role | ctx key |
 |---|---|---|
 | [`browser-use`](browser-use/README.md) | Exclusive named provider registration | `ctx.browserUse` |
+| [`browser-use-desktop`](browser-use-desktop/README.md) | Built-in Desktop Sidebar Browser provider, tools, and skills | `ctx.browserUse` |
 
 <a id="related-documentation"></a>
 ## Related documentation

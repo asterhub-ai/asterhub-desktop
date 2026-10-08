@@ -12,6 +12,11 @@ import {
   ICON_REGULAR_STROKE,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
+import type {
+  DesktopBrowserAccessibleAction,
+  DesktopBrowserAccessibleNode,
+  DesktopBrowserRef,
+} from '../../types.ts'
 import type { BrowserInjected } from '../browser/BrowserController.ts'
 import { emptyBrowserFrame } from '../browser/BrowserFrame.ts'
 import { currentBrowserTarget } from '../browser/BrowserPersistence.ts'
@@ -31,6 +36,103 @@ function SandboxPolicyIcon({ sandboxed }: { readonly sandboxed: boolean }): Reac
   )
 }
 
+interface AccessibleMirrorNodeProps {
+  readonly node: DesktopBrowserAccessibleNode
+  readonly onAction: (ref: DesktopBrowserRef, action: DesktopBrowserAccessibleAction) => void
+}
+
+function AccessibleMirrorNode({ node, onAction }: AccessibleMirrorNodeProps): ReactNode {
+  const children = node.children.map((child, index) => (
+    <AccessibleMirrorNode key={child.ref ?? index} node={child} onAction={onAction} />
+  ))
+
+  if (!node.ref) {
+    return (
+      <div role={node.role || undefined} aria-label={node.name || undefined}>
+        {node.text}
+        {children}
+      </div>
+    )
+  }
+
+  const ref = node.ref
+  const isDisabled = node.states.includes('disabled')
+  const isReadOnly = node.states.includes('readonly')
+  const isChecked = node.states.includes('checked')
+
+  switch (node.role) {
+    case 'button':
+      return (
+        <button
+          type="button"
+          aria-label={node.name || undefined}
+          disabled={isDisabled}
+          onClick={() => { onAction(ref, { kind: 'click' }) }}
+          onFocus={() => { onAction(ref, { kind: 'focus' }) }}
+        >
+          {node.text ?? node.name}
+          {children}
+        </button>
+      )
+    case 'textbox':
+    case 'searchbox':
+      return (
+        <input
+          type="text"
+          aria-label={node.name || undefined}
+          value={node.value ?? ''}
+          disabled={isDisabled}
+          readOnly={isReadOnly}
+          onChange={(event) => { onAction(ref, { kind: 'fill', text: event.target.value }) }}
+          onFocus={() => { onAction(ref, { kind: 'focus' }) }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === 'Escape') {
+              onAction(ref, { kind: 'press', keys: [event.key] })
+            }
+          }}
+        />
+      )
+    case 'checkbox':
+      return (
+        <input
+          type="checkbox"
+          aria-label={node.name || undefined}
+          checked={isChecked}
+          disabled={isDisabled}
+          onChange={(event) => { onAction(ref, { kind: event.target.checked ? 'check' : 'uncheck' }) }}
+          onFocus={() => { onAction(ref, { kind: 'focus' }) }}
+        />
+      )
+    case 'link':
+      return (
+        <a
+          href="#"
+          aria-label={node.name || undefined}
+          onClick={(event) => {
+            event.preventDefault()
+            onAction(ref, { kind: 'click' })
+          }}
+          onFocus={() => { onAction(ref, { kind: 'focus' }) }}
+        >
+          {node.text ?? node.name}
+          {children}
+        </a>
+      )
+    default:
+      return (
+        <div
+          role={node.role || undefined}
+          aria-label={node.name || undefined}
+          tabIndex={node.states.includes('focusable') ? 0 : undefined}
+          onFocus={node.states.includes('focusable') ? () => { onAction(ref, { kind: 'focus' }) } : undefined}
+        >
+          {node.text}
+          {children}
+        </div>
+      )
+  }
+}
+
 /** Browser body props assembled by the tab seat. */
 export type BrowserBodyProps = PropsRuntime<'sidebar.right.pane.tab'>
   & PropsStore<BrowserStore>
@@ -45,7 +147,8 @@ function useBrowserDraft(url: string | undefined, revision: number): readonly [s
 
 /** Render provider-neutral navigation state and optional controls. */
 export function BrowserBody(props: BrowserBodyProps): ReactNode {
-  const { mount, loadUrl, restore, goBack, goForward, reload, setSandbox, useBrowserState, useStore, useTabInfo, t } = props
+  const { mount, loadUrl, restore, goBack, goForward, reload, setSandbox, accessibleAction,
+    useBrowserState, useStore, useTabInfo, t } = props
   const { tab } = useTabInfo()
   useEffect(() => tab.actions.bindCommands({ refresh: () => { reload(tab.id) } }), [tab.actions, tab.id, reload])
   const saved = useStore(state => state.byTab[tab.id])
@@ -75,7 +178,11 @@ export function BrowserBody(props: BrowserBodyProps): ReactNode {
   const failure = state?.addressFailure
   const error = frame.error
   const submit = (event: FormEvent): void => { event.preventDefault(); loadUrl(tab.id, draft) }
-
+  const accessibleSnapshot = frame.accessibleSnapshot
+  const handleAccessibleAction = (ref: DesktopBrowserRef, action: DesktopBrowserAccessibleAction): void => {
+    if (accessibleSnapshot === undefined || typeof accessibleAction !== 'function') return
+    void accessibleAction(tab.id, accessibleSnapshot.snapshotId, ref, action)
+  }
   return (
     <div className={css.root}>
       <form className={css.toolbar} onSubmit={submit}>
@@ -115,6 +222,20 @@ export function BrowserBody(props: BrowserBodyProps): ReactNode {
       {failure !== undefined && <div className={css.failure} role="alert">{t(`error.${failure}`)}</div>}
       <div className={css.content} aria-busy={frame.loading}>
         <div id={viewportId} className={css.viewport} aria-label={t('type.label')} />
+        {accessibleSnapshot !== undefined && (
+          <div
+            className={css.accessibleMirror}
+            aria-hidden={!(tab.visible && (state?.visible ?? true))}
+          >
+            {accessibleSnapshot.nodes.map((node, index) => (
+              <AccessibleMirrorNode
+                key={node.ref ?? index}
+                node={node}
+                onAction={handleAccessibleAction}
+              />
+            ))}
+          </div>
+        )}
         {restoreTarget !== undefined && <section className={css.restore} aria-label={t('restore.previous')}>
           <p className={css.restoreLabel}>{t('restore.previous')}</p>
           <p className={css.restoreTitle}>{restoreTarget.title}</p>

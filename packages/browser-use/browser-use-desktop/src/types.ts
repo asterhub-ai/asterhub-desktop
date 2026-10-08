@@ -155,9 +155,17 @@ export type DesktopBrowserRequestHandler = (
 
 /** Host-provided bridge for model tools to operate Desktop's Sidebar Browser. */
 export interface DesktopBrowserTransport {
-  /** @param caller - exact live agent and owner generation. @param operation - one validated browser operation. @param signal - tool-call cancellation. @returns the correlated operation outcome. */
+  /**
+   * @param caller - exact live agent and owner generation.
+   * @param operation - one validated browser operation.
+   * @param signal - tool-call cancellation.
+   * @returns the correlated operation outcome.
+   */
   request(caller: DesktopBrowserCaller, operation: DesktopBrowserOperation, signal: AbortSignal): Promise<DesktopBrowserResult>
-  /** @param caller - exact live browser owner to cancel and release. @returns after every owned request settles or the parent disconnects. */
+  /**
+   * @param caller - exact live browser owner to cancel and release.
+   * @returns after every owned request settles or the parent disconnects.
+   */
   releaseOwner(caller: DesktopBrowserCaller): Promise<void>
   /** Stop admitting requests, cancel pending operations, await remote settlement, and detach process listeners. */
   dispose(): Promise<void>

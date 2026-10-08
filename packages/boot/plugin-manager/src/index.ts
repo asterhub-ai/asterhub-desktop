@@ -787,26 +787,8 @@ export class PluginManager extends TypertRemoteService {
           if (name !== curated.package) throw new ManagementFailure('invalid-spec')
           const lockPath = join(this.profile.dir, 'pnpm-lock.yaml')
           const lock = parseYaml(await readFile(lockPath, 'utf8')) as CuratedLockfile
-          if (!curatedLockIntegrityMatches(curated, lock)) {
-            // Lockfile mismatch: old installation record doesn't match new catalog.
-            // Delete lockfile and retry installation.
-            this.ownerContext.logger.warn('curated install: lockfile mismatch, deleting and retrying', { package: curated.package, catalogIntegrity: curated.integrity })
-            await rm(lockPath, { force: true })
-            // Retry with fresh lockfile
-            announce('installing', { registry: null, index: 1, total: 1 })
-            const retryResult = await this.runPnpm(['add', spec, ...(curated === undefined ? [] : ['--ignore-scripts', '--config.node-linker=isolated'])], control.abort.signal, requestId)
-            if (retryResult.exitCode !== 0) {
-              throw new Error(retryResult.output)
-            }
-            const afterRetry = readProfileManifest('dsh', this.profile.dir).dependencies ?? {}
-            const installedRetry = Object.keys(afterRetry).filter(n => before[n] !== afterRetry[n])
-            if (installedRetry.length !== 1 || installedRetry[0] !== curated.package) {
-              throw new ManagementFailure('ambiguous-install')
-            }
-            name = curated.package
-          } else {
-            await this.ensureCuratedLockIntegrity(lockPath, curated)
-          }
+          if (!curatedLockIntegrityMatches(curated, lock)) throw new ManagementFailure('invalid-spec')
+          await this.ensureCuratedLockIntegrity(lockPath, curated)
         }
         const dir = resolveBundleDir('dsh', name, this.profile.installAnchor, this.profile.dir)
         const manifest = bundleManifest(name, this.profile.dir, this.profile.installAnchor)

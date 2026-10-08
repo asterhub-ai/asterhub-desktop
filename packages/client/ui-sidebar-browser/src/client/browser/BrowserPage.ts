@@ -1,4 +1,5 @@
 /** Composition of one navigation provider and its presentation. */
+import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import type { BrowserPresentation } from '../view/BrowserPresentation.ts'
 import type { BrowserFrame } from './BrowserFrame.ts'
 import type { BrowserTabState } from './BrowserPersistence.ts'
@@ -8,6 +9,7 @@ export interface BrowserPageOptions {
   readonly initial: BrowserTabState | undefined
   readonly persist: (state: BrowserTabState) => void
   readonly openRequested: (url: string) => void
+  readonly tabId?: TabId | undefined
 }
 
 /** The owning controller disposes frame; UI mounts only presentation. */

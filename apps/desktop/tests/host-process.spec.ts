@@ -184,7 +184,7 @@ describe('desktop host process', () => {
       handlerRequests.push(request.requestId)
       expect(signal.aborted).toBe(false)
       if (request.requestId === 41) {
-        const { promise, resolve } = Promise.withResolvers<void>()
+        const { promise, resolve } = Promise.withResolvers<undefined>()
         setTimeout(resolve, 20)
         await promise
       }
@@ -217,10 +217,10 @@ describe('desktop host process', () => {
 
   it('rejects a replayed browser request id after its first operation settles', async () => {
     const handlerRequests: number[] = []
-    const handler: BrowserHandlerFixture = async request => {
+    const handler: BrowserHandlerFixture = async (request) => {
       handlerRequests.push(request.requestId)
       if (request.operation.kind !== 'page.read') throw new Error('fixture request is not a page read')
-      return { status: 'success', value: { kind: 'read', target: request.operation.target, value: 'done' } }
+      return { status: 'success', value: { kind: 'read', target: request.operation.target, value: 'done', truncated: false } }
     }
     const host = hostProcess(projectWithHost(BROWSER_HOST), undefined, undefined, process.env, handler)
     const { url } = await host.start()
@@ -230,7 +230,7 @@ describe('desktop host process', () => {
   })
 
   it('aborts the matching browser handler on child cancellation', async () => {
-    const observedAbort = Promise.withResolvers<void>()
+    const observedAbort = Promise.withResolvers<undefined>()
     const handler: BrowserHandlerFixture = async (_request, signal) => {
       const { promise, resolve } = Promise.withResolvers<DesktopBrowserResult>()
       signal.addEventListener('abort', () => {
@@ -252,11 +252,11 @@ describe('desktop host process', () => {
   })
 
   it('aborts and drains outstanding browser handlers before Host shutdown completes', async () => {
-    const handlerStarted = Promise.withResolvers<void>()
-    const observedAbort = Promise.withResolvers<void>()
+    const handlerStarted = Promise.withResolvers<undefined>()
+    const observedAbort = Promise.withResolvers<undefined>()
     const handler: BrowserHandlerFixture = async (_request, signal) => {
       handlerStarted.resolve()
-      const { promise, resolve } = Promise.withResolvers<void>()
+      const { promise, resolve } = Promise.withResolvers<undefined>()
       signal.addEventListener('abort', () => { observedAbort.resolve(); resolve() }, { once: true })
       await promise
       return { status: 'error', code: 'cancelled', message: 'Browser operation was cancelled' }

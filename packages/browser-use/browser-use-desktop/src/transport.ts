@@ -111,7 +111,9 @@ export function createDesktopBrowserTransport(port: DesktopBrowserTransportPort)
     settleLocal(request, undefined, message.result)
     settleRemote(requestId, request)
   })
-  removeDisconnectListener = port.onDisconnect(() => markDisconnected(new Error('Desktop Browser Host disconnected')))
+  removeDisconnectListener = port.onDisconnect(() => {
+    markDisconnected(new Error('Desktop Browser Host disconnected'))
+  })
 
   const transport: DesktopBrowserTransport = {
     request(caller, operation, signal) {
@@ -128,7 +130,9 @@ export function createDesktopBrowserTransport(port: DesktopBrowserTransportPort)
       const remote = Promise.withResolvers<void>()
       const request: PendingRequest = {
         caller, operation, signal, resolve, reject, remote, sent: false, localSettled: false, cancelRequested: false,
-        onAbort: () => cancelLocal(requestId, request, abortError(signal.reason)),
+        onAbort: () => {
+          cancelLocal(requestId, request, abortError(signal.reason))
+        },
       }
       pending.set(requestId, request)
       signal.addEventListener('abort', request.onAbort, { once: true })
