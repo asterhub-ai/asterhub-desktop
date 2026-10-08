@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Store images and generic file attachments durably below `DSH_HOME` on the machine running DSH. Images are validated, normalized for model requests, and cached per route; generic files are preserved byte-for-byte without admission limits. Identical bytes are stored once even when uploads use different display names, reads verify file length and content, and admitted images remain readable if limits later tighten. The shipped `dsh` composition uses this package without configuration. Objects remain local to one machine and are never deleted automatically.
+Store image and generic file attachments in grouped profiles below the resolved `DSH_HOME`, or beside project history when project-local mode is enabled. Images are validated, normalized for model requests, and cached per route; generic files are preserved byte-for-byte without admission limits. Identical bytes deduplicate within each owning store, and reads verify file length and content. Project-local operations require a trusted Session scope and never fall back to global storage when ownership is unavailable. Objects are never deleted automatically.
 
 ## Table of Contents
 
@@ -37,7 +37,8 @@ Mount the plugin with no required configuration. The defaults below define what 
 
 | Field | Default | Meaning |
 |---|---|---|
-| `dshHome` | resolved | Explicit harness home; omitted follows `$DSH_HOME`, then `~/.dsh` |
+| `dshHome` | resolved | Explicit harness home; omitted follows `$DSH_HOME`, then `~/.asterhub` |
+| `projectLocal` | `false` | Require a trusted Session scope and store original bytes under that project's `.aster/attachments/v1` |
 | `maxImageBytes` | `20 MiB` | Maximum encoded source bytes accepted for one image |
 | `maxImagesPerMessage` | `20` | Maximum image count accepted in one submitted message |
 | `maxMessageImageBytes` | `200 MiB` | Maximum aggregate encoded source bytes in one submitted message |
@@ -52,7 +53,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Where your images are stored and how long they last
 
-Attached images are kept below `<DSH_HOME>/attachments/v1` on this machine. Stored images are never deleted automatically, identical images are stored only once, and a later tightening of the limits never makes already-saved images unreadable. If your images must be readable from another machine, this package is not the right fit.
+Grouped mode stores attachments below `<DSH_HOME>/attachments/v1`. With `projectLocal: true`, each scoped operation uses the owning project's `.aster/attachments/v1`; a missing project or Session owner fails without reading or writing the global store. Request-image variants remain rebuildable cache data. Original objects are never deleted automatically.
 
 ### What happens when you attach an image
 

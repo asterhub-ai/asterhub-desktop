@@ -8,8 +8,9 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import { contentHasImage, IMAGE_OFFLOAD_REQUIRED_CODE, LlmError, offloadedImageText, projectOffloadedImages, requestImageHandleText, requiredImageOffload } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, GenerateOptions, ImageAttachmentAccessResolver, Message, RequestMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import type {
-  AttachmentId,
+  AttachmentScope,
   AttachmentStore,
+  AttachmentId,
   ImageAttachmentRef,
   ImageRequestTarget,
   RequestImageAttachment,
@@ -112,12 +113,13 @@ async function prepareRequestImages(
   attachments: AttachmentStore,
   budget: PiImageRequestBudget,
   signal?: AbortSignal,
+  scope?: AttachmentScope,
 ): Promise<Map<AttachmentId, RequestImageAttachment>> {
   const refs = new Map<AttachmentId, ImageAttachmentRef>()
   for (const message of messages) collectImageRefs(message.content, refs)
   const orderedRefs = [...refs.values()]
   const prepared = await Promise.all(orderedRefs.map(
-    ref => attachments.readImageRequest(ref, requestImageTarget(ref, budget), signal),
+    ref => attachments.readImageRequest(ref, requestImageTarget(ref, budget), signal, scope),
   ))
   const versions = new Map<AttachmentId, RequestImageAttachment>()
   for (const [index, ref] of orderedRefs.entries()) {
@@ -231,6 +233,8 @@ export interface PiImageRequestContext {
   attachments: AttachmentStore
   /** Resolve current tool access separately from deterministic request-image versions. */
   resolveImageAccess: ImageAttachmentAccessResolver
+  /** Trusted Session project scope for scoped attachment requests. */
+  scope?: AttachmentScope
   /** Request-level bound on the base64-encoded payload of retained images; omission leaves the bound unchecked. */
   maxRequestImageBytes?: number
   /** Route pixel and raw encoded-byte budgets. */
@@ -303,7 +307,7 @@ async function toPiContextWithImages(
   }
   assertSupportedHistory(options.messages)
   const split = splitSystemPrompt(options)
-  const requestImages = await prepareRequestImages(split.messages, attachments, requestImagePolicy, options.signal)
+  const requestImages = await prepareRequestImages(split.messages, attachments, requestImagePolicy, options.signal, images.scope)
   if (maxRequestImageBytes !== undefined) {
     const offloadImages = requiredImageOffload(
       split.messages,

@@ -478,3 +478,82 @@ describe('first-use Remote', () => {
       .rejects.toThrow('permission denied')
   })
 })
+
+describe('project discovery and confirmed opening', () => {
+  it('inspect returns new when projectStorage is unmounted', async () => {
+    const { controller, root } = await harness()
+    const signal = new AbortController().signal
+    await expect(controller.inspect({ path: root }, signal)).resolves.toEqual({
+      kind: 'new',
+      root,
+    })
+  })
+
+  it('inspect returns existing project details when projectStorage locates metadata', async () => {
+    const { controller, ctx, root } = await harness()
+    const signal = new AbortController().signal
+    ctx.provide('projectStorage', {
+      inspect: async (path: string) => ({
+        kind: 'existing' as const,
+        root: path,
+        manifest: { id: 'proj-1', title: 'My Project', sessions: [{ id: 's1' }] },
+        digest: 'sha256-test',
+      }),
+      open: async () => {},
+    } as never)
+
+    const result = await controller.inspect({ path: root }, signal)
+    expect(result).toEqual({
+      kind: 'existing',
+      root,
+      projectId: 'proj-1',
+      title: 'My Project',
+      sessionCount: 1,
+      digest: 'sha256-test',
+    })
+  })
+
+  it('openProject confirms existing project parameters and registers the workspace', async () => {
+    const { controller, ctx, root } = await harness()
+    const signal = new AbortController().signal
+    const openMock = vi.fn(async () => {})
+    ctx.provide('projectStorage', {
+      inspect: async () => ({ kind: 'new' as const, root }),
+      open: openMock,
+    } as never)
+
+    const result = await controller.openProject({
+      path: root,
+      mode: 'existing',
+      expectedId: 'proj-1',
+      expectedDigest: 'sha256-test',
+    }, signal)
+
+    expect(openMock).toHaveBeenCalledWith({
+      root,
+      mode: 'existing',
+      expectedId: 'proj-1',
+      expectedDigest: 'sha256-test',
+    }, signal)
+    expect(result.workspace.path).toBe(root)
+  })
+
+  it('openProject throws workspace/confirmation-mismatch when projectStorage rejects confirmation', async () => {
+    const { controller, ctx, root } = await harness()
+    const signal = new AbortController().signal
+    ctx.provide('projectStorage', {
+      inspect: async () => ({ kind: 'new' as const, root }),
+      open: async () => { throw new Error('stale digest') },
+    } as never)
+
+    await expect(controller.openProject({
+      path: root,
+      mode: 'existing',
+      expectedId: 'proj-1',
+      expectedDigest: 'wrong',
+    }, signal)).rejects.toMatchObject({
+      name: 'RemoteError',
+      code: 'workspace/confirmation-mismatch',
+    })
+  })
+})

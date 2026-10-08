@@ -651,6 +651,7 @@ describe('DeepSeekAdapter against a mock server', () => {
       recent,
       { width: 1, height: 1, maxBytes: 2 * 1024 * 1024 },
       expect.any(AbortSignal),
+      undefined,
     )
     const body = server.requests[0] as { messages: unknown[] }
     expect(body.messages[0]).toMatchObject({
@@ -703,12 +704,14 @@ describe('DeepSeekAdapter against a mock server', () => {
       imageRef,
       { width: 1, height: 1, maxBytes: 512_000 },
       expect.any(AbortSignal),
+      undefined,
     )
     expect(attachmentMocks.readImageRequest).toHaveBeenNthCalledWith(
       2,
       imageRef,
       { width: 1, height: 1, maxBytes: 2 * 1024 * 1024 },
       expect.any(AbortSignal),
+      undefined,
     )
   })
 

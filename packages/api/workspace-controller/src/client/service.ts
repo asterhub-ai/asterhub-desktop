@@ -4,7 +4,7 @@ import { Service, type Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteFailure } from '@deepseek-ai/dsh-typert-protocol'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
-import type { WorkspaceView } from '../types.ts'
+import type { WorkspaceInspectionView, WorkspaceView } from '../types.ts'
 import type { ClientWorkspaceModel, WorkspaceSnapshot } from './model.ts'
 
 /** Structured create failure for callers that distinguish Host business errors. */
@@ -53,6 +53,23 @@ export interface IWorkspaces {
    * @returns the created or idempotently resolved Workspace.
    */
   create(input: { path: string }): Promise<WorkspaceView>
+  /**
+   * Inspect a directory before creating or adopting a Workspace.
+   * @param input - Host inspect payload.
+   * @param signal - optional caller lifetime.
+   * @returns the inspection view.
+   */
+  inspect(input: { path: string }, signal?: AbortSignal): Promise<WorkspaceInspectionView>
+  /**
+   * Confirm and open an existing, legacy, or new project directory.
+   * @param input - confirmed parameters.
+   * @param signal - optional caller lifetime.
+   * @returns the created or resolved Workspace.
+   */
+  openProject(
+    input: { path: string; mode: 'new' | 'existing' | 'legacy'; expectedId?: string; expectedDigest?: string },
+    signal?: AbortSignal,
+  ): Promise<WorkspaceView>
   /**
    * Initialize or reuse the default Workspace.
    * @param signal - caller lifetime.
@@ -129,6 +146,21 @@ export class WorkspaceController extends Service implements IWorkspaces {
 
   async create(input: { path: string }): Promise<WorkspaceView> {
     const result = await this.model.create(input)
+    if (!result.ok) throw new WorkspaceCreateError(result.error)
+    return result.value.workspace
+  }
+
+  async inspect(input: { path: string }, signal?: AbortSignal): Promise<WorkspaceInspectionView> {
+    const result = await this.model.inspect(input, signal)
+    if (!result.ok) throw commandError('inspect', result.error)
+    return result.value
+  }
+
+  async openProject(
+    input: { path: string; mode: 'new' | 'existing' | 'legacy'; expectedId?: string; expectedDigest?: string },
+    signal?: AbortSignal,
+  ): Promise<WorkspaceView> {
+    const result = await this.model.openProject(input, signal)
     if (!result.ok) throw new WorkspaceCreateError(result.error)
     return result.value.workspace
   }

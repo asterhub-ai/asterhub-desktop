@@ -11,6 +11,7 @@
  */
 
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { FiberState, type Context } from '@deepseek-ai/cordis'
@@ -23,6 +24,7 @@ import {
   installFailLoud,
   loadOverlayPatches,
   loadProfile,
+  prepareAsterHubHome,
   reportSkippedBundles,
   PluginPackages,
   PROFILE_PATCH_FILENAME,
@@ -264,6 +266,10 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
     if (failures.length > 1) throw new AggregateError(failures, 'dsh: profile cleanup failed')
   })()
   try {
+    await prepareAsterHubHome({
+      userHome: homedir(),
+      env: process.env,
+    })
     const composed = await composeProfile(
       options.profile, options.patchFiles, options.fromDefaultProfile, options.resolvedProfile,
     )

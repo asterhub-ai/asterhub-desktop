@@ -19,9 +19,10 @@ import { providerError, providerErrorDetail } from './transport.ts'
 /** DeepSeek provider using Messages content and native thinking replay. */
 export class DeepSeekAdapter<C extends Connection = Connection> extends LlmAdapter {
   private readonly files: DeepSeekFileStore
-  private readonly imageAccess: ImageAttachmentAccessResolver = (ref) => {
+  private readonly imageAccess: ImageAttachmentAccessResolver = (ref, scope) => {
+    if (scope === undefined && this.dependencies.resolveAttachmentScope !== undefined) return undefined
     const attachments = this.dependencies.resolveAttachments?.()
-    return attachments === undefined ? undefined : this.dependencies.resolveImageAccess?.(attachments, ref)
+    return attachments === undefined ? undefined : this.dependencies.resolveImageAccess?.(attachments, ref, scope)
   }
 
   constructor(private readonly dependencies: DeepSeekAdapterOptions<C>) {
@@ -76,8 +77,10 @@ export class DeepSeekAdapter<C extends Connection = Connection> extends LlmAdapt
     options: GenerateOptions, connection: C, signal: AbortSignal, activity: () => void,
   ): AsyncGenerator<StreamChunk> {
     signal.throwIfAborted()
+    const scope = options.sessionId === undefined ? undefined : this.dependencies.resolveAttachmentScope?.(options.sessionId)
+    const imageAccess: ImageAttachmentAccessResolver = ref => this.imageAccess(ref, scope)
     const { messages, versions } = await prepareImages(
-      options.messages, connection, options.model, this.dependencies.resolveAttachments?.(), this.imageAccess, signal,
+      options.messages, connection, options.model, this.dependencies.resolveAttachments?.(), imageAccess, signal, scope,
     )
     const auth = await this.dependencies.resolveAuth(connection)
     try {
@@ -100,7 +103,7 @@ export class DeepSeekAdapter<C extends Connection = Connection> extends LlmAdapt
           }
         }
         const history = inline ? inlineImages(messages, versions, connection) : messages
-        const body = serialize(options, connection, history, versions, this.imageAccess, (reason) => {
+        const body = serialize(options, connection, history, versions, imageAccess, (reason) => {
           this.dependencies.onReplayDegrade?.({ provider: options.provider, model: options.model, reason })
         }, fileIds)
         const extensions = await prepareRequestExtensions(body as Readonly<Record<string, DeepSeekLlmApiJson>>, {

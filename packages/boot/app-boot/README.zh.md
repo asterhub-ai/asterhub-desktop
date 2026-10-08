@@ -59,6 +59,8 @@ profile 导入插件前，DSH 会检查其 `peerDependencies` 中对 `@deepseek-
 
 你的机器本地偏好同样位于 harness home 中：
 
+请在解析 profile、配置或其他 home 相对路径之前调用 `prepareAsterHubHome({ userHome, configuredHome?, env?, signal? })`。它返回 `{ home, migration }`，其中 `migration` 描述本次调用：仅当本次发布复制时为 `copied`，未执行复制（包括已有有效完成记录）时为 `none`，配置 home 或非空 `$DSH_HOME` 权威生效时为 `explicit`；之后应将返回的路径显式传给下游使用方。否则 helper 会把 `~/.dsh` 暂存、验证后复制到 `~/.asterhub`，保留源数据，拒绝冲突的已填充目录和不安全链接，并写入完成记录避免后续启动重复复制。失败时会保留源数据与暂存证据；应明确解决冲突，不能合并两个 home。
+
 - **`.env`**——你的普通环境层：调用目录的文件优先于 harness home 的文件，两者都低于继承环境。在文件中设置的进程启动变量（如 `PATH`、`DSH_*`、`XDG_*`）会被拒绝：请改为导出这些变量。四个代理名（`HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY`）只从 harness home 的文件接受，绝不从调用目录的文件接受——后者随 clone 一起到来。对于只想加载某个目录 `.env` 的非产品 bin，文件缺失不影响启动，文件无法加载时输出一行带标签的警告。
 - **`cordis.patch.yml`**——你的 tweak 层，应用在所有组合包层之后（先应用逐 profile 的文件，再应用 home 级文件，因此后者优先级更高）：替换某个条目的整个配置（重述你要保留的字段）、插入新条目，或在启动时插值 `!!js` 表达式。patch 指定的条目不存在时输出 stderr 警告；空文件或仅含注释的文件会导致启动失败——如需禁用该层，请改用 `[]`。
 
@@ -204,6 +206,7 @@ Loader 结算后，app-boot 在仅 optional 条目未激活时输出警告。如
 - **源码启动只安装 ESM 钩子**——CommonJS 请求仍需要 package exports 选中的 JavaScript 文件，解析器不会补出缺失的构建产物。
 - **快照回放替换仅识别特定 basename**——只有以 `cordis.yml` 或 `cordis.yaml` 结尾的配置会映射到同级 `cordis.snapshot.yml`；自定义配置名称需要调用方自行选择。
 - **环境发现以启动为界**——`loadLayeredEnv` 只读取一次调用目录与 harness home 中的 `.env`；它不搜索父目录，也不跟随之后选择的 workspace。`loadEnv` 仍是非产品 bin 使用的单目录 helper。
+- **Home 准备是独立步骤**——必须在 home 相对路径消费者之前运行 `prepareAsterHubHome`；`resolveDshHome` 仍是纯路径解析器，不执行文件系统迁移。
 - **用户 patch 会替换匹配到的整个配置**——按 id 定位的 patch 不做深度合并，因此 profile 覆盖必须重述需要保留的组合包字段。
 
 <a id="dev-note"></a>

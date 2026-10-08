@@ -58,6 +58,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'directory-picker/exists': { readonly path: string }
     /** The parent is not fully qualified, the name is not one segment, or creation failed. */
     'directory-picker/create-failed': { readonly path: string }
+    /** An openProject request carried stale or conflicting confirmation identity or digest. */
+    'workspace/confirmation-mismatch': { readonly path: string; readonly reason: string }
   }
 }
 
@@ -169,3 +171,44 @@ export type WorkspaceFollowIncrement =
 export type WorkspaceFollowFrame =
   | { readonly type: 'baseline'; readonly value: WorkspaceBaseline }
   | WorkspaceFollowIncrement
+
+/** Result of inspecting a directory before creating or adopting a Workspace. */
+export type WorkspaceInspectionView =
+  | { readonly kind: 'new'; readonly root: string }
+  | {
+      readonly kind: 'existing'
+      readonly root: string
+      readonly projectId: string
+      readonly title: string
+      readonly sessionCount: number
+      readonly digest: string
+    }
+  | {
+      readonly kind: 'registered'
+      readonly root: string
+      readonly workspaceId: WorkspaceId
+      readonly title: string
+      readonly sessionCount: number
+      readonly digest: string
+    }
+  | {
+      readonly kind: 'legacy'
+      readonly root: string
+      readonly projectId: string
+      readonly title: string
+      readonly sessionCount: number
+      readonly digest: string
+    }
+
+/** Request to inspect a directory before registration or adoption. */
+export interface WorkspaceInspectRequest {
+  readonly path: string
+}
+
+/** Request to confirm and adopt or create a project workspace. */
+export interface WorkspaceOpenProjectRequest {
+  readonly path: string
+  readonly mode: 'new' | 'existing' | 'legacy'
+  readonly expectedId?: string
+  readonly expectedDigest?: string
+}

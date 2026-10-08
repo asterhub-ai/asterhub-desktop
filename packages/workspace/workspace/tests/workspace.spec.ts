@@ -1392,6 +1392,47 @@ describe('first-use Workspace preparation', () => {
   })
 })
 
+describe('projectStorage-backed session location and attachment', () => {
+  it('indexes and attaches a moved session whose header.cwd does not resolve when location is registered', async () => {
+    const workspaceDir = await makeDir('current-workspace')
+    const canonicalWorkspaceDir = await realpath(workspaceDir)
+
+    const legacyCwd = join(workspaceDir, 'nonexistent-legacy-cwd')
+    const sessionId = SessionId('legacy-moved-session')
+    const legacyHeader = header(String(sessionId), legacyCwd)
+
+    const pool = new MemoryMediaPool()
+    const ctx = new Context()
+    await ctx.plugin(Storage)
+    ctx.storage.backend.register('memory', new MemoryStorageBackend(pool))
+    const facility = new DomainFacility(ctx, { backend: 'memory', routes: {} })
+    ctx.storage.mount('domain', facility)
+    ctx.provide('storageDomain', facility)
+
+    const list = vi.fn(async () => [
+      { header: legacyHeader, revision: SessionPersistenceRevision('rev-1') },
+    ])
+    ctx.provide('sessionPersistence', {
+      list,
+      open: vi.fn(),
+      stat: vi.fn(),
+    } as never)
+
+    ctx.provide('projectStorage', {
+      locateSession: (id: SessionId) => (id === sessionId ? { projectRoot: canonicalWorkspaceDir } : undefined),
+    } as never)
+
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(WorkspaceRegistry)
+
+    const workspace = await ctx.workspaceRegistry.create(canonicalWorkspaceDir)
+    await workspace.attachSession(sessionId)
+
+    expect(workspace.sessionIds).toContain(sessionId)
+    await ctx.fiber.dispose()
+  })
+})
+
 // The registry knows no family: the providers merge theirs, and this suite merges its own.
 declare module '@deepseek-ai/dsh-workspace/types' {
   interface SessionActivityKindMap {

@@ -1,6 +1,6 @@
 /** Deterministic Messages image preparation for Files references and bounded inline fallback. */
 
-import type { AttachmentStore, ImageAttachmentRef, RequestImageAttachment } from '@deepseek-ai/dsh-attachment'
+import type { AttachmentScope, AttachmentStore, ImageAttachmentRef, RequestImageAttachment } from '@deepseek-ai/dsh-attachment'
 import { contentHasImage, IMAGE_OFFLOAD_REQUIRED_CODE, LlmError, offloadedImageText, projectOffloadedImages, requiredImageOffload } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, ImageAttachmentAccessResolver, RequestMessage } from '@deepseek-ai/dsh-llm'
 import type { DeepSeekConnectionOptions as Connection } from './types.ts'
@@ -33,14 +33,16 @@ function* imageRefs(blocks: readonly ContentBlock[]): Generator<ImageAttachmentR
  * @param attachments - mounted attachment store, required only for image requests.
  * @param access - current execution-world path resolver.
  * @param signal - request cancellation.
+ * @param scope - trusted Session project scope for durable attachment reads.
  * @returns projected history and prepared image bytes keyed by attachment id.
  */
 export async function prepareImages(
   history: readonly RequestMessage[], connection: Connection, modelId: string,
   attachments: AttachmentStore | undefined, access: ImageAttachmentAccessResolver, signal: AbortSignal,
+  scope?: AttachmentScope,
 ): Promise<{ messages: readonly RequestMessage[]; versions: Map<ImageAttachmentRef['attachmentId'], RequestImageAttachment> }> {
   const versions = new Map<ImageAttachmentRef['attachmentId'], RequestImageAttachment>()
-  const messages = projectOffloadedImages(history, ref => offloadedImageText(ref, access(ref)))
+  const messages = projectOffloadedImages(history, ref => offloadedImageText(ref, access(ref, scope)))
   if (!messages.some(message => contentHasImage(message.content))) return { messages, versions }
   const model = connection.models.find(entry => entry.id === modelId)
   if (model?.inputModalities?.includes('image') !== true || attachments === undefined) {
@@ -52,7 +54,7 @@ export async function prepareImages(
   for (const message of messages) {
     for (const ref of imageRefs(message.content)) {
       if (!versions.has(ref.attachmentId)) {
-        versions.set(ref.attachmentId, await attachments.readImageRequest(ref, resolveRequestImageTarget(model, ref), signal))
+        versions.set(ref.attachmentId, await attachments.readImageRequest(ref, resolveRequestImageTarget(model, ref), signal, scope))
       }
     }
   }

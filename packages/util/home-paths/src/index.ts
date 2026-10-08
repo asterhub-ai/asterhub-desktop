@@ -9,11 +9,10 @@ import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 
 /** Directory name for the default AsterHub home under the OS home. */
-export const DSH_HOME_DIR_NAME = '.dsh'
+export const DSH_HOME_DIR_NAME = '.asterhub'
 
 /** Stable user-facing display form for the default AsterHub home. */
 export const DEFAULT_DSH_HOME_DISPLAY = `~/${DSH_HOME_DIR_NAME}`
-
 /** Environment variable that overrides the default AsterHub home. */
 export const DSH_HOME_ENV = 'DSH_HOME'
 
@@ -56,7 +55,7 @@ export async function canonicalizeWatchPath(path: string): Promise<string> {
 
 /**
  * Resolve the default AsterHub home using Node's platform path rules.
- * @returns the absolute default harness home path.
+ * @returns the absolute default AsterHub home path.
  */
 export function defaultDshHome(): string {
   return join(homedir(), DSH_HOME_DIR_NAME)
@@ -74,15 +73,13 @@ export function expandHomePath(path: string): string {
 }
 
 /**
- * Resolve the single-root AsterHub home.
- *
  * Precedence, highest first: an explicit configured path, `$DSH_HOME`, then
- * `~/.dsh`. The harness keeps all user data under one root. An empty or
+ * `~/.asterhub`. The harness keeps all user data under one root. An empty or
  * whitespace-only `$DSH_HOME` is treated as unset, so a blank override never
  * resolves the home to the current working directory.
- * @param configured - explicit harness-home override, which has highest precedence.
+ * @param configured - explicit AsterHub-home override, which has highest precedence.
  * @param env - environment mapping used to read `DSH_HOME`.
- * @returns the normalized absolute harness home path.
+ * @returns the normalized absolute AsterHub home path.
  */
 export function resolveDshHome(configured?: string, env: Record<string, string | undefined> = process.env): string {
   const fromEnv = env[DSH_HOME_ENV]
@@ -111,12 +108,12 @@ export function dshCachePath(optionsOrSegment: { dshHome?: string } | string = {
 }
 
 /**
- * Describe a resolved harness home symbolically for user-facing display.
+ * Describe a resolved AsterHub home symbolically for user-facing display.
  *
  * It never returns an absolute machine path: the default home is labelled
- * `~/.dsh`, and any configured home is labelled `$DSH_HOME`.
+ * `~/.asterhub`, and any configured home is labelled `$DSH_HOME`.
  * @param resolvedHome - the absolute path returned by {@link resolveDshHome}.
- * @returns `~/.dsh` for the default home, otherwise `$DSH_HOME`.
+ * @returns `~/.asterhub` for the default home, otherwise `$DSH_HOME`.
  */
 export function dshHomeDisplay(resolvedHome: string): string {
   return resolvedHome === resolve(defaultDshHome()) ? DEFAULT_DSH_HOME_DISPLAY : `$${DSH_HOME_ENV}`

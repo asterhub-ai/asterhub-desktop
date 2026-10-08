@@ -4,6 +4,8 @@ import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-fs'
 import { resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm'
+import type { SessionId } from '@deepseek-ai/dsh-session'
+import { resolveProjectAttachmentScope } from '@deepseek-ai/dsh-project-storage'
 import { getOrCreateAnonymousUserId, type AnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
 import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 import { DeepSeekAdapter } from './adapter.ts'
@@ -20,6 +22,9 @@ export function registerDeepSeekProvider<C extends DeepSeekConnectionOptions>(
   'options' | 'resolveAuth' | 'providerName' | 'discoverModels'>): void {
   ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)) })
   let userId: AnonymousUserId | undefined
+  const attachmentScope = ctx.get('projectStorage', false) === undefined
+    ? undefined
+    : (sessionId: SessionId) => resolveProjectAttachmentScope(ctx, sessionId)
   const adapter = new DeepSeekAdapter({
     ...dependencies,
     resolveUserId: () => userId ??= getOrCreateAnonymousUserId(),
@@ -30,9 +35,10 @@ export function registerDeepSeekProvider<C extends DeepSeekConnectionOptions>(
       ctx.logger.warn(`llm-deepseek: sending route "${provider}/${model}" without request extension fields ${fields.join(', ')} because they failed to serialize: %o`, error)
     },
     resolveAttachments: () => ctx.get('attachments'),
-    resolveImageAccess: (attachments, ref) => resolveImageAttachmentAccess(
-      attachments, hostPath => ctx.get('fs')?.processPathFromHostPath(hostPath), ref,
-    ),
+    ...attachmentScope === undefined ? {} : { resolveAttachmentScope: attachmentScope },
+    resolveImageAccess: (attachments, ref, scope) => scope === undefined && attachmentScope !== undefined
+      ? undefined
+      : resolveImageAttachmentAccess(attachments, hostPath => ctx.get('fs')?.processPathFromHostPath(hostPath), ref, scope),
     prepareExtensions: request => ctx.get('deepseekLlmApiExtensions')?.prepare(request)
       ?? Promise.resolve({ fields: {}, accept: () => Promise.resolve() }),
   })
