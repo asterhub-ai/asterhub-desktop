@@ -96,6 +96,7 @@ export interface TestSessionRemote {
 export interface TestSessionRemoteDefaults {
   readonly defaultModelSelection: () => AgentModelSelection
   readonly cwd: string
+  readonly modelSelectionPolicy?: 'session' | 'fixed'
   readonly nativeOpen?: boolean
   readonly saveDefaultModelSelection?: (selection: AgentModelSelection) => void | Promise<void>
   readonly openPath?: (path: string, signal: AbortSignal) => Promise<void>
@@ -296,6 +297,7 @@ function installControllers(
       ctx,
       {
         ...defaults.nativeOpen === undefined ? {} : { nativeOpen: defaults.nativeOpen },
+        ...defaults.modelSelectionPolicy === undefined ? {} : { modelSelectionPolicy: defaults.modelSelectionPolicy },
       },
       {
         ...defaults.openPath === undefined ? {} : { openPath: defaults.openPath },

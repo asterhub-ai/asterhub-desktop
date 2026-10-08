@@ -95,6 +95,37 @@ describe('Desktop Host quit inspection', () => {
     } finally { await empty.fiber.dispose() }
   })
 
+  it('reports scheduled tasks when native automation service reports armed=true', async () => {
+    // Simulate native automation service: returns armed=true but active=false.
+    ctx.provide('asterhubAutomation', { inspectLifecycle: () => ({ armed: true, active: false }) })
+    expect(await inspect()).toEqual({ activeTasks: false, scheduledTasks: true })
+  })
+
+  it('reports scheduled tasks when native automation service reports active=true', async () => {
+    // Active runs (reserved/running/waiting-approval/stopping) also block quitting.
+    ctx.provide('asterhubAutomation', { inspectLifecycle: () => ({ armed: false, active: true }) })
+    expect(await inspect()).toEqual({ activeTasks: false, scheduledTasks: true })
+  })
+
+  it('reports both armed and active as scheduled tasks', async () => {
+    // Both armed (future scheduled) and active (currently running) should block quitting.
+    ctx.provide('asterhubAutomation', { inspectLifecycle: () => ({ armed: true, active: true }) })
+    expect(await inspect()).toEqual({ activeTasks: false, scheduledTasks: true })
+  })
+
+  it('ignores native automation service when absent', async () => {
+    // When the automation service is not provided (e.g., before plugin loads), scheduledTasks is false.
+    // This mirrors the old schedule-family behavior: sessions never loaded can't fire.
+    expect(await inspect()).toEqual({ activeTasks: false, scheduledTasks: false })
+  })
+
+  it('does not classify unavailable task services as idle', async () => {
+    const empty = new Context()
+    try {
+      await expect(installDesktopQuitInspection(empty)()).rejects.toThrow('task services are unavailable')
+    } finally { await empty.fiber.dispose() }
+  })
+
   it('refuses inspection after disposal', async () => {
     expect(await inspect()).toEqual({ activeTasks: false, scheduledTasks: false })
     await ctx.fiber.dispose()

@@ -20,6 +20,8 @@ kind: "package-library"
 - [已知限制与延期工作](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
+`ProfileRuntimeResolution` 保留来源参数，可从当前安装、profile 清单与选定组合包重新计算解析。发布新解析可移除已停止的 profile 映射，同时保留安装映射和已加载模块。
+
 -----
 
 <a id="use-this-package"></a>
@@ -193,7 +195,6 @@ Loader 结算后，app-boot 在仅 optional 条目未激活时输出警告。如
 ## 已知限制与延期工作
 
 <a id="known-limitations-and-deferred-work"></a>
-
 
 这些限制说明此启动库在何时不合适，或何时需要特别注意。它们是当前包约束，不是任务积压。
 

@@ -56,6 +56,7 @@ declare module '@deepseek-ai/cordis' {
 export {
   composeEntries,
   createRuntimeResolution,
+  ProfileRuntimeResolution,
   DEFAULT_PROFILE_BUNDLES,
   OPTIONAL_BUNDLES,
   bundlePatchFiles,
@@ -1061,6 +1062,6 @@ export function addHarnessSourceSection(ctx: Context, sourceRoot: string): (() =
   return systemPrompt.section({
     name: HARNESS_SOURCE_SECTION,
     order: systemPrompt.getSectionOrder('HARNESS_SOURCE'),
-    text: `The DeepSeek Harness implementation checkout is at ${sourceRoot}. The checkout location and current working directory are separate values and may differ; never infer the working directory from this path. Use pwd to determine the current working directory. Use this checkout only to inspect or extend DSH itself.`,
+    text: `AsterHub 源码检出目录为 ${sourceRoot}。检出目录与当前工作目录彼此独立，可能并不相同；不要根据该路径推断工作目录，请使用 pwd 确认。此检出目录仅用于检查或扩展 AsterHub。`,
   })
 }

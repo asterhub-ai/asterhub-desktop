@@ -204,6 +204,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'session/provider-credentials-unavailable': Record<string, never>
     'session/provider-models-unavailable': { readonly provider: string }
     'session/model-unavailable': { readonly provider: string; readonly model: string }
+    'session/model-selection-disabled': Record<string, never>
     'session/conflict': {
       readonly sessionId: SessionId
       readonly requestedCwd: string

@@ -20,6 +20,8 @@ Give newly created agents a shared default provider and model when their session
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 - [Dev Note](#dev-note)
 
+A locked AsterHub route permits saving a user-selected model only when its provider matches the application route and its ID appears in the account catalog. Saving preserves the route lock. A fresh installation requires an explicit model choice; no retired alias is sent as a default.
+
 -----
 
 <a id="use-this-package"></a>

@@ -27,6 +27,7 @@ kind: "package-group"
 | 包 | 职责 | ctx 键 |
 |---|---|---|
 | [`browser-use`](browser-use/README.zh.md) | 独占具名 提供方 注册 | `ctx.browserUse` |
+| [`browser-use-desktop`](browser-use-desktop/README.zh.md) | 内置 Desktop 侧边栏浏览器 提供方、工具与 skill | `ctx.browserUse` |
 
 <a id="related-documentation"></a>
 ## 相关文档

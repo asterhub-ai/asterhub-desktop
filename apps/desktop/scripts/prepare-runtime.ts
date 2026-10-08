@@ -41,6 +41,8 @@ async function main(): Promise<void> {
   const nodeVersion = execFileSync(executable, ['-p', 'process.versions.node'], {
     encoding: 'utf8', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
   }).trim()
+  // Note: macOS minimum version can be retrieved here for future use with prepareCommandLink
+  // const macosMinimumVersion = platform === 'darwin' ? execFileSync(...).trim() : undefined
   rmSync(RUNTIME_ROOT, { recursive: true, force: true })
   mkdirSync(RUNTIME_ROOT, { recursive: true })
   const pnpmVersion = preparePnpm()

@@ -114,6 +114,9 @@ export class DomainFacility {
           `backend '${backendName}' routed for domain '${spec.name}' has no kv facet`,
         )
       }
+      if (spec.exclusive === true && backend.kv.supportsExclusive !== true) {
+        throw new DomainError('exclusive-open', `backend '${backendName}' cannot exclusively own domain '${spec.name}'`)
+      }
       const unit = await backend.kv.open(descriptorOf(spec))
       try {
         const snapshot = await unit.loadAll()

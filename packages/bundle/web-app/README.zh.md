@@ -7,6 +7,10 @@ kind: "package-bundle"
 
 [English](README.md) | 中文
 
+桌面埋点遵循[产品采集策略](../../client/product-analytics/README.zh.md)及其动态应用配置，不包含 Web 使用情况。
+
+桌面埋点每 30 秒调度未满批次，exporter 超时为 15 秒，processor 超时为 20 秒。退出时允许 2 秒排空，随后取消待完成的请求和重试等待，避免埋点阻止 Host 退出。尚未发送完成的事件可能丢失。
+
 ## 概述
 
 运行 `dsh --profile web`，打开提供聊天、模型与设置管理以及会话历史的交互式浏览器 GUI。它使用与其他 dsh 表层相同的模型访问、工具与安全默认值。启动时会打印带认证信息的 URL，通常还会在默认浏览器中打开；SSH 会话和 `--no-open` 会保留该 URL，供你手动打开。你可以更改端口并允许额外主机，但不能绑定所有网络接口。需要在浏览器中交互式工作时选择本包；一次性的命令行任务应使用 `dsh-headless`。
@@ -51,7 +55,7 @@ dsh --profile web --no-open --port 8080
 | `surfaceContext` | `true` | 给 agent 提供 GUI 定位上下文，并把 `DSH_WEB_URL` 暴露给其 shell 命令 |
 | `trustedHosts` | `[]` | 允许从网络访问 GUI 的额外主机 |
 
-生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-web-app)是每个受支持字段及其 JSDoc 的穷尽式真源。 随发行版交付的组合默认禁用 `schedule`、`ui-schedule` 和 `time-context`。
+生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-web-app)是每个受支持字段及其 JSDoc 的穷尽式真源。 随发行版交付的组合不含 `time-context`、`schedule` 和 `ui-schedule` 行，可选实验性 bundle `@deepseek-ai/dsh-experimental-schedule-bundle` 可在插件管理页插入这三行。
 
 ### LAN 访问与可信主机
 
@@ -125,11 +129,11 @@ URL 行与浏览器交接都是就绪信号：监督方一观察到该行就发�
 <a id="model-experience"></a>
 ## 模型体验
 
-### Harness 源码与 Web 表层上下文
+### 源码与桌面应用上下文
 
 #### 模型看到什么
 
-当 `surfaceContext` 为 true 时，`harness:source` 段落标明磁盘上的 Harness 实现，但不会声称它就是工作目录；全局段落 `app:web-surface`（first-party 顺序 10100，位于可复用指令之后）则向模型说明 GUI：规范的本地 URL、「this page」指代什么、更新约定（重载接收端始终开启；无刷新重载还需要 `pnpm run dev:web` watcher），以及不要启动替代服务器的指令。`DSH_WEB_URL` 还会连同描述出现在受管 bash 环境中，每次调用时从运行中的服务器解析。当它为 false 时，这两个段落和该变量都不会注册。
+当 `surfaceContext` 为 true 时，`harness:source` 段落标明磁盘上的 AsterHub 实现，但不会声称它就是工作目录；`app:web-surface` 段落说明当前产品界面属于 AsterHub 桌面应用，不再向模型提供浏览器地址或开发服务器指令。独立的 `DSH_WEB_URL` 变量仍供开发会话中的受管 bash 使用，并从运行中的服务器解析。当 `surfaceContext` 为 false 时，这两个段落和该变量都不会注册。
 
 #### Token 影响
 
@@ -137,7 +141,7 @@ URL 行与浏览器交接都是就绪信号：监督方一观察到该行就发�
 
 #### KV Cache 影响
 
-源码与 Web 段落位于第一方可复用指令之后。工具与配置一致时，不同 checkout 路径或本地端口不会改变前置前缀；不保证提供方复用缓存。
+源码与桌面应用段落位于第一方可复用指令之后。工具与配置一致时，不同 checkout 路径不会改变前置前缀；不保证提供方复用缓存。
 
 ## 已知限制与延期工作
 

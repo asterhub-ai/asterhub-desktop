@@ -65,11 +65,29 @@ it('shows completed paragraph first lines across blank lines with a right-edge f
       const reasoning = page.locator('[data-variant="think"][data-state="running"]')
       await expandOwningTurnProcess(page, reasoning)
       await reasoning.waitFor()
+      const star = page.locator('[data-chat-running] svg[class*="thinkingStar"]')
+      await star.waitFor()
+      expect(await star.locator('path').count()).toBe(2)
+      expect(await star.getAttribute('aria-hidden')).toBe('true')
+      try {
+        await page.emulateMedia({ reducedMotion: 'no-preference', forcedColors: 'none' })
+        expect(await star.evaluate(element => getComputedStyle(element).animationName)).not.toBe('none')
+        const firstFrame = await star.screenshot({ animations: 'allow' })
+        await expect.poll(async () => !(await star.screenshot({ animations: 'allow' })).equals(firstFrame), {
+          timeout: 5000,
+        }).toBe(true)
+        await page.emulateMedia({ reducedMotion: 'reduce' })
+        expect(await star.evaluate(element => getComputedStyle(element).animationName)).toBe('none')
+        await page.emulateMedia({ reducedMotion: 'no-preference', forcedColors: 'active' })
+        expect(await star.evaluate(element => getComputedStyle(element).animationName)).not.toBe('none')
+      } finally {
+        await page.emulateMedia({ reducedMotion: null, forcedColors: null })
+      }
       expect(await reasoning.getAttribute('data-preview')).toBeNull()
 
       first.proceed.resolve(undefined)
       await second.arrived.promise
-      const preview = reasoning.locator('[data-streaming]')
+      const preview = reasoning.locator('[data-streaming]:not([inert] *)')
       await expect.poll(() => preview.textContent()).toBe('First paragraph')
       expect(await preview.isVisible()).toBe(true)
       await preview.evaluate((element) => { element.setAttribute('data-retained-preview', 'true') })
@@ -87,6 +105,7 @@ it('shows completed paragraph first lines across blank lines with a right-edge f
       third.proceed.resolve(undefined)
       await settled
       await page.getByText('Done', { exact: true }).waitFor()
+      await star.waitFor({ state: 'detached' })
       expect(console.pageErrors).toEqual([])
       expect(console.warnings).toEqual([])
     } finally {

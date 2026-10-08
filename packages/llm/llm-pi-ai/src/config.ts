@@ -16,7 +16,7 @@ import type { Volatile } from '@deepseek-ai/cordis'
 
 import type { CacheRetention, ChatTemplateKwargValue, ModelThinkingLevel, Provider, ThinkingBudgets, Transport } from '@earendil-works/pi-ai'
 import z from '@deepseek-ai/schemastery'
-import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import { credentialKey, credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { resolveRetryPolicy, RetryPolicySchema } from '@deepseek-ai/dsh-llm'
@@ -92,6 +92,8 @@ export type {
 export interface PiAiProviderProfile {
   /** Credential reference (environment-variable name) resolved per request through `ctx.credentials`. */
   apiKeyEnv?: string
+  /** Credential record read directly from Host storage, without environment fallback. */
+  credentialRecord?: string
   /** Name shown by configuration surfaces; defaults to the route key. */
   displayName?: string
   /**
@@ -102,6 +104,8 @@ export interface PiAiProviderProfile {
   api?: string
   /** Endpoint for this route's models; defaults to the installed catalog's endpoint. */
   baseURL?: string
+  /** Read the selectable catalog from this route's authenticated `/models` endpoint. */
+  syncModels?: boolean
   /**
    * This route's model catalog. Omission serves the installed catalog for the
    * route unchanged; an explicit list replaces it, each entry defaulting its
@@ -184,13 +188,15 @@ export interface PiAiProviderProfile {
 
 /** Validated profile with its route stamped and every adapter-owned default resolved. */
 export interface ResolvedPiAiProviderProfile
-  extends Omit<PiAiProviderProfile, 'apiKeyEnv' | 'retryPolicy' | 'models' | 'displayName'> {
+  extends Omit<PiAiProviderProfile, 'apiKeyEnv' | 'credentialRecord' | 'retryPolicy' | 'models' | 'displayName'> {
   /** Harness route key and the `Models` collection key (the configuration dict key). */
   provider: string
   /** Resolved display name for selectors and configuration surfaces. */
   displayName: string
   /** Validated credential reference, when one is configured. */
   apiKeyEnv?: CredentialRef
+  /** Exact Host credential record address. */
+  credentialRecord?: string
   /** Positive finite provider-idle interval after defaulting. */
   streamIdleTimeoutMs: number
   /** Positive request-level base64 image payload bound after defaulting. */
@@ -226,6 +232,8 @@ export interface Config {
    * and registers them the moment a settings section supplies profiles.
    */
   providers: Volatile<Record<string, PiAiProviderProfile>>
+  /** Whether user settings, model discovery, and provider-login surfaces may alter routes. */
+  deploymentLocked: Volatile<boolean>
 }
 
 /** Plain options accepted by the provider resolver. */
@@ -325,9 +333,11 @@ const modelOverride: z<PiAiModelOverride> = z.object(modelFields)
 
 const profile = z.object({
   apiKeyEnv: z.string().role('credential-ref'),
+  credentialRecord: z.string(),
   displayName: z.string(),
   api: z.union(supportedProtocols()),
   baseURL: z.string(),
+  syncModels: z.boolean().default(false),
   models: z.array(modelProfile),
   modelOverrides: z.dict(modelOverride),
   compat: compatProfile,
@@ -351,6 +361,7 @@ const profile = z.object({
 /** Runtime schema for {@link Config}. */
 export const Config = z.object({
   providers: z.dict(profile).default({}).volatile(),
+  deploymentLocked: z.boolean().default(false).volatile(),
 })
 
 /**
@@ -417,6 +428,16 @@ export function resolveProfiles(
   const entries = Object.entries(providers ?? {})
   const resolved = new Map<string, ResolvedPiAiProviderProfile>()
   for (const [provider, source] of entries) {
+    if (source.apiKeyEnv !== undefined && source.credentialRecord !== undefined) {
+      throw new Error(`llm-pi-ai: provider "${provider}" must choose either apiKeyEnv or credentialRecord`)
+    }
+    if (source.credentialRecord !== undefined) {
+      const [scope, id, extra] = source.credentialRecord.split('/')
+      if (scope === undefined || id === undefined || extra !== undefined) {
+        throw new Error(`llm-pi-ai: provider "${provider}" has an invalid credentialRecord address`)
+      }
+      credentialKey(scope, id)
+    }
     rejectRemovedFields(provider, source)
     if (provider.length === 0) throw new Error('llm-pi-ai: provider names must be non-empty')
     if (source.baseURL !== undefined && source.baseURL.length === 0) {
@@ -481,18 +502,19 @@ export function resolveProfiles(
         ...source.api === undefined ? {} : { api: source.api },
         ...source.baseURL === undefined ? {} : { baseURL: source.baseURL },
         models: catalog.models,
-        namesCredential: source.apiKeyEnv !== undefined,
+        namesCredential: source.apiKeyEnv !== undefined || source.credentialRecord !== undefined,
       })
     } catch (error) {
       if (validation === 'strict' || !(error instanceof PiAiCatalogError)) throw error
       catalogError ??= error.message
     }
-    const { apiKeyEnv, retryPolicy, models: _models, displayName: _displayName, ...rest } = source
+    const { apiKeyEnv, credentialRecord, retryPolicy, models: _models, displayName: _displayName, ...rest } = source
     resolved.set(provider, {
       ...rest,
       provider,
       displayName,
       ...apiKeyEnv === undefined ? {} : { apiKeyEnv: credentialRef(apiKeyEnv) },
+      ...credentialRecord === undefined ? {} : { credentialRecord },
       streamIdleTimeoutMs,
       maxRequestImageBytes,
       requestImagePixelBudget,

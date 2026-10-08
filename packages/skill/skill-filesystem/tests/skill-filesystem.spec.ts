@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
@@ -181,6 +182,16 @@ describe('dsh-skill-filesystem plugin exports', () => {
 })
 
 describe('FileSystemSkillProvider', () => {
+  it('discovers the shipped MCP bundle recipe from a preset skill root', async () => {
+    const home = await tempDir('skill-mcp-recipe')
+    const skillRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../preset/agent-preset/mcp-skills')
+    const ctx = await setupLocal(home, { customSkillDirs: [skillRoot] })
+    const skill = await ctx.skills.get('adding-mcp-server')
+    expect(skill?.source).toBe('custom')
+    expect(skill?.content).toContain('@deepseek-ai/dsh-mcp-client')
+    expect(skill?.content).toContain('Streamable HTTP')
+  })
+
   it('discovers project, custom, user, and agents skill roots in priority order', async () => {
     const home = await tempDir('skill-home')
     const project = await tempDir('skill-project')

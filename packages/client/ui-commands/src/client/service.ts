@@ -32,7 +32,7 @@ import type { CommandContribution, CommandDecoration, CommandUiContract } from '
 import type { CommandDescriptor } from './directory.ts'
 import { CommandDirectory } from './directory.ts'
 import { PopupSelectController } from './popup.ts'
-import { builtinRowFace, sectionRows } from './presentation.ts'
+import { builtinRowFace, sectionRows, visibleMenuRows } from './presentation.ts'
 import { claimToken } from './resolution.ts'
 import type { TokenSegment } from './popup.ts'
 
@@ -244,7 +244,7 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
         ...(contribution.icon === undefined ? {} : { icon: contribution.icon }),
       })
     }
-    const visible = rows.filter(c => req.position === 'leading' || c.hint === undefined)
+    const visible = visibleMenuRows(rows.filter(c => req.position === 'leading' || c.hint === undefined))
     return req.query === '' ? sectionRows(visible, this.t) : rankByName(visible, req.query)
   }
 

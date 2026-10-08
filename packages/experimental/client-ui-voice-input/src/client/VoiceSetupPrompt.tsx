@@ -1,13 +1,12 @@
 /** Activation guidance after the Host inspects local recognition resources. */
 import { useEffect } from 'react'
 import { VoiceSetupDialog } from './VoiceSetupDialog.tsx'
-import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
+import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { VoiceInputInjected } from './VoiceInput.tsx'
 import type { NS } from './locales.ts'
 
 /** Registration shares for the bundle's activation guidance. */
-export type VoiceSetupPromptProps = PropsRuntime<'plugins.bundle.activation'> & PropsLocale<typeof NS>
+export type VoiceSetupPromptProps = { onDismiss: () => void; onOpenDetails: () => void } & PropsLocale<typeof NS>
   & Pick<InjectFace<VoiceInputInjected>, 'useSpeechReadiness'>
 
 /**

@@ -3,9 +3,8 @@
     - text: 设置
     - button "通用设置"
     - button "模型"
-    - button "内置插件"
+    - button "精选插件"
     - button "Agent 预设"
-  - button "打开配置文件"
   - button "关闭"
   - heading "模型" [level=2]
   - paragraph: 填入各提供商的 API 密钥即可使用其模型。
@@ -37,6 +36,7 @@
       - option "groq"
       - option "huggingface"
       - option "kimi-coding"
+      - option "meta"
       - option "minimax"
       - option "minimax-cn" [selected]
       - option "mistral"
@@ -51,6 +51,7 @@
       - option "qwen-token-plan"
       - option "qwen-token-plan-cn"
       - option "qwen-token-plan-individual"
+      - option "radius"
       - option "together"
       - option "vercel-ai-gateway"
       - option "xai"

@@ -154,12 +154,10 @@ describe('web-app runtime glue', () => {
       'open:http://127.0.0.1:4567/?token=test-token',
     ])
     const assembly = await ctx.systemPrompt.assemble()
-    expect(assembly.sections.find(entry => entry.name === 'harness:source')?.text).toContain('DeepSeek Harness implementation checkout')
+    expect(assembly.sections.find(entry => entry.name === 'harness:source')?.text).toContain('AsterHub implementation checkout')
     const section = assembly.sections.find(entry => entry.name === 'app:web-surface')
-    expect(section?.text).toContain('http://127.0.0.1:4567')
-    // The single update contract: the receiver is always on; no-refresh
-    // reloads additionally need the rebuild watcher.
-    expect(section?.text).toContain('pnpm run dev:web')
+    expect(section?.text).toContain('AsterHub 桌面应用')
+    expect(section?.text).not.toContain('网页工作台')
     const webRuntime = contributions.find(contribution => contribution.name === 'web-runtime')
     expect(webRuntime?.resolve()).toEqual({ DSH_WEB_URL: 'http://127.0.0.1:4567' })
     await ctx.fiber.dispose()
@@ -180,7 +178,7 @@ describe('web-app runtime glue', () => {
     expect(openBrowser).not.toHaveBeenCalled()
     const assembly = await ctx.systemPrompt.assemble()
     expect(assembly.sections.find(entry => entry.name === 'app:web-surface')?.text)
-      .toContain('rebuilding the affected Web artifacts')
+      .toContain('AsterHub 桌面应用')
     await ctx.fiber.dispose()
   })
 

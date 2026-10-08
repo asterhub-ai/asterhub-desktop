@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict'
 import { Recording } from '../src/client/audio.ts'
 import { Context, Service } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { SpeechProviderId } from '@deepseek-ai/dsh-experimental-speech-to-text/types'
@@ -43,8 +44,6 @@ async function fixture(fail = false) {
     }
   }
   new Remote()
-  const openBundle = vi.fn()
-  ctx.provide('pluginNavigation', { openBundle })
   const configure = vi.fn(async () => ({ ok: true, value: {} }))
   const prepare = vi.fn(async () => ({ ok: true, value: {} }))
   const cancelPreparation = vi.fn(async () => ({ ok: true, value: {} }))
@@ -54,12 +53,11 @@ async function fixture(fail = false) {
   await ctx.plugin(SlotRegistry)
   ctx.slots.register({ name: 'root', children: {
     'conversation.input.activity': { kind: 'single', scope: 'session' },
-    'plugins.bundle.activation': { kind: 'keyed', scope: 'root' },
-    'plugins.bundle.config': { kind: 'keyed', scope: 'root' },
+    'shell.overlay': { kind: 'list', scope: 'root' },
   } } as never,
   () => null)
   if (fail) vi.spyOn(ctx.slots, 'inject').mockImplementationOnce(() => { throw new Error('slot failed') })
-  return { ctx, unmount, openBundle, configure, prepare, cancelPreparation, transcribe }
+  return { ctx, unmount, configure, prepare, cancelPreparation, transcribe }
 }
 
 it('withdraws its Remote, localized slot and microphone captures on disposal', async () => {
@@ -72,8 +70,14 @@ it('withdraws its Remote, localized slot and microphone captures on disposal', a
     expect(entry).toMatchObject({ locale: 'voice-input' })
     const actions = entry!.inject!()
     assertVoiceActions(actions)
+    const settings = b.ctx.slots.entries('shell.overlay')[0]!.inject!()
+    assert(typeof settings.subscribeOpen === 'function')
+    const opened = vi.fn()
+    const unsubscribe = settings.subscribeOpen(opened)
     actions.openSettings()
-    expect(b.openBundle).toHaveBeenCalledWith('@deepseek-ai/dsh-experimental-voice-input-bundle')
+    expect(opened).toHaveBeenCalledOnce()
+    unsubscribe()
+    expect(b.ctx.get('pluginNavigation')).toBeUndefined()
     const finished = actions.createRecording()
     assert(finished instanceof Recording)
     await finished.dispose()
@@ -85,12 +89,7 @@ it('withdraws its Remote, localized slot and microphone captures on disposal', a
     await actions.prepare('local' as SpeechProviderId, { downloadSource: 'https://hf-mirror.com' })
     expect(b.prepare).toHaveBeenLastCalledWith('local', { downloadSource: 'https://hf-mirror.com' })
     await actions.cancelPreparation('local' as SpeechProviderId)
-    for (const slot of ['plugins.bundle.config', 'plugins.bundle.activation'] as const) {
-      const item = b.ctx.slots.entries(slot)[0]!
-      expect(item.locale).toBe('voice-input')
-      const injected = item.inject!()
-      expect(injected.hooks).toBe(actions.hooks)
-    }
+    expect(settings.hooks).toBe(actions.hooks)
     const failure = { ok: false, error: new RemoteError('gateway/internal', 'offline', {}) }
     b.configure.mockResolvedValueOnce(failure as never)
     b.prepare.mockResolvedValueOnce(failure as never)
@@ -105,7 +104,7 @@ it('withdraws its Remote, localized slot and microphone captures on disposal', a
     await fiber.dispose()
     expect(dispose).toHaveBeenCalledOnce()
     expect(b.ctx.slots.entries('conversation.input.activity')).toHaveLength(0)
-    expect(b.ctx.slots.entries('plugins.bundle.activation')).toHaveLength(0)
+    expect(b.ctx.slots.entries('shell.overlay')).toHaveLength(0)
     expect(b.unmount).toHaveBeenCalledOnce()
   } finally { await b.ctx.fiber.dispose() }
 })

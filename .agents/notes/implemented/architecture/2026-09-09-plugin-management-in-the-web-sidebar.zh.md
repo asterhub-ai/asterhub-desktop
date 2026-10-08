@@ -28,4 +28,4 @@ web bundle 的**插件**侧栏入口打开 profile 管理。设置提供只读�
 
 ## 测试
 
-`packages/client/ui-plugin-manager/tests` 钉住同一 id 下的两处注册与页面的渲染；`packages/client/ui-settings-plugins/tests` 钉住没有标签条的单一贡献；上述 web e2e 场景在脚手架上驱动面板与分区。
+`apps/web/tests/plugin-manager.e2e.ts` 钉住侧栏注册和页面渲染；`apps/web/tests/settings-chrome.e2e.ts` 覆盖无标签条的设置项；上述 web e2e 场景在脚手架上驱动面板与分区。

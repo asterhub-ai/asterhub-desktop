@@ -7,6 +7,10 @@ kind: "package-bundle"
 
 English | [中文](README.zh.md)
 
+Desktop analytics follows the [product collection policy](../../client/product-analytics/README.md), including its live application setting. Web usage is excluded.
+
+Desktop analytics schedules partial batches every 30 seconds, with a 15-second exporter timeout and a 20-second processor timeout. Shutdown allows 2 seconds to drain, then cancels pending requests and retry waits so telemetry does not keep the Host alive. Pending events may be lost on exit.
+
 ## Summary
 
 Run `dsh --profile web` to open an interactive browser GUI with chat, model and settings management, and session history. It uses the same model access, tools, and safety defaults as other dsh surfaces. Startup prints an authenticated URL and normally opens it in the default browser; SSH sessions and `--no-open` leave the URL for manual opening. You can change the port and allow extra hosts, but cannot bind all network interfaces. Choose this package for interactive browser work; use `dsh-headless` for one-shot command-line tasks.
@@ -51,7 +55,7 @@ Most users never set these; the command-line flags feed the four settings below 
 | `surfaceContext` | `true` | Give the agent GUI-orientation context and expose `DSH_WEB_URL` to its shell commands |
 | `trustedHosts` | `[]` | Extra hosts allowed to reach the GUI from the network |
 
-The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-web-app) is the exhaustive source for every accepted field and its JSDoc. The shipped composition disables `schedule`, `ui-schedule`, and `time-context` by default.
+The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-web-app) is the exhaustive source for every accepted field and its JSDoc. The shipped composition carries no `time-context`, `schedule`, or `ui-schedule` row; the optional experimental bundle `@deepseek-ai/dsh-experimental-schedule-bundle` inserts those three rows from the Plugins page.
 
 ### LAN access and trusted hosts
 
@@ -125,11 +129,11 @@ Read these pages when you want to go deeper into the shared core, the browser re
 <a id="model-experience"></a>
 ## Model Experience
 
-### Harness-source and Web-surface context
+### Source and desktop-app context
 
 #### What the model sees
 
-When `surfaceContext` is true, the `harness:source` section identifies the on-disk Harness implementation without claiming it is the working directory, and the `app:web-surface` global section (first-party order 10100, after reusable instructions) orients the model to the GUI: the canonical local URL, the "this page" referent, the update contract (the reload receiver is always on; no-refresh reloads additionally need the `pnpm run dev:web` watcher), and the instruction not to start replacement servers. `DSH_WEB_URL` additionally appears in the managed bash environment with its description, resolved per invocation from the live server. When it is false, neither section nor the variable is registered.
+When `surfaceContext` is true, the `harness:source` section identifies the on-disk AsterHub implementation without claiming it is the working directory, and the `app:web-surface` section orients the model to the AsterHub desktop app. It does not expose a browser URL or development-server instructions. The separate `DSH_WEB_URL` variable remains available to managed bash for development sessions and is resolved from the live server. When `surfaceContext` is false, neither section nor the variable is registered.
 
 #### Token effect
 
@@ -137,7 +141,7 @@ One source line and one prompt paragraph per session plus two managed-environmen
 
 #### KV Cache effect
 
-Source and Web sections follow first-party reusable instructions. Different checkout paths or local ports leave that preceding prefix unchanged when tools and configuration match; provider cache reuse is not guaranteed.
+Source and desktop-app sections follow first-party reusable instructions. Different checkout paths leave that preceding prefix unchanged when tools and configuration match; provider cache reuse is not guaranteed.
 
 ## Known Limitations and Deferred Work
 

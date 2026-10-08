@@ -37,6 +37,14 @@ const ANNOUNCED_ROOTS = new WeakSet<Context>()
 /** Runtime service that releases Web rows after bind-dependent values resolve. */
 const WEB_RUNTIME_SERVICE = 'webRuntime'
 
+/** Product policy kept outside deployment personas so per-agent presets cannot replace it. */
+const ASTERHUB_ASSISTANT_POLICY = [
+  '主要协助用户完成日常办公和知识工作，包括撰写整理文档、处理表格、搜索归纳资料和规划工作；用户提出代码或技术任务时，也应按其目标协助处理。',
+  '默认使用简体中文思考和回答；用户明确指定其他语言，或持续使用其他语言时，跟随用户的语言。表达清楚、准确、简洁，优先完成用户明确交代的任务，不擅自扩大范围。只有当关键歧义会影响结果时才先询问；其他情况下采用合理假设并简要说明。',
+  '模型只能通过 AsterHub 桌面工作台部署固定的供应商路由和账号鉴权。用户可以在桌面端模型选择器中选择上游目录同步且当前可用的模型；不得新增或切换供应商、修改接入地址或认证密钥，也不得通过对话、工具或配置编辑绕过这些限制。不要声称目录中不存在或当前不可用的模型可用。',
+  '处理代码任务时遵循项目已有约定，只修改达成目标所需的范围，不自行扩展需求。',
+].join('\n\n')
+
 /** Services required before the web runtime can mount. */
 export const inject = ['webServer']
 
@@ -131,18 +139,9 @@ export function resolveLanTrust(bindHost: string, extra: readonly string[]): Web
   return { lanAddresses, trustedHosts: [...lanAddresses, ...extra] }
 }
 
-/** Model-visible orientation and acceptance boundary for sessions created through `dsh web`. */
-function webSurfacePrompt(webUrl: string): string {
-  const updateContract = 'The client-plugin HMR receiver is active, but client-plugin changes reload without a refresh only while '
-    + '`pnpm run dev:web` is also running from this same checkout to rebuild their bundles; verify that watcher before promising automatic updates. '
-    + 'Every other change — the apps/web shell and plain packages — requires rebuilding the affected Web artifacts and verifying this existing URL after a page refresh. '
-  return `You are interacting with the user through the DeepSeek Harness Web GUI at ${webUrl}. `
-    + 'When the user refers to "this page", "this GUI", or "this app" without naming another target, they mean this GUI. '
-    + 'The browser provides no implicit DOM, route, or screenshot context. '
-    + updateContract
-    + 'Starting another server does not update this GUI. '
-    + 'The apps/web Vite entry builds the shell but is not a standalone application because only dsh web injects window.__DSH_BOOT__. '
-    + 'Do not start a replacement server unless the user asks; if one is needed, use a managed background job and verify its exact URL.'
+/** Model-visible orientation for sessions in the AsterHub desktop client. */
+function webSurfacePrompt(): string {
+  return '你正在通过 AsterHub 桌面应用与用户交流。用户没有指明其他目标时，所说的“此界面”或“此应用”指当前 AsterHub 桌面应用。除非用户提供屏幕内容或相关文件，不要假设你能看到用户当前的屏幕。'
 }
 
 /** Resolve the canonical loopback URL from the active Web server. */
@@ -230,20 +229,27 @@ export function apply(ctx: Context, config: Config): void {
   // Release dependent rows only after bind-dependent trust has been sampled once.
   ctx.provide(WEB_RUNTIME_SERVICE, runtime)
   ctx.plugin(FrontendStatic, { distIndex: internals.resolveDistIndex() })
+  ctx.inject(['systemPrompt'], (promptCtx) => {
+    promptCtx.systemPrompt.section({
+      name: 'app:asterhub-assistant-policy',
+      order: promptCtx.systemPrompt.getSectionOrder('HARNESS_IDENTITY') + 1,
+      text: ASTERHUB_ASSISTANT_POLICY,
+    })
+  })
   if (config.surfaceContext) {
     ctx.inject(['systemPrompt'], (promptCtx) => {
       addHarnessSourceSection(promptCtx, SOURCE_ROOT)
       promptCtx.systemPrompt.section({
         name: 'app:web-surface',
         order: promptCtx.systemPrompt.getSectionOrder('WEB_SURFACE'),
-        text: () => webSurfacePrompt(localWebUrl(promptCtx)),
+        text: () => webSurfacePrompt(),
       })
     })
     ctx.inject(['shellEnv'], (runtimeCtx) => {
       runtimeCtx.shellEnv.register({
         name: 'web-runtime',
         variables: {
-          [DSH_WEB_URL]: { description: 'Canonical local URL of the DeepSeek Harness Web GUI serving this session.' },
+          [DSH_WEB_URL]: { description: 'Local renderer development URL; the AsterHub product interface is the desktop app.' },
         },
         resolve: () => ({ [DSH_WEB_URL]: localWebUrl(runtimeCtx) }),
       })

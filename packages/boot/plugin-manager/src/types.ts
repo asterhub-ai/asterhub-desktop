@@ -5,6 +5,51 @@ import type { PluginInventoryEntry } from '@deepseek-ai/dsh-host-plugin-inventor
 export type { PluginEntryId } from '@deepseek-ai/dsh-host-plugin-inventory/types'
 import type { PluginEntryId } from '@deepseek-ai/dsh-host-plugin-inventory/types'
 
+/** One product-curated item displayed by the separate Plugins page. */
+export interface CuratedPluginEntry {
+  /** Stable catalogue id. */
+  id: string
+  /** User-facing name. */
+  name: string
+  /** Short product-owned summary. */
+  description: string
+  /** Optional display category. */
+  category?: string
+  /** Package identity and immutable version shown for transparency. */
+  package: string
+  version: string
+  /** Integrity value for the exact tarball installed by the curated app action. */
+  integrity: string
+  /** Same-origin immutable server tarball selected for on-demand installation. */
+  artifactUrl: string
+  /** Whether this exact package version and integrity is installed from the current profile lockfile. */
+  installed?: boolean
+  /** Install status distinguishing exact match, version drift, lockfile mismatch, and absent. */
+  installStatus?: 'installed' | 'update-available' | 'reinstall' | 'not-installed'
+  /** Optional icon URL restricted by the Host to same-origin HTTPS. */
+  iconUrl?: string
+}
+
+/** Exact signed catalogue facts the Plugins page showed before the user clicked Install. */
+export interface CuratedPluginInstallRequest {
+  id: string
+  revision: number
+  package: string
+  version: string
+  integrity: string
+  artifactUrl: string
+}
+
+/** Verified catalogue state presented by the app plugin page. */
+export interface CuratedPluginCatalog {
+  /** Monotone published revision. */
+  revision: number
+  /** Last publish time. */
+  generatedAt: string
+  /** Entries sorted by the server's stable order. */
+  plugins: CuratedPluginEntry[]
+}
+
 /** Reasons a profile control cannot modify its target. */
 export type ReadOnlyReason = 'management-required' | 'unaddressable'
 

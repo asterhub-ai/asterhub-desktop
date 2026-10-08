@@ -1,7 +1,12 @@
 /** Carrier-neutral page navigation and observable state. */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
+import type {
+  DesktopBrowserAccessibleAction,
+  DesktopBrowserAccessibleSnapshot,
+  DesktopBrowserRef,
+  DesktopBrowserSnapshotId,
+} from '../../types.ts'
 import type { BrowserTarget } from './url.ts'
-
 /** A loading failure, optionally carrying the underlying browser's diagnostic. */
 export interface BrowserLoadError {
   readonly code: number | undefined
@@ -18,6 +23,8 @@ export interface BrowserFrameState {
   readonly error: BrowserLoadError | undefined
   /** Undefined when this provider does not expose a sandbox control. */
   readonly sandboxEnabled: boolean | undefined
+  /** Accessible snapshot tree for the screen-reader mirror. */
+  readonly accessibleSnapshot?: DesktopBrowserAccessibleSnapshot | undefined
 }
 
 /** Optional iframe policy control, not an Electron process-sandbox switch. */
@@ -28,6 +35,12 @@ export interface BrowserSandboxControl {
 
 /** Navigation owns page lifetime; mounting and hiding belong to BrowserPresentation. */
 export interface BrowserFrame extends HostObservable<BrowserFrameState> {
+  /** Execute a semantic action on a snapshot ref. */
+  readonly accessibleAction?: (
+    snapshotId: DesktopBrowserSnapshotId,
+    ref: DesktopBrowserRef,
+    action: DesktopBrowserAccessibleAction,
+  ) => Promise<void>
   readonly sandbox?: BrowserSandboxControl
   /** @param target - validated HTTP(S) address; loading failures are published in state. */
   loadUrl(target: BrowserTarget): void

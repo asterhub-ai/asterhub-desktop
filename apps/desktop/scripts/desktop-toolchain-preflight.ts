@@ -58,7 +58,13 @@ async function probeWindowsInstallerToolchain(environment: NodeJS.ProcessEnv): P
         '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'],
       { windowsHide: true, timeout: 30_000 })
       if (located.stdout.trim() === '') {
-        failures.push({ tool: 'vswhere', detail: 'Visual Studio C++ build tools are not installed, so the installer helper cannot compile' })
+        // Some vswhere builds do not return BuildTools under -products *. Try the explicit product ID.
+        const buildTools = await run(vswhere, ['-latest', '-products', 'Microsoft.VisualStudio.Product.BuildTools',
+          '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'],
+        { windowsHide: true, timeout: 30_000 })
+        if (buildTools.stdout.trim() === '') {
+          failures.push({ tool: 'vswhere', detail: 'Visual Studio C++ build tools are not installed, so the installer helper cannot compile' })
+        }
       }
     }
     catch (error) {

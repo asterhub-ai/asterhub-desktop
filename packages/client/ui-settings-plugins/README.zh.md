@@ -1,5 +1,5 @@
 ---
-description: "dsh Web 客户端的「内置插件」设置分区：设置导航项与供功能插件注册标签页的标签行。"
+description: "AsterHub 的「精选插件」设置分区：设置导航项与供功能插件注册标签页的标签行。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用**内置插件**设置分区查看本部署随附的插件。该分区只是一个壳：它拥有导航项和标签行，里面的每个标签页都由其他插件注册——只读清单注册了一个。配置内置插件在侧栏的插件页上进行，每个官方插件自己的伴生包把页面注册到那里。
+在设置中使用**精选插件**浏览并安装为 AsterHub 选定的包。分区拥有导航入口和标签行，功能插件贡献页面。默认页面读取经验证的服务端精选目录，而非 Host Loader 内置插件清单。
 
 ## 目录
 
@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在设置里打开**内置插件**。[ui-settings-plugin-inventory](../ui-settings-plugin-inventory/README.zh.md) 把清单作为分区唯一的标签页贡献进来，直接显示为页面本身；注册第二个标签页后这一行就变成标签行。组合里没有任何标签页贡献的部署会显示分区的空提示。
+在设置里打开**精选插件**。[ui-settings-plugin-inventory](../ui-settings-plugin-inventory/README.zh.md) 把签名服务端精选目录作为分区唯一的页面贡献进来；注册第二个贡献后显示标签行。组合里没有任何标签页贡献的部署会显示分区的空提示。
 
 要贡献一个标签页，带 `id`、`order` 和本地化的 `label` 注册进 `settings.plugins.tab`；分区按序渲染条目，标签页在首次被选中时挂载。功能文案留在注册方自己的字典里。
 
@@ -37,7 +37,7 @@ kind: "package-reference"
 <details>
 <summary>实现细节——点击展开</summary>
 
-分区声明 `settings.plugins.tab`，一个根级 list slot，其标签成为有序的标签页；只有一个贡献时直接渲染为页面本身，标签页在首次被选中后保持挂载，搜索词和清单快照因此在切换间不丢失。分区的 `inject` 把 slot 账本投影成按序排列、标签随当前语言的行，在账本版本或语言修订变化前保持缓存。宿主半侧是一个空的 `apply`，只为让本包占一条 Loader 行，客户端模块系统据此送出浏览器半侧。
+分区声明 `settings.plugins.tab`，一个根级 list slot，其标签成为有序的标签页。只有一个贡献时直接渲染为页面，标签页在首次被选中后保持挂载，页面状态因此在切换间保留。分区把 slot 账本投影成按序排列、标签随当前语言的行，在账本版本或语言修订变化前保持缓存。宿主半侧没有行为，其 Loader 行使浏览器实现可供加载。
 
 </details>
 
@@ -46,7 +46,7 @@ kind: "package-reference"
 <a id="further-exploration"></a>
 ## 进一步探索
 
-- [ui-settings-plugin-inventory](../ui-settings-plugin-inventory/README.zh.md)——只读清单标签页。
+- [ui-settings-plugin-inventory](../ui-settings-plugin-inventory/README.zh.md)——签名服务端精选目录页面。
 - [ui-settings](../ui-settings/README.zh.md)——声明 `settings.section` 的领域基座。
 - [ui-plugin-manager](../ui-plugin-manager/README.zh.md)——配置官方插件的插件页。
 - [ui-settings-shell](../ui-settings-shell/README.zh.md)、[ui-settings-agent-loop](../ui-settings-agent-loop/README.zh.md)、[ui-settings-subagent](../ui-settings-subagent/README.zh.md)、[ui-settings-web-search](../ui-settings-web-search/README.zh.md)——官方配置页，每个一个伴生包。

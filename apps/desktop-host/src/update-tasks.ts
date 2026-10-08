@@ -1,7 +1,8 @@
 /** Desktop installation admission and task inspection for the shared Web Host. */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-agent'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-asterhub-automation'
 import type {} from '@deepseek-ai/dsh-jobs'
 import type {} from '@deepseek-ai/dsh-client-connection'
 
@@ -13,12 +14,13 @@ import type {} from '@deepseek-ai/dsh-client-connection'
  * @param jobs - Job registry queried for the global roster and each agent's own jobs.
  * @returns true when any of those conditions holds.
  */
-export function hasDesktopActiveTasks(liveAgents: ReturnType<Context['agents']['list']>, jobs: Context['jobs']): boolean {
+export function hasDesktopActiveTasks(liveAgents: readonly Agent[], jobs: Context['jobs']): boolean {
   return liveAgents.some(agent => agent.status === 'running'
     || agent.inbox.nextTurn.length > 0 || agent.inbox.nextStep.length > 0)
     || [undefined, ...liveAgents].some(agent => jobs.list(agent?.id)
       .some(job => job.status === 'running' || job.status === 'stopping'))
 }
+
 
 /**
  * Register update admission on the owning Host context.
@@ -48,6 +50,12 @@ export function installDesktopUpdateTaskControl(ctx: Context): (action: 'inspect
     const agents = ctx.get('agents')
     const jobs = ctx.get('jobs')
     if (agents === undefined || jobs === undefined) throw new Error('desktop update: task services are unavailable')
+    // Native automation admission lock prevents new scheduled runs during update.
+    // Only lock/unlock toggle it; inspect must not change admission state.
+    const automation = ctx.get('asterhubAutomation')
+    if (automation !== undefined && action !== 'inspect') {
+      automation.setAdmissionLocked(action === 'lock')
+    }
     if (action === 'lock') {
       locked = true
       const generation = ++lockGeneration
@@ -57,6 +65,7 @@ export function installDesktopUpdateTaskControl(ctx: Context): (action: 'inspect
       if (stopped) throw new Error('desktop update: Host is stopping')
       if (generation !== lockGeneration) throw new Error('desktop update: admission lock was superseded')
     }
-    return hasDesktopActiveTasks(agents.list(), jobs)
+    const nativeActive = typeof automation?.inspectLifecycle === 'function' ? automation.inspectLifecycle().active : false
+    return hasDesktopActiveTasks(agents.list(), jobs) || nativeActive === true
   }
 }

@@ -20,17 +20,37 @@ export const DESKTOP_IPC = {
   browserAcquire: 'dsh-desktop:browser-acquire',
   browserRelease: 'dsh-desktop:browser-release',
   browserOpenRequested: 'dsh-desktop:browser-open-requested',
+  browserAutomation: 'dsh-desktop:browser-automation',
+  browserAutomationReply: 'dsh-desktop:browser-automation-reply',
+  browserNavigate: 'dsh-desktop:browser-navigate',
+  browserGoBack: 'dsh-desktop:browser-go-back',
+  browserGoForward: 'dsh-desktop:browser-go-forward',
+  browserReload: 'dsh-desktop:browser-reload',
+  browserSetViewport: 'dsh-desktop:browser-set-viewport',
+  browserDispatchInput: 'dsh-desktop:browser-dispatch-input',
+  browserPageState: 'dsh-desktop:browser-page-state',
+  browserFrame: 'dsh-desktop:browser-frame',
+  browserSubscribeFrames: 'dsh-desktop:browser-subscribe-frames',
+  browserUnsubscribeFrames: 'dsh-desktop:browser-unsubscribe-frames',
+  browserAccessibleSnapshot: 'dsh-desktop:browser-accessible-snapshot',
+  browserAccessibleAction: 'dsh-desktop:browser-accessible-action',
   directoryPick: 'dsh-desktop:directory-pick',
+  deviceInfo: 'dsh-desktop:device-info',
   localeBootstrap: 'dsh-desktop:locale-bootstrap',
   localeChanged: 'dsh-desktop:locale-changed',
   updatesStatus: 'dsh-desktop:updates-status',
   updatesOpen: 'dsh-desktop:updates-open',
+  updatesCheck: 'dsh-desktop:updates-check',
   updatesPresentation: 'dsh-desktop:updates-presentation',
   nativeThemeSet: 'dsh-desktop:native-theme-set',
   windowFullscreen: 'dsh-desktop:window-fullscreen',
   windowsAppearance: 'dsh-desktop:windows-appearance',
   windowsMenu: 'dsh-desktop:windows-menu',
+  accountCommand: 'dsh-desktop:account-command',
 } as const
+
+/** Account actions sent from the native application menu to the renderer. */
+export type DesktopAccountMenuCommand = 'open' | 'logout'
 
 /** Desktop release update state rendered by desktop-owned UI. */
 export type DesktopUpdatePreparationFailureKind = 'stop-failed' | 'tasks-changed' | 'tasks-unavailable'
@@ -73,10 +93,20 @@ export interface DshDesktopProductApi {
   readonly browser: DesktopBrowserBridge
   readonly keyboard: DesktopKeyboardApi
   readonly shortcuts: DesktopShortcutsApi
+  /**
+   * Local machine description for the feedback questionnaire.
+   * @returns `name=value` fields separated by `; `, with no hostname, user name, or serial number.
+   */
+  deviceInfo(): Promise<string>
   readonly updates: {
     status(): Promise<DesktopUpdatePresentation>
     open(): Promise<void>
+    /** One main-owned manual check; the renderer supplies no version, URL, or install authorization. */
+    check(): Promise<void>
     subscribe(listener: (state: DesktopUpdatePresentation) => void): () => void
+  }
+  readonly account: {
+    subscribeCommand(listener: (command: DesktopAccountMenuCommand) => void): () => void
   }
 }
 

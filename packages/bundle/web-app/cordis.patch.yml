@@ -15,9 +15,8 @@
 
 - id: system-prompt
   config:
-    personaSuffix: Your working directory is {{cwd}}.
-    personaPrefix: >-
-      You are a coding agent powered by the {{model}} model.
+    personaSuffix: 当前工作目录：{{cwd}}。
+    personaPrefix: 当前会话使用 {{model}} 模型。
 
 # Full-text session search is opt-in (the base row's `openAt: never`). This
 # restatement keeps the Web values on one ephemeral in-memory index; a
@@ -42,11 +41,6 @@
 # `dsh.client` rows are the browser roster the modules node half scans into
 # window.__DSH_BOOT__; the modules row is simultaneously a host row.
 - insert:
-    # Host-owned opt-in sampled when a new Web session receives its preset
-    # delegation tools. The Plugins page edits this settings namespace.
-    - id: subagent-model-selection-settings
-      name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'
-
     - id: message-feedback
       name: '@deepseek-ai/dsh-message-feedback'
       config:
@@ -101,6 +95,8 @@
     # Session commands, cold reads, and live control over Typert Remote.
     - id: session-controller
       name: '@deepseek-ai/dsh-api-session-controller'
+      config:
+        modelSelectionPolicy: session
 
     # One background job's observation record streamed over Typert Remote;
     # the roster rides the session control stream above.
@@ -113,27 +109,8 @@
     - id: workspace-files
       name: '@deepseek-ai/dsh-api-workspace-files'
 
-    # Durable Host-wide reminders. The Schedule service owns the task store and
-    # delivers each due occurrence as a follow-up in its original Session;
-    # `time-context` supplies the current time, browser zone, and elapsed time
-    # the model needs to resolve an unqualified date or time. The browser half
-    # is the `ui-schedule` row below.
-    - id: time-context
-      name: '@deepseek-ai/dsh-time-context'
-      disabled: true
-
-    - id: schedule
-      name: '@deepseek-ai/dsh-schedule'
-      disabled: true
-
     # Configuration-surface reads and writes over Typert Remote. Each method
     # reports an actionable error when its settings-domain provider is absent.
-    - id: ui-settings-account
-      name: '@deepseek-ai/dsh-client-ui-settings-account'
-
-    - id: account-controller
-      name: '@deepseek-ai/dsh-api-account-controller'
-
     - id: settings-controller
       name: '@deepseek-ai/dsh-api-settings-controller'
 
@@ -209,12 +186,13 @@
     # webserver under /api; browser half is the fetch/SSE client.
     - id: connection
       name: '@deepseek-ai/dsh-client-connection'
+      # Resolve bind-dependent trust only after the Web runtime is available.
       inject: [webRuntime]
       config:
         # LAN literals derived from the active bind plus --trusted-host extras.
         # A deployment adding authorities keeps this expression and concatenates
         # its literals, for example: ['app.internal', ...ctx.webRuntime.trustedHosts].
-        trustedHosts: !!js ctx.webRuntime.trustedHosts
+        trustedHosts: !!js "ctx.get('profileContext')?.name === 'desktop' ? [] : ctx.webRuntime.trustedHosts"
 
     # Raw Blob and ReadableStream uploads run independently of Connection's
     # RPC and generation service.
@@ -285,8 +263,11 @@
     - id: ui-settings-general
       name: '@deepseek-ai/dsh-client-ui-settings-general'
 
-    - id: ui-settings-models
-      name: '@deepseek-ai/dsh-client-ui-settings-models'
+    # The Account settings entry: sub2api login, quota, and top-up. Login
+    # provisions the model key the llm-pi-ai sub2api route resolves, replacing
+    # the upstream provider-management section.
+    - id: ui-settings-account
+      name: '@deepseek-ai/dsh-client-ui-settings-account'
 
     # Plugin management: the sidebar Plugins page installs, enables, disables,
     # and removes the profile's bundles through the `pluginManager` Remote.
@@ -294,8 +275,7 @@
     - id: ui-plugin-manager
       name: '@deepseek-ai/dsh-client-ui-plugin-manager'
 
-    # Read-only Plugin list tab in the Settings Plugins section; the built-in
-    # bundles the sidebar page leaves out are inspected here.
+    # Settings reads verified server catalogue entries and uses curated installation.
     - id: ui-settings-plugin-inventory
       name: '@deepseek-ai/dsh-client-ui-settings-plugin-inventory'
 
@@ -314,6 +294,27 @@
 
     - id: ui-attachment
       name: '@deepseek-ai/dsh-client-ui-attachment'
+
+    # Native voice input is part of the AsterHub workbench. Model assets are
+    # pre-bundled in the Desktop installation; the env-injected paths below
+    # point the provider at the bundled files so no first-use download is needed.
+    - id: speech-to-text
+      name: '@deepseek-ai/dsh-experimental-speech-to-text'
+      config:
+        defaultProvider: sensevoice-local
+
+    - id: speech-to-text-sensevoice
+      name: '@deepseek-ai/dsh-experimental-speech-to-text-sensevoice'
+      config:
+        dataRoot: !!js dshHomePath('speech-to-text', 'sensevoice')
+        modelDirectory: !!js "process.env.DSH_SPEECH_MODEL_DIRECTORY || undefined"
+        vadModelPath: !!js "process.env.DSH_SPEECH_VAD_MODEL_PATH || undefined"
+
+    - id: api-speech-to-text
+      name: '@deepseek-ai/dsh-experimental-api-speech-to-text'
+
+    - id: ui-voice-input
+      name: '@deepseek-ai/dsh-experimental-client-ui-voice-input'
 
     # Tool call tree, generic fallback, and keyed business Tool views.
     - id: ui-tool
@@ -365,12 +366,6 @@
     - id: ui-jobs
       name: '@deepseek-ai/dsh-client-ui-jobs'
 
-    # Task management and Session reminder catalog over the Host Schedule
-    # service mounted above.
-    - id: ui-schedule
-      name: '@deepseek-ai/dsh-client-ui-schedule'
-      disabled: true
-
     # Goal surface: GoalBar in the input dock over the goal session projection.
     - id: ui-goal
       name: '@deepseek-ai/dsh-client-ui-goal'
@@ -381,21 +376,18 @@
     - id: ui-message-feedback
       name: '@deepseek-ai/dsh-client-ui-message-feedback'
 
-    # Model selection: the /model popupSelect + composer seat over session.models.
+    # The picker receives only the deployment-owned AsterHub route and its
+    # authenticated upstream model list. Provider configuration stays locked.
     - id: ui-model-selection
       name: '@deepseek-ai/dsh-client-ui-model-selection'
 
     - id: ui-permission
       name: '@deepseek-ai/dsh-client-ui-permission-presets'
 
-    # The agent-preset row in General settings: the default preset for
-    # sessions created later. Absent a roster it renders nothing.
-    - id: ui-agent-preset
-      name: '@deepseek-ai/dsh-client-ui-agent-preset'
+    - id: ui-settings-session-log
+      name: '@deepseek-ai/dsh-client-ui-settings-session-log'
 
-    # The Built-in plugins settings section: the navigation entry and the tab
-    # row the inventory tab registers into. The official configuration pages
-    # are the companion rows below.
+    # Curated plugins Settings section and the feature-owned tab extension point.
     - id: ui-settings-plugins
       name: '@deepseek-ai/dsh-client-ui-settings-plugins'
 
@@ -560,3 +552,12 @@
       name: '@deepseek-ai/dsh-agent-preset-registry'
       config:
         default: standard
+
+    # The AsterHub account service: Sub2API login, model-key provisioning
+    # (written to a Host-only credential record), quota, and
+    # top-up for the 账户 settings entry.
+    - id: account-sub2api
+      name: '@deepseek-ai/dsh-account-sub2api'
+      config:
+        authBaseUrl: 'https://xapi.fans/api/v1'
+        groupId: 6
