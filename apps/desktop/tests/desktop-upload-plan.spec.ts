@@ -24,7 +24,6 @@ const { createBlockmap } = require('app-builder-lib/out/targets/differentialUpda
 }
 
 interface Fixture {
-  readonly repositoryRoot: string
   readonly appRoot: string
   readonly artifactsRoot: string
   readonly environment: NodeJS.ProcessEnv
@@ -38,6 +37,7 @@ async function fixture(
   target: DesktopPackageTargetName,
   version = '1.2.3',
   environment: 'test' | 'production' = 'test',
+  dshVersion = version,
 ): Promise<Fixture> {
   const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-upload-'))
   temporaryDirectories.push(root)
@@ -45,7 +45,7 @@ async function fixture(
   const appRoot = join(repositoryRoot, 'apps', 'desktop')
   const artifactsRoot = join(appRoot, '.desktop-build', 'artifacts')
   await mkdir(artifactsRoot, { recursive: true })
-  await writeFile(join(repositoryRoot, 'package.json'), `${JSON.stringify({ version })}\n`)
+  await writeFile(join(repositoryRoot, 'package.json'), `${JSON.stringify({ version: dshVersion })}\n`)
   await writeFile(join(appRoot, 'package.json'), `${JSON.stringify({ version })}\n`)
 
   const [os, arch] = target.split('-') as ['mac' | 'win', 'arm64' | 'x64']
@@ -88,7 +88,6 @@ async function fixture(
     })}\n`)
   }
   return {
-    repositoryRoot,
     appRoot,
     artifactsRoot,
     environment: environment === 'test'
@@ -113,6 +112,12 @@ afterEach(async () => {
 })
 
 describe('desktop upload plan', () => {
+  it('accepts a Desktop release version independent of the DSH runtime version', async () => {
+    const paths = await fixture('mac-x64', '0.21.0', 'test', '0.2.0-rc.3')
+    const plan = await createDesktopUploadPlan('mac-x64', paths)
+    expect(plan).toMatchObject({ version: '0.21.0', environment: 'test' })
+  })
+
   it('uploads only the selected latest installer to each deployment using the existing COS transport', async () => {
     const published = []
     for (const environment of ['production', 'test'] as const) {
@@ -274,9 +279,8 @@ describe('desktop upload plan', () => {
     await expect(createDesktopUploadPlan('win-x64', paths)).rejects.toThrow(/missing or empty artifact.*\.exe\.blockmap/u)
   })
 
-  it('rejects a completed build from another dsh version or deployment', async () => {
+  it('rejects a completion record for a different Desktop version or deployment', async () => {
     const paths = await fixture('mac-x64')
-    await writeFile(join(paths.repositoryRoot, 'package.json'), '{"version":"1.2.4"}\n')
     await writeFile(join(paths.appRoot, 'package.json'), '{"version":"1.2.4"}\n')
     await expect(createDesktopUploadPlan('mac-x64', paths)).rejects.toThrow(/completion record.*1\.2\.4/u)
 

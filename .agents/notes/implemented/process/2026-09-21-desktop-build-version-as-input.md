@@ -6,7 +6,7 @@ English | [中文](2026-09-21-desktop-build-version-as-input.zh.md)
 
 ## Problem
 
-[Deriving Desktop test versions](2026-09-16-desktop-release-version-derivation.md) fixed what a test build is called but not where that name lives. Publishing one meant running `release:dsh` to rewrite the version in every release-family manifest and the lockfile — 295 files — because packaging, the update feed, and upload validation each read the version from the checkout. Those edits are never committed, so a test build left the working tree dirty until someone reverted it, and a reverted tree no longer describes the artifacts that were published. The index in `<base>.YYYYMMDD.index` was also chosen by hand against the records and the bucket, which is a lookup a script can do.
+The [independent Desktop version decision](../architecture/2026-10-09-desktop-version-independence.md) assigns product releases to the Desktop manifest and runtime releases to the root DSH manifest. This note records the earlier build-input problem: test publishing once rewrote 295 release-family manifests and the lockfile, and operators chose the `<base>.YYYYMMDD.index` by hand.
 
 Two more facts about a build were unrecoverable afterwards. A build handed to a colleague or pushed to a test feed is reachable from no tag, and the build tree it came from is not a checkout, so nothing connected an installer to its sources. A production release was likewise recorded only in the bucket.
 
@@ -14,9 +14,9 @@ Two more facts about a build were unrecoverable afterwards. A build handed to a 
 
 The version a build publishes is an argument. `--build-version` names it, `--build-version auto` proposes the next index for the day, and the value reaches electron-builder through `extraMetadata`, the update feed, and the upload validation as one input. Manifests keep the product version, so no packaging run modifies tracked files.
 
-The version rules in the [Desktop release rules](../../../../apps/desktop/README.md#release-versions) are unchanged: production publishes the dsh base, a prerelease base takes `.YYYYMMDD.index`, and a stable base takes `-test.YYYYMMDD.index`. Validation uses `semver` itself, because `electron-updater` compares feed versions with `semver.gt` against the installed `app.getVersion()`.
+The version rules in the [Desktop release rules](../../../../apps/desktop/README.md#release-versions) use the Desktop product base: production publishes it exactly, prerelease tests append `.YYYYMMDD.index`, and stable tests append `-test.YYYYMMDD.index`. Validation uses `semver` because `electron-updater` compares feed versions with `semver.gt` against installed `app.getVersion()`.
 
-This supersedes two requirements of that note. Release-family manifests are no longer rewritten, and the shell version no longer equals the bundled runtime version: the runtime is the dsh package at the product version, and `verifyDesktopRuntime` receives the version whoever prepared that tree wrote, which installed-update qualification rewrites for its own materials. The application already reported the two separately to the mandatory update policy.
+Desktop product and bundled DSH runtime versions are independent. `app.getVersion()` and update feeds use the Desktop build version; the runtime descriptor and `verifyDesktopRuntime` use the root DSH version. Installed-update qualification rewrites a private runtime descriptor only for its isolated materials.
 
 Every artifact records `dshBuildCommit` and `dshBuildDirty` in its manifest. A production upload tags the packaged commit as `desktop-v<version>` after the artifacts are public, and reports the command to run by hand rather than failing an upload that already completed; a build from a modified checkout is not tagged. Test and local builds are deliberately left untagged, because a tag per test build would bury the releases.
 

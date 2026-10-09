@@ -50,6 +50,25 @@ describe('TurnUsagePanel', () => {
     expect(details.textContent).not.toContain('Total')
   })
 
+  it('uses million and billion units in the details dialog for large counts', () => {
+    const usage: TurnTokenUsage = {
+      uncachedInputTokens: 1_234_000_000,
+      cacheReadTokens: 2_000_000_000,
+      cacheWriteTokens: 0,
+      outputTokens: 500_000_000,
+      reasoningTokens: 50_000_000,
+      totalTokens: 3_734_000_000,
+    }
+    const view = render(<TurnUsagePanel usage={usage} t={t} />)
+    fireEvent.click(view.getByRole('button'))
+    const dialog = view.getByRole('dialog')
+
+    expect(dialog.firstChild?.textContent).toBe('Turn usage3.7B tok')
+    expect(dialog.textContent).toContain('Uncached input1.2B tok')
+    expect(dialog.textContent).toContain('Cached input2B tok')
+    expect(dialog.textContent).toContain('Output500M tok (50M tok reasoning)')
+  })
+
   it('omits unavailable optional facts instead of inventing values', () => {
     const usage: TurnTokenUsage = {
       uncachedInputTokens: 120,
@@ -77,8 +96,8 @@ describe('TurnUsagePanel', () => {
     }
     const view = render(<TurnUsagePanel usage={usage} t={t} />)
     const trigger = view.getByRole('button')
-    // The pill carries the compact total; cache-hit rate and exact token
-    // counts stay in the dialog.
+    // The pill keeps its compact total; the dialog keeps small counts exact
+    // and abbreviates larger token amounts.
     expect(trigger.textContent).toBe('Usage 1.1K tok')
 
     fireEvent.click(trigger)

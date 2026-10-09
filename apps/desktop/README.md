@@ -64,13 +64,13 @@ Node prepares the bundled interpreters and Python libraries without a system Pyt
 
 | Decision | Why | Direct consequence |
 |---|---|---|
-| Release identity | The shell API, Web client, backend, and plugin graph are qualified as one combination; independent versions would create untested combinations and ambiguous update availability. | Electron and `@deepseek-ai/dsh` always have the same exact version. A dsh upgrade is a Desktop release, even when the shell code is unchanged. |
+| Release identity | The shell API, Web client, backend, and plugin graph are qualified as one combination; each release still needs explicit runtime compatibility checks. | The Desktop product version owns update ordering; the bundled `@deepseek-ai/dsh` runtime retains its root package version. Both versions ship as one signed Desktop update unit. |
 | Runtime | The application must run without a system Node.js or pnpm installation. | dsh runs under Electron with `ELECTRON_RUN_AS_NODE=1` and `--expose-internals` and every package operation uses the bundled pnpm. Package-manager configuration and the Host environment follow the user's settings. Package scripts use a `node` shell launcher that forwards to Electron. |
 | Package sources | Core installation at startup adds work even when offline. | `app.asar/dsh` carries a complete production dependency tree; the profile installs only external plugins. |
 | State ownership | Sharing executable dependency graphs would let CLI and Desktop change each other's dsh, Cordis, plugin, or native-module versions, while two desktop processes could race on the same profile. | Electron acquires its process-lifetime single-instance lock before any profile access and exclusively owns `$DSH_HOME/profiles/desktop` plus its package-manager state. CLI and Desktop share supported product data under `$DSH_HOME`, but never executable packages, plugin activation, lockfiles, or `node_modules`. |
 | Transport | Web serving and authentication share one implementation. | Electron loads packaged Web assets; the Host supplies boot injections and authenticated APIs. |
 | Plugin changes | Desktop and Web need the same installation and activation behavior. | The main application uses the shared Web Plugin Manager and bundled pnpm. |
-| Updates | Independent shell and dsh updates would recreate version splits, while unchanged shell blocks should not require a complete transfer. | The Electron shell, matching dsh runtime and pnpm form one signed update unit. Platform update artifacts may reuse unchanged blocks, but runtime version selection never splits from the Desktop release. |
+| Updates | Independent shell and dsh updates would recreate version splits, while unchanged shell blocks should not require a complete transfer. | Electron, its qualified dsh runtime, and pnpm form one signed update unit. The Desktop product and DSH runtime versions identify their respective release families; runtime compatibility is checked during packaging and startup. Platform update artifacts may reuse unchanged blocks. |
 
 The [thin-wrapper decision](../../.agents/notes/implemented/architecture/2026-09-10-desktop-web-wrapper.md) owns shared Web behavior and Desktop adapters. The [Electron packaging and update decision](../../.agents/notes/implemented/architecture/2026-08-25-electron-desktop-packaging-and-updates.md) owns release identity, signing, and update qualification.
 
@@ -166,20 +166,20 @@ The welcome window follows system appearance with the design’s Platform light/
 
 ### Release versions
 
-Before each Desktop packaging run, first confirm the complete version string with the current user. Check the selected deployment, dsh base version, retained release records, and published objects, then propose the exact version for approval. Do not start packaging until the user confirms that version; the deployment setting alone does not authorize a version choice.
+Before each Desktop packaging run, confirm the complete build version with the current user. Check the selected deployment, Desktop product version, retained release records, and published objects, then propose the exact version for approval. Do not start packaging until the user confirms that version; selecting a deployment does not authorize a version choice.
 
-Record the current dsh version as the base. A production Desktop release uses that exact version, including any `alpha`, `beta`, or `rc` identifiers. A test release preserves the complete prerelease base and appends `.YYYYMMDD.index`; a stable base uses `-test.YYYYMMDD.index` instead.
+`apps/desktop/package.json` owns the AsterHub Desktop product and update version; the repository root `package.json` owns the bundled DSH runtime version. These versions are independent. The current Desktop product version is `0.21.0`; production releases use it exactly. Test releases derive from the Desktop version, preserving any prerelease identifier and appending `.YYYYMMDD.index`, or appending `-test.YYYYMMDD.index` to a stable version.
 
-| dsh base | Production Desktop | Test Desktop example |
+| Desktop product base | Production Desktop | Test Desktop example |
 |---|---|---|
 | `0.1.6-alpha.1` | `0.1.6-alpha.1` | `0.1.6-alpha.1.20260916.1` |
 | `0.1.6-beta.2` | `0.1.6-beta.2` | `0.1.6-beta.2.20260916.1` |
 | `0.1.6-rc.3` | `0.1.6-rc.3` | `0.1.6-rc.3.20260916.1` |
-| `0.1.6` | `0.1.6` | `0.1.6-test.20260916.1` |
+| `0.21.0` | `0.21.0` | `0.21.0-test.20260916.1` |
 
 Use the actual creation date in Asia/Shanghai. For each base and date, start the index at 1 and increment after checking retained release records and published objects; never reuse a published version. Test distribution does not publish the corresponding unsuffixed base.
 
-Pass the confirmed version to the packaging command as `--build-version`, which reaches the artifact names, the update feed, and the upload validation as one value. The manifests keep the product version, so a test build no longer rewrites the release family and leaves nothing to revert:
+Pass the confirmed version as `--build-version` so artifact names, update feeds, and upload validation use one value. Test builds leave the Desktop product manifest unchanged:
 
 ```sh
 pnpm --dir apps/desktop run package:win:x64 --build-version 0.1.6-alpha.1.20260916.1
@@ -189,7 +189,7 @@ pnpm --dir apps/desktop run package:win:x64 --build-version 0.1.6-alpha.1.202609
 
 A production release publishes the product version and takes no `--build-version`. Uploading one tags the packaged commit as `desktop-v<version>` once the artifacts are public; a build from a modified checkout is not tagged, and a tagging failure prints the command to run by hand rather than failing a completed upload. Test and local builds are deliberately left untagged, and every artifact records `dshBuildCommit` and `dshBuildDirty` in its manifest so a build handed over directly remains traceable.
 
-Version derivation does not change the fixed update channel or `nightly.yml` / `nightly-mac.yml` filenames. SemVer orders `0.1.6-alpha.1 < 0.1.6-alpha.1.20260916.1 < 0.1.6-alpha.2`, and a stable base's test version precedes that stable release. Clients only accept a greater version: replacing a feed cannot move an installed higher version to a lower corrected version. Such clients need manual installation; keep automatic downgrade disabled. The [version decision](../../.agents/notes/implemented/process/2026-09-16-desktop-release-version-derivation.md) explains why the channel does not supply the prerelease identifier.
+Version derivation does not change the fixed update channel or `nightly.yml` / `nightly-mac.yml` filenames. SemVer orders `0.1.6-alpha.1 < 0.1.6-alpha.1.20260916.1 < 0.1.6-alpha.2`, and a stable base's test version precedes that stable release. Clients only accept a greater version: replacing a feed cannot move an installed higher version to a lower corrected version. Such clients need manual installation; keep automatic downgrade disabled. The [versioning decision](../../.agents/notes/implemented/architecture/2026-10-09-desktop-version-independence.md) records the separate Desktop and DSH version owners.
 
 Packaging, upload, and manual macOS signature verification read `apps/desktop/.env.windows` or `.env.macos`, selected by target platform. Copy the [Windows template](.env.windows.example) or [macOS template](.env.macos.example) and fill in the local settings; Git ignores both local files, and packaged artifacts exclude them. Release fields come only from the target file, without fallback to system or shell variables; `PATH`, proxies, and build-tool settings remain inherited. The published version is an argument rather than a release field, and upload reads it from the completion record the packaging run wrote. Files use UTF-8 with optional BOM; relative certificate, SignTool, Apple API key, and keychain paths resolve from `apps/desktop`, values are not shell-expanded, and passwords containing `#` or spaces need quotes. CI also creates the target file before invoking packaging.
 

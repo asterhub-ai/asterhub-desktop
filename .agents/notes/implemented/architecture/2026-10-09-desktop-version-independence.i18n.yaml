@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for 2026-10-09-desktop-version-independence.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-10-09-desktop-version-independence.md
+/agent-note-keep-asterhub-desktop-and-dsh-versions-independent:
+  en: 2f60c3e44b94087f
+  zh: 0b3466df306fcec1
+/agent-note-keep-asterhub-desktop-and-dsh-versions-independent/problem:
+  en: d55b08097eb45040
+  zh: ecd2d67c95f614cc
+/agent-note-keep-asterhub-desktop-and-dsh-versions-independent/decision:
+  en: 550dc1bd95837710
+  zh: fb10bb0bc4475a0c
+/agent-note-keep-asterhub-desktop-and-dsh-versions-independent/alternatives-considered:
+  en: dd96cf16da648f4a
+  zh: 38eb4a934ec6d1ed
+/agent-note-keep-asterhub-desktop-and-dsh-versions-independent/consequences:
+  en: ba29b56e04dfbb0e
+  zh: 0f49d94bde125a5d
+/agent-note-keep-asterhub-desktop-and-dsh-versions-independent/verification:
+  en: af756b7f8d461f0f
+  zh: a7ba6326695916f5

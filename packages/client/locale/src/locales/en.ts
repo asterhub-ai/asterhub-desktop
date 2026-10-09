@@ -43,4 +43,5 @@ export const en = {
   'markdown.truncatedCharacters': '… truncated at {total} characters',
   'number.thousand': '{value}K',
   'number.million': '{value}M',
+  'number.billion': '{value}B',
 } satisfies Record<CommonKey, string>

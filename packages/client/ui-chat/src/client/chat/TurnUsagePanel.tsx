@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { IconDatabaseOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TurnTokenUsage } from '../contract/chat-nodes.ts'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
-import { formatCacheHitPercent, formatExactTokens, formatTokens } from './token-format.ts'
+import { formatCacheHitPercent, formatTokens, formatUsageTokens } from './token-format.ts'
 import { MEASURE_STYLE, useStatDialog } from './stat-dialog.ts'
 import css from './TurnUsagePanel.module.css'
 import dialogCss from './stat-dialog.module.css'
@@ -15,13 +15,10 @@ export interface TurnUsagePanelProps {
   t: ChatViewSlotProps['t']
 }
 
-function formatCompactCount(value: number, t: ChatViewSlotProps['t']): string {
-  return t('message.turnUsage.count', { count: formatTokens(value, t) })
+function formatUsageCount(value: number, t: ChatViewSlotProps['t']): string {
+  return t('message.turnUsage.count', { count: formatUsageTokens(value, t) })
 }
 
-function formatExactCount(value: number, t: ChatViewSlotProps['t']): string {
-  return t('message.turnUsage.count', { count: formatExactTokens(value, t) })
-}
 
 /**
  * Turn-usage IconActions pill with a click-open Turn-usage details dialog.
@@ -34,7 +31,7 @@ export function TurnUsagePanel({ usage, t }: TurnUsagePanelProps) {
   const cacheHit = usage.cacheReadTokens === undefined
     ? null
     : formatCacheHitPercent(usage.cacheReadTokens, usage.totalTokens - usage.outputTokens, 1)
-  const total = formatCompactCount(usage.totalTokens, t)
+  const total = t('message.turnUsage.count', { count: formatTokens(usage.totalTokens, t) })
   const routes = usage.routes?.map(route => `${route.provider}/${route.model}`).join(', ') ?? ''
 
   return (
@@ -62,7 +59,7 @@ export function TurnUsagePanel({ usage, t }: TurnUsagePanelProps) {
               <IconDatabaseOutlineRegular />
               {t('message.turnUsage.title')}
             </span>
-            <span className={dialogCss.titleValue}>{formatExactCount(usage.totalTokens, t)}</span>
+            <span className={dialogCss.titleValue}>{formatUsageCount(usage.totalTokens, t)}</span>
           </div>
           <div className={dialogCss.titleRule} aria-hidden />
           <dl className={dialogCss.details} data-turn-usage-details>
@@ -79,25 +76,25 @@ export function TurnUsagePanel({ usage, t }: TurnUsagePanelProps) {
               </>
             )}
             <dt>{t('message.turnUsage.input')}</dt>
-            <dd>{formatExactCount(usage.uncachedInputTokens, t)}</dd>
+            <dd>{formatUsageCount(usage.uncachedInputTokens, t)}</dd>
             {usage.cacheReadTokens !== undefined && (
               <>
                 <dt>{t('message.turnUsage.cacheRead')}</dt>
-                <dd>{formatExactCount(usage.cacheReadTokens, t)}</dd>
+                <dd>{formatUsageCount(usage.cacheReadTokens, t)}</dd>
               </>
             )}
             {usage.cacheWriteTokens !== undefined && (
               <>
                 <dt>{t('message.turnUsage.cacheWrite')}</dt>
-                <dd>{formatExactCount(usage.cacheWriteTokens, t)}</dd>
+                <dd>{formatUsageCount(usage.cacheWriteTokens, t)}</dd>
               </>
             )}
             <dt>{t('message.turnUsage.output')}</dt>
             <dd>
-              {formatExactCount(usage.outputTokens, t)}
+              {formatUsageCount(usage.outputTokens, t)}
               {usage.reasoningTokens !== undefined && (
                 <span className={dialogCss.reasoning}>
-                  {t('message.turnUsage.reasoning', { tokens: formatExactCount(usage.reasoningTokens, t) })}
+                  {t('message.turnUsage.reasoning', { tokens: formatUsageCount(usage.reasoningTokens, t) })}
                 </span>
               )}
             </dd>
