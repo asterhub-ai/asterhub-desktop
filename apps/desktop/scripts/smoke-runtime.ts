@@ -1,6 +1,6 @@
 /** Boot the materialized target runtime without access to a user's Harness profile. */
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFile } from 'node:child_process'
@@ -12,7 +12,8 @@ import { createPluginProfile } from '../src/project-manager.ts'
 import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 
 /**
- * Check Host startup, its matching frontend, external plugins and real Office-to-PDF conversion.
+ * Check Host startup, its matching frontend, external plugins, real Office-to-PDF conversion,
+ * and authenticated workspace inspection over an empty directory.
  * @param root - Materialized dsh resources.
  * @param node - Prepared target Electron executable.
  * @param runtime - Verified resource descriptor.
@@ -110,6 +111,35 @@ export function apply(ctx) {
     if (response.status !== 200 || !(await response.text()).includes('<html')) {
       throw new Error('desktop runtime: packaged frontend smoke failed')
     }
+    const emptyWorkspaceDir = join(home, 'empty-workspace')
+    mkdirSync(emptyWorkspaceDir)
+    const inspectRpcId = 'desktop-smoke-workspace-inspect'
+    const inspectResponse = await fetch(new URL('/api/workspace/inspect', ready.url), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        cookie,
+      },
+      body: JSON.stringify({
+        type: 'client-request',
+        rpcId: inspectRpcId,
+        method: 'workspace/inspect',
+        payload: { args: { request: { path: emptyWorkspaceDir } } },
+      }),
+      signal: AbortSignal.timeout(30_000),
+    })
+    if (!inspectResponse.ok) {
+      const responseText = await inspectResponse.text()
+      throw new Error(`desktop runtime: workspace inspect HTTP ${inspectResponse.status} ${inspectResponse.statusText}: ${responseText}`)
+    }
+    const inspectText = await inspectResponse.text()
+    let inspectBody: unknown
+    try {
+      inspectBody = JSON.parse(inspectText)
+    } catch (error) {
+      throw new Error(`desktop runtime: workspace inspect returned non-JSON response (${inspectResponse.status}): ${inspectText}`, { cause: error })
+    }
+    assertWorkspaceInspectResponse(inspectBody, emptyWorkspaceDir)
     const pluginResponse = await fetch(new URL('/desktop-smoke', ready.url), { headers: { cookie } })
     const pluginResponseText = await pluginResponse.text()
     if (pluginResponseText !== 'plugin route ready') {
@@ -134,10 +164,54 @@ export function apply(ctx) {
     if (!cliResult.capabilities.runtime.cliPath.endsWith('cli.js') || Buffer.from(cliResult.pdf, 'base64').subarray(0, 5).toString() !== '%PDF-') {
       throw new Error('desktop runtime: skill CLI did not return capabilities and a PDF')
     }
-    console.log('desktop runtime: DOCX, XLSX, PPTX to PDF and skill CLI discovery passed')
+    console.log('desktop runtime: DOCX, XLSX, PPTX to PDF, skill CLI discovery, and workspace inspect passed')
   } finally {
     clearTimeout(timer)
     await host.stop()
     rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  }
+}
+
+interface WorkspaceInspectRpcResponse {
+  result?: {
+    ok: boolean
+    value?: {
+      kind?: string
+      [key: string]: unknown
+    }
+    error?: {
+      code?: string
+      message?: string
+      [key: string]: unknown
+    }
+  }
+  [key: string]: unknown
+}
+
+/**
+ * Validate that an authenticated workspace/inspect response succeeded with kind 'new'
+ * and that the target directory remains untouched (read-only inspection).
+ * @param body - Parsed JSON RPC response from /api/workspace/inspect.
+ * @param inspectedPath - Physical directory path supplied to inspect.
+ */
+export function assertWorkspaceInspectResponse(body: unknown, inspectedPath: string): void {
+  if (typeof body !== 'object' || body === null || !('result' in body)) {
+    throw new Error(`desktop runtime: workspace inspect returned malformed response\nresponse body: ${JSON.stringify(body)}`)
+  }
+  const envelope = body as WorkspaceInspectRpcResponse
+  if (!envelope.result || envelope.result.ok !== true) {
+    const code = envelope.result?.error?.code ?? 'unknown-error'
+    const message = envelope.result?.error?.message ?? 'unknown failure'
+    throw new Error(`desktop runtime: workspace inspect failed: ${code}: ${message}\nresponse body: ${JSON.stringify(body)}`)
+  }
+  if (envelope.result.value?.kind !== 'new') {
+    throw new Error(`desktop runtime: workspace inspect expected kind 'new', received '${String(envelope.result.value?.kind)}'\nresponse body: ${JSON.stringify(body)}`)
+  }
+  if (existsSync(join(inspectedPath, '.aster'))) {
+    throw new Error(`desktop runtime: workspace inspect wrote private metadata to ${inspectedPath}`)
+  }
+  const entries = readdirSync(inspectedPath)
+  if (entries.length > 0) {
+    throw new Error(`desktop runtime: workspace inspect modified empty directory: ${entries.join(', ')}`)
   }
 }
