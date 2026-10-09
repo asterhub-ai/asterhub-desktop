@@ -62,6 +62,8 @@ Settings → General → Performance & usage appears after Send behavior while b
 
 On non-loopback browsers, the preference remains process-local because the settings scope cannot persist writes. Explicit selections update every consumer immediately; accepted Host settings reconcile the live value on loopback browsers.
 
+Usage dialogs show grouped exact counts below 1M, use M from 1M, and switch to B at 1B. Compact values are rounded for display; token accounting remains exact.
+
 Preference menus restore focus to their trigger without scrolling before publishing a new selection.
 
 <a id="completed-turn-footer"></a>

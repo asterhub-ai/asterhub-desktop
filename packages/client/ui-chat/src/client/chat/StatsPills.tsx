@@ -16,7 +16,7 @@ import type { ChatViewSlotProps, PerformanceUsageInjected } from '../contract/sl
 import type { ChatSnapshot } from '../contract/snapshot.ts'
 import { formatTokensPerSecond } from './message-chrome.ts'
 import { assistantStepReading } from '../contract/turn-metrics.ts'
-import { formatCacheHitPercent, formatExactTokens, formatTokens } from './token-format.ts'
+import { formatCacheHitPercent, formatUsageTokens, formatTokens } from './token-format.ts'
 import { MEASURE_STYLE, useStatDialog } from './stat-dialog.ts'
 import css from './StatsPills.module.css'
 import dialogCss from './stat-dialog.module.css'
@@ -127,8 +127,8 @@ export interface StatsPillsProps extends InjectFace<PerformanceUsageInjected> {
   t: ChatViewSlotProps['t']
 }
 
-function exactCount(value: number, t: ChatViewSlotProps['t']): string {
-  return t('message.turnUsage.count', { count: formatExactTokens(value, t) })
+function usageCount(value: number, t: ChatViewSlotProps['t']): string {
+  return t('message.turnUsage.count', { count: formatUsageTokens(value, t) })
 }
 
 /** External open state one pill's dialog reads and writes (the row's exclusive slot). */
@@ -277,7 +277,7 @@ function UsagePill({ usage, t, dialog }: {
               <IconDatabaseOutlineRegular />
               {t('stats.dialog.usageTitle')}
             </span>
-            <span className={dialogCss.titleValue}>{exactCount(total, t)}</span>
+            <span className={dialogCss.titleValue}>{usageCount(total, t)}</span>
           </div>
           <div className={dialogCss.titleRule} aria-hidden />
           {/* jscpd:ignore-start -- the session-total bucket rows deliberately mirror
@@ -293,17 +293,17 @@ function UsagePill({ usage, t, dialog }: {
               </>
             )}
             <dt>{t('message.turnUsage.input')}</dt>
-            <dd>{exactCount(usage.uncachedInputTokens, t)}</dd>
+            <dd>{usageCount(usage.uncachedInputTokens, t)}</dd>
             <dt>{t('message.turnUsage.cacheRead')}</dt>
-            <dd>{exactCount(usage.cacheReadTokens, t)}</dd>
+            <dd>{usageCount(usage.cacheReadTokens, t)}</dd>
             {usage.cacheWriteTokens !== 0 && (
               <>
                 <dt>{t('message.turnUsage.cacheWrite')}</dt>
-                <dd>{exactCount(usage.cacheWriteTokens, t)}</dd>
+                <dd>{usageCount(usage.cacheWriteTokens, t)}</dd>
               </>
             )}
             <dt>{t('message.turnUsage.output')}</dt>
-            <dd>{exactCount(usage.outputTokens, t)}</dd>
+            <dd>{usageCount(usage.outputTokens, t)}</dd>
           </dl>
           {/* jscpd:ignore-end */}
         </div>,
