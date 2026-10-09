@@ -10,7 +10,7 @@ AsterHub Desktop 的发布节奏可以独立于共享 DSH runtime。若要求产
 
 ## 决策
 
-`apps/desktop/package.json` 决定已安装 Desktop 产品版本，以及 `electron-updater` 比较的版本。仓库根目录 `package.json` 决定随包发布的 DSH runtime 版本。两者彼此独立；当前 Desktop 产品版本为 `0.2.1`，内置 DSH runtime 保留自己的包版本。
+`apps/desktop/package.json` 决定已安装 Desktop 产品版本，以及 `electron-updater` 比较的版本。仓库根目录 `package.json` 决定随包发布的 DSH runtime 版本。两者彼此独立；当前 Desktop 产品版本为 `0.21.0`，内置 DSH runtime 保留自己的包版本。
 
 Electron 清单、安装包名称、更新 feed 元数据、打包完成记录和上传校验使用 Desktop 产品版本或经确认的测试构建版本。runtime 描述文件、开发项目和 `desktop-host` 包集合使用仓库根目录的 DSH 版本。`verifyDesktopRuntime` 校验该 runtime 版本，强制更新策略也会将它与已安装的 Desktop 版本分开接收。
 
@@ -30,4 +30,4 @@ Desktop 更新排序使用 Desktop 产品版本。runtime 兼容性仍由内置 
 
 ## 验证
 
-`desktop-upload-plan.spec.ts` 覆盖 Desktop 版本为 `0.2.1`、DSH runtime 版本为 `0.2.0-rc.3` 的产物。`package-target-stages.spec.ts` 验证完成记录使用 Desktop 版本。`packaged-runtime-verification.spec.ts` 验证内置 runtime 按仓库根目录 DSH 版本校验。
+`desktop-upload-plan.spec.ts` 覆盖 Desktop 版本为 `0.21.0`、DSH runtime 版本为 `0.2.0-rc.3` 的产物。`package-target-stages.spec.ts` 验证完成记录使用 Desktop 版本。`packaged-runtime-verification.spec.ts` 验证内置 runtime 按仓库根目录 DSH 版本校验。

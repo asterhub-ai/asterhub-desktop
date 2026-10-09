@@ -10,7 +10,7 @@ AsterHub Desktop can release independently from the shared DSH runtime. Requirin
 
 ## Decision
 
-`apps/desktop/package.json` owns the installed Desktop product version and the version compared by `electron-updater`. The repository root `package.json` owns the bundled DSH runtime version. These versions are independent; the current Desktop product version is `0.2.1` while the bundled DSH runtime remains at its own package version.
+`apps/desktop/package.json` owns the installed Desktop product version and the version compared by `electron-updater`. The repository root `package.json` owns the bundled DSH runtime version. These versions are independent; the current Desktop product version is `0.21.0` while the bundled DSH runtime remains at its own package version.
 
 The Electron manifest, installer names, update feed metadata, packaging completion record, and upload validation use the Desktop product version or its confirmed test-build derivative. The runtime descriptor, development project, and `desktop-host` package set use the root DSH version. `verifyDesktopRuntime` validates that runtime version, and the mandatory update policy receives it separately from the installed Desktop version.
 
@@ -30,4 +30,4 @@ Test builds preserve the Desktop product version in manifests and use the explic
 
 ## Verification
 
-`desktop-upload-plan.spec.ts` covers an artifact whose Desktop version is `0.2.1` while its DSH runtime version is `0.2.0-rc.3`. `package-target-stages.spec.ts` verifies the completion record uses the Desktop version. `packaged-runtime-verification.spec.ts` verifies the bundled runtime is checked against the root DSH version.
+`desktop-upload-plan.spec.ts` covers an artifact whose Desktop version is `0.21.0` while its DSH runtime version is `0.2.0-rc.3`. `package-target-stages.spec.ts` verifies the completion record uses the Desktop version. `packaged-runtime-verification.spec.ts` verifies the bundled runtime is checked against the root DSH version.

@@ -49,7 +49,7 @@ it('records the Desktop product version independently of the DSH runtime version
   const serialized = vi.mocked(writeFileSync).mock.calls[0]?.[1]
   if (typeof serialized !== 'string') throw new Error('desktop package did not write a release record')
   const record: unknown = JSON.parse(serialized)
-  expect(record).toMatchObject({ version: '0.2.1' })
+  expect(record).toMatchObject({ version: '0.21.0' })
 })
 
 it('requires one signing preflight before building, then records only the complete release', async () => {

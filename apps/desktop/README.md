@@ -168,14 +168,14 @@ The welcome window follows system appearance with the design’s Platform light/
 
 Before each Desktop packaging run, confirm the complete build version with the current user. Check the selected deployment, Desktop product version, retained release records, and published objects, then propose the exact version for approval. Do not start packaging until the user confirms that version; selecting a deployment does not authorize a version choice.
 
-`apps/desktop/package.json` owns the AsterHub Desktop product and update version; the repository root `package.json` owns the bundled DSH runtime version. These versions are independent. The current Desktop product version is `0.2.1`; production releases use it exactly. Test releases derive from the Desktop version, preserving any prerelease identifier and appending `.YYYYMMDD.index`, or appending `-test.YYYYMMDD.index` to a stable version.
+`apps/desktop/package.json` owns the AsterHub Desktop product and update version; the repository root `package.json` owns the bundled DSH runtime version. These versions are independent. The current Desktop product version is `0.21.0`; production releases use it exactly. Test releases derive from the Desktop version, preserving any prerelease identifier and appending `.YYYYMMDD.index`, or appending `-test.YYYYMMDD.index` to a stable version.
 
 | Desktop product base | Production Desktop | Test Desktop example |
 |---|---|---|
 | `0.1.6-alpha.1` | `0.1.6-alpha.1` | `0.1.6-alpha.1.20260916.1` |
 | `0.1.6-beta.2` | `0.1.6-beta.2` | `0.1.6-beta.2.20260916.1` |
 | `0.1.6-rc.3` | `0.1.6-rc.3` | `0.1.6-rc.3.20260916.1` |
-| `0.2.1` | `0.2.1` | `0.2.1-test.20260916.1` |
+| `0.21.0` | `0.21.0` | `0.21.0-test.20260916.1` |
 
 Use the actual creation date in Asia/Shanghai. For each base and date, start the index at 1 and increment after checking retained release records and published objects; never reuse a published version. Test distribution does not publish the corresponding unsuffixed base.
 

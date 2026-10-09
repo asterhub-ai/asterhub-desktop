@@ -170,14 +170,14 @@ Desktop 在 Host 启动后、打开工作区前检查模型 API Key 引用是否
 
 每次 Desktop 打包前，都要与当前用户确认完整构建版本号。检查所选部署环境、Desktop 产品版本、保留的发布记录和已发布对象，再提出准确版本供用户确认。用户确认前不得启动打包；选择部署环境不等于认可版本号。
 
-`apps/desktop/package.json` 决定 AsterHub Desktop 产品和更新版本；仓库根目录 `package.json` 决定随包发布的 DSH runtime 版本。两者彼此独立。当前 Desktop 产品版本为 `0.2.1`；production 发布使用该版本本身。test 发布以 Desktop 版本为基础，保留预发布标识并追加 `.YYYYMMDD.index`；稳定版本则追加 `-test.YYYYMMDD.index`。
+`apps/desktop/package.json` 决定 AsterHub Desktop 产品和更新版本；仓库根目录 `package.json` 决定随包发布的 DSH runtime 版本。两者彼此独立。当前 Desktop 产品版本为 `0.21.0`；production 发布使用该版本本身。test 发布以 Desktop 版本为基础，保留预发布标识并追加 `.YYYYMMDD.index`；稳定版本则追加 `-test.YYYYMMDD.index`。
 
 | Desktop 产品基础版本 | production Desktop | test Desktop 示例 |
 |---|---|---|
 | `0.1.6-alpha.1` | `0.1.6-alpha.1` | `0.1.6-alpha.1.20260916.1` |
 | `0.1.6-beta.2` | `0.1.6-beta.2` | `0.1.6-beta.2.20260916.1` |
 | `0.1.6-rc.3` | `0.1.6-rc.3` | `0.1.6-rc.3.20260916.1` |
-| `0.2.1` | `0.2.1` | `0.2.1-test.20260916.1` |
+| `0.21.0` | `0.21.0` | `0.21.0-test.20260916.1` |
 
 日期使用实际创建时的 Asia/Shanghai 日期。每个基础版本、每天的序号从 1 开始，检查保留的发布记录与已发布对象后递增；绝不复用已发布版本。test 分发不发布对应的无后缀基础版本。
 

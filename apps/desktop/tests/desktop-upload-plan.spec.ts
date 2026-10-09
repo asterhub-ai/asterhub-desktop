@@ -113,9 +113,9 @@ afterEach(async () => {
 
 describe('desktop upload plan', () => {
   it('accepts a Desktop release version independent of the DSH runtime version', async () => {
-    const paths = await fixture('mac-x64', '0.2.1', 'test', '0.2.0-rc.3')
+    const paths = await fixture('mac-x64', '0.21.0', 'test', '0.2.0-rc.3')
     const plan = await createDesktopUploadPlan('mac-x64', paths)
-    expect(plan).toMatchObject({ version: '0.2.1', environment: 'test' })
+    expect(plan).toMatchObject({ version: '0.21.0', environment: 'test' })
   })
 
   it('uploads only the selected latest installer to each deployment using the existing COS transport', async () => {
