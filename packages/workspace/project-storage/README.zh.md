@@ -33,6 +33,10 @@ Host 服务通过 `ctx.projectStorage` 暴露；浏览器安全的 `./types` 入
 
 `ensureProjectGitExclusion(root)` 在项目 `.gitignore` 中加入 `.aster/`，保留已有字节和换行格式；适用于 Git 后初始化、linked worktree 与嵌套项目目录。它通过真实 Git worktree/top-level 信息查找已跟踪的 `.aster` 路径，并将其报告为 `tracked-data`；不会 stage、commit、删除或 untrack 文件。发现已跟踪私密数据时拒绝 open，不会声称数据已受保护。
 
+## 打包契约
+
+本包声明了运行时子路径导出（`./manifest`、`./attachments`、`./persistence`），并在 `lib/` 下提供配套模块。包本地 `tsdown.config.ts` 在 Host 构建阶段输出所有导出的运行时入口（`{index,manifest,registry,git-exclusion,attachments,persistence}`），并在 Client 阶段（`DSH_BUILD_FACE === 'client'`）不输出任何内容。打包产物中的消费者（如 `session-persistence-project`）依赖这些具体的入口文件。
+
 ## 验证
 
 使用隔离 fixture 的 focused tests：`pnpm exec vitest run packages/workspace/project-storage/tests/manifest.spec.ts packages/workspace/project-storage/tests/registry.spec.ts packages/workspace/project-storage/tests/git-exclusion.spec.ts`。

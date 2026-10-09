@@ -33,6 +33,10 @@ Project cwd membership is a validated portable relative path (`.` or slash-separ
 
 `ensureProjectGitExclusion(root)` adds `.aster/` to the project `.gitignore` while preserving prior bytes and line endings, including when Git is initialized later or the selected directory is in a linked worktree. It uses Git's real worktree/top-level discovery and reports already-tracked `.aster` paths as `tracked-data`; it never stages, commits, deletes, or untracks them. Open refuses tracked private data rather than presenting it as protected.
 
+## Packaging contract
+
+The package declares runtime subpath exports (`./manifest`, `./attachments`, `./persistence`) and ships companion modules under `lib/`. The package-local `tsdown.config.ts` emits all exported runtime entries (`{index,manifest,registry,git-exclusion,attachments,persistence}`) during the Host build pass while emitting nothing during the Client pass (`DSH_BUILD_FACE === 'client'`). Packaged consumers such as `session-persistence-project` rely on these concrete entry files in distributed bundles.
+
 ## Verification
 
 Focused owned-fixture tests: `pnpm exec vitest run packages/workspace/project-storage/tests/manifest.spec.ts packages/workspace/project-storage/tests/registry.spec.ts packages/workspace/project-storage/tests/git-exclusion.spec.ts`.
