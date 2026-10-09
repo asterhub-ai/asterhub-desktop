@@ -119,6 +119,12 @@ describe('formatters', () => {
     expect(formatTokens(1_230_000, tEn)).toBe('1.2M')
   })
 
+  it('switches from M to B at one billion tokens', () => {
+    expect(formatTokens(999_999_999, tEn)).toBe('1000M')
+    expect(formatTokens(1_000_000_000, tEn)).toBe('1B')
+    expect(formatTokens(1_234_567_890, tEn)).toBe('1.2B')
+  })
+
   it('formats durations under and over a minute', () => {
     expect(formatDuration(45_230, tEn)).toBe('45.2s')
     expect(formatDuration(162_000, tEn)).toBe('2m42s')
@@ -255,6 +261,21 @@ describe('StatsPills', () => {
     expect(details.textContent).toContain('Tokens per second (TPS)20 tok/s')
     // Token accounting lives on the usage pill's own dialog, not here.
     expect(dialog.textContent).not.toContain('Token usage')
+  })
+
+  it('keeps session usage dialog counts compact at billion-scale totals', () => {
+    const { source } = makeSource({ nodes: [assistant(1, 1)] })
+    const view = render(<StatsPills {...props(source, {
+      tokenUsage: { uncachedInputTokens: 1_234_000_000, outputTokens: 500_000_000,
+        cacheReadTokens: 2_000_000_000, cacheWriteTokens: 0 },
+    })} />)
+
+    fireEvent.click(view.getByRole('button'))
+    const dialog = view.getByRole('dialog')
+    expect(dialog.firstChild?.textContent).toBe('Token usage3.7B tok')
+    expect(dialog.textContent).toContain('Uncached input1.2B tok')
+    expect(dialog.textContent).toContain('Cached input2B tok')
+    expect(dialog.textContent).toContain('Output500M tok')
   })
 
   it('click-opens the token-usage dialog carrying the headline total and exact buckets', () => {
