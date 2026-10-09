@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { createElectronBuilderConfig } from '../scripts/electron-builder-config.mjs'
 
 const { verifyDesktopRuntime } = vi.hoisted(() => ({
   verifyDesktopRuntime: vi.fn<(root: string, expected: string) => Promise<void>>(async () => undefined),
@@ -22,6 +24,13 @@ const ENVIRONMENT = {
 }
 
 const CONTEXT = { appOutDir: 'out', packager: { getResourcesDir: () => 'out/resources' } }
+function manifestVersion(path: URL): string {
+  const value: unknown = JSON.parse(readFileSync(path, 'utf8'))
+  if (typeof value !== 'object' || value === null || !('version' in value) || typeof value.version !== 'string') {
+    throw new Error('test package manifest has no version')
+  }
+  return value.version
+}
 
 /**
  * Run the packaging hook that verifies the bundled runtime.
@@ -29,18 +38,15 @@ const CONTEXT = { appOutDir: 'out', packager: { getResourcesDir: () => 'out/reso
  */
 async function requiredRuntimeVersion(preparedRuntime?: string, preparedRuntimeVersion?: string): Promise<unknown> {
   verifyDesktopRuntime.mockClear()
-  const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
   const config = createElectronBuilderConfig(ENVIRONMENT, 'win32', 'x64', preparedRuntime, preparedRuntimeVersion)
   await config.afterPack(CONTEXT as never)
   return verifyDesktopRuntime.mock.calls[0]?.[1]
 }
 
 describe('packaged runtime verification', () => {
-  it('requires the product version when the target tree supplies the runtime', async () => {
-    const productVersion = (JSON.parse(
-      await import('node:fs/promises').then(async fs => fs.readFile(new URL('../package.json', import.meta.url), 'utf8')),
-    ) as { version: string }).version
-    expect(await requiredRuntimeVersion()).toBe(productVersion)
+  it('requires the DSH runtime version when the target tree supplies the runtime', async () => {
+    const dshVersion = manifestVersion(new URL('../../../package.json', import.meta.url))
+    expect(await requiredRuntimeVersion()).toBe(dshVersion)
   })
 
   it('requires the version installed-update qualification wrote into its private runtime', async () => {
@@ -48,16 +54,15 @@ describe('packaged runtime verification', () => {
     expect(await requiredRuntimeVersion('/qualification/dsh', '0.1.6-alpha.2.20260921.1')).toBe('0.1.6-alpha.2.20260921.1')
   })
 
-  it('does not let a build version change what the bundled runtime must declare', async () => {
-    const productVersion = (JSON.parse(
-      await import('node:fs/promises').then(async fs => fs.readFile(new URL('../package.json', import.meta.url), 'utf8')),
-    ) as { version: string }).version
-    const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
+  it('does not let a Desktop build version change what the bundled DSH runtime must declare', async () => {
+    const desktopVersion = manifestVersion(new URL('../package.json', import.meta.url))
+    const dshVersion = manifestVersion(new URL('../../../package.json', import.meta.url))
     verifyDesktopRuntime.mockClear()
+    const buildVersion = `${desktopVersion}-test.20260921.1`
     const config = createElectronBuilderConfig(
-      { ...ENVIRONMENT, DSH_DESKTOP_BUILD_VERSION: `${productVersion}.20260921.1` }, 'win32', 'x64')
-    expect(config.extraMetadata).toMatchObject({ version: `${productVersion}.20260921.1` })
+      { ...ENVIRONMENT, DSH_DESKTOP_BUILD_VERSION: buildVersion }, 'win32', 'x64')
+    expect(config.extraMetadata).toMatchObject({ version: buildVersion })
     await config.afterPack(CONTEXT as never)
-    expect(verifyDesktopRuntime.mock.calls[0]?.[1]).toBe(productVersion)
+    expect(verifyDesktopRuntime.mock.calls[0]?.[1]).toBe(dshVersion)
   })
 })

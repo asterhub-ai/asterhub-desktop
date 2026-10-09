@@ -6,7 +6,7 @@ Status: implemented
 
 ## 问题
 
-[从完整 dsh 版本派生 Desktop 测试版本](2026-09-16-desktop-release-version-derivation.zh.md)确定了测试构建叫什么，但没有确定这个名字存在哪里。发布一次测试构建要先运行 `release:dsh`，把版本写进所有发布家族清单和锁文件——295 个文件——因为打包、更新 feed 和上传校验都各自从工作区读取版本。这些改动从不提交，所以每次测试构建都会留下脏工作区直到有人还原，而还原后的工作区又不再描述已经发布出去的产物。`<base>.YYYYMMDD.index` 里的序号同样靠人对着发布记录和 bucket 挑选，而这是脚本可以完成的查询。
+[`Desktop 独立版本决策`](../architecture/2026-10-09-desktop-version-independence.zh.md)将产品发布版本归给 Desktop 清单，将 runtime 版本归给仓库根目录 DSH 清单。本 Note 记录此前的构建参数问题：当时发布测试版需要改写 295 个发布家族清单和锁文件，且操作者手动选择序号。
 
 另有两件事在构建之后无法还原。交给同事或推到测试 feed 的构建没有任何标签可查，它来自的构建树也不是工作区，因此没有任何东西把安装包和源码连起来。production 发布同样只在 bucket 里留下痕迹。
 
@@ -14,9 +14,9 @@ Status: implemented
 
 构建发布的版本是一个参数。`--build-version` 指定它，`--build-version auto` 给出当天的下一个序号，该值经 `extraMetadata` 进入 electron-builder，并作为同一个输入贯穿更新 feed 与上传校验。清单保留产品版本，因此任何打包运行都不修改被跟踪的文件。
 
-[Desktop 发布规则](../../../../apps/desktop/README.zh.md#release-versions)中的版本规则不变：production 发布 dsh 基础版本，预发布基础版本追加 `.YYYYMMDD.index`，稳定基础版本追加 `-test.YYYYMMDD.index`。校验直接使用 `semver`，因为 `electron-updater` 就是用 `semver.gt` 把 feed 版本与已安装的 `app.getVersion()` 比较。
+[Desktop 发布规则](../../../../apps/desktop/README.zh.md#release-versions)以 Desktop 产品基础版本派生版本：production 使用基础版本本身，预发布测试版追加 `.YYYYMMDD.index`，稳定版本追加 `-test.YYYYMMDD.index`。校验使用 `semver`，因为 `electron-updater` 会用 `semver.gt` 比较 feed 版本与已安装的 `app.getVersion()`。
 
-本决策取代上述 Note 的两条要求。发布家族清单不再被改写；外壳版本也不再等于内置运行时版本：内置运行时就是产品版本的 dsh 包，`verifyDesktopRuntime` 接收准备该运行时树的一方写入的版本，而安装升级验证会为自己的材料改写这个版本。应用本来就把两者分别上报给强制更新策略。
+Desktop 产品版本与内置 DSH runtime 版本彼此独立。`app.getVersion()` 和更新 feed 使用 Desktop 构建版本；runtime 描述文件与 `verifyDesktopRuntime` 使用仓库根目录 DSH 版本。安装版更新验收只为隔离物料改写私有 runtime 描述文件。
 
 所有产物的清单都记录 `dshBuildCommit` 与 `dshBuildDirty`。production 上传在产物公开后把打包所用 commit 打成 `desktop-v<版本>` 标签，失败时只打印需要手工执行的命令，而不让已完成的上传变成失败；来自有改动工作区的构建不打标签。test 与本地构建有意不留标签，因为为每个测试构建打标签会淹没真正的发布。
 
