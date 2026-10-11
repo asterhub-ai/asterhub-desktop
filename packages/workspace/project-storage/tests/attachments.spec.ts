@@ -11,6 +11,10 @@ const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true }))) })
 
 describe('project attachment scope', () => {
+  it('omits the scope when project storage is not mounted', () => {
+    expect(resolveProjectAttachmentScope(new Context(), SessionId('scope-session'))).toBeUndefined()
+  })
+
   it('derives the project owner from registered Session membership', async () => {
     const root = await mkdtemp(join(tmpdir(), 'project-attachment-scope-'))
     roots.push(root)
