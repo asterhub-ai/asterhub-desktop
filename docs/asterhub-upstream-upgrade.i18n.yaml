@@ -2,12 +2,15 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/asterhub-upstream-upgrade.md
-/asterhub-upstream-upgrade-record:
-  en: 8fe1d773f954ce8c
-  zh: 54c2ee45a0298513
-/asterhub-upstream-upgrade-record/product-decisions:
-  en: 9d7a71579cbe9414
-  zh: 158ce1a1f2308ded
-/asterhub-upstream-upgrade-record/progress-2026-10-01:
-  en: 0b3f6ab37ac46d66
-  zh: 1c8d5cb75dfba35f
+/asterhub-upstream-update-record:
+  en: b53df65b099c8130
+  zh: e44353896cefe467
+/asterhub-upstream-update-record/implemented-changes:
+  en: d3ab5f6b87b54a8a
+  zh: 433985a2762da7d7
+/asterhub-upstream-update-record/verification:
+  en: 743b833c59efb856
+  zh: f453fd55978b8ade
+/asterhub-upstream-update-record/artifact-and-remaining-qualification:
+  en: b4c5ae3a12353ce2
+  zh: 744c668061782dbf

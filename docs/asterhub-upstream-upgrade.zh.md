@@ -2,27 +2,42 @@
 
 [English](asterhub-upstream-upgrade.md) | 中文
 
-本轮升级基线是 `dsh-v0.2.0-rc.2`，对应上游提交 `639ed015397290b3745d163aafe02ffee4aa3f84`。升级工作区为 `deepseek-harness-upgrade`，分支名为 `codex/dsh-02-upgrade`。原 `asterhub` 分支和现有安装版与本工作区分开。
+当前工作区在 `codex/upstream-alpha2` 上选择性吸收 [DSH 0.2.1-alpha.2](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-alpha.2)。桌面产品版本保持 `0.21.0`，工作区包版本保持 `0.2.0-rc.3`。
 
-## 已确认的产品选择
+## 已实施改动
 
-| 功能 | 交付方式 |
+| 分组 | 结果 |
 | --- | --- |
-| 会话、工作台核心和 V4 会话迁移 | 跟随本轮上游版本，同时保留 AsterHub 定制 |
-| 语音输入 | 工作台内置；首次使用时下载识别模型 |
-| 定时任务、Teams、Auto Review、Inspector | 四个独立云端精选包，默认客户端不携带 |
-| 模型请求 | Host 固定使用 `sub2api/aster`，从账户 Host credential record 取得鉴权密钥 |
-| 对话中的插件和 MCP 生命周期 | 允许任意来源，继续执行 Host 操作及构建脚本授权 |
-| 应用插件页面 | 使用签名目录；按需下载并校验包地址、版本和 SHA-512 |
+| 原有桌面基线 | 安装首屏显示安装目录。桌面凭据使用 Electron 操作系统加密；加密模式拒绝明文文件，不执行迁移。 |
+| 桌面依赖 | Electron 44.7.0、原生 builtin loader 0.1.9、electron-builder 与 app-builder-lib 26.17.0；规范化盘符根目录在目录归属检查前被拒绝。 |
+| 计划审阅 | 取消返回 `approved: false`、结束当前轮次并保留计划模式；只有批准才退出。 |
+| SenseVoice | 首片段起始补偿默认为 0.3 秒，范围为 0–1 秒，后续片段保持不变。 |
+| pi-ai | 升级为 1.0.2，按目录能力启用对话更新，保留回放工具命名空间和只在结束时解析工具参数 JSON 的补丁。 |
 
-## 本轮进度（2026-10-01）
+AsterHub 保留账户拥有的 Sub2API 凭据与模型目录、项目附件作用域、品牌及签名精选插件目录。本轮不新增 CLI 产品模式、实验性 Worktrees、旧版本迁移或公开发布。
 
-已解决 `23431db2e2` 的迁移冲突，并适配新版 Host 启动、LLM Volatile 配置、账户 credential record 与会话模型路由。精选包要求使用签名目录里的同源 `/releases/*.tgz`，验证直接依赖锁记录和包完整性后才激活。
+## 验证结果
 
-语音输入已改为内置设置弹窗，不再打开插件详情页。MCP 安装说明已迁入新版 preset 包，供 Standard、PTC 和 Creator 使用。默认 Desktop 依赖中已移除计划任务、Teams、Auto Review、Inspector 与旧语音插件包。
+| 证据 | 实际结果 |
+| --- | --- |
+| Host 与 Client 项目图 | `node node_modules/typescript/bin/tsc -b tsconfig.host.json tsconfig.client.json` 通过。 |
+| 桌面、ASAR、Host 与 HMR 测试 | 定向串行运行：203 项通过，3 项平台用例跳过。 |
+| Windows 原生安装器 | 两种语言各通过 15 项，覆盖目录显示、路径校验、安装、启动与卸载。 |
+| 计划模式 | 包内 88 项测试通过；追加下一条消息断言后，4 项集成测试也通过。 |
+| SenseVoice | 独立运行的推理与 Worker 测试 35 项通过；追加的 2 项配置越界用例通过。此前广泛运行有 2 项时序失败。 |
+| pi-ai 与账户集成 | 413 项测试通过。HTTP 夹具支持 pi-ai 发出的 zstd 请求。 |
+| 操作系统凭据加密 | 真实 Electron 进程写入加密账户 grant，第二个进程成功解密。 |
+| 本地更新器 | 真实 Electron 44.7.0 的 17 个场景通过，使用回环服务和惰性载荷，未执行安装器；截图捕获失败，不计为视觉验收。 |
+| 官方本地审查 | `codex review --uncommitted` 已启动，但被账户用量限制中断，未产生审查结论。 |
 
-Host 与 Client TypeScript 项目图、Host/Client 运行包构建均已通过。路由锁与插件管理定向测试 197 项通过，语音输入测试 61 项通过。首次编译生成的 `src/` 中间产物已移至临时目录，没有纳入版本控制。
+首次广泛选择的桌面与运行时测试未全部通过，其中包含 Windows 文件符号链接权限失败、过时的身份提示断言和解析矩阵失败；持续执行的剩余 Worker 被终止。之后的桌面与 HMR 定向复核通过，不能混同两次结果。
 
-后续待办包括迁回注册入口、GenOffice 与 Aster IM 精选包、Windows 便携启动器；打包四个独立精选包并生成签名目录项；检查最终 Desktop 运行依赖闭包，再打出可用压缩包。当前升级合并仍在进行，安装包和线上服务没有随本轮重新发布。
+Windows 上的 `ptc-turn` 录制会话回放能够启动，但 Windows 自动贡献了沙箱 ACL 诊断技能，导致持久化会话预期比较失败。未用 Windows 专属输出替换跨平台 Session 夹具；已有工具 schema 侧文件已将 `approved` 更新为布尔值。
 
-以后每次跟随 DSH 上游时，先固定版本并列出差异，再按已确认的产品选择迁移。优先在独立组合包和 Host 策略处隔离定制，避免用旧文件整体覆盖新版核心。
+仓库级约束报告已有的私有包发布元数据、工作区版本范围及默认实验性语音依赖问题。依赖分类检查也拒绝现有文件上传代码导入的 `resolveProjectAttachmentScope`。文档快速检查完成，10 个检查通过、11 个失败，包括已有的启动引导链接失效和账户类型等价清单缺项。文档站点构建与文档类型检查通过；`doc-sync` 在 3 个缺少 `@mode` 标记的既有自动化事件处停止。全仓 lint 报告 559 条诊断，暂存区 lint 通过。这些仓库级检查不记为通过。
+
+## 产物与待验收项目
+
+第一次未签名 Windows `0.21.0` 打包通过了构建，但在 npm 官方源下载生产依赖时超时失败。正在通过正式打包脚本重试，既有 npm 镜像配置仅作用于本次进程。打包和更新器结果记录于 `apps/desktop/.desktop-build/`，没有上传文件。
+
+真实 Sub2API 推理需要可用测试账户，真实语音识别需要中文 WAV 样本与已准备的模型，本次会话尚未完成这两项验收。macOS 安装和原生运行时验收仍待完成。
