@@ -59,6 +59,8 @@ The Host owns preparation across page and Session changes: check resources, down
 -----
 
 <a id="model-experience"></a>
+`vadOnsetPaddingSeconds` restores up to 0.3 seconds before the first VAD segment by default; it accepts 0–1 seconds and zero disables restoration. Later segments are unchanged.
+
 ## Model Experience
 
 None, as recordings and preparation remain outside model requests; ordinary user submission owns any later text.
