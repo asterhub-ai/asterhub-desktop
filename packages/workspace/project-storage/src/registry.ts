@@ -366,6 +366,7 @@ export class ProjectStorageRegistry implements ProjectStorageHost {
           this.manifests.set(id, manifest)
           this.indexSessionOwners(manifest)
         } catch (error: unknown) {
+          if (isMissing(error)) continue
           throw new Error(`invalid project locator target ${root}: ${errorMessage(error)}`)
         }
       }

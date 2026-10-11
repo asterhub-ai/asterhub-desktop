@@ -139,10 +139,15 @@ export class ProjectSessionPersistence extends SessionPersistence {
         await current.dispose()
         this.backends.delete(key)
       }
-      const scope = this.ctx.isolate('sessionPersistence').isolate(key)
+      const scope = this.ctx.isolate('sessionPersistence')
       const fiber = scope.plugin(JsonlSessionPersistence, { root: location.sessionsRoot, compression: this.compression })
+      let persistence: SessionPersistence
       try {
         await fiber.await()
+        // The parent scope's property lookup can return this router's own service.
+        const provided = scope.get('sessionPersistence')
+        if (provided === undefined) throw new Error('project JSONL backend did not provide Session persistence')
+        persistence = provided
       } catch (error) {
         await fiber.dispose()
         throw error
@@ -150,7 +155,7 @@ export class ProjectSessionPersistence extends SessionPersistence {
       const backend: Backend = {
         projectId: location.projectId,
         revision: location.bindingRevision,
-        persistence: scope.sessionPersistence,
+        persistence,
         dispose: async () => { await fiber.dispose() },
         activeHandles: 0,
       }

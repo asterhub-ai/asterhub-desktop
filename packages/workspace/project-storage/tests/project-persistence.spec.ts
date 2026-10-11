@@ -81,6 +81,43 @@ describe('project-routed Session persistence', () => {
     const copiedFiles = await filesUnder(join(copied, '.aster', 'sessions'))
     expect(await Promise.all(copiedFiles.map(async path => createHash('sha256').update(await readFile(path)).digest('hex')))).toEqual(sourceDigests)
   })
+  it('creates and reloads Session bytes through an injected consumer instead of re-entering the router', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'project-consumer-'))
+    roots.push(home)
+    const project = join(home, 'project')
+    await mkdir(project)
+    const ctx = await mount(project, join(home, 'locator.json'))
+    await ctx.projectStorage.open({ root: project, mode: 'new' })
+    await ctx.plugin(ProjectSessionPersistence, { compression: 'none' })
+    let consumerContext: Context | undefined
+    await ctx.plugin({
+      name: 'project-session-consumer',
+      inject: ['sessionPersistence'],
+      apply(consumer) { consumerContext = consumer },
+    })
+    if (consumerContext === undefined) throw new Error('Session consumer did not start')
+    const sessionId = SessionId('injected-consumer-session')
+    try {
+      const writer = await consumerContext.sessionPersistence.create({
+        version: SESSION_FORMAT_VERSION, id: sessionId, createdAt: 10,
+        cwd: project, isSeeded: false, delegationDepth: 0,
+      })
+      try {
+        await writer.append([{ type: 'turn/start', seq: SessionSeq(0), time: 11, data: { turn: 1 } }])
+        await writer.flush()
+      } finally {
+        await writer.close()
+      }
+      const reader = await consumerContext.sessionPersistence.open(sessionId, 'read')
+      try {
+        expect((await reader.read()).events).toMatchObject([{ type: 'turn/start', data: { turn: 1 } }])
+      } finally {
+        await reader.close()
+      }
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
   it('rebinds a quiescent Session backend after the project root moves', async () => {
     const home = await mkdtemp(join(tmpdir(), 'project-rebind-'))
     roots.push(home)

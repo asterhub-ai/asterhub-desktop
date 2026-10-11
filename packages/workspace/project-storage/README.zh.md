@@ -19,11 +19,15 @@ Host 服务通过 `ctx.projectStorage` 暴露；浏览器安全的 `./types` 入
 
 `inspect(root)` 先规范化目录，仅读取有界且严格验证的 JSON。缺少 metadata 时返回 `new`，除非已注册的 legacy source 提供 proposal；格式错误、新版 schema、重复 JSON key、不安全数据根或重复身份均明确失败。`existing` 和 `legacy` 的确认必须把检查时的 ID 与 digest 传入 `open`；open 会在串行 mutation 中重新检查后才发布。相同 ID 和相同根目录保持原 binding revision；已有旧根不能被静默替换。
 
+已登记项目的 `.aster/project.json` 缺失（`ENOENT`）时，该项目仍保留在列表中，状态为 `missing`。此类项目不会阻止打开无关项目或移除登记。元数据存在但格式损坏、根目录不规范或身份冲突时，仍然明确报错。
+
 项目 cwd 成员使用经过验证的 portable 相对路径（`.` 或以 `/` 分隔的子路径）。拒绝绝对路径、盘符前缀、反斜线、NUL、空路径段及越界 `..`。Session ID 与历史 header 保持不变。`.aster` 以及其 `sessions`、`attachments`、`attachments/v1` 数据根不能是符号链接，也不能逃出选择的项目目录。`unregister` 只删除 locator 记录，绝不删除项目文件。
 
 ## 项目 Session 持久化
 
 `ProjectSessionPersistence` 从 `/persistence` 导出，并在 `ProjectStorageService` 后挂载。它按 manifest 成员关系将 Session 读写路由到 `.aster/sessions`，保留已存 header 与 generation。项目缺失或只读时拒绝写入；项目移动后，只要仍有路由句柄打开，就拒绝重新绑定。`list()` 返回已注册且可用项目的 Session；grouped profile 继续使用显式配置的后端。
+
+每个项目在隔离的 `sessionPersistence` store 中挂载 JSONL provider。路由器通过显式 store 查询取得该 provider，因此注入路由器的调用方不会将路由器自身解析为它的后端。
 
 ## 附件作用域
 

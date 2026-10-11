@@ -52,6 +52,20 @@ export class WorkspaceCommands {
 
   private async createInternal(path: string): Promise<WorkspaceCreateValue> {
     try {
+      const projectStorage = this.ctx.get('projectStorage', false)
+      if (projectStorage !== undefined) {
+        const inspection = await projectStorage.inspect(path)
+        if (inspection.kind === 'new') {
+          await projectStorage.open({ root: path, mode: 'new' })
+        } else if (inspection.kind === 'existing') {
+          await projectStorage.open({
+            root: path,
+            mode: 'existing',
+            expectedId: inspection.manifest.id,
+            expectedDigest: inspection.digest,
+          })
+        }
+      }
       const existing = await this.ctx.workspaceRegistry.resolveByPath(path)
       if (existing !== undefined) {
         return { workspace: workspaceView(existing), created: false }
@@ -93,15 +107,27 @@ export class WorkspaceCommands {
           sessionCount: inspection.manifest?.sessions.length ?? 0,
           digest: inspection.digest ?? '',
         }
-      case 'registered':
+      case 'registered': {
+        const workspace = await this.ctx.workspaceRegistry.resolveByPath(inspection.binding.root)
+        if (workspace === undefined) {
+          return {
+            kind: 'existing',
+            root: inspection.binding.root,
+            projectId: String(inspection.binding.id),
+            title: inspection.manifest.title,
+            sessionCount: inspection.manifest.sessions.length,
+            digest: inspection.digest,
+          }
+        }
         return {
           kind: 'registered',
           root: inspection.binding.root,
-          workspaceId: WorkspaceId(String(inspection.binding.id)),
+          workspaceId: workspace.id,
           title: inspection.manifest.title,
           sessionCount: inspection.manifest.sessions.length,
           digest: inspection.digest,
         }
+      }
       case 'legacy':
         return {
           kind: 'legacy',

@@ -15,6 +15,18 @@ const emptyUsage: AccountUsageSnapshot = {
   today: { requests: 0, tokens: 0, credits: 0 },
 }
 
+/**
+ * Compact token count starting at 1M and 1B, retaining grouped exact integers below 1M.
+ * Display rounding only; accounting remains exact.
+ */
+function formatUsageTokens(value: number, t: UsageSectionProps['t']): string {
+  if (value < 1_000_000) return value.toLocaleString()
+  const isBillion = value >= 1_000_000_000
+  const units = isBillion ? value / 1_000_000_000 : value / 1_000_000
+  const scaled = units >= 100 ? String(Math.round(units)) : String(Math.round(units * 10) / 10)
+  return t(isBillion ? 'number.billion' : 'number.million', { value: scaled })
+}
+
 /** Render account usage for all three supported windows. */
 export function UsageSection({ t, usage }: UsageSectionProps) {
   const [snapshot, setSnapshot] = useState<AccountUsageSnapshot>()
@@ -56,7 +68,7 @@ export function UsageSection({ t, usage }: UsageSectionProps) {
             <h3>{t(label)}</h3>
             <dl>
               <div><dt>{t('requestCount')}</dt><dd>{value.requests.toLocaleString()}</dd></div>
-              <div><dt>{t('tokenCount')}</dt><dd>{value.tokens.toLocaleString()}</dd></div>
+              <div><dt>{t('tokenCount')}</dt><dd>{formatUsageTokens(value.tokens, t)}</dd></div>
               <div><dt>{t('consumedCredits')}</dt><dd>{value.credits.toFixed(2)}</dd></div>
             </dl>
           </article>

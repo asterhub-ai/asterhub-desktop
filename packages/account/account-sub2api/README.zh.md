@@ -42,7 +42,7 @@ Desktop Web profile 将本服务与 `credentials-local`、账户 Client 插件�
 
 ### Remote 操作
 
-Host 提供状态、登录/退出、额度、支付方式、充值、兑换和用量操作。Remote 响应只包含账户视图所需字段；access token、自动登录密码和模型 key 均保留在 Host credentials。
+Host 提供状态、登录/退出、额度、支付方式、充值、兑换和用量操作。Remote 响应只包含账户视图所需字段；access token、自动登录密码和模型 key 均保留在 Host credentials。结算方式由 `methods` 的键标识；未提供 `available` 字段的方式仍可使用，只有明确标记 `available: false` 的方式会被排除。
 
 <a id="understand-the-implementation"></a>
 ## 理解实现

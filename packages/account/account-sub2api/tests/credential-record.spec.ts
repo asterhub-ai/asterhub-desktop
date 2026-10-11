@@ -22,7 +22,7 @@ afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
 })
 
-it('stores the account model key only in the Host record and clears it on logout', async () => {
+it('stores the account model key and exposes configured payment methods without an availability flag', async () => {
   const root = await mkdtemp(join(tmpdir(), 'asterhub-account-record-'))
   roots.push(root)
   const server = createServer((request, response) => {
@@ -33,6 +33,11 @@ it('stores the account model key only in the Host record and clears it on logout
       response.end(JSON.stringify({ code: 0, data: { items: [{ id: 3, key: 'account-model-key', group_id: 6 }], pages: 1 } }))
     } else if (request.url === '/api/v1/user/profile') {
       response.end(JSON.stringify({ code: 0, data: { balance: 0 } }))
+    } else if (request.url === '/api/v1/payment/checkout-info') {
+      response.end(JSON.stringify({ code: 0, data: { methods: {
+        alipay: { payment_type: 'alipay', currency: 'CNY', single_min: 0, single_max: 0 },
+        wxpay: { available: false, display_name: '微信支付' },
+      } } }))
     } else {
       response.statusCode = 404
       response.end('{}')
@@ -54,6 +59,9 @@ it('stores the account model key only in the Host record and clears it on logout
 
   const status = await ctx.accountSub2api.login({ email: 'user@example.com', password: 'test-password', rememberUsername: false, autoLogin: false })
   expect(status.loggedIn).toBe(true)
+  expect(await ctx.accountSub2api.paymentMethods()).toEqual([
+    { id: 'alipay', label: 'alipay', currency: 'CNY', minAmount: 0, maxAmount: 0 },
+  ])
   expect(await ctx.credentials.readRecord(credentialKey('asterhub-account', 'model-api-key')))
     .toEqual({ kind: 'api-key', key: 'account-model-key' })
   expect(await ctx.credentials.resolve(credentialRef(MODEL_KEY_REF))).toMatchObject({

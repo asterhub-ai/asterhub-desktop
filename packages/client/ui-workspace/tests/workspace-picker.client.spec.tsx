@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {
-  WorkspaceId, WorkspaceSnapshot, WorkspaceView,
+  WorkspaceId, WorkspaceInspectionView, WorkspaceSnapshot, WorkspaceView,
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
@@ -88,6 +88,10 @@ function mount(
   items: readonly WorkspaceView[] = [workspace('alpha', 'Alpha')],
   createWorkspace = vi.fn(),
   occupancy = occupancySource(),
+  options: {
+    inspectWorkspace?: (input: { path: string }) => Promise<WorkspaceInspectionView>
+    openProjectWorkspace?: (input: { path: string; mode: 'new' | 'existing' | 'legacy'; expectedId?: string; expectedDigest?: string }) => Promise<WorkspaceView>
+  } = {},
 ) {
   const onPick = vi.fn()
   const onClose = vi.fn()
@@ -105,6 +109,8 @@ function mount(
       onPick={onPick}
       onClose={onClose}
       createWorkspace={createWorkspace}
+      inspectWorkspace={options.inspectWorkspace}
+      openProjectWorkspace={options.openProjectWorkspace}
       useDirectoryFlow={occupancy.useDirectoryFlow}
       renderSlot={renderSlot}
       t={t}

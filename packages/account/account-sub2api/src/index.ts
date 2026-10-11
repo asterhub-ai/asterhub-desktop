@@ -377,7 +377,7 @@ class Sub2ApiClient {
   async getPaymentMethods(accessToken: string): Promise<AccountPaymentMethod[]> {
     const body = await this.request('payment/checkout-info', {}, accessToken) as Sub2ApiCheckoutInfo
     return Object.entries(body.methods ?? {})
-      .filter(([, method]) => method?.available === true)
+      .filter(([, method]) => method?.available !== false)
       .map(([id, method]) => ({
         id,
         label: typeof method.display_name === 'string' && method.display_name.trim()
@@ -456,7 +456,7 @@ export class AccountSub2apiService extends TypertRemoteService {
     // readiness promise resolves, automationIdentity returns null (fail closed).
     // Guard readiness promise against unhandled rejection: verifyStoredIdentity
     // catches internally and logs, so the promise always resolves.
-    this.automationReadiness = this.verifyStoredIdentity().catch(error => {
+    this.automationReadiness = this.verifyStoredIdentity().catch((error) => {
       this.ctx.logger.warn('account automation readiness check failed', error)
     })
   }

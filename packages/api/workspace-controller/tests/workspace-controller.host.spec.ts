@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import Storage from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
@@ -11,6 +11,7 @@ import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import WorkspaceController from '../src/index.ts'
 import { DEFAULT_WORKSPACE_DIRECTORY } from '../src/default-workspace.ts'
+import ProjectStorage from '@deepseek-ai/dsh-project-storage'
 import { WorkspaceFeed } from '../src/feed.ts'
 import type { WorkspaceFollowFrame } from '../src/types.ts'
 import { MemoryStorageBackend } from '../../../storage/storage-domain/tests/helpers/memory-backend.ts'
@@ -76,6 +77,16 @@ function stageDir(root: string, name: string): string {
   const path = join(root, name)
   mkdirSync(path, { recursive: true })
   return path
+}
+
+async function mountProjectStorage(ctx: Context, root: string): Promise<void> {
+  await ctx.plugin(ProjectStorage, {
+    sessionMode: 'project-local',
+    locatorPath: join(root, 'locator.json'),
+    legacySessionRoot: '',
+    metadataLimitBytes: 1024 * 1024,
+    lockDeadlineMs: 5000,
+  })
 }
 
 async function nextFrame(
@@ -555,5 +566,53 @@ describe('project discovery and confirmed opening', () => {
       name: 'RemoteError',
       code: 'workspace/confirmation-mismatch',
     })
+  })
+
+  it('returns a registered Workspace identity usable by the registry, not its project identity', async () => {
+    const { controller, ctx, root } = await harness()
+    await mountProjectStorage(ctx, root)
+    const binding = await ctx.projectStorage.open({ root, mode: 'new' })
+    const workspace = await ctx.workspaceRegistry.create(root)
+    const result = await controller.inspect({ path: root }, new AbortController().signal)
+    if (result.kind !== 'registered') throw new Error('Expected registered workspace inspection')
+    expect(result.workspaceId).toBe(workspace.id)
+    expect(result.workspaceId).not.toBe(String(binding.id))
+    expect(ctx.workspaceRegistry.get(result.workspaceId)?.path).toBe(workspace.path)
+  })
+
+  it('keeps inspection read-only when a project has no Workspace registration', async () => {
+    const { controller, ctx, root } = await harness()
+    await mountProjectStorage(ctx, root)
+    const binding = await ctx.projectStorage.open({ root, mode: 'new' })
+    const result = await controller.inspect({ path: root }, new AbortController().signal)
+    expect(result).toMatchObject({ kind: 'existing', projectId: String(binding.id) })
+    expect(await ctx.workspaceRegistry.resolveByPath(root)).toBeUndefined()
+  })
+
+  it('allows a Session to bind to the automatically initialized default project', async () => {
+    const { controller, ctx, root } = await harness()
+    await mountProjectStorage(ctx, root)
+    const result = await controller.initializeDefault(new AbortController().signal)
+    if (result === undefined) throw new Error('Expected initialized default workspace')
+    const sessionId = SessionId('default-project-session')
+    const location = await ctx.projectStorage.bindSession({
+      version: SESSION_FORMAT_VERSION, id: sessionId, createdAt: 10,
+      cwd: result.workspace.path, isSeeded: false, delegationDepth: 0,
+    })
+    expect(location.projectRoot).toBe(result.workspace.path)
+    expect(ctx.projectStorage.locateSession(sessionId)).toEqual(location)
+  })
+
+  it('allows a Session to bind to a Workspace created through the controller', async () => {
+    const { controller, ctx, root } = await harness()
+    await mountProjectStorage(ctx, root)
+    const result = await controller.create({ path: stageDir(root, 'auto-project') })
+    const sessionId = SessionId('created-project-session')
+    const location = await ctx.projectStorage.bindSession({
+      version: SESSION_FORMAT_VERSION, id: sessionId, createdAt: 10,
+      cwd: result.workspace.path, isSeeded: false, delegationDepth: 0,
+    })
+    expect(location.projectRoot).toBe(result.workspace.path)
+    expect(ctx.projectStorage.locateSession(sessionId)).toEqual(location)
   })
 })

@@ -19,11 +19,15 @@ The Host-facing service is exposed as `ctx.projectStorage`; the browser-safe `./
 
 `inspect(root)` canonicalizes the directory and only reads bounded strict JSON. A missing metadata file yields `new` unless a registered legacy source has a proposal; malformed, newer, duplicate-key, unsafe-root, and competing-identity states fail explicitly. Confirmation for `existing` or `legacy` must pass the inspected ID and digest to `open`; open re-inspects under the serialized mutation path before publishing. Same-ID/same-root opens retain their binding revision. An active or existing former root cannot be silently replaced.
 
+Registered projects whose `.aster/project.json` is absent (`ENOENT`) remain listed with `missing` status. They do not prevent opening unrelated projects or removing registrations. Present but malformed metadata, non-canonical roots, and identity conflicts still fail explicitly.
+
 Project cwd membership is a validated portable relative path (`.` or slash-separated child path). Absolute paths, drive prefixes, backslashes, NUL, empty components, and escaping `..` are refused. Session IDs and historical headers remain unchanged. `.aster` and its owned `sessions`, `attachments`, and `attachments/v1` roots must not be symlinks or escape the selected directory. `unregister` removes only the locator record; it never deletes project files.
 
 ## Project Session persistence
 
 `ProjectSessionPersistence` is exported from `/persistence` and mounts after `ProjectStorageService`. It routes Session reads and writes by manifest ownership to `.aster/sessions`, preserving stored headers and generations. It rejects writes when the project is missing or read-only, and refuses a moved-root rebind while routed handles remain open. `list()` returns Sessions from available registered projects; grouped profiles keep their explicitly configured backend.
+
+Each project mounts a JSONL provider in an isolated `sessionPersistence` store. The router retrieves that provider with an explicit store lookup, so callers injecting the router cannot resolve the router itself as its own backend.
 
 ## Attachment scope
 

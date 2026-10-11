@@ -361,6 +361,45 @@ describe('same-session goal driving', () => {
     expect(test.adapter.requests).toHaveLength(2)
   })
 
+  it('processes a follow-up sent while the goal is stopping after stop, resume, and stop again', async () => {
+    const test = await harness(['hang', 'hang', textResponse('human work completed')])
+    test.ctx.goals.create(test.agent, { objective: 'stop, resume, then stop again', maxGoalRounds: 4 })
+    await waitForRequests(test.adapter, 1)
+
+    const first = test.ctx.goals.get(test.agent)
+    if (first === undefined) throw new Error('missing goal before first pause')
+    const firstPause = test.ctx.goals.pause(test.agent, { id: first.id, revision: first.revision })
+    await test.agent.whenIdle()
+
+    test.ctx.goals.resume(test.agent, { id: firstPause.id, revision: firstPause.revision })
+    await waitForRequests(test.adapter, 2)
+    const resumed = test.ctx.goals.get(test.agent)
+    if (resumed === undefined) throw new Error('missing goal before second pause')
+    const secondPause = test.ctx.goals.pause(test.agent, { id: resumed.id, revision: resumed.revision })
+    const queued = createUserMessage({
+      content: [{ type: 'text', text: 'process this after the second stop' }],
+      source: { kind: 'user' },
+    })
+    test.agent.followup(queued)
+    await vi.waitFor(() => {
+      expect(test.agent.inbox.nextTurn.some(message => message.id === queued.id)).toBe(true)
+    })
+    await test.agent.whenIdle()
+    expect(test.ctx.goals.get(test.agent)).toMatchObject({ phase: 'paused', activation: 'disarmed', roundsStarted: 2 })
+
+    await waitForRequests(test.adapter, 3)
+    await test.agent.whenIdle()
+
+    expect(requestText(test.adapter.requests[2]!)).toContain('process this after the second stop')
+    expect(test.ctx.goals.get(test.agent)).toMatchObject({
+      id: secondPause.id,
+      phase: 'paused',
+      activation: 'disarmed',
+      roundsStarted: 2,
+    })
+    expect(test.agent.inbox.nextTurn.some(message => message.id === queued.id)).toBe(false)
+  })
+
   it('lets a model-initiated pause finish its own turn', async () => {
     const holder: { ctx?: Context; agent?: Agent } = {}
     const test = await harness([

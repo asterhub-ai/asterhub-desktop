@@ -65,6 +65,7 @@ describe('project locator and local membership', () => {
     const raw: unknown = JSON.parse(await readFile(join(a, '.aster', 'project.json'), 'utf8'))
     if (typeof raw !== 'object' || raw === null || !('id' in raw)) throw new Error('manifest fixture invalid')
     const duplicate = { ...raw, id: binding.id }
+    await mkdir(join(b, '.aster'), { recursive: true })
     await writeFile(join(b, '.aster', 'project.json'), JSON.stringify(duplicate))
     await expect(storage.open({ root: b, mode: 'existing', expectedId: binding.id })).rejects.toThrow(/conflict/i)
   })
@@ -203,5 +204,28 @@ describe('project locator and local membership', () => {
     storage.registerLegacyAdopter(async () => { throw new Error('temporary adoption failure') })
     await expect(storage.open(request)).rejects.toThrow('temporary adoption failure')
     expect(await storage.inspect(project)).toMatchObject({ kind: 'legacy', digest: inspection.digest })
+  })
+  it('retains record and reports missing status when root survives but metadata is absent, allowing unregister and unrelated open', async () => {
+    const projectA = await root(), projectB = await root(), locator = join(await root(), 'locator.json')
+    const storage = await createProjectStorage(storageOptions(locator))
+    const bindingA = await storage.open({ root: projectA, mode: 'new' })
+    await rm(join(projectA, '.aster', 'project.json'))
+
+    const restarted = await createProjectStorage(storageOptions(locator))
+    expect(restarted.list().map(item => item.id)).toContain(bindingA.id)
+    await expect(restarted.status(bindingA.id)).resolves.toBe('missing')
+
+    const bindingB = await restarted.open({ root: projectB, mode: 'new' })
+    expect(bindingB.root).toBe(projectB)
+
+    await restarted.unregister(bindingA.id)
+    expect(restarted.list().map(item => item.id)).toEqual([bindingB.id])
+  })
+  it('still fails loudly when metadata exists but is malformed', async () => {
+    const project = await root(), locator = join(await root(), 'locator.json')
+    const storage = await createProjectStorage(storageOptions(locator))
+    await storage.open({ root: project, mode: 'new' })
+    await writeFile(join(project, '.aster', 'project.json'), '{ malformed json')
+    await expect(createProjectStorage(storageOptions(locator))).rejects.toThrow(/invalid project locator target/i)
   })
 })

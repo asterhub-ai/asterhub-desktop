@@ -27,7 +27,7 @@ The Desktop Web composition mounts this plugin with the generated `api-remotes`,
 
 ### Account surfaces
 
-The Account section offers login, logout, balance, payment-method, top-up and redemption controls. The separate usage view presents aggregated request, token and credit counts by total, last seven days and today. The sign-in gate uses Host status and opens the account view when a user initiates a protected action while logged out.
+The Account section offers login, logout, balance, payment-method, top-up and redemption controls. The separate usage view presents aggregated request, token and credit counts by total, last seven days and today. Token statistics show grouped exact counts below 1M, use M from 1M, and switch to B at 1B; compact values are rounded for display while accounting remains exact. The sign-in gate uses Host status and opens the account view when a user initiates a protected action while logged out.
 
 ### Desktop menu
 

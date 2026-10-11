@@ -128,7 +128,22 @@ export class WorkspaceController extends TypertRemoteService {
         this.config.documentsDirectory, AbortSignal.any([signal, timeout]),
       )
     })
-    return workspace === undefined ? undefined : { workspace: workspaceView(workspace) }
+    if (workspace === undefined) return undefined
+    const projectStorage = this.ctx.get('projectStorage', false)
+    if (projectStorage !== undefined) {
+      const inspection = await projectStorage.inspect(workspace.path, signal)
+      if (inspection.kind === 'new') {
+        await projectStorage.open({ root: workspace.path, mode: 'new' }, signal)
+      } else if (inspection.kind === 'existing') {
+        await projectStorage.open({
+          root: workspace.path,
+          mode: 'existing',
+          expectedId: inspection.manifest.id,
+          expectedDigest: inspection.digest,
+        }, signal)
+      }
+    }
+    return { workspace: workspaceView(workspace) }
   }
 
   /**

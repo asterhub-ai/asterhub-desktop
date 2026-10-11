@@ -47,7 +47,7 @@ describe('desktop release metadata', () => {
 const coordinators: InstanceType<typeof DesktopUpdateCoordinator>[] = []
 afterEach(() => { for (const item of coordinators.splice(0)) item.dispose() })
 
-function fixture() {
+function fixture(enabled = () => true) {
   const events = new EventEmitter()
   const checkForUpdates = vi.fn(async () => ({
     isUpdateAvailable: true,
@@ -66,13 +66,20 @@ function fixture() {
   const updater = Object.assign(events, { checkForUpdates, downloadUpdate, quitAndInstall }) as unknown as AppUpdater
   const coordinator = new DesktopUpdateCoordinator(
     (state) => { states.push(state); return state },
-    beforeRestart, updater, () => true, () => '1.1.0-alpha.1', downloadResult,
+    beforeRestart, updater, enabled, () => '1.1.0-alpha.1', downloadResult,
   )
   coordinators.push(coordinator)
   return { coordinator, updater, events, states, checkForUpdates, downloadUpdate, quitAndInstall, beforeRestart, downloadResult }
 }
 
 describe('desktop update coordinator', () => {
+  it('reports the installed version as current when no packaged update source exists', async () => {
+    const f = fixture(() => false)
+    expect(await f.coordinator.check(true)).toEqual({ phase: 'idle' })
+    expect(f.states).toEqual([{ phase: 'idle' }])
+    expect(f.checkForUpdates).not.toHaveBeenCalled()
+  })
+
   it('keeps safe preparation diagnostics separate and clears them on an explicit retry', async () => {
     const f = fixture()
     await f.coordinator.check()

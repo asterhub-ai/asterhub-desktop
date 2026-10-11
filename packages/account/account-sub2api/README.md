@@ -42,7 +42,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Remote operations
 
-The Host exposes status, login/logout, quota, payment-method, top-up, redemption and usage operations. The Remote responses contain only fields used by account views; access tokens, saved auto-login passwords and model keys stay in Host credentials.
+The Host exposes status, login/logout, quota, payment-method, top-up, redemption and usage operations. The Remote responses contain only fields used by account views; access tokens, saved auto-login passwords and model keys stay in Host credentials. Checkout methods are identified by keys in `methods`; entries without an `available` field remain usable, while an explicit `available: false` is excluded.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
