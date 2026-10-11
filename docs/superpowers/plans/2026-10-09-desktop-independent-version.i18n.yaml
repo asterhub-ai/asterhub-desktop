@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for 2026-10-09-desktop-independent-version.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/plans/2026-10-09-desktop-independent-version.md
+/independent-desktop-version-implementation-plan:
+  en: b48afa52f7ba6dc9
+  zh: 012af8e57a592a4d
+/independent-desktop-version-implementation-plan/global-constraints:
+  en: d0be091b34200830
+  zh: 2fad1cd3fc2c5951
+/independent-desktop-version-implementation-plan/global-constraints/task-1-pin-the-independent-version-behavior-in-tests:
+  en: acd6ae2c82d2f55d
+  zh: 5a95eae1bda6026d
+/independent-desktop-version-implementation-plan/global-constraints/task-2-separate-product-and-runtime-version-sources:
+  en: 3d2ec4b8f62add14
+  zh: ee13f72398b69b5f
+/independent-desktop-version-implementation-plan/global-constraints/task-3-update-version-policy-and-rationale:
+  en: 0165b417adff2172
+  zh: 5c3fb28258b005b9
+/independent-desktop-version-implementation-plan/global-constraints/task-4-verify-the-release-boundary:
+  en: af91b3123fcf7fee
+  zh: 7c9c653cb1586d70

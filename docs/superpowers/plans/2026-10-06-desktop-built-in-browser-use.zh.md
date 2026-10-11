@@ -242,7 +242,7 @@ browser_screenshot({ target: DesktopBrowserTarget }) -> { target; screenshotId; 
 
 ### 任务 7：端到端验收与发布文档
 
-**文件：** 新增 `apps/desktop/tests/fixtures/browser-automation-smoke.mjs`；扩展 `apps/desktop/tests/{browser-automation.e2e.ts,browser-automation-tabs.spec.ts}` 与相关 Sidebar 无障碍/Browser body 测试。按仓库快照归属规则增加 recorded-session case；附件/GUI 结果不属于 Session snapshot 时增加 provider 所属 expected-output case。更新成对的 `packages/client/ui-sidebar-browser/README*`、`docs/subsystems/browser-use*`、`apps/desktop/README*` 和所属包组 README。为 Desktop 默认变化在当前未发布版本目录下添加 upgrade guide。
+**文件：** 新增 `apps/desktop/tests/fixtures/browser-automation-smoke.mjs`；扩展 `apps/desktop/tests/{browser-automation.e2e.ts,browser-automation-tabs.spec.ts}` 与相关 Sidebar 无障碍/Browser body 测试。按仓库快照归属规则增加 recorded-session case；附件/GUI 结果不属于 Session snapshot 时增加 provider 所属 expected-output case。更新成对的 `packages/client/ui-sidebar-browser/README.md` / `packages/client/ui-sidebar-browser/README.zh.md`、`docs/subsystems/browser-use*`、`apps/desktop/README*` 和所属包组 README。为 Desktop 默认变化在当前未发布版本目录下添加 upgrade guide。
 
 - [ ] 在最终产物上重跑任务 3 的打包 guest 证明，确认记录证据涵盖实际发布的 guest flags。仅在任务 3 通过后运行真实模型、Sidebar、附件回放、GUI 测试与生命周期场景。
 - [ ] 使用 `pnpm run dev:desktop` 构建并启动；Windows 用 `pnpm run package:desktop:win:x64:dir` 生成目录产物，macOS 用 `pnpm run package:desktop:mac:arm64:dir` 或 `pnpm run package:desktop:mac:x64:dir`。通过真实 `dsh` Desktop profile 运行，并隔离 Desktop `userData`、Harness home、workspace 和 loopback fixture 端口。开发应用和 `devTools:false` 打包产物都必须实际运行；Electron e2e 不得自跳过。

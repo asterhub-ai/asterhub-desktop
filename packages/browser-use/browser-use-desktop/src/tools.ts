@@ -29,6 +29,9 @@ import type {
   DesktopBrowserWaitCondition,
 } from './types.ts'
 
+/**
+ * Bounded navigation, operation, snapshot, and page-read limits for browser tools.
+ */
 export interface DesktopBrowserToolConfig {
   readonly operationTimeoutMs: number
   readonly navigationTimeoutMs: number
@@ -101,6 +104,11 @@ export class AgentOwnerTracker {
   private readonly generations = new WeakMap<Agent, DesktopBrowserOwnerGeneration>()
   private nextGen = 1
 
+  /**
+   * Return the stable owner generation for this live Agent occurrence.
+   * @param agent - Live Agent whose ownership generation is being resolved or released.
+   * @returns Session, Agent, and owner-generation identity for the request.
+   */
   getCaller(agent: Agent): DesktopBrowserCaller {
     let gen = this.generations.get(agent)
     if (gen === undefined) {
@@ -113,6 +121,10 @@ export class AgentOwnerTracker {
     }
   }
 
+  /**
+   * Forget ownership after the Agent is disposed; a new occurrence receives a new generation.
+   * @param agent - Live Agent whose ownership generation is being resolved or released.
+   */
   releaseAgent(agent: Agent): void {
     this.generations.delete(agent)
   }
@@ -122,6 +134,12 @@ export class AgentOwnerTracker {
 export class SessionOperationQueue {
   private readonly queues = new Map<string, Promise<unknown>>()
 
+  /**
+   * Serialize operations for one Session while allowing other Sessions to proceed independently.
+   * @param sessionId - Session identity whose operations must execute in order.
+   * @param op - Operation to run after prior work for the same Session settles.
+   * @returns The result or rejection of this operation after its predecessors settle.
+   */
   enqueue<T>(sessionId: string, op: () => Promise<T>): Promise<T> {
     const prev = this.queues.get(sessionId) ?? Promise.resolve()
     const run = async (): Promise<T> => {
@@ -140,7 +158,11 @@ export class SessionOperationQueue {
   }
 }
 
-/** Ensure the routed model for the execution context declares image/vision capability. */
+/**
+ * Ensure the routed model for the execution context declares image/vision capability.
+ * @param ctx - Host Cordis context supplying the required services.
+ * @param exec - Tool execution context carrying the routed Agent and model.
+ */
 export async function assertImageCapableRoute(ctx: Context, exec: ToolRunContext): Promise<void> {
   const routed = exec.agent?.session.requestHeader()?.config
   const provider = routed?.provider ?? exec.agent?.options.provider
@@ -225,7 +247,15 @@ function parseWaitCondition(cond: {
   throw new Error(`Unknown wait condition kind: ${cond.kind}`)
 }
 
-/** Construct the eight standard model tools for Sidebar Browser automation. */
+/**
+ * Construct the eight standard model tools for Sidebar Browser automation.
+ * @param ctx - Host Cordis context supplying the required services.
+ * @param transport - Correlated private IPC transport to the Desktop main process.
+ * @param config - Validated deployment configuration.
+ * @param tracker - Owner-generation tracker for live Agents.
+ * @param queue - Per-Session operation serializer.
+ * @returns The eight browser tool definitions with bounded private IPC execution.
+ */
 export function createDesktopBrowserTools(
   ctx: Context,
   transport: DesktopBrowserTransport,

@@ -1,10 +1,10 @@
 # AGENTS.md
 
-AsterHub is a desktop AI workbench built on an all-plugin Cordis agent runtime. The Web UI is an implementation surface hosted by the desktop app; do not describe the product as a Web workbench. Read [docs/architecture.md](docs/architecture.md) before changing `packages/`; follow [docs/AGENTS.md](docs/AGENTS.md) for documentation.
+AsterHub is a desktop AI workbench using Cordis plugins. The desktop hosts the Web UI; never describe the product as a Web workbench. Read [architecture](docs/architecture.md) before changing `packages/`; follow [documentation rules](docs/AGENTS.md).
 
 ## Pre-stable APIs and released Session data
 
-Public APIs are pre-stable; update every consumer. Follow [version/status](docs/session-format-status.md) and [type acknowledgements](docs/cookbook/reviewing-persistence-type-changes.md). [Adjacent migration](.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.md) may add a version-named successor but never move, overwrite, or delete committed generations; predecessors imply neither fallback nor downgrade support. SQLite uses monotonic `SCHEMA_VERSION`.
+Public APIs are pre-stable; update every consumer. Follow [version/status](docs/session-format-status.md) and [type acknowledgements](docs/cookbook/reviewing-persistence-type-changes.md). [Adjacent migrations](.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.md) may add version-named successors; never move, overwrite, or delete committed generations. Predecessors imply neither fallback nor downgrade support. SQLite uses monotonic `SCHEMA_VERSION`.
 
 Acknowledge [declared persistence-type changes](docs/cookbook/reviewing-persistence-type-changes.md).
 
@@ -111,7 +111,7 @@ make web|dev-web|desktop|dev-desktop|build  # the same commands; ARGS='--no-open
 
 ### Host sandbox failures
 
-If a required `gh`, `pnpm`, build, test, or generator command fails because the sandbox blocks credentials, network, IPC, watching, or nested `sandbox-exec`, retry unchanged with the narrowest host escalation. Require sandbox evidence; never bypass test failures or the product sandbox.
+When sandbox restrictions block required `gh`, `pnpm`, build, test, or generator commands (credentials, network, IPC, watching, nested `sandbox-exec`), retry unchanged with the narrowest host escalation. Require sandbox evidence; never bypass tests or the product sandbox.
 
 ### Run relevant checks locally
 
@@ -171,15 +171,15 @@ Read [docs/defensive-patterns.md](docs/defensive-patterns.md) before lifecycle, 
 
 ## Type safety and documentation
 
-Everything compiles under `strict: true` with `noImplicitAny`; every remaining `any` explains why narrowing is infeasible. Every module and export has concise JSDoc for its non-obvious contract; function-like exports include `@param`/`@returns`, as enforced by `verify-export-jsdoc`. Heritage-declared members, plugin-protocol slots, and constructors keep their docs at the declaring Service Definition, protocol, or class.
+Compile with `strict: true` and `noImplicitAny`; explain why each remaining `any` cannot narrow. Document every module/export's non-obvious contract; function-like exports require `@param`/`@returns` (`verify-export-jsdoc`). Document inherited members, plugin-protocol slots, and constructors at their declaring Service Definition, protocol, or class.
 
-Comments and docs state complete contracts and context, not reasoning transcripts. Use direct, concrete terms. Do not use metaphors. Before writing `contract`, `boundary`, or `shape`, ask whether a more exact term names the subject: write `response fields`, `JSON validation`, or `ESM exports` instead of `response shape`, `validation boundary`, or `module shape`. Keep `contract` for preconditions, postconditions, invariants, compatibility promises, and other obligations that callers, callees, implementers, providers, producers, or consumers rely on. Keep a literal process, wire, security, transaction, or lifecycle boundary. Do not narrate control flow or tests, preserve review history, or restate code. Keep behavior, failure, timing, ownership, and safe-use facts; link the rationale. Use [dsh-prose-standard](.agents/skills/dsh-prose-standard/SKILL.md) for decisions. Wire mechanically checkable invariants into an executed top-level gate and prove each changed acceptance path rejects an invalid case. Use narrow, justified exceptions instead of disabling a rule globally.
+Comments and docs state complete contracts and context in concrete terms: no metaphors, reasoning/control-flow/test narration, review history, or code restatement. Prefer exact subjects (`response fields`, `JSON validation`, `ESM exports`) over vague `shape`. Reserve `contract` for preconditions, postconditions, invariants, compatibility promises, and caller/provider obligations; `boundary` names literal process, wire, security, transaction, or lifecycle separation. Retain behavior, failure, timing, ownership, and safe-use facts; link rationale. Follow [dsh-prose-standard](.agents/skills/dsh-prose-standard/SKILL.md). Enforce checkable invariants in executed top-level gates; verify rejection of an invalid case for each changed acceptance path. Exceptions stay narrow and justified; never disable rules globally.
 
-Docs accompany every code change: update affected README and JSDoc contracts together. Routine bilingual work follows [docs/AGENTS.md](docs/AGENTS.md); only explicit user invocation may run `dsh-translate-docs`. Current-state prose, one physical line per paragraph, one home per fact, and word budgets live there.
+Update affected README and JSDoc with every code change. Follow [docs/AGENTS.md](docs/AGENTS.md) for bilingual pairs, current-state prose, paragraph lines, fact ownership, and budgets; only explicit user invocation permits `dsh-translate-docs`.
 
 ## Editing these instructions
 
-`CLAUDE.md` symlinks `AGENTS.md` at root and `packages/`; edit the real file. Keep each rule self-contained while linking high-level docs. Condense when clarity survives; raise a `verify-doc-budgets` ceiling when the required content genuinely needs more space.
+Root and `packages/CLAUDE.md` symlink `AGENTS.md`; edit the real file. Keep rules self-contained with documentation links. Condense without losing clarity; raise budgets only for necessary content.
 
 ## Vendoring policy
 

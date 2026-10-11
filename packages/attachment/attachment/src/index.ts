@@ -246,6 +246,7 @@ export abstract class AttachmentStore extends Service {
   }
 
   /**
+   * Resolve an original file attachment to a host-local path when the backend supports it.
    * @param ref - durable file reference.
    * @param scope - trusted project Session scope; required by project-local providers.
    * @returns an absolute host path, or undefined when this backend is not host-file-backed.

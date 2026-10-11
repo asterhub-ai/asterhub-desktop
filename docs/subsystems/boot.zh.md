@@ -156,6 +156,12 @@ Manage profile files and apply their declared reload lifecycle.
  */
 @Remote installBundle(spec: string, options?: InstallBundleOptions): Promise<ChangeResult>
 
+/** Install the exact signed catalogue item shown to the user.
+ * @param request Catalogue identity and signed package facts displayed when the user selected Install.
+ * @returns Package-manager diagnostics and the resulting application state.
+ */
+@Remote async installCuratedBundle(request: CuratedPluginInstallRequest): Promise<ChangeResult>
+
 /** Recover the result of an active installation without cancelling it.
  * @param requestId The id supplied when installation started.
  * @returns The installation's outcome after it settles, or null if no active request has that id.
@@ -169,6 +175,11 @@ Manage profile files and apply their declared reload lifecycle.
  * applied, `not-running` for any other id.
  */
 @Remote async cancelInstall(requestId: PluginInstallRequestId): Promise<PluginInstallCancellation>
+
+/** Fetch and verify the separately curated catalogue for the app Plugins page.
+ * @returns Verified catalogue entries with Host-computed exact installed state.
+ */
+@Remote async curatedCatalog(): Promise<CuratedPluginCatalog>
 
 /** Unload and remove a profile-owned bundle dependency through dsh plugin's pnpm path.
  * @param name Installed dependency name.

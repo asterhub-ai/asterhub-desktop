@@ -984,8 +984,8 @@
   en: 3b6931556cfe6b9e
   zh: ce5a5b1d92ce9eac
 /session-persistence-event-catalog/resolved-persistence-types/fileattachmentref:
-  en: 0bf0caf488d14011
-  zh: 734501852de79a21
+  en: f253520c00014466
+  zh: 55403b243bb783d6
 /session-persistence-event-catalog/resolved-persistence-types/fileblock:
   en: 4cab6c6ed2abedd8
   zh: a6cdd344e6c36c24
@@ -1023,14 +1023,14 @@
   en: c8420c48f6167ad9
   zh: a6dc3dc1ee50ea81
 /session-persistence-event-catalog/resolved-persistence-types/imageattachmentref:
-  en: 76ee1e266cd651da
-  zh: 55c7c95a223ccbed
+  en: 99fccbed5b6da944
+  zh: 08e88fed4571ab26
 /session-persistence-event-catalog/resolved-persistence-types/imageblock:
   en: ccafbcae37570ce2
   zh: fbf43a8c7ff26154
 /session-persistence-event-catalog/resolved-persistence-types/imagemediatype:
-  en: 32d86426192176d5
-  zh: c86291efc19bdc91
+  en: 8990ee470f3dc5d8
+  zh: bb2f6f74c0c07b7e
 /session-persistence-event-catalog/resolved-persistence-types/imageoffloadtarget:
   en: 6e5b854c0ede1444
   zh: 648b5801868593cc
@@ -1449,8 +1449,8 @@
   en: 8cb1768dfbfc8225
   zh: 1470d9adb7065846
 /session-persistence-event-catalog/resolved-persistence-types/height-width:
-  en: a5df50710083ac25
-  zh: aad3ccf6f6de70e4
+  en: cd4b7ba62a3cdaac
+  zh: 5b266c0f2bbb95f1
 /session-persistence-event-catalog/resolved-persistence-types/id-outcome:
   en: 6a4a45ec415442ee
   zh: 360f6ed2f30d16b1

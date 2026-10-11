@@ -147,7 +147,10 @@ export class BrowserController implements HostObservable<BrowserControllerState>
   }
 
 
-  /** Update the active visibility of this tab occurrence. */
+  /**
+   * Update the active visibility of this tab occurrence.
+   * @param visible - Whether this tab occurrence is actively presented.
+   */
   setVisible(visible: boolean): void {
     if (this.disposed) return
     const current = this.store.getSnapshot()
@@ -160,7 +163,12 @@ export class BrowserController implements HostObservable<BrowserControllerState>
    */
   rebind(actions: BoundActions<BrowserStore>): void { this.actions = actions }
 
-  /** Execute a semantic action on a snapshot ref. */
+  /**
+   * Execute a semantic action on a snapshot ref.
+   * @param snapshotId - Snapshot identity that owns the target reference.
+   * @param ref - Target reference from that snapshot.
+   * @param action - Semantic action to apply to the referenced element.
+   */
   accessibleAction(
     snapshotId: DesktopBrowserSnapshotId,
     ref: DesktopBrowserRef,

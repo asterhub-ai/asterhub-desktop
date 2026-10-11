@@ -1,0 +1,82 @@
+# Bilingual-pair consistency record for 2026-10-05-asterhub-native-scheduler-design.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/specs/2026-10-05-asterhub-native-scheduler-design.md
+/asterhub-native-scheduled-task-detailed-design:
+  en: 6f2f53d9c6835920
+  zh: 008c62c5080c3b65
+/asterhub-native-scheduled-task-detailed-design/summary:
+  en: 932d5191a996202e
+  zh: e3c8024d3a244513
+/asterhub-native-scheduled-task-detailed-design/table-of-contents:
+  en: 73fa7bbfa6948977
+  zh: a303d8b46f10fce3
+/asterhub-native-scheduled-task-detailed-design/product-scope-and-tradeoffs:
+  en: 490fc0ae6e79ffe4
+  zh: 19a9a5aedcfa23c8
+/asterhub-native-scheduled-task-detailed-design/user-flows:
+  en: b049e3f519da4d56
+  zh: 8c8786df7ccd3c4a
+/asterhub-native-scheduled-task-detailed-design/user-flows/chat-authoring:
+  en: 6da0d5b48dba610d
+  zh: 69041424fb7d188a
+/asterhub-native-scheduled-task-detailed-design/user-flows/task-page-creation-and-editing:
+  en: ca03758512963e0b
+  zh: 863788ca64e13ede
+/asterhub-native-scheduled-task-detailed-design/task-and-run-data:
+  en: 29009553b531b340
+  zh: 595c5f721ed283f6
+/asterhub-native-scheduled-task-detailed-design/task-and-run-data/taskaggregate-proposed-version-1-data:
+  en: 615181441b46277a
+  zh: 7cb251170e3d4441
+/asterhub-native-scheduled-task-detailed-design/task-and-run-data/runrecord:
+  en: 503eff7a1ba25549
+  zh: eba6a92f00afaaf3
+/asterhub-native-scheduled-task-detailed-design/scheduling-and-concurrency:
+  en: 6d176052f7190dfe
+  zh: 9d12f57715e3a96e
+/asterhub-native-scheduled-task-detailed-design/scheduling-and-concurrency/missed-occurrences:
+  en: f29cd1a74d33b7d0
+  zh: 6d8d6927c6a7f97b
+/asterhub-native-scheduled-task-detailed-design/scheduling-and-concurrency/execution-limits:
+  en: 31b418c486a7c71c
+  zh: 2a5aa511ea9926b1
+/asterhub-native-scheduled-task-detailed-design/execution-and-session-lifecycle:
+  en: 8bdc0adf6334ebd3
+  zh: 281711ae4f500824
+/asterhub-native-scheduled-task-detailed-design/accounts-models-and-approval:
+  en: 86863827044236fa
+  zh: d47c697c2659da6c
+/asterhub-native-scheduled-task-detailed-design/accounts-models-and-approval/account-isolation:
+  en: de96641230baff49
+  zh: 4fd4897d7288e317
+/asterhub-native-scheduled-task-detailed-design/accounts-models-and-approval/models-and-capabilities:
+  en: 9a1f3090048ab255
+  zh: c8b076f8873be3dd
+/asterhub-native-scheduled-task-detailed-design/accounts-models-and-approval/approval-and-autonomous-scheduling:
+  en: fca1777d9ec041ef
+  zh: 6a9dc59bbb3b4e23
+/asterhub-native-scheduled-task-detailed-design/persistence-and-recovery:
+  en: 0216b8fa90ca7df6
+  zh: e3144e65e3b0ac26
+/asterhub-native-scheduled-task-detailed-design/host-api-and-model-tools:
+  en: 61fa71c442a00468
+  zh: 8d14db187948c3e6
+/asterhub-native-scheduled-task-detailed-design/task-management-page:
+  en: 916513b19911366e
+  zh: 455c16b754979019
+/asterhub-native-scheduled-task-detailed-design/task-management-page/direct-creation-form:
+  en: 14aa6df7f187fe66
+  zh: 7977658fba96b3e8
+/asterhub-native-scheduled-task-detailed-design/native-composition-and-installer:
+  en: 3839b0afbcc7528a
+  zh: 467bbf4ef1eaee4c
+/asterhub-native-scheduled-task-detailed-design/legacy-schedule-data:
+  en: e13f93687256c86b
+  zh: 884b0da8bc8754d6
+/asterhub-native-scheduled-task-detailed-design/acceptance-criteria:
+  en: 18c4eaaef22e7523
+  zh: 062c5bdcc97ab147
+/asterhub-native-scheduled-task-detailed-design/references-and-review-items:
+  en: 2ed70e8066d95d30
+  zh: 61ea0ca4c37ec2c2

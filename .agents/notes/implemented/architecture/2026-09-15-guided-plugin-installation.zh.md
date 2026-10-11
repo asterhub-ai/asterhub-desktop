@@ -42,6 +42,4 @@ Status: implemented
 
 ## 测试
 
-`packages/boot/plugin-manager/tests/install-spec.spec.ts` 钉住 spec 形式与失败分类器的输入；`manager.spec.ts` 用桩住的注册表查询和真实目录驱动 `inspect`，流式转发一次运行，停下一次运行并检查恢复后的文件，并检查变更事件；`operations.spec.ts` 覆盖注册表查询。`packages/client/ui-plugin-manager/tests` 覆盖 store 的阶段、经宿主确认的取消、装后启用、toast 与页面的四个画面；`apps/web/tests/plugin-manager.e2e.ts` 经真实宿主拒绝已装名字、不存在的路径和坏名字，并实时切换一个组合包及其中一行，`plugin-install-cancel.e2e.ts` 从对话框停下一个真实子进程、检查恢复后的文件，并在第二次尝试时装成，`plugin-install-approve.e2e.ts` 用假 pnpm 把脚本留作未决、从对话框允许后在重试中装上。
-
-`github-connection.spec.ts` 用真实 Git 和测试自有的本机网络端点覆盖立即失败、超时、取消与非交互认证。`manager.spec.ts` 还通过真实 Git 与 pnpm 安装本地仓库，覆盖 HTTPS、GitHub 简写和 SSH 地址，用自有代理隔离 pnpm 的 HTTPS 请求并验证其 SSH 回退。`plugin-install-github.e2e.ts` 检查连接失败及超时弹窗、子进程清理，以及切换镜像时不重试原 GitHub 地址。
+`packages/boot/plugin-manager/tests/install-spec.spec.ts`、`manager.spec.ts` 和 `operations.spec.ts` 覆盖 spec 解析、registry 检查、运行流、取消回滚和变更事件。`apps/web/tests/plugin-manager.e2e.ts`、`plugin-install-cancel.e2e.ts` 和 `plugin-install-approve.e2e.ts` 验证 Host 与浏览器流程。目前没有安装页面的独立 Client 单元测试。

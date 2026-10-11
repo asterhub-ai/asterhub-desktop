@@ -194,16 +194,19 @@ declare module '@deepseek-ai/cordis' {
     /**
      * Notification that automation tasks changed; re-query for authoritative state.
      * @param event - The automation changed event.
+     * @mode emit
      */
     'automation/changed'(event: AutomationChangedEvent): void
     /**
      * Account identity changed; re-query and drop stale prepared ops.
      * @param event - The account changed event.
+     * @mode emit
      */
     'automation/account-changed'(event: AutomationAccountChangedEvent): void
     /**
      * Request to stop one run; observed by the runtime outside the FIFO.
      * @param event - The run stop requested event.
+     * @mode emit
      */
     'automation/run-stop-requested'(event: AutomationRunStopRequestedEvent): void
   }
@@ -388,7 +391,10 @@ export class AutomationService extends TypertRemoteService implements Automation
   get limits(): AutomationLimits {
     return this.limitsCache
   }
-  /** All tasks (synchronous snapshot for runtime scanning outside the FIFO). */
+  /**
+   * All tasks for runtime scanning outside the management FIFO.
+   * @returns Current task snapshot, or an empty list before initialization.
+   */
   tasks(): readonly AutomationTask[] {
     if (this.operations) {
       return this.operations.store.tasks()
@@ -396,7 +402,10 @@ export class AutomationService extends TypertRemoteService implements Automation
     return []
   }
 
-  /** Current account identity (delegates to accountSub2api). */
+  /**
+   * Resolve the current account lifetime through the account service.
+   * @returns Account identity and epoch, or null when acquisition is unavailable.
+   */
   identity(): Promise<AutomationAccountIdentity | null> {
     return this.ctx.accountSub2api.automationIdentity()
   }
@@ -408,6 +417,8 @@ export class AutomationService extends TypertRemoteService implements Automation
    * no task can cross global quota/concurrency checks while another await is
    * in flight. The runtime calls this for reservation; management operations
    * call it through {@link AutomationOperations}.
+   * @param work - Mutation or reservation to execute after prior queued work settles.
+   * @returns The operation result or rejection without poisoning later queued work.
    */
   transact<T>(work: () => Promise<T>): Promise<T> {
     const run = this.chain.then(work, work)
@@ -417,7 +428,10 @@ export class AutomationService extends TypertRemoteService implements Automation
     return run
   }
 
-  /** Persist a task and emit change. */
+  /**
+   * Persist a task before notifying consumers and requesting another scheduling scan.
+   * @param task - Complete task aggregate to publish.
+   */
   async put(task: AutomationTask): Promise<void> {
     const store = await this.getStore()
     await store.put(task)

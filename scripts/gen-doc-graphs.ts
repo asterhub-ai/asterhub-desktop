@@ -108,6 +108,24 @@ const GROUP_ORDER = [
 
 const SERVICE_ROLES: ServiceRole[] = [
   {
+    key: 'asterhubAutomation', pkg: 'asterhub-automation',
+    title: 'Account-scoped desktop automations', mode: 'core',
+    consumers: ['client-ui-asterhub-automation'],
+    note: 'Owns persisted tasks and starts each scheduled run in a fresh Session while the desktop application is running.',
+  },
+  {
+    key: 'desktopBrowserTransport', pkg: 'browser-use-desktop',
+    title: 'Desktop browser Host transport', mode: 'core',
+    consumers: ['browser-use-desktop'],
+    note: 'The desktop Host supplies correlated browser requests and releases resources owned by a Session.',
+  },
+  {
+    key: 'projectStorage', pkg: 'project-storage',
+    title: 'Project storage and Session ownership', mode: 'core',
+    consumers: ['workspace', 'api-workspace-controller', 'attachment-local', 'llm-pi-ai', 'llm-deepseek'],
+    note: 'Owns project manifests, bindings and Session locations; consumers resolve project-owned files through the registered storage.',
+  },
+  {
     key: 'accountSub2api',
     pkg: 'account-sub2api',
     title: 'Host account and model-key binding Remote',

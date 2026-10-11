@@ -27,8 +27,6 @@ pnpm run dev:desktop
 
 The separate `dev:web` command starts a development Web host for renderer work; it is not the customer-facing product entry point.
 
-## Community and support
-
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -37,7 +35,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md).
 
-`pnpm run dev:web` builds, serves, and rebuilds client bundles on source edits in one terminal, and `make help` lists the matching Make targets for Web and Desktop; the guide's application commands section owns the full table.
+`pnpm run dev:desktop` builds and launches the desktop app; `pnpm run dev:web` supports separate renderer debugging. `make help` lists the corresponding development commands; the development guide owns the complete command table.
 
 For agents, follow [AGENTS.md](AGENTS.md).
 

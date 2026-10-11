@@ -4,12 +4,20 @@ import { promisify } from 'node:util'
 import { join } from 'node:path'
 
 const execute = promisify(execFile)
+/**
+ * Git privacy status and already tracked private project paths.
+ */
 export interface ProjectGitExclusion {
   readonly kind: 'not-git' | 'ignored' | 'tracked-data'
   readonly trackedPaths: readonly string[]
 }
 
-/** Ensure `.aster/` is ignored and explicitly report private files already tracked by Git. */
+/**
+ * Ensure `.aster/` is ignored and explicitly report private files already tracked by Git.
+ * @param root - Canonical project root selected by the Host.
+ * @param signal - Optional cancellation for filesystem or subprocess work.
+ * @returns Git status and any private project paths already tracked by the repository.
+ */
 export async function ensureProjectGitExclusion(root: string, signal?: AbortSignal): Promise<ProjectGitExclusion> {
   if (signal?.aborted) throw signal.reason
   const canonicalRoot = await realpath(root)

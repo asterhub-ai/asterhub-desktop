@@ -39,6 +39,39 @@ MCP 提供方为其加载后创建的每个活动 Agent 初始化一个客户端
 
 [决策记录](../../.agents/notes/implemented/architecture/2026-09-12-browser-use-provider-registration.zh.md)解释只注册名称的服务与按 Session 管理的所有权。
 
+## 原生服务请求与结果类型
+
+以下类型定义原生账号、工作区和任务服务之间的公开输入与结果。
+
+```ts type-equiv
+/** Trusted identity derived from the live Host agent, never from tool arguments. */
+interface DesktopBrowserCaller {
+  readonly sessionId: SessionId
+  readonly ownerGeneration: DesktopBrowserOwnerGeneration
+}
+```
+
+```ts type-equiv
+/** Host-admitted operations; `page.read.maxChars` is bounded by `MAX_DESKTOP_BROWSER_TEXT_RESULT_CHARS`. */
+type DesktopBrowserOperation =
+  | { readonly kind: 'tabs.list' }
+  | { readonly kind: 'tabs.open'; readonly url: string; readonly newTab?: boolean }
+  | { readonly kind: 'tabs.close'; readonly target: DesktopBrowserTarget }
+  | { readonly kind: 'page.snapshot'; readonly target: DesktopBrowserTarget }
+  | { readonly kind: 'page.read'; readonly target: DesktopBrowserTarget; readonly locator: DesktopBrowserLocator; readonly property: DesktopBrowserReadProperty; readonly maxChars: number; readonly attribute?: string }
+  | { readonly kind: 'page.act'; readonly target: DesktopBrowserTarget; readonly locator: DesktopBrowserLocator; readonly action: DesktopBrowserSemanticAction; readonly text?: string; readonly keys?: readonly string[]; readonly values?: readonly string[]; readonly observe?: DesktopBrowserObservation }
+  | { readonly kind: 'page.actAt'; readonly target: DesktopBrowserTarget; readonly screenshotId: DesktopBrowserSnapshotId; readonly action: DesktopBrowserPointerAction; readonly x?: number; readonly y?: number; readonly deltaX?: number; readonly deltaY?: number; readonly path?: readonly DesktopBrowserPoint[]; readonly observe?: DesktopBrowserObservation }
+  | { readonly kind: 'page.wait'; readonly target: DesktopBrowserTarget; readonly condition: DesktopBrowserWaitCondition }
+  | { readonly kind: 'page.screenshot'; readonly target: DesktopBrowserTarget }
+```
+
+```ts type-equiv
+/** One normalized browser-operation outcome. */
+type DesktopBrowserResult =
+  | { readonly status: 'success'; readonly value: DesktopBrowserValue }
+  | { readonly status: 'error'; readonly code: DesktopBrowserErrorCode; readonly message: string }
+```
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -65,4 +98,33 @@ register(name: BrowserUseProviderName): () => Promise<void>
 ```
 
 Source: [`packages/browser-use/browser-use/src/index.ts`](../../packages/browser-use/browser-use/src/index.ts)
+
+<a id="ctxdesktopbrowsertransport--desktopbrowsertransport"></a>
+
+### `ctx.desktopBrowserTransport` — `DesktopBrowserTransport`
+
+Host-provided bridge for model tools to operate Desktop's Sidebar Browser.
+
+```ts cordis-catalog
+/**
+ * Execute one validated operation in the caller's Session-owned browser.
+ * @param caller - exact live agent and owner generation.
+ * @param operation - one validated browser operation.
+ * @param signal - tool-call cancellation.
+ * @returns the correlated operation outcome.
+ */
+request(caller: DesktopBrowserCaller, operation: DesktopBrowserOperation, signal: AbortSignal): Promise<DesktopBrowserResult>
+
+/**
+ * Cancel and release every browser request belonging to one live owner generation.
+ * @param caller - exact live browser owner to cancel and release.
+ * @returns after every owned request settles or the parent disconnects.
+ */
+releaseOwner(caller: DesktopBrowserCaller): Promise<void>
+
+/** Stop admitting requests, cancel pending operations, await remote settlement, and detach process listeners. */
+dispose(): Promise<void>
+```
+
+Source: [`packages/browser-use/browser-use-desktop/src/types.ts`](../../packages/browser-use/browser-use-desktop/src/types.ts)
 <!-- END GENERATED cordis-surface -->

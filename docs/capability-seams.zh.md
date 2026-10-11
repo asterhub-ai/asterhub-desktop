@@ -9,6 +9,18 @@
 
 ```mermaid
 flowchart LR
+  pkg_asterhub_automation["asterhub-automation"]
+  svc_asterhubAutomation["ctx.asterhubAutomation<br/>Account-scoped desktop automations"]
+  pkg_client_ui_asterhub_automation["client-ui-asterhub-automation"]
+  pkg_browser_use_desktop["browser-use-desktop"]
+  svc_desktopBrowserTransport["ctx.desktopBrowserTransport<br/>Desktop browser Host transport"]
+  pkg_project_storage["project-storage"]
+  svc_projectStorage["ctx.projectStorage<br/>Project storage and Session ownership"]
+  pkg_workspace["workspace"]
+  pkg_api_workspace_controller["api-workspace-controller"]
+  pkg_attachment_local["attachment-local"]
+  pkg_llm_pi_ai["llm-pi-ai"]
+  pkg_llm_deepseek["llm-deepseek"]
   pkg_account_sub2api["account-sub2api"]
   svc_accountSub2api["ctx.accountSub2api<br/>Host account and model-key binding Remote"]
   pkg_client_ui_settings_account["client-ui-settings-account"]
@@ -42,11 +54,8 @@ flowchart LR
   pkg_client_ui_sidebar_documentpreview["client-ui-sidebar-documentpreview"]
   pkg_attachment["attachment"]
   svc_attachments["ctx.attachments<br/>Durable binary attachment storage"]
-  pkg_attachment_local["attachment-local"]
   pkg_api_session_controller["api-session-controller"]
   pkg_tool_fs["tool-fs"]
-  pkg_llm_pi_ai["llm-pi-ai"]
-  pkg_llm_deepseek["llm-deepseek"]
   pkg_client_file_upload["client-file-upload"]
   svc_fileUploads["ctx.fileUploads<br/>Agent-scoped staged file uploads"]
   pkg_llm["llm"]
@@ -87,7 +96,6 @@ flowchart LR
   svc_workspaceChanges["ctx.workspaceChanges<br/>Host per-turn changed-file summaries"]
   pkg_api_terminal_controller["api-terminal-controller"]
   svc_terminalController["ctx.terminalController<br/>Session interactive terminal Remote controller"]
-  pkg_api_workspace_controller["api-workspace-controller"]
   svc_workspaceController["ctx.workspaceController<br/>Host Workspace Remote controller"]
   svc_directoryPickerController["ctx.directoryPickerController<br/>Host directory-picking Remote controller"]
   svc_invariants["ctx.invariants<br/>Package-owned invariant registry"]
@@ -132,7 +140,6 @@ flowchart LR
   pkg_storage_sqlite["storage-sqlite"]
   pkg_storage_domain["storage-domain"]
   svc_storageDomain["ctx.storageDomain<br/>Domain data facility"]
-  pkg_workspace["workspace"]
   svc_messageFeedback["ctx.messageFeedback<br/>Lifecycle-bound message feedback"]
   pkg_command_feedback["command-feedback"]
   svc_sessionFeedback["ctx.sessionFeedback<br/>Session-level feedback recorder"]
@@ -298,12 +305,14 @@ flowchart LR
   pkg_api_workspace_controller --> svc_workspaceController
   pkg_api_workspace_files --> svc_workspaceFiles
   pkg_app_boot --> svc_profileContext
+  pkg_asterhub_automation --> svc_asterhubAutomation
   pkg_attachment --> svc_attachments
   pkg_attachment_local --> svc_attachments
   pkg_authorization --> svc_authorization
   pkg_bash_local --> svc_shell
   pkg_bash_sandbox --> svc_shell
   pkg_browser_use --> svc_browserUse
+  pkg_browser_use_desktop --> svc_desktopBrowserTransport
   pkg_client_connection --> svc_connection
   pkg_client_file_upload --> svc_fileUploads
   pkg_client_modules --> svc_clientModules
@@ -365,6 +374,7 @@ flowchart LR
   pkg_plan_mode --> svc_planMode
   pkg_plugin_manager --> svc_pluginManager
   pkg_plugin_package_inventory_deepseek --> svc_deepseekLlmApiExtensions
+  pkg_project_storage --> svc_projectStorage
   pkg_ptc_runtime --> svc_ptcRuntime
   pkg_ptc_runtime_node --> svc_ptcRuntime
   pkg_pwsh_local --> svc_shell
@@ -443,6 +453,7 @@ flowchart LR
   svc_approval --> pkg_acp
   svc_approval --> pkg_tool_bash
   svc_approval --> pkg_tools
+  svc_asterhubAutomation --> pkg_client_ui_asterhub_automation
   svc_attachments --> pkg_api_session_controller
   svc_attachments --> pkg_llm_deepseek
   svc_attachments --> pkg_llm_pi_ai
@@ -466,6 +477,7 @@ flowchart LR
   svc_deepseekAccount --> pkg_api_account_controller
   svc_deepseekAccount --> pkg_llm_deepseek
   svc_deepseekLlmApiExtensions --> pkg_llm_deepseek
+  svc_desktopBrowserTransport --> pkg_browser_use_desktop
   svc_directoryPicker --> pkg_api_workspace_controller
   svc_dynamicCordisRunner --> pkg_tool_cordis
   svc_fileReferences --> pkg_api_session_controller
@@ -493,6 +505,11 @@ flowchart LR
   svc_pluginManager --> pkg_ui_settings_plugin_inventory
   svc_pluginRegistryProbe --> pkg_client_ui_plugin_manager
   svc_profileContext --> pkg_plugin_manager
+  svc_projectStorage --> pkg_api_workspace_controller
+  svc_projectStorage --> pkg_attachment_local
+  svc_projectStorage --> pkg_llm_deepseek
+  svc_projectStorage --> pkg_llm_pi_ai
+  svc_projectStorage --> pkg_workspace
   svc_ptcRuntime --> pkg_tools
   svc_ptcRuntime --> pkg_workflow_ptc
   svc_sandbox --> pkg_bash_sandbox
@@ -584,6 +601,9 @@ flowchart LR
 
 | ctx 键 | 角色 | 所属包 | 实现 | 直接消费方 | 配套插件 | 说明 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `ctx.asterhubAutomation` | `core` | [`asterhub-automation`](../packages/schedule/asterhub-automation) | - | [`client-ui-asterhub-automation`](../packages/client/ui-asterhub-automation) | - | 负责持久化任务，并在桌面应用运行期间为每次计划执行启动新的 Session。 |
+| `ctx.desktopBrowserTransport` | `core` | [`browser-use-desktop`](../packages/browser-use/browser-use-desktop) | - | [`browser-use-desktop`](../packages/browser-use/browser-use-desktop) | - | 桌面 Host 提供关联浏览器请求，并释放 Session 拥有的资源。 |
+| `ctx.projectStorage` | `core` | [`project-storage`](../packages/workspace/project-storage) | - | [`workspace`](../packages/workspace/workspace), [`api-workspace-controller`](../packages/api/workspace-controller), [`attachment-local`](../packages/attachment/attachment-local), [`llm-pi-ai`](../packages/llm/llm-pi-ai), [`llm-deepseek`](../packages/llm/llm-deepseek) | - | 负责项目清单、绑定和 Session 位置；消费方通过已注册存储解析项目拥有的文件。 |
 | `ctx.accountSub2api` | `core` | [`account-sub2api`](../packages/account/account-sub2api) | - | [`client-ui-settings-account`](../packages/client/ui-settings-account) | - | 负责账户登录、复用上游密钥、读取额度、支付与用量；凭据留在 Host 存储。 |
 | `ctx.hmr` | `core` | [`hmr`](../packages/boot/hmr) | - | [`app-boot`](../packages/boot/app-boot) | - | 负责模块和精确配置监听；应用修改共用其队列，自动重载等待应用文件锁。 |
 | `ctx.pluginRegistryProbe` | `core` | [`client-ui-plugin-manager`](../packages/client/ui-plugin-manager) | - | [`client-ui-plugin-manager`](../packages/client/ui-plugin-manager) | - | 在 Host 上并发比较公共安装源响应；初始安装源推荐由 Client 负责。 |

@@ -28,6 +28,9 @@ interface LocatorFile { readonly schemaVersion: 1; readonly projects: readonly L
 
 /** Raised when a confirmed legacy project has no migration implementation registered. */
 export class ProjectMigrationUnavailableError extends Error {
+  /**
+   * Stable error code for an unavailable legacy project adopter.
+   */
   readonly code = 'PROJECT_MIGRATION_UNAVAILABLE'
   constructor() {
     super('legacy project migration is unavailable because no adopter is registered')
@@ -59,14 +62,22 @@ export class ProjectStorageRegistry implements ProjectStorageHost {
     this.options = { ...options, locatorPath: resolve(options.locatorPath) }
   }
 
-  /** Open and validate the locator cache without reading any user history. */
+  /**
+   * Open and validate the locator cache without reading any user history.
+   * @param options - Explicit storage locations and operation limits.
+   * @returns Registry after loading and validating its machine-local locator.
+   */
   static async create(options: ProjectStorageOptions): Promise<ProjectStorageRegistry> {
     const registry = new ProjectStorageRegistry(options)
     await registry.loadLocator()
     return registry
   }
 
-  /** Listen for notifications emitted only after the durable file publication. */
+  /**
+   * Listen for notifications emitted only after the durable file publication.
+   * @param listener - Listener receiving durable binding or manifest changes.
+   * @returns Disposer that removes the listener.
+   */
   onChanged(listener: (change: ProjectStorageChanged) => void): () => void {
     this.listeners.add(listener)
     return () => { this.listeners.delete(listener) }
@@ -506,6 +517,11 @@ export class ProjectStorageRegistry implements ProjectStorageHost {
   private emitChange(change: ProjectStorageChanged): void { for (const listener of this.listeners) listener(change) }
 }
 
+/**
+ * Open the machine-local locator registry with explicit storage and lock limits.
+ * @param options - Explicit storage locations and operation limits.
+ * @returns Registry after loading and validating the locator.
+ */
 export async function createProjectStorage(options: ProjectStorageOptions): Promise<ProjectStorageRegistry> {
   return ProjectStorageRegistry.create(options)
 }

@@ -2338,11 +2338,17 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-project-storage`
 
-- `source`: [`packages/workspace/project-storage/src/types.ts:98`](../packages/workspace/project-storage/src/types.ts)
+- `source`: [`packages/workspace/project-storage/src/types.ts:128`](../packages/workspace/project-storage/src/types.ts)
 
 ```ts config-catalog
+/**
+ * Resolved inputs used to initialize project storage.
+ */
 export type ProjectStorageOptions = ProjectStorageConfig
 
+/**
+ * Explicit storage mode, machine-local locator, metadata limit, and mutation lock deadline.
+ */
 export interface ProjectStorageConfig {
   /** Explicitly select grouped or project-local Session persistence. */
   readonly sessionMode: 'grouped' | 'project-local'

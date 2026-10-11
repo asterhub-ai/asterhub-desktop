@@ -78,11 +78,19 @@ Text outputs are capped by `snapshotMaxChars` and `readResultMaxChars` within th
 <a id="model-experience"></a>
 ## Model Experience
 
-The provider exposes eight tools for precise web inspection and manipulation. Tool schemas describe exact parameters and discriminated locators.
+### Browser operations and observations
+
+#### What the model sees
+
+The eight browser tools expose validated operations, bounded text observations, snapshot references through `browser_snapshot`, and durable screenshot attachments through `browser_screenshot`. Their [definitions](src/tools.ts) derive the trusted Session and Agent identity from the caller; model arguments cannot choose an owner.
+
+#### Token effect
+
+Registered tool schemas add fixed input tokens. Text observations are bounded by the configured output limits; screenshot image tokens depend on the routed model and image request policy.
 
 #### KV Cache effect
 
-Tool schemas are registered once when the provider loads and remain fixed in the system prompt prefix. Tool call results contain structured text and image attachments.
+Tool schemas remain stable for the provider lifetime. Recorded observations append to subsequent request history; screenshot content and other provider-owned request tokens determine how far an existing prefix can be reused.
 
 ## Known Limitations and Deferred Work
 

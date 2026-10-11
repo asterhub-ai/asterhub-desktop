@@ -18,7 +18,11 @@ function parseSkill(raw: string, path: string): { description: string; content: 
   return { description, content: raw.slice(frontmatter[0].length).trim() }
 }
 
-/** Construct the bundled desktop browser skill provider. */
+/**
+ * Construct the bundled desktop browser skill provider.
+ * @param assetRoot - Optional directory containing the bundled browser skill assets.
+ * @returns Provider that discovers and reads the bundled browser skills.
+ */
 export function createDesktopSkillProvider(assetRoot?: string): SkillProvider {
   const root = assetRoot ?? fileURLToPath(new URL('../assets/', import.meta.url))
 

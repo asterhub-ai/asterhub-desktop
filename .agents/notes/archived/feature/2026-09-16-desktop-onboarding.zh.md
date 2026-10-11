@@ -1,6 +1,7 @@
 # Agent Note: 设备本地 Desktop 引导
 
 Status: implemented
+Archived: 2026-10-11
 
 [English](2026-09-16-desktop-onboarding.md) | 中文
 

@@ -169,6 +169,23 @@ interface RequestImageAttachment {
 
 `saveImage()` prepares and atomically commits a provider-independent normalized attachment before returning its `ImageAttachmentRef`. `saveImages()` prepares every validated attachment once before publishing the batch, so validation rejection leaves no partial objects and publication does not repeat decoding or quality selection. `admitPromptContent()` accepts the complete ordered Host prompt after file receipt resolution, replaces base64 image uploads with durable references, and passes durable file references unchanged. `admitEncodedImages()` supports other wire entries and delegates count, aggregate-byte, and ordered batch admission to `saveImages()`. `admitEncodedFile()` gives encoded protocol adapters the same service-owned canonical-base64 admission, and `isAttachmentError()` lets those adapters recognize stable attachment failures without importing implementation helpers. `readImage()` verifies a normalized attachment from an authorized session path. `imageHostPath()` exposes only the provider-owned host object location; it does not decide whether the current tool execution world can read it. `readImageRequest()` derives and caches one deterministic request version at an exact route-chosen target size and encoded-byte target. That version contains encoded bytes and metadata but no execution-world path. New entries are fully decoded before publication, while cache hits use a bounded metadata probe. Callers use `Promise.all` over the singular method when they need an ordered batch. The local implementation lazily encodes preferred candidates, singleflights equal request identities, lets each waiter cancel independently, stops shared work when no waiter remains, and bounds all transforms with its instance-level limiter, which defaults to two simultaneous transformations. The service is retention-neutral: resumed and forked sessions may share objects, so reference-aware garbage collection is deferred rather than tied to one session's deletion.
 
+## Native service request and result types
+
+These types define public inputs and results used by the native account, workspace, and task services.
+
+```ts type-equiv
+/**
+ * Trusted project and Session address used by project-local attachment storage.
+ * Project-local providers route durable object reads and writes to the owning
+ * project's `.aster` trees through this scope; grouped providers ignore it.
+ * Callers obtain it from the Host or live Agent for a trusted Session address.
+ */
+interface AttachmentScope {
+  readonly projectId: string
+  readonly sessionId: Branded<'SessionId'>
+}
+```
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -195,26 +212,29 @@ abstract validateImage(input: SaveImageAttachment): Promise<void>
 /**
  * Validate and durably commit one ordered image batch.
  * @param inputs - encoded images in owning-message order.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns durable normalized attachment references in the same order after every member succeeds.
  */
-async saveImages(inputs: readonly SaveImageAttachment[]): Promise<readonly ImageAttachmentRef[]>
+async saveImages(inputs: readonly SaveImageAttachment[], scope?: AttachmentScope): Promise<readonly ImageAttachmentRef[]>
 
 /**
  * Admit one Host prompt and replace each uploaded image with its durable reference.
  * Text and durable file references pass through unchanged. A prompt without image parts performs no storage operation.
  * @param content - prompt parts in message order after file receipt resolution.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns admitted prompt parts in the same order as `content`.
  * @throws AttachmentError when the image batch is refused.
  */
-async admitPromptContent( content: readonly AttachmentAdmissionPart[], ): Promise<AdmittedPromptContentPart[]>
+async admitPromptContent( content: readonly AttachmentAdmissionPart[], scope?: AttachmentScope, ): Promise<AdmittedPromptContentPart[]>
 
 /**
  * Decode and durably commit one canonical base64 file upload.
  * @param input - canonical base64 bytes and optional display name.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns the durable content-addressed file reference.
  * @throws AttachmentError when the encoding or storage operation is refused.
  */
-admitEncodedFile(input: EncodedFileAttachment): Promise<FileAttachmentRef>
+admitEncodedFile(input: EncodedFileAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef>
 
 /**
  * Identify a failure emitted by this attachment capability by its stable code.
@@ -229,26 +249,29 @@ isAttachmentError(error: unknown): error is AttachmentError
  * normalization reduces the raster, its `originalDimensions` records the
  * orientation-applied input dimensions.
  * @param input - encoded bytes, declared media type, and optional display name.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns the durable content-addressed normalized image reference.
  */
-abstract saveImage(input: SaveImageAttachment): Promise<ImageAttachmentRef>
+abstract saveImage(input: SaveImageAttachment, scope?: AttachmentScope): Promise<ImageAttachmentRef>
 
 /**
  * Read one image and verify that bytes still match the recorded reference.
  * @param ref - durable reference from the session log.
  * @param signal - optional cancellation for backend read and verification work.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns the verified bytes and normalized attachment reference.
  * @throws the signal reason when aborted, or a storage error when verification fails.
  */
-abstract readImage(ref: ImageAttachmentRef, signal?: AbortSignal): Promise<StoredImageAttachment>
+abstract readImage(ref: ImageAttachmentRef, signal?: AbortSignal, scope?: AttachmentScope): Promise<StoredImageAttachment>
 
 /**
  * Locate the provider-owned normalized object in the harness host filesystem.
  * @param ref - durable normalized attachment reference.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns an absolute host path, or undefined when this backend is not host-file-backed.
- * @throws an AttachmentError when the durable reference is invalid.
+ * @throws an AttachmentError when the durable reference or scope is invalid.
  */
-imageHostPath(ref: ImageAttachmentRef): string | undefined
+imageHostPath(ref: ImageAttachmentRef, scope?: AttachmentScope): string | undefined
 
 /**
  * Durably commit one file byte-for-byte before its owning session event is
@@ -256,18 +279,20 @@ imageHostPath(ref: ImageAttachmentRef): string | undefined
  * accepted, and the stored object is the exact submitted bytes. Backends
  * without verbatim file storage keep this default rejection.
  * @param input - exact bytes and optional display name.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns the durable content-addressed file reference.
  */
-saveFile(input: SaveFileAttachment): Promise<FileAttachmentRef>
+saveFile(input: SaveFileAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef>
 
 /**
  * Durably commit one file byte-for-byte from bounded chunks. Providers must
  * apply backpressure and must not collect the complete file in memory.
  * Backends without streamed verbatim storage keep this default rejection.
  * @param input - ordered exact bytes, optional cancellation, and display name.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns the durable content-addressed file reference.
  */
-saveFileStream(input: SaveFileStreamAttachment): Promise<FileAttachmentRef>
+saveFileStream(input: SaveFileStreamAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef>
 
 /**
  * Read and verify one verbatim stored file as bounded chunks. Providers must
@@ -275,26 +300,29 @@ saveFileStream(input: SaveFileStreamAttachment): Promise<FileAttachmentRef>
  * reads keep this default rejection.
  * @param ref - durable reference from the session log.
  * @param signal - optional cancellation for backend reads and verification work.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns exact file bytes in order; integrity failures reject the iteration.
  */
-async *readFileStream( ref: FileAttachmentRef, signal?: AbortSignal, ): AsyncIterable<Uint8Array>
+async *readFileStream( ref: FileAttachmentRef, signal?: AbortSignal, scope?: AttachmentScope, ): AsyncIterable<Uint8Array>
 
 /**
- * Locate the verbatim stored file object in the harness host filesystem.
+ * Resolve an original file attachment to a host-local path when the backend supports it.
  * @param ref - durable file reference.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns an absolute host path, or undefined when this backend is not host-file-backed.
- * @throws an AttachmentError when the durable reference is invalid.
+ * @throws an AttachmentError when the durable reference or scope is invalid.
  */
-fileHostPath(ref: FileAttachmentRef): string | undefined
+fileHostPath(ref: FileAttachmentRef, scope?: AttachmentScope): string | undefined
 
 /**
  * Generate or read one deterministic model-request version from the stored normalized image.
  * @param ref - durable provider-independent normalized attachment reference.
  * @param target - route-chosen dimensions and byte target; an unmet byte target yields the smallest ladder output.
  * @param signal - optional cancellation.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns request bytes and the cache/upload identity covering every transform input.
  */
-readImageRequest( ref: ImageAttachmentRef, target: ImageRequestTarget, signal?: AbortSignal, ): Promise<RequestImageAttachment>
+readImageRequest( ref: ImageAttachmentRef, target: ImageRequestTarget, signal?: AbortSignal, scope?: AttachmentScope, ): Promise<RequestImageAttachment>
 ```
 
 Source: [`packages/attachment/attachment/src/index.ts`](../../packages/attachment/attachment/src/index.ts)

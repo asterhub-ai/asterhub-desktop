@@ -33,9 +33,19 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** Whether a run cannot reenter automatic execution. @param state - Stored outcome. @returns Terminal membership. */
+/**
+ * Whether a run cannot reenter automatic execution.
+ * @param state - Stored outcome.
+ * @returns Terminal membership.
+ */
 export function isTerminalState(state: AutomationRunState): boolean {
-  return state === 'succeeded' || state === 'failed' || state === 'canceled' || state === 'interrupted' || state === 'unknown' || state === 'blocked' || state === 'skipped'
+  return state === 'succeeded'
+    || state === 'failed'
+    || state === 'canceled'
+    || state === 'interrupted'
+    || state === 'unknown'
+    || state === 'blocked'
+    || state === 'skipped'
 }
 /**
  * Conservatively retire abandoned attempts without replaying possible side effects.
@@ -44,7 +54,13 @@ export function isTerminalState(state: AutomationRunState): boolean {
  * @returns A terminal record; existing terminal records remain unchanged.
  */
 export function recoverRun(run: AutomationRun, sessionExists: boolean): AutomationRun {
-  return isTerminalState(run.state) ? run : { ...run, sessionCreated: sessionExists || run.sessionCreated, state: 'unknown', finishedAt: new Date().toISOString(), reason: { code: 'runtime_lost', message: 'The previous execution stopped without a confirmed result. Inspect its conversation before running again.' } }
+  return isTerminalState(run.state) ? run : { ...run,
+    sessionCreated: sessionExists
+    || run.sessionCreated,
+    state: 'unknown',
+    finishedAt: new Date().toISOString(),
+    reason: { code: 'runtime_lost',
+      message: 'The previous execution stopped without a confirmed result. Inspect its conversation before running again.' } }
 }
 /**
  * Build reconstructable explicit input for one independently executing occurrence.
@@ -54,7 +70,8 @@ export function recoverRun(run: AutomationRun, sessionExists: boolean): Automati
  */
 export function buildAutomationInputMessage(run: AutomationRun, snapshot: AutomationRun['snapshot']): UserMessage {
   return createUserMessage({
-    content: [{ type: 'text', text: `[用户已确认的定时任务] ${snapshot.name}\n任务 ${run.taskId}；运行 ${run.id}\n计划：${run.scheduledAt ?? run.requestedAt}\n实际：${new Date().toISOString()}\n时区：${'timeZone' in snapshot.timing ? snapshot.timing.timeZone : 'UTC（绝对时点）'}\n\n${snapshot.instruction}` }],
+    content: [{ type: 'text',
+      text: `[用户已确认的定时任务] ${snapshot.name}\n任务 ${run.taskId}；运行 ${run.id}\n计划：${run.scheduledAt ?? run.requestedAt}\n实际：${new Date().toISOString()}\n时区：${'timeZone' in snapshot.timing ? snapshot.timing.timeZone : 'UTC（绝对时点）'}\n\n${snapshot.instruction}` }],
     source: { kind: 'automation', taskId: run.taskId, runId: run.id, form: 'notice', summary: boundContextSummary(snapshot.name) },
   })
 }
@@ -74,7 +91,10 @@ async function saveRun(host: AutomationRuntimeHost, run: AutomationRun): Promise
   await host.transact(async () => {
     const task = host.tasks().find(value => value.id === run.taskId)
     if (task?.activeRunId !== run.id) throw new Error('automation: execution no longer owns its task')
-    await host.put({ ...task, recordVersion: task.recordVersion + 1, updatedAt: new Date().toISOString(), runs: task.runs.map(value => value.id === run.id ? run : value) })
+    await host.put({ ...task,
+      recordVersion: task.recordVersion + 1,
+      updatedAt: new Date().toISOString(),
+      runs: task.runs.map(value => value.id === run.id ? run : value) })
   })
 }
 
@@ -87,7 +107,11 @@ async function saveRun(host: AutomationRuntimeHost, run: AutomationRun): Promise
  * @param signal - Cancellation/timeout; cleanup must settle before returning.
  * @returns Durable interval evidence, never inferred solely from an idle status.
  */
-export async function executeRun(host: AutomationRuntimeHost, task: AutomationTask, runId: AutomationRunId, identity: AutomationAccountIdentity, signal: AbortSignal): Promise<AutomationRun> {
+export async function executeRun(host: AutomationRuntimeHost,
+  task: AutomationTask,
+  runId: AutomationRunId,
+  identity: AutomationAccountIdentity,
+  signal: AbortSignal): Promise<AutomationRun> {
   const initial = task.runs.find(value => value.id === runId)
   if (initial === undefined || initial.sessionId === null) throw new Error('automation: reservation needs a fixed Session identity')
   if (isTerminalState(initial.state)) return initial
@@ -115,14 +139,16 @@ export async function executeRun(host: AutomationRuntimeHost, task: AutomationTa
   const publishState = (state: AutomationRunState): void => {
     run = { ...run, state, startedAt: run.startedAt ?? (state === 'reserved' ? null : new Date().toISOString()) }
     const snapshot = run
-    queuedWrites = queuedWrites.then(() => saveRun(host, snapshot)).catch(error => {
+    queuedWrites = queuedWrites.then(() => saveRun(host, snapshot)).catch((error) => {
       writeFailure = error; handle?.agent.cancel({ kind: 'hook', reason: 'automation persistence failed' }); result.reject(error)
     })
   }
   const hasOwnedWork = (): boolean => {
     for (const member of family) {
       if (member.status !== 'idle' || member.inbox.nextTurn.length > 0 || member.inbox.nextStep.length > 0) return true
-      if (ctx.jobs.list(member.id).some(job => job.owner === member.id && (job.status === 'running' || job.status === 'stopping'))) return true
+      if (ctx.jobs.list(member.id).some(job => job.owner === member.id
+        && (job.status === 'running'
+        || job.status === 'stopping'))) return true
     }
     return false
   }
@@ -151,9 +177,11 @@ export async function executeRun(host: AutomationRuntimeHost, task: AutomationTa
     const route = ctx.get('applicationModelRoute')
     if (route === undefined) throw new Error('automation: application model route is unavailable')
     const models = await ctx.llm.listModels(route.provider)
-    if (!models.some(model => model.id === run.snapshot.modelId && model.id !== '__unselected__')) throw new Error('automation: saved model is unavailable')
+    if (!models.some(model => model.id === run.snapshot.modelId
+      && model.id !== '__unselected__')) throw new Error('automation: saved model is unavailable')
     const model = await ctx.llm.resolveModelInfo(route.provider, run.snapshot.modelId, signal)
-    if (run.snapshot.reasoningEffort !== null && !model.reasoning?.efforts.some(effort => effort.id === run.snapshot.reasoningEffort)) throw new Error('automation: saved reasoning effort is unavailable')
+    if (run.snapshot.reasoningEffort !== null
+      && !model.reasoning?.efforts.some(effort => effort.id === run.snapshot.reasoningEffort)) throw new Error('automation: saved reasoning effort is unavailable')
     const workspace = ctx.workspaceRegistry.get(run.snapshot.workspaceId)
     if (workspace === undefined) throw new Error('automation: workspace is unavailable')
     const path = workspace.path
@@ -170,7 +198,10 @@ export async function executeRun(host: AutomationRuntimeHost, task: AutomationTa
         ctx.accountSub2api.assertAutomationIdentity(identity)
         if (closed || signal.aborted) throw new Error('automation: execution interval is closed')
         const { reasoningEffort: _effort, ...base } = config
-        return { ...base, provider: route.provider, model: run.snapshot.modelId, ...(run.snapshot.reasoningEffort === null ? {} : { reasoningEffort: ReasoningEffortId(run.snapshot.reasoningEffort) }) }
+        return { ...base,
+          provider: route.provider,
+          model: run.snapshot.modelId,
+          ...(run.snapshot.reasoningEffort === null ? {} : { reasoningEffort: ReasoningEffortId(run.snapshot.reasoningEffort) }) }
       })
       agentCtx.on('agent/pre-step', async (_payload, next) => {
         const decision = await next()
@@ -185,13 +216,16 @@ export async function executeRun(host: AutomationRuntimeHost, task: AutomationTa
     handle = await ctx.agents.create({
       sessionId: initial.sessionId, signal,
       meta: { cwd: path, agentPreset: preset.id },
-      agentOptions: { provider: route.provider, model: run.snapshot.modelId, ...(run.snapshot.reasoningEffort === null ? {} : { reasoningEffort: ReasoningEffortId(run.snapshot.reasoningEffort) }) },
+      agentOptions: { provider: route.provider,
+        model: run.snapshot.modelId,
+        ...(run.snapshot.reasoningEffort === null ? {} : { reasoningEffort: ReasoningEffortId(run.snapshot.reasoningEffort) }) },
+
       setup: async (agentCtx, agent) => {
         installGuards(agentCtx, agent)
         await ctx.agentPresets.mount(agentCtx, preset.id)
       },
     })
-    disposers.push(ctx.jobs.events.subscribe({ owners: 'scope' }, event => {
+    disposers.push(ctx.jobs.events.subscribe({ owners: 'scope' }, (event) => {
       if (event.type !== 'output' && [...family].some(member => member.id === event.job.owner)) checkEnding()
     }))
     disposers.push(ctx.on('agent/status', ({ agent: member }) => { if (family.has(member)) checkEnding() }))
@@ -220,17 +254,22 @@ export async function executeRun(host: AutomationRuntimeHost, task: AutomationTa
       if (event.type === 'user/message') {
         if (event.data.id === message.id) { admitted = true; publishState('running') }
         else if (event.data.source.kind === 'user' || event.data.source.kind === 'user-question-reply') humanIntervened = true
-      } else if (event.type === 'approval/asked') { approvals.add(event.data.id); interactions.add(event.data.id); publishState('waiting-approval') }
+      } else if (event.type === 'approval/asked') { approvals.add(event.data.id)
+        interactions.add(event.data.id)
+        publishState('waiting-approval') }
       else if (event.type === 'approval/decided') { approvals.delete(event.data.id) }
       else if (event.type === 'turn/end' && claimedTurn !== null) {
         observation.ending = event.data.reason; observation.terminalTurn = event.data.turn
         if (!admitted) result.reject(new Error('automation: initial input was not admitted'))
       }
-      for (const question of ctx.sessionProjections.stateOf(agent.session, 'userQuestions')?.questions.active ?? []) interactions.add(question.callId)
+      for (const question of ctx.sessionProjections.stateOf(agent.session,
+        'userQuestions')?.questions.active ?? []) interactions.add(question.callId)
       checkEnding()
     }))
     disposers.push(agent.ctx.on('agent/status', () => { checkEnding() }))
-    const onAbort = (): void => { agent.cancel({ kind: 'hook', reason: 'scheduled execution stopped' }); result.reject(signal.reason ?? new Error('automation canceled')) }
+    const onAbort = (): void => { agent.cancel({ kind: 'hook',
+      reason: 'scheduled execution stopped' })
+    result.reject(signal.reason ?? new Error('automation canceled')) }
     signal.addEventListener('abort', onAbort, { once: true })
     disposers.push(() => signal.removeEventListener('abort', onAbort))
     ctx.accountSub2api.assertAutomationIdentity(identity)
@@ -245,8 +284,15 @@ export async function executeRun(host: AutomationRuntimeHost, task: AutomationTa
     if (!admitted || ending === null) throw new Error('automation: completion lacks durable input/turn evidence')
     closed = true
     if (!(await ctx.sessions.flush(agent.session))) throw new Error('automation result persistence unavailable')
-    run = { ...run, state: outcome(ending), finishedAt: new Date().toISOString(), terminalTurn: observation.terminalTurn, endLogOffset: Number(agent.session.seq), humanIntervened,
-      interactionIds: [...interactions], reason: ending.kind === 'completed' ? null : { code: `turn_${ending.kind}`, message: 'The scheduled execution did not finish successfully. Inspect its conversation.' } }
+    run = { ...run,
+      state: outcome(ending),
+      finishedAt: new Date().toISOString(),
+      terminalTurn: observation.terminalTurn,
+      endLogOffset: Number(agent.session.seq),
+      humanIntervened,
+
+      interactionIds: [...interactions],
+      reason: ending.kind === 'completed' ? null : { code: `turn_${ending.kind}`, message: 'The scheduled execution did not finish successfully. Inspect its conversation.' } }
   } catch (error) {
     closed = true
     handle?.agent.cancel({ kind: 'hook', reason: 'scheduled execution stopped' })
@@ -257,8 +303,18 @@ export async function executeRun(host: AutomationRuntimeHost, task: AutomationTa
       if (!(await ctx.sessions.flush(handle.agent.session))) throw new Error('automation canceled result persistence unavailable')
     }
     await queuedWrites
-    run = { ...run, state: signal.aborted ? (signal.reason instanceof Error && signal.reason.message === 'automation timeout' ? 'failed' : 'canceled') : (admitted ? 'failed' : 'blocked'), finishedAt: new Date().toISOString(), terminalTurn: observation.terminalTurn, humanIntervened,
-      interactionIds: [...interactions], endLogOffset: handle === undefined ? run.endLogOffset : Number(handle.agent.session.seq), reason: { code: signal.aborted ? (signal.reason instanceof Error && signal.reason.message === 'automation timeout' ? 'timeout' : 'stopped') : 'execution_failed', message: 'Scheduled execution stopped. Inspect its conversation and configuration before running again.' } }
+    run = { ...run,
+      state: signal.aborted ? (signal.reason instanceof Error
+      && signal.reason.message === 'automation timeout' ? 'failed' : 'canceled') : (admitted ? 'failed' : 'blocked'),
+      finishedAt: new Date().toISOString(),
+      terminalTurn: observation.terminalTurn,
+      humanIntervened,
+
+      interactionIds: [...interactions],
+      endLogOffset: handle === undefined ? run.endLogOffset : Number(handle.agent.session.seq),
+      reason: { code: signal.aborted ? (signal.reason instanceof Error
+        && signal.reason.message === 'automation timeout' ? 'timeout' : 'stopped') : 'execution_failed',
+      message: 'Scheduled execution stopped. Inspect its conversation and configuration before running again.' } }
     if (writeFailure !== undefined) throw error
   } finally {
     closed = true
@@ -266,7 +322,11 @@ export async function executeRun(host: AutomationRuntimeHost, task: AutomationTa
     for (const member of family) {
       member.cancel({ kind: 'hook', reason: 'scheduled execution ended' })
       for (const job of ctx.jobs.list(member.id)) {
-        if (job.owner === member.id && (job.status === 'running' || job.status === 'stopping')) ctx.jobs.kill(job.id, member.id, 'scheduled execution ended')
+        if (job.owner === member.id
+          && (job.status === 'running'
+          || job.status === 'stopping')) ctx.jobs.kill(job.id,
+          member.id,
+          'scheduled execution ended')
       }
     }
     await Promise.all([...family].map(member => member.whenIdle()))

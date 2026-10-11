@@ -41,7 +41,11 @@ interface PendingRequest {
   cancelRequested: boolean
 }
 
-/** Create a correlated transport over the existing private Desktop Host IPC channel. */
+/**
+ * Create a correlated transport over the existing private Desktop Host IPC channel.
+ * @param port - Private IPC channel owned by the Desktop Host.
+ * @returns Transport with correlated cancellation and owned channel teardown.
+ */
 export function createDesktopBrowserTransport(port: DesktopBrowserTransportPort): DesktopBrowserTransport {
   const pending = new Map<number, PendingRequest>()
   let nextRequestId = 1

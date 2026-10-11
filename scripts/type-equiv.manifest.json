@@ -2366,6 +2366,246 @@
       "doc": "docs/subsystems/product-telemetry.md",
       "symbol": "ProductTelemetryRecord",
       "source": "packages/host/product-telemetry-otel/src/index.ts"
+    },
+    {
+      "doc": "docs/subsystems/account.md",
+      "symbol": "AccountUser",
+      "source": "packages/account/account-sub2api/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/account.md",
+      "symbol": "AccountLoginInput",
+      "source": "packages/account/account-sub2api/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/account.md",
+      "symbol": "AccountStatus",
+      "source": "packages/account/account-sub2api/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/account.md",
+      "symbol": "QuotaSnapshot",
+      "source": "packages/account/account-sub2api/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/account.md",
+      "symbol": "UsagePeriodSnapshot",
+      "source": "packages/account/account-sub2api/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/account.md",
+      "symbol": "AccountUsageSnapshot",
+      "source": "packages/account/account-sub2api/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/account.md",
+      "symbol": "AccountPaymentMethod",
+      "source": "packages/account/account-sub2api/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/account.md",
+      "symbol": "TopUpResult",
+      "source": "packages/account/account-sub2api/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/account.md",
+      "symbol": "RedeemResult",
+      "source": "packages/account/account-sub2api/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/account.md",
+      "symbol": "AccountAutomationIdentity",
+      "source": "packages/account/account-sub2api/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/schedule.md",
+      "symbol": "AutomationChangedEvent",
+      "source": "packages/schedule/asterhub-automation/src/index.ts"
+    },
+    {
+      "doc": "docs/subsystems/schedule.md",
+      "symbol": "AutomationAccountChangedEvent",
+      "source": "packages/schedule/asterhub-automation/src/index.ts"
+    },
+    {
+      "doc": "docs/subsystems/schedule.md",
+      "symbol": "AutomationRunStopRequestedEvent",
+      "source": "packages/schedule/asterhub-automation/src/index.ts"
+    },
+    {
+      "doc": "docs/subsystems/workspace.md",
+      "symbol": "ProjectStorageChanged",
+      "source": "packages/workspace/project-storage/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/workspace.md",
+      "symbol": "SessionArchiveAdmitRequest",
+      "source": "packages/workspace/workspace/src/index.ts"
+    },
+    {
+      "doc": "docs/subsystems/account.md",
+      "symbol": "AccountAuthSettings",
+      "source": "packages/account/account-sub2api/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/account.md",
+      "symbol": "AccountRegisterInput",
+      "source": "packages/account/account-sub2api/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/session.md",
+      "symbol": "SessionExecutionInputOwner",
+      "source": "packages/api/session-controller/src/index.ts"
+    },
+    {
+      "doc": "docs/subsystems/workspace.md",
+      "symbol": "WorkspaceInspectRequest",
+      "source": "packages/api/workspace-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/workspace.md",
+      "symbol": "WorkspaceInspectionView",
+      "source": "packages/api/workspace-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/workspace.md",
+      "symbol": "WorkspaceOpenProjectRequest",
+      "source": "packages/api/workspace-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/schedule.md",
+      "symbol": "AutomationTask",
+      "source": "packages/schedule/asterhub-automation/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/schedule.md",
+      "symbol": "AutomationAccountIdentity",
+      "source": "packages/schedule/asterhub-automation/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/schedule.md",
+      "symbol": "AutomationDraft",
+      "source": "packages/schedule/asterhub-automation/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/schedule.md",
+      "symbol": "AutomationPreview",
+      "source": "packages/schedule/asterhub-automation/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/schedule.md",
+      "symbol": "AutomationOperation",
+      "source": "packages/schedule/asterhub-automation/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/schedule.md",
+      "symbol": "AutomationPreparedOperation",
+      "source": "packages/schedule/asterhub-automation/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/schedule.md",
+      "symbol": "AutomationCommitRequest",
+      "source": "packages/schedule/asterhub-automation/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/schedule.md",
+      "symbol": "AutomationMutationResult",
+      "source": "packages/schedule/asterhub-automation/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/schedule.md",
+      "symbol": "AutomationListRequest",
+      "source": "packages/schedule/asterhub-automation/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/schedule.md",
+      "symbol": "AutomationTaskPage",
+      "source": "packages/schedule/asterhub-automation/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/schedule.md",
+      "symbol": "AutomationGetRequest",
+      "source": "packages/schedule/asterhub-automation/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/schedule.md",
+      "symbol": "AutomationRunsPage",
+      "source": "packages/schedule/asterhub-automation/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/schedule.md",
+      "symbol": "AutomationRunsRequest",
+      "source": "packages/schedule/asterhub-automation/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/schedule.md",
+      "symbol": "AutomationChoices",
+      "source": "packages/schedule/asterhub-automation/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/schedule.md",
+      "symbol": "AutomationRunId",
+      "source": "packages/schedule/asterhub-automation/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/attachment.md",
+      "symbol": "AttachmentScope",
+      "source": "packages/attachment/attachment/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/browser-use.md",
+      "symbol": "DesktopBrowserCaller",
+      "source": "packages/browser-use/browser-use-desktop/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/browser-use.md",
+      "symbol": "DesktopBrowserOperation",
+      "source": "packages/browser-use/browser-use-desktop/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/browser-use.md",
+      "symbol": "DesktopBrowserResult",
+      "source": "packages/browser-use/browser-use-desktop/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/workspace.md",
+      "symbol": "LegacySourceProvider",
+      "source": "packages/workspace/project-storage/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/workspace.md",
+      "symbol": "ProjectLegacyAdopter",
+      "source": "packages/workspace/project-storage/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/workspace.md",
+      "symbol": "ProjectInspection",
+      "source": "packages/workspace/project-storage/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/workspace.md",
+      "symbol": "OpenProjectRequest",
+      "source": "packages/workspace/project-storage/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/workspace.md",
+      "symbol": "ProjectBinding",
+      "source": "packages/workspace/project-storage/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/workspace.md",
+      "symbol": "ProjectId",
+      "source": "packages/workspace/project-storage/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/workspace.md",
+      "symbol": "PortableProjectManifest",
+      "source": "packages/workspace/project-storage/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/workspace.md",
+      "symbol": "ProjectSessionLocation",
+      "source": "packages/workspace/project-storage/src/types.ts"
     }
   ]
 }

@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for asterhub-system-prompt-review.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/asterhub-system-prompt-review.md
+/asterhub-system-prompt-source-excerpts:
+  en: 0d0aabc15667fe17
+  zh: bf45c21168e7ce24
+/asterhub-system-prompt-source-excerpts/fixed-identity:
+  en: 64f4f43c4eb651c7
+  zh: 5133475d62417d42
+/asterhub-system-prompt-source-excerpts/asterhub-assistant-policy:
+  en: 6afc5fc2c863d2b3
+  zh: 67708e4c23aadd7b
+/asterhub-system-prompt-source-excerpts/deployment-persona:
+  en: 8f3294b19015ece9
+  zh: 552f356da12ac8a2
+/asterhub-system-prompt-source-excerpts/desktop-application-context:
+  en: e7f3495bb83657e5
+  zh: 236420fd55dd759b
+/asterhub-system-prompt-source-excerpts/development-source-context:
+  en: df4b822ba73de22d
+  zh: d40e3da9fb3080fa
+/asterhub-system-prompt-source-excerpts/dynamic-context:
+  en: 6c06cc6fb87cdfa2
+  zh: 12831a1f8a6b0cdc

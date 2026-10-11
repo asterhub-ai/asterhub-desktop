@@ -938,6 +938,11 @@ The abstract `llm` service: an adapter registry plus a streaming model-call API,
  */
 lockRoute(provider: string, model: string): void
 
+/** Lock the application to one provider while allowing its advertised models.
+ * @param provider application-owned provider id.
+ */
+lockProvider(provider: string): void
+
 /** Whether an application-owned fixed route has been installed.
  * @returns `true` when calls are constrained to the application route.
  */

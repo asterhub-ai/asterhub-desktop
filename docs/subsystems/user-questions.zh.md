@@ -235,6 +235,19 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 @Remote answer(agent: Agent, callId: ToolCallId, answer: AskUserQuestionAnswer): boolean
 
 /**
+ * Cancel every open and continued timed question currently pending for one
+ * Session, preventing any later late answer from steering the agent for
+ * those calls. Appends a single durable `user-questions/canceled` event
+ * listing the exact canceled callIds; the projection folds them out of the
+ * active set and records them so late answers reject per-call. Closes every
+ * live foreground wait for this agent so a connected Client countdown ends
+ * immediately. Future questions in the same Session remain usable.
+ * Idempotent: when no questions are pending this is a no-op.
+ * @param agent - Live root agent whose Session's pending timed questions are canceled.
+ */
+cancelPending(agent: Agent): void
+
+/**
  * Let one answer UI hold a live timed wait. Closing the stream releases its claim.
  * @param agent - Live root agent owning the question.
  * @param callId - Foreground tool call to attach to.

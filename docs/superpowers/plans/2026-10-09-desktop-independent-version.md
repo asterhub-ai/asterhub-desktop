@@ -1,5 +1,7 @@
 # Independent Desktop Version Implementation Plan
 
+English | [中文](2026-10-09-desktop-independent-version.zh.md)
+
 > **For agentic workers:** Use the TDD workflow task by task; verify each step before continuing.
 
 **Goal:** Publish AsterHub Desktop as version `0.21.0` while the bundled DSH runtime remains at its own package version.

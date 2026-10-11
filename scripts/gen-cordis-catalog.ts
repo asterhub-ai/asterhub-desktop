@@ -50,6 +50,9 @@ export { REGION_BEGIN, REGION_END }
  * errors, so the partition can never silently drift from the service API.
  */
 export const SERVICE_PAGE: Record<string, string> = {
+  asterhubAutomation: 'schedule.md',
+  desktopBrowserTransport: 'browser-use.md',
+  projectStorage: 'workspace.md',
   speechToText: 'voice-input.md',
   speechController: 'voice-input.md',
   otel: 'otel.md',
@@ -164,6 +167,8 @@ export const SERVICE_PAGE: Record<string, string> = {
  * to a model as `cordis_runtime_inspect what:"client"`).
  */
 export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
+  credentialCipher: 'optional Desktop-owned IPC cipher value — packages/credentials/credentials-local/README.md owns encrypted storage requirements',
+  asterhubAutomationRun: 'optional run-origin marker installed on one execution scope — packages/schedule/asterhub-automation/README.md owns scheduled execution admission',
   invocation: 'not a service: per-call accessor (RemoteInvocation | undefined) the Gateway derives for each Remote call — packages/api/gateway/README.md owns the contract',
   applicationCatalogPublicKey: 'not a service: release-pinned catalogue trust root injected by Desktop Host — docs/交接文档.md owns the application policy',
   applicationModelRoute: 'not a service: fixed Desktop model route injected by Desktop Host — docs/交接文档.md owns the application policy',
@@ -190,7 +195,6 @@ export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
   feedbackUi: 'client-side feedback dialog service — packages/client/ui-message-feedback/README.md owns the API',
   conversation: 'client-side interface-typed browser service — packages/client/ui-conversation/README.md owns the API',
   layout: 'client-side interface-typed browser service — packages/client/ui-layout/README.md owns the API',
-  pluginNavigation: 'client-side bundle navigation — packages/client/ui-plugin-manager/README.md owns the API',
   locale: 'client-side interface-typed browser service — packages/client/locale/README.md owns the API',
   modelDirectories: 'client-side interface-typed browser service — packages/client/ui-model-selection/README.md owns the API',
   modules: 'client-side interface-typed browser service — packages/client/modules/README.md owns the API',
@@ -215,6 +219,9 @@ export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
  * {@link EVENT_WALK_EXEMPTIONS} names each one with its documentation owner.
  */
 export const EVENT_SCOPE_PAGE: Record<string, string> = {
+  'asterhub-account': 'account.md',
+  'automation': 'schedule.md',
+  'project-storage': 'workspace.md',
   'app-boot': 'boot.md',
   hmr: 'boot.md',
   'plugin-manager': 'boot.md',
@@ -279,6 +286,45 @@ export const EVENT_WALK_EXEMPTIONS: Record<string, string> = {
  * appear on more than one page.
  */
 export const LINK_MAP: Readonly<Record<string, string>> = {
+  AccountAuthSettings: 'account.md',
+  AccountRegisterInput: 'account.md',
+  SessionExecutionInputOwner: 'session.md',
+  WorkspaceInspectRequest: 'workspace.md',
+  WorkspaceInspectionView: 'workspace.md',
+  WorkspaceOpenProjectRequest: 'workspace.md',
+  AutomationTask: 'schedule.md',
+  AutomationAccountIdentity: 'schedule.md',
+  AutomationDraft: 'schedule.md',
+  AutomationPreview: 'schedule.md',
+  AutomationOperation: 'schedule.md',
+  AutomationPreparedOperation: 'schedule.md',
+  AutomationCommitRequest: 'schedule.md',
+  AutomationMutationResult: 'schedule.md',
+  AutomationListRequest: 'schedule.md',
+  AutomationTaskPage: 'schedule.md',
+  AutomationGetRequest: 'schedule.md',
+  AutomationRunsPage: 'schedule.md',
+  AutomationRunsRequest: 'schedule.md',
+  AutomationChoices: 'schedule.md',
+  AutomationRunId: 'schedule.md',
+  AttachmentScope: 'attachment.md',
+  DesktopBrowserCaller: 'browser-use.md',
+  DesktopBrowserOperation: 'browser-use.md',
+  DesktopBrowserResult: 'browser-use.md',
+  LegacySourceProvider: 'workspace.md',
+  ProjectLegacyAdopter: 'workspace.md',
+  ProjectInspection: 'workspace.md',
+  OpenProjectRequest: 'workspace.md',
+  ProjectBinding: 'workspace.md',
+  ProjectId: 'workspace.md',
+  PortableProjectManifest: 'workspace.md',
+  ProjectSessionLocation: 'workspace.md',
+  AccountAutomationIdentity: 'account.md',
+  AutomationChangedEvent: 'schedule.md',
+  AutomationAccountChangedEvent: 'schedule.md',
+  AutomationRunStopRequestedEvent: 'schedule.md',
+  ProjectStorageChanged: 'workspace.md',
+  SessionArchiveAdmitRequest: 'workspace.md',
   EventLogOptions: 'otel.md',
   EventLogReporter: 'otel.md',
   SessionLogOptions: 'otel.md',

@@ -38,7 +38,7 @@ export class AutomationOperationError extends Error {
   constructor(
     public readonly code: string,
     message: string,
-    public override readonly cause?: unknown
+    public override readonly cause?: unknown,
   ) {
     super(message)
     this.name = 'AutomationOperationError'
@@ -107,10 +107,10 @@ export class AutomationOperations {
     config: AutomationConfig,
     identityProvider: () => Promise<AutomationAccountIdentity | null>,
     runtimeId: string,
-    transact?: <T>(work: () => Promise<T>) => Promise<T>
+    transact?: <T>(work: () => Promise<T>) => Promise<T>,
   ) {
     let chain = Promise.resolve()
-    this.transact = transact ?? (work => {
+    this.transact = transact ?? ((work) => {
       const result = chain.then(work)
       chain = result.then(() => undefined, () => undefined)
       return result
@@ -181,10 +181,19 @@ export class AutomationOperations {
   }
 
   /** Validate a draft. */
-  private validateDraft(draft: AutomationDraft, now: number, existing?: AutomationTiming): { timing: AutomationTiming; nextOccurrences: string[] } {
-    if (draft.name.trim().length === 0 || draft.name.trim().length > 120) throw new AutomationOperationError('invalid_name', 'Task name must contain 1–120 characters.')
+  private validateDraft(draft: AutomationDraft,
+    now: number,
+    existing?: AutomationTiming): { timing: AutomationTiming
+    nextOccurrences: string[] } {
+    if (draft.name.trim().length === 0
+      || draft.name.trim().length > 120) throw new AutomationOperationError('invalid_name',
+      'Task name must contain 1–120 characters.')
     const instruction = draft.instruction.trim()
-    if (instruction.length === 0 || instruction.length > this.config.maxInstructionChars || Buffer.byteLength(instruction, 'utf8') > this.config.maxInstructionBytes) throw new AutomationOperationError('invalid_instruction', 'The task instruction is empty or exceeds the configured limit.')
+    if (instruction.length === 0
+      || instruction.length > this.config.maxInstructionChars
+      || Buffer.byteLength(instruction,
+        'utf8') > this.config.maxInstructionBytes) throw new AutomationOperationError('invalid_instruction',
+      'The task instruction is empty or exceeds the configured limit.')
     if (draft.workspaceId.length === 0) throw new AutomationOperationError('invalid_workspace', 'Select a registered workspace.')
     if (draft.modelId.length === 0) throw new AutomationOperationError('invalid_model', 'Select a current-account model.')
     let timing: AutomationTiming
@@ -192,7 +201,12 @@ export class AutomationOperations {
       const input = draft.timing
       const retained = existing !== undefined && (
         (input.kind === 'once' && existing.kind === 'once' && parseAtInput(input.at) === Date.parse(existing.at))
-        || (input.kind === 'interval' && existing.kind === 'interval' && input.seconds === existing.seconds && input.firstAt !== undefined && parseAtInput(input.firstAt) === Date.parse(existing.firstAt))
+
+          || (input.kind === 'interval'
+          && existing.kind === 'interval'
+          && input.seconds === existing.seconds
+          && input.firstAt !== undefined
+          && parseAtInput(input.firstAt) === Date.parse(existing.firstAt))
         || (input.kind === 'delay' && existing.kind === 'delay' && input.seconds === existing.seconds)
       )
       timing = existing !== undefined && retained ? existing : normalizeTiming(input, now)
@@ -215,7 +229,11 @@ export class AutomationOperations {
     }
   }
 
-  /** Preview a draft without persisting. */
+  /**
+   * Preview a draft without persisting.
+   * @param draft - Unpersisted task draft to validate and preview.
+   * @returns Validated preview and upcoming occurrences without persistence.
+   */
   async preview(draft: AutomationDraft): Promise<AutomationPreview> {
     const now = Date.now()
     await this.requireIdentity()
@@ -231,7 +249,11 @@ export class AutomationOperations {
     }
   }
 
-  /** Prepare an operation for confirmation. */
+  /**
+   * Prepare an operation for confirmation.
+   * @param operation - Requested mutation to validate before confirmation.
+   * @returns Expiring confirmation facts tied to the current account and operation digest.
+   */
   async prepareOperation(operation: AutomationOperation): Promise<AutomationPreparedOperation> {
     const identity = await this.requireIdentity()
     const now = Date.now()
@@ -366,22 +388,35 @@ export class AutomationOperations {
   private isActiveState(state: string): boolean {
     return state === 'reserved' || state === 'running' || state === 'waiting-approval' || state === 'stopping'
   }
-  /** Commit a prepared operation. */
+  /**
+   * Commit a prepared operation.
+   * @param request - Account-scoped request fields and confirmation facts.
+   * @returns Durable mutation result, replaying an existing receipt for the same request.
+   */
   async commitOperation(request: AutomationCommitRequest): Promise<AutomationMutationResult> {
     const captured = await this.requireIdentity()
     const commit = async (): Promise<AutomationMutationResult> => {
       const identity = await this.requireIdentity()
-      if (identity.accountId !== captured.accountId || identity.epoch !== captured.epoch) throw new AutomationOperationError('account_mismatch', 'The active account changed before acceptance.')
+      if (identity.accountId !== captured.accountId
+        || identity.epoch !== captured.epoch) throw new AutomationOperationError('account_mismatch',
+        'The active account changed before acceptance.')
       const now = Date.now()
       const receipt = this.store.getReceipt(identity.accountId, request.requestId)
       if (receipt !== undefined) {
-        if (receipt.expiresAt <= now) throw new AutomationOperationError('request_expired', 'The request receipt expired; prepare a new operation.')
+        if (receipt.expiresAt <= now) throw new AutomationOperationError('request_expired',
+          'The request receipt expired; prepare a new operation.')
         return { task: this.store.get(receipt.result.taskId) ?? null, ...receipt.result }
       }
       const pending = this.pendingRequests.get(request.requestId)
-      if (pending === undefined || pending.expiresAt <= now) throw new AutomationOperationError('request_expired', 'Prepare and confirm this operation again.')
-      if (pending.accountId !== identity.accountId || pending.epoch !== identity.epoch) throw new AutomationOperationError('account_mismatch', 'The account that confirmed this operation is no longer active.')
-      if (pending.requiresConfirmation && request.confirmationId !== pending.confirmationId) throw new AutomationOperationError('confirmation_required', 'Explicit user confirmation is required.')
+      if (pending === undefined
+        || pending.expiresAt <= now) throw new AutomationOperationError('request_expired',
+        'Prepare and confirm this operation again.')
+      if (pending.accountId !== identity.accountId
+        || pending.epoch !== identity.epoch) throw new AutomationOperationError('account_mismatch',
+        'The account that confirmed this operation is no longer active.')
+      if (pending.requiresConfirmation
+        && request.confirmationId !== pending.confirmationId) throw new AutomationOperationError('confirmation_required',
+        'Explicit user confirmation is required.')
       const result = await this.executeOperation(pending.operation, request.requestId, now, identity)
       this.pendingRequests.delete(request.requestId)
       return result
@@ -423,7 +458,7 @@ export class AutomationOperations {
     draft: AutomationDraft,
     requestId: string,
     now: number,
-    identity: AutomationAccountIdentity
+    identity: AutomationAccountIdentity,
   ): Promise<AutomationMutationResult> {
     const digest = this.computeDigest({ action: 'create', draft } as AutomationOperation)
     // Check account task limit
@@ -492,7 +527,7 @@ export class AutomationOperations {
     draft: AutomationDraft,
     requestId: string,
     now: number,
-    identity: AutomationAccountIdentity
+    identity: AutomationAccountIdentity,
   ): Promise<AutomationMutationResult> {
     const digest = this.computeDigest({ action: 'update', id, expectedRevision, draft } as AutomationOperation)
     const updatedAt = new Date(now).toISOString()
@@ -557,7 +592,7 @@ export class AutomationOperations {
     expectedRevision: number,
     requestId: string,
     now: number,
-    identity: AutomationAccountIdentity
+    identity: AutomationAccountIdentity,
   ): Promise<AutomationMutationResult> {
     const task = this.store.get(id)
     if (!task) {
@@ -618,7 +653,7 @@ export class AutomationOperations {
     expectedRevision: number,
     requestId: string,
     now: number,
-    identity: AutomationAccountIdentity
+    identity: AutomationAccountIdentity,
   ): Promise<AutomationMutationResult> {
     const task = this.store.get(id)
     if (!task) {
@@ -675,7 +710,7 @@ export class AutomationOperations {
     expectedRevision: number,
     requestId: string,
     now: number,
-    identity: AutomationAccountIdentity
+    identity: AutomationAccountIdentity,
   ): Promise<AutomationMutationResult> {
     const task = this.store.get(id)
     if (!task) {
@@ -729,7 +764,7 @@ export class AutomationOperations {
     _expectedRevision: number,
     _requestId: string,
     now: number,
-    identity: AutomationAccountIdentity
+    identity: AutomationAccountIdentity,
   ): Promise<AutomationMutationResult> {
     const task = this.store.get(id)
     if (!task) {
@@ -762,7 +797,7 @@ export class AutomationOperations {
     expectedRevision: number,
     requestId: string,
     now: number,
-    identity: AutomationAccountIdentity
+    identity: AutomationAccountIdentity,
   ): Promise<AutomationMutationResult> {
     const task = this.store.get(id)
     if (!task) {
@@ -824,7 +859,7 @@ export class AutomationOperations {
     runId: AutomationRunId,
     requestId: string,
     now: number,
-    identity: AutomationAccountIdentity
+    identity: AutomationAccountIdentity,
   ): Promise<AutomationMutationResult> {
     const task = this.store.get(id)
     if (!task) {
@@ -902,7 +937,11 @@ export class AutomationOperations {
     return { ...task, requestReceipts: kept }
   }
 
-  /** List tasks for the current account. */
+  /**
+   * List tasks for the current account.
+   * @param request - Account-scoped request fields and confirmation facts.
+   * @returns Filtered task page and optional continuation cursor for the current account.
+   */
   async list(request: AutomationListRequest): Promise<AutomationTaskPage> {
     const identity = await this.requireIdentity()
     const tasks = this.store.getByAccount(identity.accountId)
@@ -928,7 +967,7 @@ export class AutomationOperations {
       const search = request.search.toLowerCase()
       filtered = filtered.filter(t =>
         t.definition.name.toLowerCase().includes(search) ||
-        t.definition.instruction.toLowerCase().includes(search)
+        t.definition.instruction.toLowerCase().includes(search),
       )
     }
 
@@ -958,7 +997,11 @@ export class AutomationOperations {
     return { tasks: page, nextCursor }
   }
 
-  /** Get a task by id. */
+  /**
+   * Get a task by id.
+   * @param request - Account-scoped request fields and confirmation facts.
+   * @returns Task owned by the current account; rejects for an unknown or foreign task.
+   */
   async get(request: AutomationGetRequest): Promise<AutomationTask> {
     const identity = await this.requireIdentity()
     const task = this.store.get(request.id)
@@ -975,7 +1018,11 @@ export class AutomationOperations {
   }
 
 
-  /** Get runs for a task. */
+  /**
+   * Get runs for a task.
+   * @param request - Account-scoped request fields and confirmation facts.
+   * @returns Paginated run history for the current account and task.
+   */
   async runs(request: AutomationRunsRequest): Promise<AutomationRunsPage> {
     const identity = await this.requireIdentity()
     const task = this.store.get(request.id)
@@ -988,7 +1035,7 @@ export class AutomationOperations {
 
     // Sort runs by requestedAt desc
     const sorted = [...task.runs].sort((a, b) =>
-      new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime()
+      new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime(),
     )
 
     // Apply cursor
@@ -1029,7 +1076,7 @@ export class AutomationOperations {
 
     // Registered workspaces only; never create or guess directories.
     const workspaces = this.ctx.workspaceRegistry?.list() ?? []
-    const workspaceChoices = workspaces.map((w) => ({
+    const workspaceChoices = workspaces.map(w => ({
       id: w.id,
       name: w.title,
       path: w.path,
@@ -1104,7 +1151,10 @@ export class AutomationOperations {
     }
   }
 
-  /** Get lifecycle state. */
+  /**
+   * Get lifecycle state.
+   * @returns Whether task obligations are armed or attempts remain active.
+   */
   inspectLifecycle(): { armed: boolean; active: boolean } {
     const activeTasks = this.store.getActiveTasks()
     const hasActiveRuns = this.store.hasActiveRuns()
@@ -1114,12 +1164,18 @@ export class AutomationOperations {
     }
   }
 
-  /** Set admission lock. */
+  /**
+   * Set admission lock.
+   * @param locked - Whether new work must stop for shutdown or update admission.
+   */
   setAdmissionLocked(locked: boolean): void {
     this.admissionLocked = locked
   }
 
-  /** Get limits. */
+  /**
+   * Get limits.
+   * @returns Configured concurrency, timeout, retention, and quota limits.
+   */
   getLimits(): AutomationLimits {
     return {
       maxConcurrent: this.config.maxConcurrent,

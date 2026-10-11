@@ -769,7 +769,7 @@ it('does not start pnpm for a stale curated install request and verifies integri
   expect(readCatalog).toHaveBeenCalledTimes(3)
 })
 
-it('installs the signed curated artifact URL with scripts disabled and checks its direct lock provenance', async () => {
+it('installs the signed curated artifact URL with scripts disabled and checks its direct lock source', async () => {
   const { manager, dir, bundle } = await fixture()
   const entry = {
     id: 'curated-artifact', name: 'Curated artifact', description: 'Test release tarball',

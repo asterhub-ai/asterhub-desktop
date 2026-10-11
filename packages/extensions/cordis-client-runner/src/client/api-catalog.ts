@@ -864,6 +864,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type SessionFace = ISession & ObservableSnapshot<SessionSnapshot>;',
   },
   {
+    name: 'SessionId',
+    declaration: 'export type SessionId = Branded<\'SessionId\'>;',
+  },
+  {
     name: 'SessionIdOf',
     declaration: 'export type SessionIdOf = SessionStandardProps extends {\n    sessionId: infer S;\n} ? S : string;',
   },
@@ -1022,6 +1026,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ThemeTokens',
     declaration: 'export type ThemeTokens = Record<string, string>;',
+  },
+  {
+    name: 'Translate',
+    declaration: 'export type Translate<K extends string = string> = (key: K, params?: Record<string, unknown>) => string;',
   },
   {
     name: 'TranslateNS',
