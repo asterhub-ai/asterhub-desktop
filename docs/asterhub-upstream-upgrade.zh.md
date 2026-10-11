@@ -22,13 +22,17 @@ AsterHub 保留账户拥有的 Sub2API 凭据与模型目录、项目附件作�
 | --- | --- |
 | Host 与 Client 项目图 | `node node_modules/typescript/bin/tsc -b tsconfig.host.json tsconfig.client.json` 通过。 |
 | 桌面、ASAR、Host 与 HMR 测试 | 定向串行运行：203 项通过，3 项平台用例跳过。 |
-| Windows 原生安装器 | 两种语言各通过 15 项，覆盖目录显示、路径校验、安装、启动与卸载。 |
+| Windows 打包运行时 | 官方 x64 打包及 ASAR Host 冒烟通过，涵盖 DOCX/XLSX/PPTX 转换、工作区检查和 Session 创建。 |
+| Windows 原生安装器 UI | 使用生产 NSIS 配置的测试 payload，两种语言各通过 15 项，覆盖欢迎页、路径校验、安装、启动与卸载。 |
+| Windows 安装包 | unsigned `0.21.0` 安装包已安装到隔离临时目录；确认 `AsterHub.exe` 和卸载程序存在，并成功静默卸载。 |
 | 计划模式 | 包内 88 项测试通过；追加下一条消息断言后，4 项集成测试也通过。 |
 | SenseVoice | 独立运行的推理与 Worker 测试 35 项通过；追加的 2 项配置越界用例通过。此前广泛运行有 2 项时序失败。 |
 | pi-ai 与账户集成 | 413 项测试通过。HTTP 夹具支持 pi-ai 发出的 zstd 请求。 |
 | 操作系统凭据加密 | 真实 Electron 进程写入加密账户 grant，第二个进程成功解密。 |
 | 本地更新器 | 真实 Electron 44.7.0 的 17 个场景通过，使用回环服务和惰性载荷，未执行安装器；截图捕获失败，不计为视觉验收。 |
 | 官方本地审查 | `codex review --uncommitted` 已启动，但被账户用量限制中断，未产生审查结论。 |
+
+真实账户登录、会话令牌刷新、`/auth/me` 和账户绑定的模型目录读取均成功，复用了已有模型 Key。通过升级后的产品适配器调用 GPT-6-Luna，文本生成、请求工具调用及预期参数、工具结果往返均通过；请求取消成功，无效测试 Key 被拒绝。GPT-6-Luna 未返回推理块，推理流需换用会输出推理内容的模型继续验收，真实双账户切换也尚未验证。本次没有新建或轮换任何账户 Key。
 
 首次广泛选择的桌面与运行时测试未全部通过，其中包含 Windows 文件符号链接权限失败、过时的身份提示断言和解析矩阵失败；持续执行的剩余 Worker 被终止。之后的桌面与 HMR 定向复核通过，不能混同两次结果。
 
@@ -38,6 +42,6 @@ Windows 上的 `ptc-turn` 录制会话回放能够启动，但 Windows 自动贡
 
 ## 产物与待验收项目
 
-第一次未签名 Windows `0.21.0` 打包通过了构建，但在 npm 官方源下载生产依赖时超时失败。正在通过正式打包脚本重试，既有 npm 镜像配置仅作用于本次进程。打包和更新器结果记录于 `apps/desktop/.desktop-build/`，没有上传文件。
+首次官方 Windows x64 unsigned 打包在 npm 下载超时后失败，随后通过正式打包脚本完成；npm 镜像配置仅作用于该进程。安装包位于 `apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/asterhub-0.21.0-win-x64-unsigned.exe`（440,041,976 字节；SHA-256 `19ACDEA8397D10E90C6E1F164315965D0D2ABBB0FF5946A75A8CD37F2B4AAF0C`）。打包和更新器日志保存在 `apps/desktop/.desktop-build/`；文件未签名或上传。
 
-真实 Sub2API 推理需要可用测试账户，真实语音识别需要中文 WAV 样本与已准备的模型，本次会话尚未完成这两项验收。macOS 安装和原生运行时验收仍待完成。
+账户登录与模型调用已通过 Sub2API 真实服务验收；GPT-6-Luna 没有返回推理块，推理流和产品内双账户切换仍待验收。语音录音按用户要求跳过。macOS 安装和原生运行时验收仍待完成。

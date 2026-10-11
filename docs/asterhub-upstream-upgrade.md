@@ -22,13 +22,17 @@ AsterHub retains its account-owned Sub2API credentials and model catalog, projec
 | --- | --- |
 | Host and Client project graphs | `node node_modules/typescript/bin/tsc -b tsconfig.host.json tsconfig.client.json` passed. |
 | Desktop, ASAR, Host and HMR tests | Focused serial run: 203 passed, 3 platform cases skipped. |
-| Native Windows installer | Both locales passed 15 cases each, including the visible folder, path validation, installation, launch and uninstall. |
+| Windows packaged runtime | Official x64 packaging and ASAR Host smoke passed, including DOCX/XLSX/PPTX conversion, workspace inspection and Session creation. |
+| Native Windows installer UI | Production NSIS fixture passed 15 cases in each locale, including welcome, path validation, install, launch and uninstall. |
+| Built Windows installer | The unsigned `0.21.0` installer installed into an isolated temporary directory; `AsterHub.exe` and its uninstaller were present, and silent uninstall succeeded. |
 | Plan mode | 88 package tests passed; the four integration tests also passed after adding the next-message assertion. |
 | SenseVoice | 35 inference/Worker tests passed in isolation; two additional out-of-range configuration cases passed. The earlier broad run had two timing failures. |
 | pi-ai and account integration | 413 tests passed. The HTTP fixture supports the zstd requests emitted by pi-ai. |
 | OS credential encryption | A real Electron process wrote an encrypted account grant; a second process decrypted it successfully. |
 | Local updater | 17 real Electron 44.7.0 scenarios passed using loopback services and inert payloads. No installer was executed; screenshot capture failed and does not count as visual acceptance. |
 | Official local review | `codex review --uncommitted` started but was interrupted by the account usage limit. No review conclusion was produced. |
+
+The Sub2API service `auth/login`, `auth/refresh`, `/auth/me`, and account-bound model listing all succeeded. The product adapter then reused an existing model key. Through the upgraded product adapter, GPT-6-Luna returned text, issued the requested tool call with the expected marker, and completed its follow-up; cancellation stopped the request and a deliberately invalid test key was rejected. GPT-6-Luna emitted no reasoning block, so a reasoning-bearing model and switching between two real accounts remain unverified. No account key was created or rotated.
 
 The first broad desktop/runtime test selection was not green: it included Windows file-symlink permission failures, an outdated persona assertion and resolution-matrix failures. Its remaining worker was terminated after sustained execution; the subsequent focused desktop/HMR run above passed. These are separate results.
 
@@ -38,6 +42,6 @@ Repository-wide constraints report existing private-package release metadata, wo
 
 ## Artifact and remaining qualification
 
-The first unsigned Windows `0.21.0` packaging attempt passed the builds but failed while downloading production dependencies from npm due to timeouts. Packaging is being retried through the official package script with the existing npm-mirror configuration scoped to this process. Packaging and updater results are recorded under `apps/desktop/.desktop-build/`; no files are uploaded.
+The official Windows x64 unsigned package completed after the first attempt timed out on npm downloads. The successful run used the npm mirror only for that process. The installer is `apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/asterhub-0.21.0-win-x64-unsigned.exe` (440,041,976 bytes; SHA-256 `19ACDEA8397D10E90C6E1F164315965D0D2ABBB0FF5946A75A8CD37F2B4AAF0C`). Packaging and updater logs are under `apps/desktop/.desktop-build/`; no files were signed or uploaded.
 
-Real Sub2API inference requires an available test account, and real speech recognition requires a Chinese WAV sample and prepared models. Neither has been qualified in this session. macOS installation and native runtime qualification remain pending.
+GPT-6-Luna returned streamed text; its server did not emit reasoning blocks. Real reasoning output from DeepSeek V4 and a product-side transition between two accounts remain unverified. Speech-model files were reused from the local package only after verifying all three current SHA-256 pins; transcription of a Chinese WAV sample was skipped at your request. macOS installation and native runtime qualification remain pending.
