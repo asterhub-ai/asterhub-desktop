@@ -25,7 +25,14 @@ interface PlatformSessionEvent {
   readonly session: PlatformSession | null
 }
 
-type DesktopHostEvent = ReadyEvent | FatalEvent | PlatformSessionEvent | { readonly type: 'shutdown-complete' } | {
+interface CredentialCipherRequestEvent {
+  readonly type: 'credential-cipher/request'
+  readonly requestId: number
+  readonly operation: 'encrypt' | 'decrypt'
+  readonly value: string
+}
+
+type DesktopHostEvent = ReadyEvent | FatalEvent | PlatformSessionEvent | CredentialCipherRequestEvent | { readonly type: 'shutdown-complete' } | {
   readonly type: 'update-tasks'
   readonly requestId: number
   readonly active: boolean
@@ -51,6 +58,7 @@ export interface DesktopQuitInspection {
 export const QUIT_INSPECTION_DEADLINE_MS = 2_000
 
 const MAX_HOST_DIAGNOSTIC_CHARS = 64 * 1024
+const MAX_CREDENTIAL_DOCUMENT_CHARS = 8 * 1024 * 1024
 
 function browserError(code: 'unavailable' | 'invalid-request' | 'cancelled' | 'failed', message: string): DesktopBrowserResult {
   return { status: 'error', code, message }
@@ -85,6 +93,10 @@ function isDesktopHostEvent(message: unknown): message is DesktopHostEvent {
     }
     case 'fatal':
       return typeof candidate.message === 'string' && (candidate.diagnostic === undefined || typeof candidate.diagnostic === 'string')
+    case 'credential-cipher/request':
+      return Number.isSafeInteger(candidate.requestId) && (candidate.requestId as number) > 0
+        && (candidate.operation === 'encrypt' || candidate.operation === 'decrypt')
+        && typeof candidate.value === 'string' && candidate.value.length <= MAX_CREDENTIAL_DOCUMENT_CHARS
     case 'browser/request':
       return isDesktopBrowserRequestMessage(message)
     case 'browser/cancel':
@@ -160,6 +172,7 @@ export class DesktopHostProcess {
   private shutdownCompleted = false
   private nextControlId = 1
   private lastBrowserRequestId = 0
+  private lastCredentialCipherRequestId = 0
   private readonly controlRequests = new Map<number, {
     resolve: (response: DesktopHostControlResponse) => void
     reject: (error: Error) => void
@@ -178,6 +191,7 @@ export class DesktopHostProcess {
    * @param packageManager - Bundled pnpm entry and Node launcher directory, scoped to package operations.
    * @param onPlatformSession - Private credential updates for embedded Platform views.
    * @param onBrowserRequest - Main-owned receiver for one validated browser command; absent rejects commands safely.
+   * @param onCredentialCipher - Main-owned OS encryption operation for the Host credential document.
    */
   constructor(
     private readonly node: string,
@@ -191,6 +205,7 @@ export class DesktopHostProcess {
 
     private readonly onPlatformSession?: (session: PlatformSession | null) => void,
     private readonly onBrowserRequest?: DesktopBrowserRequestHandler,
+    private readonly onCredentialCipher?: (operation: 'encrypt' | 'decrypt', value: string) => string,
   ) {}
 
   /**
@@ -226,6 +241,7 @@ export class DesktopHostProcess {
       }
       if (message.type === 'ready') this.readyResolve({ url: message.url, injections: message.injections })
       else if (message.type === 'platform-session') this.onPlatformSession?.(message.session)
+      else if (message.type === 'credential-cipher/request') this.handleCredentialCipherRequest(message)
       else if (message.type === 'shutdown-complete') {
         if (this.stopping) this.shutdownCompleted = true
         else this.fail(new Error('dsh desktop host acknowledged an unrequested shutdown'))
@@ -304,7 +320,7 @@ export class DesktopHostProcess {
     if (child === undefined || !child.connected || this.stopping || this.failureReported) {
       const code = this.stopping ? 'cancelled' : 'unavailable'
       void this.sendBrowserResult(message.requestId, browserError(code, 'Desktop Browser is unavailable'))
-        .catch(error => { if (!this.stopping) this.fail(error instanceof Error ? error : new Error('dsh desktop browser reply failed')) })
+        .catch((error) => { if (!this.stopping) this.fail(error instanceof Error ? error : new Error('dsh desktop browser reply failed')) })
       return
     }
     if (message.requestId <= this.lastBrowserRequestId) {
@@ -337,7 +353,7 @@ export class DesktopHostProcess {
         result = browserError('failed', 'Browser operation returned an invalid result')
       }
       await this.sendBrowserResult(message.requestId, result)
-    }).catch(error => {
+    }).catch((error) => {
       if (!this.stopping) this.fail(error instanceof Error ? error : new Error('dsh desktop browser result send failed'))
     }).finally(() => {
       if (this.browserRequests.get(message.requestId) === state) this.browserRequests.delete(message.requestId)
@@ -348,11 +364,33 @@ export class DesktopHostProcess {
     this.browserRequests.get(requestId)?.controller.abort()
   }
 
+  /** Perform one validated Host request through Electron's OS-backed string cipher. */
+  private handleCredentialCipherRequest(message: CredentialCipherRequestEvent): void {
+    const child = this.child
+    if (message.requestId <= this.lastCredentialCipherRequestId) {
+      this.fail(new Error('dsh desktop host sent a non-increasing credential cipher request id'))
+      child?.kill('SIGTERM')
+      return
+    }
+    this.lastCredentialCipherRequestId = message.requestId
+    try {
+      if (child === undefined || !child.connected || this.stopping || this.onCredentialCipher === undefined) {
+        throw new Error('desktop credential encryption is unavailable')
+      }
+      const value = this.onCredentialCipher(message.operation, message.value)
+      child.send({ type: 'credential-cipher/result', requestId: message.requestId, value }, (error) => {
+        if (error !== null && !this.stopping) this.fail(new Error('desktop credential encryption reply failed'))
+      })
+    } catch {
+      child?.send({ type: 'credential-cipher/result', requestId: message.requestId, error: 'OS credential encryption failed' })
+    }
+  }
+
   private async sendBrowserResult(requestId: number, result: DesktopBrowserResult): Promise<void> {
     const child = this.child
     if (child === undefined || !child.connected) return
     const { promise, resolve, reject } = Promise.withResolvers<void>()
-    child.send({ type: 'browser/result', requestId, result }, error => {
+    child.send({ type: 'browser/result', requestId, result }, (error) => {
       if (error !== null) reject(error)
       else resolve()
     })

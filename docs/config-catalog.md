@@ -324,7 +324,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-workspace-controller`
 
 - `inject`: `typert` · `workspaceRegistry`
-- `source`: [`packages/api/workspace-controller/src/index.ts:33`](../packages/api/workspace-controller/src/index.ts)
+- `source`: [`packages/api/workspace-controller/src/index.ts:36`](../packages/api/workspace-controller/src/index.ts)
 
 ```ts config-catalog
 /** First-use directory policy for the Host account. */
@@ -419,12 +419,12 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-attachment-local`
 
-- `source`: [`packages/attachment/attachment-local/src/index.ts:61`](../packages/attachment/attachment-local/src/index.ts)
+- `source`: [`packages/attachment/attachment-local/src/index.ts:64`](../packages/attachment/attachment-local/src/index.ts)
 
 ```ts config-catalog
 /** Local attachment backend configuration. */
 export interface Config {
-  /** Explicit harness home; omitted follows `DSH_HOME`, then `~/.dsh`. */
+  /** Explicit harness home; omitted follows `DSH_HOME`, then `~/.asterhub`. */
   dshHome?: string
   /** Maximum encoded bytes accepted for one submitted image. Default: 20 MiB. */
   maxImageBytes?: number
@@ -447,6 +447,8 @@ export interface Config {
   normalizedImageMaxBytes?: number
   /** Maximum simultaneous normalization or request-image transformations in this service instance. */
   imageCompressionConcurrency?: number
+  /** Require a verified project Session scope for every durable attachment operation. */
+  projectLocal?: boolean
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-attachment-local -->
@@ -786,7 +788,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-credentials-local`
 
-- `source`: [`packages/credentials/credentials-local/src/index.ts:64`](../packages/credentials/credentials-local/src/index.ts)
+- `source`: [`packages/credentials/credentials-local/src/index.ts:66`](../packages/credentials/credentials-local/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config: file location and hot-reload behavior. */
@@ -799,6 +801,8 @@ export interface Config {
   watch?: boolean
   /** Watcher write-settle window in milliseconds; defaults to 100. */
   debounceMs?: number
+  /** Store the complete document using the OS-backed credential cipher. */
+  encrypted?: boolean
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-credentials-local -->
@@ -2324,6 +2328,31 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-plugin-package-inventory-deepseek -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-project-storage -->
+<a id="deepseek-aidsh-project-storage"></a>
+
+## `@deepseek-ai/dsh-project-storage`
+
+- `source`: [`packages/workspace/project-storage/src/types.ts:98`](../packages/workspace/project-storage/src/types.ts)
+
+```ts config-catalog
+export type ProjectStorageOptions = ProjectStorageConfig
+
+export interface ProjectStorageConfig {
+  /** Explicitly select grouped or project-local Session persistence. */
+  readonly sessionMode: 'grouped' | 'project-local'
+  /** Machine-local locator index file beneath the prepared global home. */
+  readonly locatorPath: string
+  /** Read-only grouped Session source used to inspect legacy workspaces. */
+  readonly legacySessionRoot: string
+  /** Maximum accepted byte size for project metadata files. */
+  readonly metadataLimitBytes: number
+  /** Maximum wait for the cross-process project mutation lock. */
+  readonly lockDeadlineMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-project-storage -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-ptc-runtime-node -->
 <a id="deepseek-aidsh-ptc-runtime-node"></a>

@@ -16,6 +16,7 @@ import { installOfficeEngineResolution } from './office-engine.ts'
 import { ASTERHUB_CATALOG_PUBLIC_KEY } from './catalog-trust.ts'
 
 import { createDesktopHostBrowserTransport } from './browser-transport.ts'
+import { DesktopCredentialCipher } from './credential-cipher.ts'
 
 async function main(): Promise<void> {
   const runtimeDir = process.argv[2] as string
@@ -25,6 +26,7 @@ async function main(): Promise<void> {
   const profile = loadProfileDirectory('dsh', projectDir, installAnchor)
   reportSkippedBundles('dsh', profile)
   const desktopBrowserTransport = createDesktopHostBrowserTransport()
+  const credentialCipher = new DesktopCredentialCipher()
 
   const application = runProfile({
     environment: loadLayeredEnv('dsh'),
@@ -45,6 +47,7 @@ async function main(): Promise<void> {
       }))
       hostCtx.provide('applicationCatalogPublicKey', ASTERHUB_CATALOG_PUBLIC_KEY)
       hostCtx.provide('desktopBrowserTransport', desktopBrowserTransport)
+      hostCtx.provide('credentialCipher', credentialCipher)
     },
     args: ['--no-open', '--port', '0'],
     ...(process.argv[5] === undefined ? {} : {
@@ -78,6 +81,7 @@ async function main(): Promise<void> {
     if (process.connected) process.disconnect()
   })()
   process.on('message', (message: unknown) => {
+    if (credentialCipher.receive(message)) return
     if (typeof message !== 'object' || message === null || !('type' in message)) return
     if (message.type === 'shutdown') { void stop(); return }
     if (message.type === 'quit-inspection') {
@@ -109,7 +113,7 @@ async function main(): Promise<void> {
       }
     })().catch((error: unknown) => { console.error(error) })
   })
-  process.once('disconnect', () => { void stop() })
+  process.once('disconnect', () => { credentialCipher.dispose(); void stop() })
   const { ctx } = await application
   control.updateTasks = installDesktopUpdateTaskControl(ctx)
   control.quitInspection = installDesktopQuitInspection(ctx)

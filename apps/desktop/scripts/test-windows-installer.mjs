@@ -86,7 +86,7 @@ Section
 SectionEnd
 `)
   const compiler = await getMakeNsisPath()
-  await execute(compiler.path, ['/V2', payloadSource], { ...childOptions, env: { ...childOptions.env, ...compiler.env } })
+  await execute(compiler.path, ['/V2', '/INPUTCHARSET', 'UTF8', payloadSource], { ...childOptions, env: { ...childOptions.env, ...compiler.env } })
   if (sign) await sign({ path: join(payload, `${productName}.exe`), hash: 'sha256', isNest: false })
   const sourceStrings = await readFile(join(appRoot, 'installer', 'strings.nsh'), 'utf8')
   for (const language of ['en_US', 'zh_CN']) {
@@ -106,7 +106,9 @@ SectionEnd
     await build({ projectDir: appRoot, prepackaged: payload, targets: Platform.WINDOWS.createTarget(['nsis'], Arch.x64), publish: 'never',
       config: { ...config, productName, extraMetadata: { ...config.extraMetadata, name: packageName },
         artifactName: 'installer-test.exe', directories: { output: languageOutput },
-        nsis: { ...config.nsis, guid, include, installerLanguages: [language] }, beforeBuild: undefined, afterPack: undefined, afterSign: undefined, artifactBuildCompleted: undefined },
+        nsis: { ...config.nsis, guid, include, installerLanguages: [language],
+          installerSidebar: join(output, 'ui', 'uninstaller-sidebar.bmp'),
+          uninstallerSidebar: join(output, 'ui', 'uninstaller-sidebar.bmp') }, beforeBuild: undefined, afterPack: undefined, afterSign: undefined, artifactBuildCompleted: undefined },
     })
     if (process.argv.includes('--compile-only')) continue
     const result = await execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',

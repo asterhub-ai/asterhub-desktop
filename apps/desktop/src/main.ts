@@ -19,6 +19,7 @@ import {
   nativeTheme,
   protocol,
   session,
+  safeStorage,
   shell,
   type IpcMainInvokeEvent,
   type MenuItemConstructorOptions,
@@ -451,6 +452,15 @@ async function main(): Promise<void> {
           })
         }
         return browserGuests.handleBrowserRequest(mainWindow.webContents, request, signal)
+      },
+      (operation, value) => {
+        if (!safeStorage.isEncryptionAvailable()) throw new Error('OS credential encryption is unavailable')
+        if (process.platform === 'linux' && ['basic_text', 'unknown'].includes(safeStorage.getSelectedStorageBackend())) {
+          throw new Error('A system password manager is required for encrypted credentials')
+        }
+        return operation === 'encrypt'
+          ? safeStorage.encryptString(value).toString('base64')
+          : safeStorage.decryptString(Buffer.from(value, 'base64'))
       })
     return {
       start: async () => {

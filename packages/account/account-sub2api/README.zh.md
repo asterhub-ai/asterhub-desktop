@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用该 Host 服务登录配置的 Sub2API 控制面，并将账户已有模型密钥绑定到当前安装。账户 token 与资料偏好保存在 Host credentials，活动模型 key 保存在独立 credential record。Remote 方法只向 Client 返回账户、算力积分、支付和用量数据，不暴露秘密。
+使用该 Host 服务登录配置的 Sub2API 控制面，并将服务端下发的模型密钥绑定到当前安装。账户 token 与资料偏好保存在 Host credentials，活动模型 key 保存在独立 credential record。Desktop profile 使用 Electron 的 OS 加密服务加密凭据文档；模型路由仅在准备请求时从 Host 读取密钥。Remote 方法只向 Client 返回账户、算力积分、支付和用量数据，不暴露秘密。
 
 ## 目录
 
@@ -29,7 +29,7 @@ Desktop Web profile 将本服务与 `credentials-local`、账户 Client 插件�
 
 ### 账户模型 key
 
-成功登录时优先复用该账户已有分组 key；只有账户没有任何 key 时才创建。模型 key 写入 Host record `asterhub-account/model-api-key`，Desktop 模型路由直接读取该记录。旧 `SUB2API_API_KEY` 引用只从 managed file 清理或迁移；环境与 `.env` 值不会用作模型 key。退出登录会删除活动 key record，同时保留按账户缓存的记录，供同一账户下次登录复用上游 key。
+成功登录时优先复用该账户已有的 Sub2API 分组 key；只有账户没有 key 时才请求 Sub2API 创建。Host 将该服务端下发的 key 保存在 `asterhub-account/model-api-key`；Desktop 加密凭据文档会保护磁盘上的值。模型 key 不会从 Client、环境变量或 `.env` 文件获取。退出登录会删除活动 key record，同时保留按账户缓存的记录，供同一账户下次登录复用上游 key。
 
 ### 配置
 
@@ -42,7 +42,7 @@ Desktop Web profile 将本服务与 `credentials-local`、账户 Client 插件�
 
 ### Remote 操作
 
-Host 提供状态、登录/退出、额度、支付方式、充值、兑换和用量操作。Remote 响应只包含账户视图所需字段；access token、自动登录密码和模型 key 均保留在 Host credentials。结算方式由 `methods` 的键标识；未提供 `available` 字段的方式仍可使用，只有明确标记 `available: false` 的方式会被排除。
+Host 提供状态、登录/退出、额度、支付方式、充值、兑换和用量操作。Remote 响应只包含账户视图所需字段；access token、自动登录密码和模型 key 均保留在 Host credentials。Desktop 凭据文档使用 Electron `safeStorage`，由 OS 加密服务保护。Linux 需要 GNOME libsecret 或 KWallet；应用拒绝不安全的 `basic_text` 后端。结算方式由 `methods` 的键标识；未提供 `available` 字段的方式仍可使用，只有明确标记 `available: false` 的方式会被排除。
 
 <a id="understand-the-implementation"></a>
 ## 理解实现

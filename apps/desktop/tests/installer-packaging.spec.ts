@@ -12,12 +12,12 @@ vi.mock('node:child_process', async (importOriginal) => {
 })
 
 describe('installer preparation preserves application dependencies', () => {
-  it.each(['win32', 'darwin'] as const)('rejects a missing production policy before signing on %s', async (platform) => {
+  it.each(['win32', 'darwin'] as const)('rejects a mismatched production policy before signing on %s', async (platform) => {
     const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
     expect(() => createElectronBuilderConfig({ DSH_DESKTOP_APP_ID: 'com.example.installer',
       DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
-      DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN: 'https://test.example.com',
-    }, platform, 'x64')).toThrow('DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN')
+      DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://wrong.example.com',
+    }, platform, 'x64')).toThrow('must match the selected auto-update origin')
   })
   it.each(['win32', 'darwin'] as const)('keeps electron-builder responsible for node_modules on %s', async (platform) => {
     execute.mockClear()
@@ -91,7 +91,7 @@ describe('installer preparation preserves application dependencies', () => {
       DSH_DESKTOP_APP_ID: 'com.example.installer',
       DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
       DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN: 'https://harness-test.deepseek.com',
-      DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://policy.example.com',
+      DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://asterhub.xapi.fans',
       DSH_DESKTOP_MACOS_SIGNING_IDENTITY: 'Example Company (TEAMID1234)',
       DSH_DESKTOP_MACOS_TEAM_ID: 'TEAMID1234',
       APPLE_KEYCHAIN_PROFILE: 'installer-test',

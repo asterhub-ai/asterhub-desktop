@@ -53,12 +53,14 @@ import type {
   CredentialRecordEntry,
   CredentialRecordInfo,
   CredentialRef,
+  CredentialCipher,
   ResolvedCredential,
 } from '@deepseek-ai/dsh-credentials'
 import type { LaunchEnvironmentEntry } from '@deepseek-ai/dsh-launch-environment'
 
 /** Basename of the credentials document inside the harness home. */
 export const CREDENTIALS_FILENAME = '.credentials.yaml'
+const ENCRYPTED_DOCUMENT_PREFIX = 'asterhub-credentials:v1:'
 
 /** Plugin config: file location and hot-reload behavior. */
 export interface Config {
@@ -70,6 +72,8 @@ export interface Config {
   watch?: boolean
   /** Watcher write-settle window in milliseconds; defaults to 100. */
   debounceMs?: number
+  /** Store the complete document using the OS-backed credential cipher. */
+  encrypted?: boolean
 }
 
 /** Fully resolved provider parameters; defaulting happens here, never inline. */
@@ -516,15 +520,20 @@ export class LocalCredentialProvider extends CredentialProvider {
     dshHome: z.string(),
     watch: z.boolean().default(true),
     debounceMs: z.number().min(0).default(100),
+    encrypted: z.boolean().default(false),
   })
 
   private readonly spec: ResolvedSpec
+  private readonly encrypted: boolean
+  private readonly cipher: CredentialCipher | undefined
   /**
    * Raw text of the last read or persisted document; `undefined` while the
    * file is absent. Watcher events whose content equals this cache are no-ops,
    * which is also the self-write suppression.
    */
   private text: string | undefined
+  /** Exact bytes last read or written; encrypted mode compares ciphertext here. */
+  private diskText: string | undefined
   /** Parsed reference snapshot; replaced wholesale on every reload. */
   private values = new Map<string, string>()
   /** Parsed record snapshot; replaced wholesale on every reload. */
@@ -548,6 +557,11 @@ export class LocalCredentialProvider extends CredentialProvider {
     // Programmatic construction may bypass Schemastery normalization; resolve
     // the same defaults in one explicit step either way.
     this.spec = resolveSpec(config)
+    this.encrypted = config.encrypted ?? false
+    this.cipher = this.encrypted ? ctx.get('credentialCipher', false) : undefined
+    if (this.encrypted && this.cipher === undefined) {
+      throw new Error('credentials-local: encrypted storage requires the credentialCipher service')
+    }
   }
 
   /** The inherited-environment value for a reference, or `undefined` when empty or unset. */
@@ -688,7 +702,7 @@ export class LocalCredentialProvider extends CredentialProvider {
         else assertStorableApiKey(key, next)
         const nextText = renderRecord(this.text, key, next)
         // 0600: a document holding secrets is never world-readable.
-        await writeFileAtomic(this.spec.filename, nextText, { mode: 0o600, dirMode: 0o700 })
+        await this.writeDocument(nextText)
         this.text = nextText
         this.records.set(key, next)
         // After the commit, on the same terms as a reference write.
@@ -709,7 +723,7 @@ export class LocalCredentialProvider extends CredentialProvider {
         await this.reconcileFromDisk()
         if (!this.records.has(key)) return
         const nextText = renderRecord(this.text, key, undefined)
-        await writeFileAtomic(this.spec.filename, nextText, { mode: 0o600, dirMode: 0o700 })
+        await this.writeDocument(nextText)
         this.text = nextText
         this.records.delete(key)
         this.notifyRecordUpdated(key)
@@ -761,7 +775,7 @@ export class LocalCredentialProvider extends CredentialProvider {
         if (value === undefined && existing === undefined) return
         const nextText = renderRef(this.text, ref, value)
         // 0600: a document holding secrets is never world-readable.
-        await writeFileAtomic(this.spec.filename, nextText, { mode: 0o600, dirMode: 0o700 })
+        await this.writeDocument(nextText)
         this.text = nextText
         if (value === undefined) this.values.delete(ref)
         else this.values.set(ref, value)
@@ -796,6 +810,10 @@ export class LocalCredentialProvider extends CredentialProvider {
    */
   private async loadInitial(): Promise<void> {
     await assertOwnerOnly(this.spec.filename)
+    if (this.encrypted) {
+      await this.loadEncryptedInitial()
+      return
+    }
     let text: string
     try {
       text = await readFile(this.spec.filename, 'utf8')
@@ -808,6 +826,44 @@ export class LocalCredentialProvider extends CredentialProvider {
     this.values = document.refs
     this.records = document.records
     this.text = text
+    this.diskText = text
+  }
+
+  /** Decode the document only through the configured cipher. */
+  private async loadEncryptedInitial(): Promise<void> {
+    let stored: string
+    try {
+      stored = await readFile(this.spec.filename, 'utf8')
+    } catch (error) {
+      if (isENOENT(error)) return
+      throw error
+    }
+    const text = await this.decodeDocument(stored)
+    const document = parseCredentialsDocument(text, this.spec.filename)
+    this.values = document.refs
+    this.records = document.records
+    this.text = text
+    this.diskText = stored
+  }
+
+  /** Reject unencrypted documents when encryption is required. */
+  private async decodeDocument(stored: string): Promise<string> {
+    if (!this.encrypted) return stored
+    if (!stored.startsWith(ENCRYPTED_DOCUMENT_PREFIX)) {
+      throw new Error(`credentials-local: ${this.spec.filename} is not encrypted`)
+    }
+    const cipher = this.cipher
+    if (cipher === undefined) throw new Error('credentials-local: credential cipher is unavailable')
+    return cipher.decrypt(stored.slice(ENCRYPTED_DOCUMENT_PREFIX.length))
+  }
+
+  /** Persist a document through the configured OS-backed cipher before publishing its cache. */
+  private async writeDocument(text: string): Promise<void> {
+    const cipher = this.cipher
+    if (this.encrypted && cipher === undefined) throw new Error('credentials-local: credential cipher is unavailable')
+    const stored = cipher === undefined ? text : `${ENCRYPTED_DOCUMENT_PREFIX}${await cipher.encrypt(text)}`
+    await writeFileAtomic(this.spec.filename, stored, { mode: 0o600, dirMode: 0o700 })
+    this.diskText = stored
   }
 
   /**
@@ -870,19 +926,21 @@ export class LocalCredentialProvider extends CredentialProvider {
     // Re-checked on every reload and before every write: an external editor or
     // a restored backup can loosen the mode after boot.
     await assertOwnerOnly(this.spec.filename)
-    let text: string | undefined
+    let stored: string | undefined
     try {
-      text = await readFile(this.spec.filename, 'utf8')
+      stored = await readFile(this.spec.filename, 'utf8')
     } catch (error) {
       if (!isENOENT(error)) throw error
-      text = undefined
+      stored = undefined
     }
-    if (text === this.text || this.isClosed()) return
+    if (stored === this.diskText || this.isClosed()) return
+    const text = stored === undefined ? undefined : await this.decodeDocument(stored)
     const next = text === undefined
       ? { refs: new Map<string, string>(), records: new Map<string, CredentialRecord>() }
       : parseCredentialsDocument(text, this.spec.filename)
     const changedRefs = this.changedRefs(this.values, next.refs)
     const changedRecords = this.changedRecords(this.records, next.records)
+    this.diskText = stored
     this.text = text
     this.values = next.refs
     this.records = next.records

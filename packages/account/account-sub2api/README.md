@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this Host service to sign in to the configured Sub2API control plane and bind the account's existing model key to this installation. It stores account tokens and profile preferences in Host credentials and the active model key in a dedicated credential record. Its Remote methods return account, quota, payment and usage data without exposing those secrets to the Client.
+Use this Host service to sign in to the configured Sub2API control plane and bind a server-provisioned model key to this installation. It stores account tokens and profile preferences in Host credentials and the active model key in a dedicated credential record. The Desktop profile encrypts the credential document at rest with Electron's OS-backed cipher; the model route receives the key from the Host only when it prepares a request. Remote methods return account, quota, payment and usage data without exposing those secrets to the Client.
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@ The Desktop Web profile mounts this service alongside `credentials-local` and th
 
 ### Account model key
 
-A successful login reuses the account's existing group key or creates one only when the account has none. The key is written to the Host record `asterhub-account/model-api-key`, which the Desktop model route reads directly. The legacy `SUB2API_API_KEY` reference is only cleared or migrated from a managed file; environment and `.env` values are not used as the model key. Logout deletes the active key record while retaining per-account records needed to reuse the same upstream key on a later sign-in.
+A successful login reuses the account's existing Sub2API group key or asks Sub2API to create one when the account has none. The Host stores this server-provisioned key in `asterhub-account/model-api-key`; the Desktop encrypted credential document protects it at rest. The model key is never requested from the Client or read from an environment variable or `.env` file. Logout deletes the active key record while retaining per-account records needed to reuse the same upstream key on a later sign-in.
 
 ### Configuration
 
@@ -42,7 +42,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Remote operations
 
-The Host exposes status, login/logout, quota, payment-method, top-up, redemption and usage operations. The Remote responses contain only fields used by account views; access tokens, saved auto-login passwords and model keys stay in Host credentials. Checkout methods are identified by keys in `methods`; entries without an `available` field remain usable, while an explicit `available: false` is excluded.
+The Host exposes status, login/logout, quota, payment-method, top-up, redemption and usage operations. The Remote responses contain only fields used by account views; access tokens, saved auto-login passwords and model keys stay in Host credentials. Desktop's credential document uses Electron `safeStorage`, backed by the OS encryption service. Linux requires GNOME libsecret or KWallet; the app refuses the insecure `basic_text` backend. Checkout methods are identified by keys in `methods`; entries without an `available` field remain usable, while an explicit `available: false` is excluded.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation

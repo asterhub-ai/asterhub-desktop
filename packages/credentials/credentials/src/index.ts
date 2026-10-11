@@ -16,6 +16,22 @@ export type {
   ApiKeyRecord, CredentialInfo, CredentialKey, CredentialRecord, CredentialRef, GrantRecord,
 } from './types.ts'
 
+/** OS-backed encryption available to a credential provider that stores its document encrypted. */
+export interface CredentialCipher {
+  /**
+   * Encrypt one UTF-8 string and return an opaque transport-safe value.
+   * @param plaintext - the clear text to encrypt.
+   * @returns the encrypted value.
+   */
+  encrypt(plaintext: string): Promise<string>
+  /**
+   * Decrypt one value previously returned by {@link encrypt}.
+   * @param ciphertext - the encrypted value.
+   * @returns the original clear text.
+   */
+  decrypt(ciphertext: string): Promise<string>
+}
+
 const REF_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 /** Both halves of a {@link CredentialKey}; the `/` between them is what keeps it out of {@link REF_PATTERN}. */
@@ -148,6 +164,8 @@ export interface CredentialRecordEntry {
 declare module '@deepseek-ai/cordis' {
   interface Context {
     credentials: CredentialProvider
+    /** Optional OS-backed encryption used by credential providers configured for encrypted storage. */
+    credentialCipher?: CredentialCipher
   }
 }
 

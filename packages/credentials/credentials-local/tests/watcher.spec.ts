@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { join } from 'node:path'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { LocalCredentialProvider } from '../src/index.ts'
@@ -26,7 +27,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 })
 
 function writeCredentials(file: string, text: string): Promise<void> {
-  return writeFile(file, text, { mode: 0o600 })
+  return writeFileAtomic(file, text, { mode: 0o600 })
 }
 
 // chokidar is the nondeterministic OS boundary: faking it lets these tests

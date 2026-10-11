@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write apps/desktop/README.md
 /asterhub-desktop:
-  en: c3cd613905ffb91a
-  zh: 2c3f261e8c227aab
+  en: 5c0af40fb2abe25c
+  zh: aa8b9ff9b963337d
 /asterhub-desktop/closing-the-window-and-quitting:
   en: 53248165119e411a
   zh: 7b4f1fd2388a1e66
@@ -48,8 +48,8 @@
   en: fc650b0499e16753
   zh: 933ebcad2350a166
 /asterhub-desktop/package/windows-installer-interface:
-  en: f176a8b1c7de3064
-  zh: 6ea2dbe6bb808c34
+  en: 74859844e1bb040d
+  zh: 92c3f1a8b9acf301
 /asterhub-desktop/package/windows-ev-signing:
   en: 8efe3498dbe8686d
   zh: a88c16f20a9430f3
@@ -66,8 +66,8 @@
   en: 0b225f914142ef0b
   zh: 9ffd07768d37824e
 /asterhub-desktop/known-limitations:
-  en: 3c408d8ffe5639ff
-  zh: cde9bd009f69fd37
+  en: 3fcb4434217ed5ab
+  zh: 1221c004e6421295
 /asterhub-desktop/dev-note:
   en: 8e26b460ba31f21b
   zh: fbcd0307b3867125

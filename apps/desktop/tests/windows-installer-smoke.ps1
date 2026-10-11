@@ -1,4 +1,4 @@
-<# Native installation checks use a unique product identity and a private directory. #>
+﻿<# Native installation checks use a unique product identity and a private directory. #>
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$Installer, [Parameter(Mandatory)][string]$ProductName,
     [Parameter(Mandatory)][string]$RegistryKey,
@@ -136,7 +136,7 @@ try {
     $results.Add('welcome-presented-on-first-show')
     $window = [InstallerCapture]::Find($process.Id)
     [void][InstallerCapture]::Save($window, (Join-Path $OutputDirectory 'light-welcome.png'))
-    Click-Control $process $copy.INSTALLER_CHOOSE_PATH
+    [void](Wait-Control $process $copy.INSTALLER_CHOOSE_PATH)
     $edit = Wait-Control $process $installPath
     [void][InstallerCapture]::Save($window, (Join-Path $OutputDirectory 'light-path.png'))
     Click-Control $process $copy.INSTALLER_BROWSE
@@ -159,7 +159,7 @@ try {
     $results.Add('successful-install-paints-100-before-finish')
 
     $process = Start-Setup dark ''
-    Click-Control $process $copy.INSTALLER_CHOOSE_PATH
+    [void](Wait-Control $process $copy.INSTALLER_CHOOSE_PATH)
     $edit = Wait-Control $process $installPath
     [void][InstallerCapture]::SendMessage($edit, 0xC, [IntPtr]::Zero, ($installPath + '\\'))
     [void][InstallerCapture]::Save([InstallerCapture]::Find($process.Id), (Join-Path $OutputDirectory 'dark-welcome.png'))

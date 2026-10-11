@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-credentials-local` keeps API keys and other secrets in a private file under your harness home. You can save credentials through the configuration UI or edit the file directly; changes reload automatically and saved values survive restarts. Credential lookup follows a fixed precedence: the launch environment wins, followed by the stored file, the project's `.env`, and the harness-home `.env`; a newly saved value immediately overrides older `.env` values. Only your OS user can read the file, but agent tool processes run as that same user, so this store cannot isolate secrets from the agent.
+`dsh-credentials-local` keeps API keys and other secrets in a file under your harness home. You can save credentials through the configuration UI, and saved values survive restarts. Credential lookup follows a fixed precedence: the launch environment wins, followed by the stored file, the project's `.env`, and the harness-home `.env`; a newly saved value immediately overrides older `.env` values. The default file is readable by your OS user; set `encrypted: true` when the composition provides an OS-backed cipher to encrypt the complete document at rest.
 
 ## Table of Contents
 
@@ -45,6 +45,7 @@ Use it as the default local store: the product's base composition loads it, and 
 | `dshHome` | `$DSH_HOME` or `~/.dsh` | Harness home used when `path` is omitted |
 | `watch` | `true` | Reload the file automatically when it changes on disk |
 | `debounceMs` | `100` | Wait this long after a change before reloading, in milliseconds |
+| `encrypted` | `false` | Encrypt the complete file with the `credentialCipher` service; refuse startup if the service is unavailable |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-credentials-local) is the exhaustive source for every accepted field and its JSDoc.
 
@@ -106,13 +107,13 @@ records:
     kind: api-key               # neither: the owner confirmed the ambient credential chain
 ```
 
-You can edit the file directly — the store reloads it automatically and picks up the change, including a key or record you delete. `refs` holds key values by environment-variable name; `records` holds per-plugin credentials by `<owner>/<id>`, each tagged `api-key` or `grant`, whose grant payload the store keeps verbatim because only its owner can interpret it. Comments and the formatting of untouched entries survive product writes; a comment directly above an entry is that entry's note and is removed with it. The file holds only credentials, so anything else is refused loudly rather than silently ignored: a non-mapping root, an unknown top-level key, a key that is not addressable in its space, a wrong-typed or empty value, an unknown record tag or field, duplicate keys, and malformed YAML all fail at startup, and on a live reload the last good content keeps serving with a warning.
+With `encrypted: false`, you can edit the YAML file directly — the store reloads it automatically and picks up the change, including a key or record you delete. With `encrypted: true`, the complete YAML document is stored as an opaque encrypted value and must be changed through the credential service. Encrypted mode refuses existing plaintext documents. `refs` holds key values by environment-variable name; `records` holds per-plugin credentials by `<owner>/<id>`, each tagged `api-key` or `grant`, whose grant payload the store keeps verbatim because only its owner can interpret it. Comments and the formatting of untouched entries survive product writes; a comment directly above an entry is that entry's note and is removed with it. The file holds only credentials, so anything else is refused loudly rather than silently ignored: a non-mapping root, an unknown top-level key, a key that is not addressable in its space, a wrong-typed or empty value, an unknown record tag or field, duplicate keys, and malformed YAML all fail at startup, and on a live reload the last good content keeps serving with a warning.
 
 A key's value can be any text, multi-line values included — no quoting tricks needed. An empty value means "no key", which is why an empty string in the file is rejected: removing a key deletes it, it does not blank it. A `grant` payload must survive a JSON round trip, enforced on the way in and on the way out, so the store refuses a value it could not read back exactly as written. If the file on disk no longer parses, saving fails instead of overwriting content the product could not read.
 
 ### Who can read the file
 
-Only your OS user can read the file: the product creates it with owner-only permissions, and on POSIX it refuses to load a file that any other user can read — the error tells you to run `chmod 600`. Windows has no mode to inspect, so the check is skipped there rather than faked. The agent is not another user: its tool processes run as you, so they can read the file like any other file you own. The product never hands the agent the file's path and never loads the file into the environment, so reaching a value takes a deliberate read of a path the agent was not given. That is discretion, not a boundary: a deployment that must keep provider keys away from its own agent cannot get there with file permissions.
+With the default configuration, only your OS user can read the file: the provider creates it with owner-only permissions, and on POSIX it refuses to load a file that any other user can read. Windows has no mode to inspect, so the permission check is skipped. Encrypted mode requires an OS-backed `credentialCipher`; it encrypts copied file contents using OS-owned key material, but it does not isolate credentials from code or processes running as that same user. On Linux, the cipher must use GNOME libsecret or KWallet; the `basic_text` backend is refused.
 
 ### What can go wrong
 
@@ -120,6 +121,7 @@ Only your OS user can read the file: the product creates it with owner-only perm
 - **An empty value cannot be saved** — storing an empty string is refused; remove the key instead.
 - **The store refuses to load a file it cannot trust** — a file any other user can read, malformed YAML, or an unreachable path fails at startup; on a live reload the last good content keeps serving with a warning.
 - **Changes made at the same time are both kept** — if you edit the file while the product writes, your change is folded in rather than overwritten.
+- **Encrypted mode needs an OS password manager** — the Desktop fails credential storage when its OS-backed cipher is unavailable; configure GNOME libsecret or KWallet on Linux.
 
 -----
 

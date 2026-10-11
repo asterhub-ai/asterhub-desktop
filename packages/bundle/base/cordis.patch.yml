@@ -109,6 +109,8 @@
     # environment and .env values cannot shadow account login.
     - id: credentials
       name: '@deepseek-ai/dsh-credentials-local'
+      config:
+        encrypted: !!js "ctx.get('profileContext')?.name === 'desktop'"
 
     # The pi-ai adapter serves the fixed AsterHub endpoint and account catalog.
     # The configured model is a descriptor template; the key comes from an account-owned Host

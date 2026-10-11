@@ -108,7 +108,7 @@ This section explains the design decisions behind the package and points at the 
 
 ### Design philosophy
 
-One doctrine and four consequences:
+One doctrine and five consequences:
 
 - **Configuration carries references, never secrets.** A settings section or `cordis.yml` entry names a credential; the value behind the reference lives with a provider. The settings document stays safe to sync and to render, `describe()` answers without holding a value, and rotating a secret touches no configuration file.
 - **Consumers resolve per operation.** Resolution is a per-call read with no cross-operation cache; that read is the hot-update mechanism.
@@ -125,6 +125,10 @@ One doctrine and four consequences:
 ### Record write and read paths
 
 `modifyRecord` is the only record write path because a correct write depends on the current value: a token refresh is read-decide-replace, and the mutation sees the record as it stands at the moment the write is exclusive — returning `undefined` leaves the entry untouched. Exclusion holds across processes where the backing store supports it, which is what stops two processes rotating one refresh token from losing whichever wrote first. Reads mirror the reference half but never layer: nothing can shadow a record, and a `grant` payload is returned exactly as its owner wrote it, because only the owning plugin can interpret it.
+
+### Credential encryption
+
+Providers may opt into encrypted persistence through the optional `credentialCipher` service. The Host supplies OS-backed string encryption and owns the key; the service does not define key export, synchronization, or recovery.
 
 ### Source map
 
@@ -186,6 +190,6 @@ These limits define when this package is a poor fit or needs special care. They 
 
 This Dev Note is working context for maintainers: open questions and undecided directions. It is explicitly non-authoritative — shipped behavior and limits live in the sections above and in the package code.
 
-The seam shape leaves room for keyring-, helper-command-, and KMS-backed providers; a remote settings provider never needs to carry secrets. None is shipped, and no current consumer requires one.
+None.
 
 </details>
