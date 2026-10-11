@@ -65,7 +65,10 @@ export async function connectDesktopWelcome(
     const envelope: unknown = await response.json()
     if (!record(envelope) || envelope.type !== 'server-response' || envelope.rpcId !== rpcId
       || !record(envelope.result) || envelope.result.ok !== true) {
-      throw new Error('desktop welcome: Web RPC failed')
+      const failure = record(envelope) && record(envelope.result) && record(envelope.result.error) && typeof envelope.result.error.message === 'string'
+        ? envelope.result.error.message
+        : undefined
+      throw new Error(failure !== undefined ? `desktop welcome: Web RPC failed (${method}): ${failure}` : `desktop welcome: Web RPC failed (${method})`)
     }
     return envelope.result.value
   }
@@ -84,20 +87,19 @@ export async function connectDesktopWelcome(
     const locale: unknown = namespaces.find((item: unknown) => record(item) && item.ns === 'locale')
     if (!record(locale) || !record(locale.value)
       || (locale.value.preference !== undefined && typeof locale.value.preference !== 'string')) {
-      throw new Error('desktop welcome: invalid locale preference')
+      return null
     }
     return locale.value.preference ?? null
   }
   const read = async (): Promise<WelcomeState> => {
     if (options?.account === 'asterhub') {
-      const settings = await invoke({ namespace: 'settings', method: 'describe', args: {} })
-      const status = await invoke({ namespace: 'accountSub2api', method: 'getStatus', args: {} })
-      if (!record(settings) || !Array.isArray(settings.namespaces)
-        || !record(status) || typeof status.loggedIn !== 'boolean' || typeof status.keyBound !== 'boolean') {
-        throw new Error('desktop: invalid account entry state')
-      }
-      return { loggedIn: status.loggedIn, hasApiKey: status.keyBound, writable: false,
-        localePreference: localePreference(settings.namespaces) }
+      const settings = await invoke({ namespace: 'settings', method: 'describe', args: {} }).catch(() => undefined)
+      const status = await invoke({ namespace: 'accountSub2api', method: 'getStatus', args: {} }).catch(() => undefined)
+      const namespaces = record(settings) && Array.isArray(settings.namespaces) ? settings.namespaces : []
+      const loggedIn = record(status) && status.loggedIn === true
+      const hasApiKey = record(status) && status.keyBound === true
+      return { loggedIn, hasApiKey, writable: false,
+        localePreference: localePreference(namespaces) }
     }
     const { settings, ref } = await settingsAndReference()
     const providers = await invoke({ namespace: 'llm', method: 'listConfigurableProviders', args: {} })
@@ -141,9 +143,9 @@ export async function connectDesktopWelcome(
     },
     async report(event) { await invoke({ namespace: 'productAnalytics', method: 'report', args: { event } }, AbortSignal.timeout(1000)) },
     async readLocalePreference() {
-      const settings = await invoke({ namespace: 'settings', method: 'describe', args: {} })
-      if (!record(settings) || !Array.isArray(settings.namespaces)) throw new Error('desktop welcome: missing settings namespaces')
-      return localePreference(settings.namespaces)
+      const settings = await invoke({ namespace: 'settings', method: 'describe', args: {} }).catch(() => undefined)
+      const namespaces = record(settings) && Array.isArray(settings.namespaces) ? settings.namespaces : []
+      return localePreference(namespaces)
     },
     async save(apiKey) {
       if (options?.account === 'asterhub') return { ok: false }

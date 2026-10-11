@@ -1264,9 +1264,15 @@ async function main(): Promise<void> {
   }
   const openInitialWindow = async (): Promise<void> => {
     if (quitting || recovery.active) return
-    const state = await readWelcomeState()
+    let localePreference: string | null = null
+    try {
+      const state = await readWelcomeState()
+      localePreference = state.localePreference
+    } catch (error) {
+      console.error('desktop: initial welcome state read failed, using system locale:', error)
+    }
     if (isQuitting() || backend.state.phase !== 'ready') return
-    locale = resolveDesktopStartupLocale(state.localePreference, systemLanguages)
+    locale = resolveDesktopStartupLocale(localePreference, systemLanguages)
     windowsLanguage = locale.id
     refreshApplicationMenu()
     // The workbench owns account login and registration, including first launch.

@@ -50,6 +50,27 @@ describe('desktop welcome Web operations', () => {
     expect(methods).toEqual(['settings/describe', 'accountSub2api/getStatus'])
   })
 
+  it('falls back to logged-out state when AsterHub account or settings RPC encounters a failure', async () => {
+    const send: Parameters<typeof connectDesktopWelcome>[1] = async (_input, init) => {
+      if (init?.method !== 'POST') return new Response('index')
+      const { rpcId, method } = JSON.parse(String(init.body)) as { rpcId: string; method: string }
+      if (method === 'accountSub2api/getStatus') {
+        return Response.json({
+          type: 'server-response',
+          rpcId,
+          result: { ok: false, error: { code: 'gateway/service-unavailable', message: '登录已失效，请重新登录', details: {} } },
+        })
+      }
+      return Response.json({
+        type: 'server-response',
+        rpcId,
+        result: { ok: true, value: { namespaces: [{ ns: 'locale', value: { preference: 'zh' } }] } },
+      })
+    }
+    const backend = await connectDesktopWelcome(url, send, undefined, { account: 'asterhub' })
+    expect(await backend.read()).toEqual({ loggedIn: false, hasApiKey: false, writable: false, localePreference: 'zh' })
+  })
+
   it('authenticates through Web and stores only through the configured credential reference', async () => {
     const host = transport()
     const backend = await connectDesktopWelcome(url, host.send)

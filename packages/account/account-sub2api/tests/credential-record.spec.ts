@@ -71,3 +71,46 @@ it('stores the account model key and exposes configured payment methods without 
   await ctx.accountSub2api.logout()
   expect(await ctx.credentials.readRecord(credentialKey('asterhub-account', 'model-api-key'))).toBeUndefined()
 })
+
+it('returns loggedIn: false when stored session token encounters 401 on quota check instead of throwing', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'asterhub-account-record-'))
+  roots.push(root)
+  let quotaShouldFail = false
+  const server = createServer((request, response) => {
+    response.setHeader('content-type', 'application/json')
+    if (request.url === '/api/v1/auth/login') {
+      response.end(JSON.stringify({ code: 0, data: { access_token: 'valid-token', user: { id: 8, email: 'user@example.com' } } }))
+    } else if (request.url?.startsWith('/api/v1/keys?')) {
+      response.end(JSON.stringify({ code: 0, data: { items: [{ id: 4, key: 'test-key', group_id: 6 }], pages: 1 } }))
+    } else if (request.url === '/api/v1/user/profile') {
+      if (quotaShouldFail) {
+        response.statusCode = 401
+        response.end(JSON.stringify({ code: 401, message: 'unauthorized', error_code: 'unauthorized' }))
+      } else {
+        response.end(JSON.stringify({ code: 0, data: { balance: 10 } }))
+      }
+    } else {
+      response.statusCode = 404
+      response.end('{}')
+    }
+  })
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  servers.push(server)
+  const address = server.address()
+  if (address === null || typeof address === 'string') throw new Error('mock Sub2API server did not bind')
+
+  const ctx = new Context()
+  contexts.push(ctx)
+  await ctx.plugin(LocalCredentialProvider, { path: join(root, '.credentials.yaml'), watch: false })
+  await ctx.plugin(AccountSub2apiService, { authBaseUrl: `http://127.0.0.1:${address.port}/api/v1`, groupId: 6 })
+
+  const initial = await ctx.accountSub2api.login({ email: 'user@example.com', password: 'password', rememberUsername: false, autoLogin: false })
+  expect(initial.loggedIn).toBe(true)
+
+  quotaShouldFail = true
+  const status = await ctx.accountSub2api.getStatus()
+  expect(status.loggedIn).toBe(false)
+})

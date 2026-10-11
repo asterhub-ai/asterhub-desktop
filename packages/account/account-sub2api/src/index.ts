@@ -729,9 +729,8 @@ export class AccountSub2apiService extends TypertRemoteService {
     } catch (error) {
       if (error instanceof RemoteError && error.message === '邮箱或密码不正确') {
         await this.clearAutoLogin()
-        return undefined
       }
-      throw error
+      return undefined
     }
   }
 
@@ -832,11 +831,11 @@ export class AccountSub2apiService extends TypertRemoteService {
       balance = computeCredits(quota.balance)
     } catch (error) {
       if (error instanceof InvalidAccountSessionError) {
-        // Do not call invalidateAutomationSession from status(): that would take the
-        // transition lock and deadlock if a lease stop callback is awaiting this
-        // status result. Fail closed: throw without clearing credentials. The
-        // next read path (quota, usage) will invalidate via withAccountSession.
-        throw accountError('登录已失效，请重新登录')
+        return {
+          loggedIn: false,
+          keyBound: false,
+          ...(await this.signInPreferences()),
+        }
       }
       // A transient outage keeps the locally stored account available for retry.
     }
