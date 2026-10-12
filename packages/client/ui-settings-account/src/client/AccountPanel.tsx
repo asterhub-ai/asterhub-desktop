@@ -21,6 +21,15 @@ function failureMessage(error: { message: string }): string {
   return error.message
 }
 
+/** Localize known checkout labels while preserving server labels for other methods. */
+function paymentMethodLabel(method: AccountPaymentMethod, t: (key: AccountLocaleKey) => string): string {
+  switch (method.id.toLowerCase()) {
+    case 'alipay': return t('paymentAlipay')
+    case 'wxpay': return t('paymentWeChat')
+    default: return method.label
+  }
+}
+
 /** Render login or the account controls using Host status as the source of truth. */
 export function AccountPanel({
   t, actions, fullPage = false, externalError, onStatusChange, onClose,
@@ -389,7 +398,7 @@ export function AccountPanel({
             onChange={(event) => { setPaymentType(event.target.value) }}>
             {paymentMethods.length === 0
               ? <option value="">{paymentMethodsError ?? t('noPaymentMethods')}</option>
-              : paymentMethods.map(method => <option key={method.id} value={method.id}>{method.label}</option>)}
+              : paymentMethods.map(method => <option key={method.id} value={method.id}>{paymentMethodLabel(method, t)}</option>)}
           </select>
         </label>
         <div className={css.row}>
