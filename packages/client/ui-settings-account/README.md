@@ -41,7 +41,7 @@ The Desktop shell sends open-account and logout commands to the Client. The plug
 
 ## Known Limitations and Deferred Work
 
-The Client displays Host responses; it does not act as an independent account authority.
+The Client displays Host responses; it does not act as an independent account authority. It localizes the known `alipay` and `wxpay` payment labels by Client locale while preserving the Host-provided IDs and labels for unknown methods.
 
 - Payment controls are unavailable when the Host reports no enabled payment methods.
 - The usage view requires the Sub2API account to expose its aggregate statistics endpoints.

@@ -43,7 +43,7 @@ Desktop 壳层把打开账户页和退出命令发送给 Client。插件将它�
 <a id="known-limitations-and-deferred-work"></a>
 ## 已知限制与延期工作
 
-Client 展示 Host 响应，不作为独立账户 authority。
+Client 展示 Host 响应，不作为独立账户 authority。已知的 `alipay` 和 `wxpay` 支付名称会按 Client 语言本地化；充值仍使用 Host 提供的支付方式 ID，未知方式继续显示 Host 提供的名称。
 
 - Host 未提供已启用的支付方式时，支付控件不可用。
 - 用量视图依赖 Sub2API 账户开放聚合统计接口。

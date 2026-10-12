@@ -104,7 +104,7 @@ describe('Account settings entry', () => {
 
   it('sends the chosen method with a top-up request and opens its checkout URL', async () => {
     const paymentMethods = vi.fn().mockResolvedValue({ ok: true, value: [
-      { id: 'alipay', label: '支付宝' }, { id: 'wxpay', label: '微信支付' },
+      { id: 'alipay', label: 'Alipay' }, { id: 'wxpay', label: 'WeChat Pay' },
     ] })
     const topUp = vi.fn().mockResolvedValue({
       ok: true, value: { id: 'order-1', status: 'created', checkoutUrl: 'https://pay.example/checkout' },
@@ -112,6 +112,8 @@ describe('Account settings entry', () => {
     const open = vi.spyOn(window, 'open').mockImplementation(() => null)
     section({ getStatus: vi.fn().mockResolvedValue({ ok: true, value: loggedIn }), paymentMethods, topUp })
     await screen.findByRole('button', { name: zh.topUpButton })
+    expect(screen.getByRole('option', { name: zh.paymentAlipay })).toBeTruthy()
+    expect(screen.getByRole('option', { name: zh.paymentWeChat })).toBeTruthy()
     await waitFor(() =>{  expect((screen.getByRole<HTMLButtonElement>('button', { name: zh.topUpButton })).disabled).toBe(false) })
     fireEvent.change(screen.getByLabelText(zh.paymentMethod), { target: { value: 'wxpay' } })
     fireEvent.click(screen.getByRole<HTMLButtonElement>('button', { name: zh.topUpButton }))
