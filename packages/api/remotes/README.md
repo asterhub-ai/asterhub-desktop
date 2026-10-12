@@ -48,6 +48,8 @@ The Host entry registers an independent allowlist listener set and queue for eac
 
 The payload-free `schedule/changed` event invalidates Schedule task queries; Clients re-read after a notification and reconnect. The payload-free `permission-presets/catalog-changed` event invalidates the process catalog. A Client subscribes before its first `permissionPresets.catalog()` read and re-reads the complete snapshot after a notification; the event carries no catalog state and changes no Session sequence.
 
+The `automation/changed` and `automation/account-changed` notifications carry no task content or credentials. Native automation clients refresh their catalogs after task changes and discard prior-account drafts after identity changes.
+
 <a id="build-boundary"></a>
 ## Build boundary
 

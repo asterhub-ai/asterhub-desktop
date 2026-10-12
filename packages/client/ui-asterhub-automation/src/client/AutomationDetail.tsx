@@ -45,7 +45,9 @@ export type PrepareResult =
 export interface AutomationDetailInjected {
   readonly hooks: { readonly catalog: HostObservable<CatalogSnapshot<AutomationTask>> }
   readonly onRetry: (readRequest: number) => Promise<void>
-  readonly loadRuns: (id: AutomationTaskId, limit: number, before?: AutomationRunId) => Promise<{ records: readonly AutomationRun[]; ok: boolean }>
+  readonly loadRuns: (
+    id: AutomationTaskId, limit: number, before?: AutomationRunId,
+  ) => Promise<{ records: readonly AutomationRun[]; ok: boolean }>
   readonly onOpenSession: (id: SessionId) => void
   readonly reportSuccess: (kind: 'deleted' | 'paused' | 'resumed' | 'runStarted' | 'stopped', taskId: AutomationTaskId) => void
   readonly reportError: () => void
@@ -97,6 +99,7 @@ function formatDuration(startedAt: string | null, finishedAt: string | null): st
 /** Format timing for display with full frequency + timezone. */
 function formatTimingFull(task: AutomationTask, t: (key: string) => string): string {
   const timing = task.definition.timing
+  const weekdayNames = { 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat', 7: 'sun' } as const
   switch (timing.kind) {
     case 'once':
       return `${t('form.timing.once')} ${new Date(timing.at).toLocaleString()}`
@@ -111,7 +114,7 @@ function formatTimingFull(task: AutomationTask, t: (key: string) => string): str
     case 'daily':
       return `${t('form.timing.daily')} ${timing.time} ${timing.timeZone}`
     case 'weekly': {
-      const days = timing.weekdays.map(d => t(`form.weekday.${['', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'][d]!}`)).join(', ')
+      const days = timing.weekdays.map(d => t(`form.weekday.${weekdayNames[d as keyof typeof weekdayNames]}`)).join(', ')
       return `${t('form.timing.weekly')} ${timing.time} ${days} ${timing.timeZone}`
     }
     case 'cron':
@@ -127,9 +130,8 @@ function recentRunState(task: AutomationTask, t: (key: string) => string): strin
     const activeRun = task.runs.find(r => r.id === task.activeRunId)
     if (activeRun !== undefined) return runStateLabel(activeRun.state, t)
   }
-  if (task.runs.length > 0) {
-    return runStateLabel(task.runs[task.runs.length - 1]!.state, t)
-  }
+  const latest = task.runs.at(-1)
+  if (latest !== undefined) return runStateLabel(latest.state, t)
   return ''
 }
 
@@ -171,7 +173,7 @@ export function AutomationDetail(props: AutomationDetailProps) {
     let cancelled = false
     setRunsLoading(true)
     setRunsOk(true)
-    void loadRuns(task.id, 50).then(result => {
+    void loadRuns(task.id, 50).then((result) => {
       if (!cancelled) {
         // Retain prior rows on failure: only replace on success
         if (result.ok) {
@@ -190,7 +192,7 @@ export function AutomationDetail(props: AutomationDetailProps) {
     return () => { cancelled = true }
   }, [tab, task.id, loadRuns])
 
-  if (task === undefined || !task.id) {
+  if (!task.id) {
     return (
       <aside className={css.detail} id={id} tabIndex={-1} aria-label={t('detail.label')}>
         <div className={css.empty}>
@@ -302,17 +304,17 @@ export function AutomationDetail(props: AutomationDetailProps) {
 
   const confirmTitle = confirmKind === 'delete' ? t('confirm.delete')
     : confirmKind === 'pause' ? t('confirm.pause')
-    : confirmKind === 'resume' ? t('confirm.resume')
-    : confirmKind === 'run' ? t('confirm.run')
-    : confirmKind === 'stop' ? t('confirm.run')
-    : ''
+      : confirmKind === 'resume' ? t('confirm.resume')
+        : confirmKind === 'run' ? t('confirm.run')
+          : confirmKind === 'stop' ? t('confirm.run')
+            : ''
 
-  const confirmDescription = confirmKind === 'delete' 
+  const confirmDescription = confirmKind === 'delete'
     ? `${task.definition.name}\n${t('confirm.delete.description')}`
     : confirmKind === 'pause' ? t('confirm.pause.description')
-    : confirmKind === 'resume' ? t('confirm.resume.description')
-    : confirmKind === 'run' ? t('confirm.run.description')
-    : ''
+      : confirmKind === 'resume' ? t('confirm.resume.description')
+        : confirmKind === 'run' ? t('confirm.run.description')
+          : ''
 
   return (
     <aside className={css.detail} id={id} tabIndex={-1} aria-label={t('detail.label')} ref={detailRef}>
@@ -506,7 +508,10 @@ export function AutomationDetail(props: AutomationDetailProps) {
             size="sm"
             className={css.actionButton}
             disabled={preparing || committing}
-            onClick={() => { void startAction('stop', { action: 'stop', id: task.id, runId: task.activeRunId! }) }}
+            onClick={() => {
+              const runId = task.activeRunId
+              if (runId !== null) void startAction('stop', { action: 'stop', id: task.id, runId })
+            }}
           >
             {t('action.stop')}
           </Button>

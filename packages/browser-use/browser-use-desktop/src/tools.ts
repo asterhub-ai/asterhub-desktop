@@ -10,14 +10,12 @@ import {
   MAX_DESKTOP_BROWSER_TEXT_RESULT_CHARS,
 } from './protocol.ts'
 import type {
-  DesktopBrowserAction,
   DesktopBrowserCaller,
   DesktopBrowserLocator,
   DesktopBrowserObservation,
   DesktopBrowserOwnerGeneration,
   DesktopBrowserPoint,
   DesktopBrowserPointerAction,
-  DesktopBrowserReadProperty,
   DesktopBrowserSemanticAction,
   DesktopBrowserSnapshotId,
   DesktopBrowserRef,
@@ -154,7 +152,7 @@ export class SessionOperationQueue {
         }
       })
       .catch(() => {})
-    return next as Promise<T>
+    return next
   }
 }
 
@@ -177,7 +175,7 @@ export async function assertImageCapableRoute(ctx: Context, exec: ToolRunContext
   }
 }
 
-function parseTarget(target: { readonly tabId: string; readonly generation: number }): DesktopBrowserTarget {
+function parseTarget(target: { readonly tabId: string; readonly generation: number } | undefined): DesktopBrowserTarget {
   if (!target || typeof target.tabId !== 'string' || !Number.isInteger(target.generation) || target.generation < 1) {
     throw new Error('Target must specify valid tabId and positive generation')
   }
@@ -194,7 +192,7 @@ function parseLocator(loc: {
   readonly role?: string | undefined
   readonly name?: string | undefined
   readonly exact?: boolean | undefined
-}): DesktopBrowserLocator {
+} | undefined): DesktopBrowserLocator {
   if (!loc || typeof loc.snapshotId !== 'string' || loc.snapshotId.trim().length === 0) {
     throw new Error('Locator must specify a non-empty snapshotId')
   }
@@ -211,7 +209,7 @@ function parseLocator(loc: {
     }
     return { kind: 'role', snapshotId, role: loc.role, name: loc.name, exact: true }
   }
-  throw new Error(`Invalid locator kind: ${String(loc.kind)}`)
+  throw new Error(`Invalid locator kind: ${loc.kind}`)
 }
 
 function parseWaitCondition(cond: {
@@ -226,7 +224,7 @@ function parseWaitCondition(cond: {
     readonly exact?: boolean | undefined
   } | undefined
   readonly state?: string | undefined
-}): DesktopBrowserWaitCondition {
+} | undefined): DesktopBrowserWaitCondition {
   if (!cond || typeof cond.kind !== 'string') throw new Error('Wait condition requires a kind')
   if (cond.kind === 'load') {
     return { kind: 'load', state: 'domcontentloaded' }
@@ -380,7 +378,7 @@ export function createDesktopBrowserTools(
     async execute(args, exec) {
       const agent = requireAgent(exec)
       const caller = tracker.getCaller(agent)
-      const target = parseTarget(args.target as { tabId: string; generation: number })
+      const target = parseTarget(args.target)
       return await queue.enqueue(agent.session.id, async () => {
         const result = await transport.request(caller, { kind: 'tabs.close', target }, exec.signal)
         if (result.status === 'error') {
@@ -422,7 +420,7 @@ export function createDesktopBrowserTools(
     async execute(args, exec) {
       const agent = requireAgent(exec)
       const caller = tracker.getCaller(agent)
-      const target = parseTarget(args.target as { tabId: string; generation: number })
+      const target = parseTarget(args.target)
       return await queue.enqueue(agent.session.id, async () => {
         const result = await transport.request(caller, { kind: 'page.snapshot', target }, exec.signal)
         if (result.status === 'error') {
@@ -489,16 +487,16 @@ export function createDesktopBrowserTools(
       render: (args, value) => [
         {
           type: 'text',
-          text: `Read "${String(args.property)}"${typeof args.attribute === 'string' ? ` ("${args.attribute}")` : ''}: ${String(value.value)}${value.truncated ? ' [truncated]' : ''}`,
+          text: `Read "${args.property}"${typeof args.attribute === 'string' ? ` ("${args.attribute}")` : ''}: ${String(value.value)}${value.truncated ? ' [truncated]' : ''}`,
         },
       ],
     },
     async execute(args, exec) {
       const agent = requireAgent(exec)
       const caller = tracker.getCaller(agent)
-      const target = parseTarget(args.target as { tabId: string; generation: number })
+      const target = parseTarget(args.target)
       const locator = parseLocator(args.locator as never)
-      const property = args.property as DesktopBrowserReadProperty
+      const property = args.property
       const attribute = typeof args.attribute === 'string' && args.attribute.trim().length > 0
         ? args.attribute.trim()
         : undefined
@@ -618,7 +616,7 @@ export function createDesktopBrowserTools(
       },
       render: (args, value) => {
         const blocks: ContentBlock[] = [
-          { type: 'text', text: `Action "${String(args.action)}" delivered successfully to tab ${value.target.tabId}.` },
+          { type: 'text', text: `Action "${args.action}" delivered successfully to tab ${value.target.tabId}.` },
         ]
         if (value.observation) {
           blocks.push({
@@ -635,8 +633,8 @@ export function createDesktopBrowserTools(
     async execute(args, exec) {
       const agent = requireAgent(exec)
       const caller = tracker.getCaller(agent)
-      const target = parseTarget(args.target as { tabId: string; generation: number })
-      const action = args.action as DesktopBrowserAction
+      const target = parseTarget(args.target)
+      const action = args.action
 
       let observe: DesktopBrowserObservation | undefined
       if (args.observe) {
@@ -735,8 +733,8 @@ export function createDesktopBrowserTools(
         }
         const locator = parseLocator(args.locator as never)
         const text = typeof args.text === 'string' ? args.text : undefined
-        const keys = Array.isArray(args.keys) ? (args.keys as string[]) : undefined
-        const values = Array.isArray(args.values) ? (args.values as string[]) : undefined
+        const keys = Array.isArray(args.keys) ? (args.keys) : undefined
+        const values = Array.isArray(args.values) ? (args.values) : undefined
 
         if ((action === 'fill' || action === 'type') && text === undefined) {
           throw new Error(`Action "${action}" requires text parameter`)
@@ -834,7 +832,7 @@ export function createDesktopBrowserTools(
     async execute(args, exec) {
       const agent = requireAgent(exec)
       const caller = tracker.getCaller(agent)
-      const target = parseTarget(args.target as { tabId: string; generation: number })
+      const target = parseTarget(args.target)
       const condition = parseWaitCondition(args.condition as never)
       return await queue.enqueue(agent.session.id, async () => {
         const result = await transport.request(caller, { kind: 'page.wait', target, condition }, exec.signal)
@@ -886,7 +884,7 @@ export function createDesktopBrowserTools(
     async execute(args, exec) {
       const agent = requireAgent(exec)
       const caller = tracker.getCaller(agent)
-      const target = parseTarget(args.target as { tabId: string; generation: number })
+      const target = parseTarget(args.target)
 
       // Verify model vision capability before capturing
       await assertImageCapableRoute(ctx, exec)

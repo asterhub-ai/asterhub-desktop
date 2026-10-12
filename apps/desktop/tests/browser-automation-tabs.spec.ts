@@ -12,7 +12,7 @@ import { DESKTOP_IPC } from '../src/ipc.ts'
 
 const electron = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- vi.hoisted runs before module imports
-  const { EventEmitter: EE } = require('node:events')
+  const { EventEmitter: EE } = require('node:events') as typeof import('node:events')
   const browserSession = {
     setPermissionRequestHandler: vi.fn(),
     setPermissionCheckHandler: vi.fn(),
@@ -113,9 +113,11 @@ afterEach(async () => { await Promise.all(releases.splice(0).map(release => rele
 
 function ownerFixture(): { readonly owner: WebContents; readonly window: BrowserWindow; readonly send: ReturnType<typeof vi.fn<WebContents['send']>> } {
   const send = vi.fn<WebContents['send']>()
-  const owner: WebContents = Object.assign(Object.create(new EventEmitter()), { isDestroyed: (): boolean => false, send })
-  const window: BrowserWindow = Object.assign(Object.create(new EventEmitter()), { webContents: owner })
-  return { owner, window, send }
+  const owner: Pick<WebContents, 'isDestroyed' | 'send'> = Object.assign(new EventEmitter(), {
+    isDestroyed: (): boolean => false, send,
+  })
+  const window: Pick<BrowserWindow, 'webContents'> = Object.assign(new EventEmitter(), { webContents: owner as WebContents })
+  return { owner: owner as WebContents, window: window as BrowserWindow, send }
 }
 
 function guestFixture(lease: DesktopBrowserLeaseId): GuestContents {
@@ -149,7 +151,7 @@ function guestFixture(lease: DesktopBrowserLeaseId): GuestContents {
     },
     sendInputEvent: vi.fn(),
     insertText: vi.fn(),
-  }) as GuestContents
+  })
   return guest
 }
 
@@ -198,7 +200,9 @@ it('intersects correlated renderer tab reports with main-owned Session guests', 
     type: 'browser/request', requestId: 15, caller, operation: { kind: 'tabs.list' },
   }
   const pending = registry.handleBrowserRequest(fixture.owner, request, new AbortController().signal)
-  const [channel, command] = fixture.send.mock.calls.at(-1) ?? []
+  const sent = fixture.send.mock.calls.at(-1)
+  const channel = sent?.[0]
+  const command: unknown = sent?.[1]
   expect(channel).toBe(DESKTOP_IPC.browserAutomation)
   expect(command).toMatchObject({ sessionId: SESSION_A, operation: { kind: 'tabs.list' } })
   if (typeof command !== 'object' || command === null || !('requestId' in command) || typeof command.requestId !== 'number') {
@@ -301,19 +305,19 @@ it('forwards navigation, history, viewport, and input operations to the offscree
   releases.push(() => registry.release(fixture.owner, reservation.lease))
 
   await registry.navigate(fixture.owner, reservation.lease, 'https://example.com/page')
-  expect(createdGuest.loadURL).toHaveBeenCalledWith('https://example.com/page')
+  expect(vi.mocked(createdGuest).loadURL.mock.calls).toContainEqual(['https://example.com/page'])
 
   await registry.goBack(fixture.owner, reservation.lease)
-  expect(createdGuest.navigationHistory.goBack).toHaveBeenCalledOnce()
+  expect(vi.mocked(createdGuest.navigationHistory).goBack.mock.calls).toHaveLength(1)
 
   await registry.setViewport(fixture.owner, reservation.lease, { cssWidth: 1024, cssHeight: 768 })
   await registry.dispatchInput(fixture.owner, reservation.lease, {
     kind: 'pointer', type: 'down', x: 50, y: 100, button: 'left',
   })
-  expect(createdGuest.sendInputEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'mouseDown', x: 50, y: 100 }))
+  expect(vi.mocked(createdGuest).sendInputEvent.mock.calls).toContainEqual([expect.objectContaining({ type: 'mouseDown', x: 50, y: 100 })])
 
   await registry.dispatchInput(fixture.owner, reservation.lease, { kind: 'text', text: 'query' })
-  expect(createdGuest.insertText).toHaveBeenCalledWith('query')
+  expect(vi.mocked(createdGuest).insertText.mock.calls).toContainEqual(['query'])
 })
 
 it('forwards frames, coalesces rapid paints, and rejects frames over 32 MiB', async () => {

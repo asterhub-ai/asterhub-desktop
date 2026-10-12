@@ -932,6 +932,6 @@ it('opens the account model picker when a retained aster selection is absent fro
   const trigger = screen.getByRole('button', { name: /请选择模型/ })
   fireEvent.click(trigger)
   fireEvent.click(screen.getByRole('menuitemradio', { name: 'GPT' }))
-  await waitFor(() => expect(select).toHaveBeenCalledWith({ provider: 'sub2api', model: 'gpt-6.1-sol' }))
+  await waitFor(() =>{  expect(select).toHaveBeenCalledWith({ provider: 'sub2api', model: 'gpt-6.1-sol' }) })
   expect(screen.getByRole('button', { name: /选择模型，当前 GPT/ })).toBeTruthy()
 })

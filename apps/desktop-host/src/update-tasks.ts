@@ -66,6 +66,6 @@ export function installDesktopUpdateTaskControl(ctx: Context): (action: 'inspect
       if (generation !== lockGeneration) throw new Error('desktop update: admission lock was superseded')
     }
     const nativeActive = typeof automation?.inspectLifecycle === 'function' ? automation.inspectLifecycle().active : false
-    return hasDesktopActiveTasks(agents.list(), jobs) || nativeActive === true
+    return hasDesktopActiveTasks(agents.list(), jobs) ||  nativeActive
   }
 }

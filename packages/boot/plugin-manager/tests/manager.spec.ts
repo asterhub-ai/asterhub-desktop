@@ -699,7 +699,7 @@ it('refuses a user bundle that tries to override the application model route row
 it('does not request the curated catalogue when no release-pinned key is configured', async () => {
   const { manager } = await fixture()
   const fetcher = vi.spyOn(globalThis, 'fetch')
-  onTestFinished(() => fetcher.mockRestore())
+  onTestFinished(() =>{  fetcher.mockRestore() })
   await expect(manager.curatedCatalog()).rejects.toThrow(/not configured/u)
   expect(fetcher).not.toHaveBeenCalled()
 })
@@ -800,7 +800,7 @@ it('installs the signed curated artifact URL with scripts disabled and checks it
     }))
     return { exitCode: 0, output: 'installed signed artifact', truncated: false, logPath: join(dir, 'pnpm.log') }
   })
-  onTestFinished(() => pnpm.mockRestore())
+  onTestFinished(() =>{  pnpm.mockRestore() })
 
   const stale = await manager.installCuratedBundle({ ...entry, artifactUrl: 'https://asterhub.xapi.fans/releases/replaced.tgz', revision: 8 })
   expect(stale).toMatchObject({ application: 'failed', error: { code: 'stale-approval' } })
@@ -853,7 +853,7 @@ it('successfully installs curated bundles when pnpm writes real tarball URL vers
     }))
     return { exitCode: 0, output: 'installed curated tarball', truncated: false, logPath: join(dir, 'pnpm.log') }
   })
-  onTestFinished(() => pnpm.mockRestore())
+  onTestFinished(() =>{  pnpm.mockRestore() })
 
   const result = await manager.installCuratedBundle({ ...entry, revision: 9 })
   expect(result).toMatchObject({

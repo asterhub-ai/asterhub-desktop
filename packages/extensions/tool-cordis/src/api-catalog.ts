@@ -2044,13 +2044,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Host-facing Cordis service. Register at startup independently of Workspace and Session persistence.',
     methods: [
       {
-        signature: 'registerLegacySource(provider: LegacySourceProvider): () => void',
+        signature: 'registerLegacySource(provider: LegacySourceProvider): () => void | Promise<void>',
         description: 'Register read-only legacy discovery for this plugin lifetime.',
         parameters: [{ name: 'provider', description: 'Plugin-owned legacy discovery callback.' }],
         returns: 'Disposer that unregisters this discovery source.',
       },
       {
-        signature: 'registerLegacyAdopter(adopter: ProjectLegacyAdopter): () => void',
+        signature: 'registerLegacyAdopter(adopter: ProjectLegacyAdopter): () => void | Promise<void>',
         description: 'Register the single legacy adoption implementation for this plugin lifetime.',
         parameters: [{ name: 'adopter', description: 'Plugin-owned callback that copies and verifies confirmed history.' }],
         returns: 'Disposer that unregisters this adopter.',
@@ -2265,7 +2265,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the live Agent or the stable Session-domain failure.',
       },
       {
-        signature: 'inspect( sessionId: SessionId, signal?: AbortSignal, ): Promise<SessionInspection>',
+        signature: 'async inspect( sessionId: SessionId, signal?: AbortSignal, ): Promise<SessionInspection>',
         description: 'Inspect one attached or persisted Session without activating its Agent.',
         parameters: [{ name: 'sessionId', description: 'durable Session identity.' }, { name: 'signal', description: 'optional caller cancellation for persistence reads.' }],
         returns: 'the current attached state or persisted header and event prefix.',

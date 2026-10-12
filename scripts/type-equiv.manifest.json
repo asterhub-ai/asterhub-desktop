@@ -2420,17 +2420,17 @@
     {
       "doc": "docs/subsystems/schedule.md",
       "symbol": "AutomationChangedEvent",
-      "source": "packages/schedule/asterhub-automation/src/index.ts"
+      "source": "packages/schedule/asterhub-automation/src/types.ts"
     },
     {
       "doc": "docs/subsystems/schedule.md",
       "symbol": "AutomationAccountChangedEvent",
-      "source": "packages/schedule/asterhub-automation/src/index.ts"
+      "source": "packages/schedule/asterhub-automation/src/types.ts"
     },
     {
       "doc": "docs/subsystems/schedule.md",
       "symbol": "AutomationRunStopRequestedEvent",
-      "source": "packages/schedule/asterhub-automation/src/index.ts"
+      "source": "packages/schedule/asterhub-automation/src/types.ts"
     },
     {
       "doc": "docs/subsystems/workspace.md",

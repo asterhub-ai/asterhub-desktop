@@ -123,7 +123,7 @@ export class AutomationOperations {
     this.runtimeId = runtimeId
 
     // Clean up expired requests periodically
-    this.cleanupTimer = setInterval(() => this.cleanupExpiredRequests(), 60_000)
+    this.cleanupTimer = setInterval(() =>{  this.cleanupExpiredRequests() }, 60_000)
   }
 
   /** Dispose the periodic cleanup timer. */
@@ -460,7 +460,7 @@ export class AutomationOperations {
     now: number,
     identity: AutomationAccountIdentity,
   ): Promise<AutomationMutationResult> {
-    const digest = this.computeDigest({ action: 'create', draft } as AutomationOperation)
+    const digest = this.computeDigest({ action: 'create', draft })
     // Check account task limit
     const taskCount = this.store.countByAccount(identity.accountId)
     if (taskCount >= this.config.maxTasksPerAccount) {
@@ -529,7 +529,7 @@ export class AutomationOperations {
     now: number,
     identity: AutomationAccountIdentity,
   ): Promise<AutomationMutationResult> {
-    const digest = this.computeDigest({ action: 'update', id, expectedRevision, draft } as AutomationOperation)
+    const digest = this.computeDigest({ action: 'update', id, expectedRevision, draft })
     const updatedAt = new Date(now).toISOString()
     const task = this.store.get(id)
     if (!task) {
@@ -612,7 +612,7 @@ export class AutomationOperations {
     }
 
     const updatedAt = new Date(now).toISOString()
-    const digest = this.computeDigest({ action: 'pause', id, expectedRevision } as AutomationOperation)
+    const digest = this.computeDigest({ action: 'pause', id, expectedRevision })
 
     const receipt: AutomationReceipt = {
       requestId,
@@ -676,7 +676,7 @@ export class AutomationOperations {
     const nextAt = nextOccurrence(task.definition.timing, now)
 
     const updatedAt = new Date(now).toISOString()
-    const digest = this.computeDigest({ action: 'resume', id, expectedRevision } as AutomationOperation)
+    const digest = this.computeDigest({ action: 'resume', id, expectedRevision })
 
     const receipt: AutomationReceipt = {
       requestId,
@@ -730,7 +730,7 @@ export class AutomationOperations {
     }
 
     const updatedAt = new Date(now).toISOString()
-    const digest = this.computeDigest({ action: 'remove', id, expectedRevision } as AutomationOperation)
+    const digest = this.computeDigest({ action: 'remove', id, expectedRevision })
 
     const receipt: AutomationReceipt = {
       requestId,
@@ -831,7 +831,7 @@ export class AutomationOperations {
     const runId = reserved.run.id
 
     const updatedAt = new Date(now).toISOString()
-    const digest = this.computeDigest({ action: 'run', id, expectedRevision } as AutomationOperation)
+    const digest = this.computeDigest({ action: 'run', id, expectedRevision })
 
     const receipt: AutomationReceipt = {
       requestId,
@@ -892,7 +892,7 @@ export class AutomationOperations {
     updatedRuns[runIndex] = updatedRun
 
     const updatedAt = new Date(now).toISOString()
-    const digest = this.computeDigest({ action: 'stop', id, runId } as AutomationOperation)
+    const digest = this.computeDigest({ action: 'stop', id, runId })
 
     const receipt: AutomationReceipt = {
       requestId,
@@ -1075,7 +1075,7 @@ export class AutomationOperations {
     const identity = await this.requireIdentity()
 
     // Registered workspaces only; never create or guess directories.
-    const workspaces = this.ctx.workspaceRegistry?.list() ?? []
+    const workspaces = this.ctx.workspaceRegistry.list()
     const workspaceChoices = workspaces.map(w => ({
       id: w.id,
       name: w.title,
@@ -1086,27 +1086,25 @@ export class AutomationOperations {
     const models: { id: string; name: string; reasoningEfforts: string[] }[] = []
     let defaultModelId: string | null = null
     const llm = this.ctx.llm
-    if (llm !== undefined) {
-      for (const provider of llm.listProviders()) {
-        let catalog: readonly LlmModelInfo[]
-        try {
-          catalog = await llm.listModels(provider.id)
-        } catch (error: unknown) {
-          this.ctx.logger.warn(`asterhubAutomation: model catalog for provider "${provider.id}" unavailable: ${String(error)}`)
-          continue
-        }
-        for (const model of catalog) {
-          models.push({
-            id: model.id,
-            name: model.name,
-            reasoningEfforts: [],
-          })
-        }
+    for (const provider of llm.listProviders()) {
+      let catalog: readonly LlmModelInfo[]
+      try {
+        catalog = await llm.listModels(provider.id)
+      } catch (error: unknown) {
+        this.ctx.logger.warn(`asterhubAutomation: model catalog for provider "${provider.id}" unavailable: ${String(error)}`)
+        continue
       }
-      const route = this.ctx.get('applicationModelRoute')
-      if (route !== undefined && route.selectableModels !== false) {
-        defaultModelId = route.model
+      for (const model of catalog) {
+        models.push({
+          id: model.id,
+          name: model.name,
+          reasoningEfforts: [],
+        })
       }
+    }
+    const route = this.ctx.get('applicationModelRoute')
+    if (route !== undefined && route.selectableModels !== false) {
+      defaultModelId = route.model
     }
 
     // Legacy schedule detection: read-only, no mutation, no task content returned.

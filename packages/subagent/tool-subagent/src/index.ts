@@ -16,7 +16,6 @@ import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { SessionSeq } from '@deepseek-ai/dsh-session'
 import type { Session } from '@deepseek-ai/dsh-session'
 import {
   assertSubagentMaxDepth,
@@ -38,6 +37,7 @@ import type {} from './model-selection-settings.ts'
 import {
   recordSubagentModelSelection,
   subagentModelSelectionProjectionDefinition,
+  subagentSessionStartProjectionDefinition,
   subagentModelSelectionPolicy,
 } from './model-selection-state.ts'
 
@@ -324,6 +324,7 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
 
   const modelSelectionCapable = config.modelSelectionSettings === true && !ctx.get('llm')?.hasFixedRoute()
   ctx.sessionProjections.register(subagentModelSelectionProjectionDefinition)
+  ctx.sessionProjections.register(subagentSessionStartProjectionDefinition)
 
   const assertSubagentProviderConfiguration = (subagentProvider: SubagentProvider): void => {
     if (ctx.subagents.resolveMaxDepth(config.maxDepth) !== undefined && !subagentProvider.capabilities.depthLimit) {
@@ -621,7 +622,7 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
   }
   const selectForSession = (target: Session): ModelSelectionPolicy | undefined => {
     const freshSession = target.firstLiveSeq === 0
-      && target.eventAt(SessionSeq(0))?.type !== 'session/end-seed'
+      && !ctx.sessionProjections.stateOf(target, 'subagentSessionStartsWithSeed')
     let allowedModels = subagentModelSelectionPolicy(ctx.sessionProjections, target)
     if (allowedModels === undefined) {
       const parentId = target.header.origin === 'subagent'

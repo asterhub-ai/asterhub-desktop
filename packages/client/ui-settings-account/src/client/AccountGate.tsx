@@ -44,7 +44,6 @@ export function AccountGate(props: AccountGateProps) {
         setVisible(true)
         return
       }
-      if (command !== 'logout') return
       setForced(false)
       void logout().then((result) => {
         if (result.ok) {

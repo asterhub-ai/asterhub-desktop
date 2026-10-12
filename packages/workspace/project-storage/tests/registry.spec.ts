@@ -135,7 +135,7 @@ describe('project locator and local membership', () => {
     expect(manifest.archivedSessionIds).toEqual([a])
     expect(manifest.title).toBe('Renamed')
     expect(notifications).toHaveLength(4)
-    expect(notifications.every(value => JSON.parse(value).schemaVersion === 1)).toBe(true)
+    expect(notifications.every(value => (JSON.parse(value) as { schemaVersion: unknown }).schemaVersion === 1)).toBe(true)
   })
   it('requires one registered adopter and revalidates legacy proposals before durable publication', async () => {
     const project = await root(), locator = join(await root(), 'locator.json')

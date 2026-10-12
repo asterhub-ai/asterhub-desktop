@@ -450,7 +450,7 @@ The [native automation Host](../../packages/schedule/asterhub-automation/README.
  * recomputes its next timer and the Client refreshes its visible list.
  */
 interface AutomationChangedEvent {
-  /** Always empty; the payload exists so the event type is declared. */
+  /** Identifies a task catalog change notification. */
   readonly kind: 'automation-changed'
 }
 ```
@@ -589,7 +589,11 @@ interface AutomationGetRequest { readonly id: AutomationTaskId }
 
 ```ts type-equiv
 /** One execution page plus truthful retention status. */
-interface AutomationRunsPage { readonly records: readonly AutomationRun[]; readonly nextBefore: AutomationRunId | null; readonly historyPruned: boolean }
+interface AutomationRunsPage {
+  readonly records: readonly AutomationRun[]
+  readonly nextBefore: AutomationRunId | null
+  readonly historyPruned: boolean
+}
 ```
 
 ```ts type-equiv
@@ -848,7 +852,7 @@ Account identity changed; re-query and drop stale prepared ops.
 'automation/account-changed'(event: AutomationAccountChangedEvent): void
 ```
 
-Source: [`packages/schedule/asterhub-automation/src/index.ts`](../../packages/schedule/asterhub-automation/src/index.ts)
+Source: [`packages/schedule/asterhub-automation/src/types.ts`](../../packages/schedule/asterhub-automation/src/types.ts)
 
 <a id="automationchanged--emit"></a>
 
@@ -865,7 +869,7 @@ Notification that automation tasks changed; re-query for authoritative state.
 'automation/changed'(event: AutomationChangedEvent): void
 ```
 
-Source: [`packages/schedule/asterhub-automation/src/index.ts`](../../packages/schedule/asterhub-automation/src/index.ts)
+Source: [`packages/schedule/asterhub-automation/src/types.ts`](../../packages/schedule/asterhub-automation/src/types.ts)
 
 <a id="automationrun-stop-requested--emit"></a>
 
@@ -882,7 +886,7 @@ Request to stop one run; observed by the runtime outside the FIFO.
 'automation/run-stop-requested'(event: AutomationRunStopRequestedEvent): void
 ```
 
-Source: [`packages/schedule/asterhub-automation/src/index.ts`](../../packages/schedule/asterhub-automation/src/index.ts)
+Source: [`packages/schedule/asterhub-automation/src/types.ts`](../../packages/schedule/asterhub-automation/src/types.ts)
 
 <a id="schedule-events"></a>
 

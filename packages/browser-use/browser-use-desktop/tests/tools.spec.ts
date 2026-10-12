@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { brandNumber, brandString } from '@deepseek-ai/dsh-brand'
+import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import {
@@ -460,20 +461,17 @@ describe('Desktop browser tools', () => {
         viewport: { width: number; height: number }
       }
 
-      expect(attachments.saveImage).toHaveBeenCalledWith({
-        data: expect.any(Uint8Array),
-        mediaType: 'image/png',
-      })
+      const expectedData: unknown = expect.any(Uint8Array)
+      const expectedImage = { data: expectedData, mediaType: 'image/png' }
+      expect(attachments.saveImage).toHaveBeenCalledWith(expectedImage)
       expect(res.screenshotId).toBe(SNAPSHOT_1)
       expect(res.image.attachmentId).toBe('att-1')
 
-      const rendered = tool.output.render({}, res as never)
+      const rendered = tool.output.render({}, res as never) as readonly ContentBlock[]
       expect(rendered.length).toBe(2)
       expect(rendered[0]?.type).toBe('text')
-      expect(rendered[1]).toEqual({
-        type: 'image',
-        attachment: expect.objectContaining({ attachmentId: 'att-1' }),
-      })
+      const expectedAttachment: unknown = expect.objectContaining({ attachmentId: 'att-1' })
+      expect(rendered[1]).toEqual({ type: 'image', attachment: expectedAttachment })
     })
   })
 

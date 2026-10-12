@@ -1,6 +1,6 @@
 // Node-compatible unit tests for DesktopUpdateSource in-flight behavior
 // These tests verify the shared action suppression/join requirements without jsdom
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, type Mocked } from 'vitest'
 import type { DesktopUpdateBridge, DesktopUpdatePresentation } from '../src/types.ts'
 import { DesktopUpdateSource } from '../src/client/desktop-update-source.ts'
 
@@ -9,7 +9,7 @@ interface PendingCall { resolve: () => void; reject: (e: Error) => void }
 
 describe('DesktopUpdateSource shared in-flight action', () => {
   function createMockBridge(): {
-    bridge: DesktopUpdateBridge
+    bridge: Mocked<DesktopUpdateBridge>
     subscriber: () => ((p: DesktopUpdatePresentation) => void) | undefined
     nextOpenResolvers: () => PendingCall
     nextCheckResolvers: () => PendingCall
@@ -26,16 +26,16 @@ describe('DesktopUpdateSource shared in-flight action', () => {
       bridge: {
         status: vi.fn(() => statusPromise),
         open: vi.fn(() => {
-          const { promise, resolve, reject } = Promise.withResolvers<void>()
-          openResolvers = { resolve, reject }
+          const { promise, resolve, reject } = Promise.withResolvers<undefined>()
+          openResolvers = { resolve: () => { resolve(undefined) }, reject }
           return promise
         }),
         check: vi.fn(() => {
-          const { promise, resolve, reject } = Promise.withResolvers<void>()
-          checkResolvers = { resolve, reject }
+          const { promise, resolve, reject } = Promise.withResolvers<undefined>()
+          checkResolvers = { resolve: () => { resolve(undefined) }, reject }
           return promise
         }),
-        subscribe: vi.fn((fn) => { sub = fn; return () => {} }),
+        subscribe: vi.fn<DesktopUpdateBridge['subscribe']>((fn) => { sub = fn; return () => {} }),
       },
       subscriber: () => sub,
       nextOpenResolvers: () => {
@@ -58,11 +58,11 @@ describe('DesktopUpdateSource shared in-flight action', () => {
 
       // Start first check
       const promise1 = source.check()
-      expect(mock.bridge.check).toHaveBeenCalledTimes(1)
+      expect(vi.mocked(mock.bridge).check.mock.calls).toHaveLength(1)
 
       // Concurrent check should return same promise, not call bridge again
       const promise2 = source.check()
-      expect(mock.bridge.check).toHaveBeenCalledTimes(1)
+      expect(vi.mocked(mock.bridge).check.mock.calls).toHaveLength(1)
       expect(promise1).toBe(promise2)
 
       // Complete the action
@@ -83,7 +83,7 @@ describe('DesktopUpdateSource shared in-flight action', () => {
 
       // Second check should call bridge again
       const promise2 = source.check()
-      expect(mock.bridge.check).toHaveBeenCalledTimes(2)
+      expect(vi.mocked(mock.bridge).check.mock.calls).toHaveLength(2)
 
       mock.nextCheckResolvers().resolve()
       await promise2
@@ -99,11 +99,11 @@ describe('DesktopUpdateSource shared in-flight action', () => {
 
       // Start open
       source.open()
-      expect(mock.bridge.open).toHaveBeenCalledTimes(1)
+      expect(vi.mocked(mock.bridge).open.mock.calls).toHaveLength(1)
 
       // Check during open should not call bridge.check()
       const checkPromise = source.check()
-      expect(mock.bridge.check).not.toHaveBeenCalled()
+      expect(vi.mocked(mock.bridge).check.mock.calls).toHaveLength(0)
 
       // Resolve the open action; the joined check promise should resolve too
       mock.nextOpenResolvers().resolve()
@@ -118,11 +118,11 @@ describe('DesktopUpdateSource shared in-flight action', () => {
 
       // Start check
       const checkPromise = source.check()
-      expect(mock.bridge.check).toHaveBeenCalledTimes(1)
+      expect(vi.mocked(mock.bridge).check.mock.calls).toHaveLength(1)
 
       // Open during check should be no-op
       source.open()
-      expect(mock.bridge.open).not.toHaveBeenCalled()
+      expect(vi.mocked(mock.bridge).open.mock.calls).toHaveLength(0)
 
       mock.nextCheckResolvers().resolve()
       await checkPromise
@@ -140,7 +140,7 @@ describe('DesktopUpdateSource shared in-flight action', () => {
 
       // Now open should work
       source.open()
-      expect(mock.bridge.open).toHaveBeenCalledTimes(1)
+      expect(vi.mocked(mock.bridge).open.mock.calls).toHaveLength(1)
 
       mock.nextOpenResolvers().resolve()
       source.dispose()
@@ -163,7 +163,7 @@ describe('DesktopUpdateSource shared in-flight action', () => {
       // Retry should be allowed - this is the key requirement
       const promise2 = source.check()
       // Should call bridge again (retry allowed)
-      expect(mock.bridge.check).toHaveBeenCalledTimes(2)
+      expect(vi.mocked(mock.bridge).check.mock.calls).toHaveLength(2)
 
       mock.nextCheckResolvers().resolve()
       await promise2
@@ -190,7 +190,7 @@ describe('DesktopUpdateSource shared in-flight action', () => {
 
       // Retry should be allowed
       source.open()
-      expect(mock.bridge.open).toHaveBeenCalledTimes(2)
+      expect(vi.mocked(mock.bridge).open.mock.calls).toHaveLength(2)
 
       mock.nextOpenResolvers().resolve()
       source.dispose()
@@ -203,11 +203,11 @@ describe('DesktopUpdateSource shared in-flight action', () => {
       const source = new DesktopUpdateSource(mock.bridge)
 
       // Simulate active phase from subscription
-      mock.subscriber()?.({ phase: 'checking' } as DesktopUpdatePresentation)
+      mock.subscriber()?.({ phase: 'checking' })
 
       // Check should no-op
       const promise = source.check()
-      expect(mock.bridge.check).not.toHaveBeenCalled()
+      expect(vi.mocked(mock.bridge).check.mock.calls).toHaveLength(0)
       await expect(promise).resolves.toBeUndefined()
 
       source.dispose()
@@ -218,11 +218,11 @@ describe('DesktopUpdateSource shared in-flight action', () => {
       const source = new DesktopUpdateSource(mock.bridge)
 
       // Simulate active phase
-      mock.subscriber()?.({ phase: 'downloading', percent: 50 } as DesktopUpdatePresentation)
+      mock.subscriber()?.({ phase: 'downloading', percent: 50 })
 
       // Open should no-op
       source.open()
-      expect(mock.bridge.open).not.toHaveBeenCalled()
+      expect(vi.mocked(mock.bridge).open.mock.calls).toHaveLength(0)
 
       source.dispose()
     })
@@ -236,7 +236,7 @@ describe('DesktopUpdateSource shared in-flight action', () => {
       source.dispose()
 
       const promise = source.check()
-      expect(mock.bridge.check).not.toHaveBeenCalled()
+      expect(vi.mocked(mock.bridge).check.mock.calls).toHaveLength(0)
       await expect(promise).resolves.toBeUndefined()
     })
 
@@ -247,7 +247,7 @@ describe('DesktopUpdateSource shared in-flight action', () => {
       source.dispose()
 
       source.open()
-      expect(mock.bridge.open).not.toHaveBeenCalled()
+      expect(vi.mocked(mock.bridge).open.mock.calls).toHaveLength(0)
     })
 
     it('ignores late check completion after disposal', async () => {
@@ -293,7 +293,7 @@ describe('DesktopUpdateSource shared in-flight action', () => {
       expect(source.store.getSnapshot().failed).toBe(true)
 
       // New presentation via subscription clears failure
-      mock.subscriber()?.({ phase: 'idle' } as DesktopUpdatePresentation)
+      mock.subscriber()?.({ phase: 'idle' })
       expect(source.store.getSnapshot().failed).toBe(false)
 
       source.dispose()
@@ -308,7 +308,7 @@ describe('DesktopUpdateSource shared in-flight action', () => {
       expect(source.store.getSnapshot().failed).toBe(true)
 
       // Status resolving with presentation clears failure
-      mock.resolveStatus({ phase: 'idle' } as DesktopUpdatePresentation)
+      mock.resolveStatus({ phase: 'idle' })
       await new Promise(r => setTimeout(r, 10))
 
       expect(source.store.getSnapshot().failed).toBe(false)

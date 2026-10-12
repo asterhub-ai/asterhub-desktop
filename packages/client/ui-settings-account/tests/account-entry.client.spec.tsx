@@ -19,8 +19,19 @@ const loggedIn = {
   user: { id: 'test-user', email: 'test@example.invalid' }, balance: 12,
 }
 
+function authActions(): Pick<AccountSectionProps, 'authSettings' | 'sendVerifyCode' | 'register'> {
+  return {
+    authSettings: vi.fn<AccountSectionProps['authSettings']>().mockResolvedValue({
+      ok: true, value: { registrationEnabled: true, emailVerifyEnabled: true, invitationCodeEnabled: false },
+    }),
+    sendVerifyCode: vi.fn<AccountSectionProps['sendVerifyCode']>(),
+    register: vi.fn<AccountSectionProps['register']>(),
+  }
+}
+
 function section(overrides: Record<string, unknown> = {}) {
   const props = {
+    ...authActions(),
     t,
     getStatus: vi.fn().mockResolvedValue({ ok: true, value: loggedOut }),
     login: vi.fn().mockResolvedValue({ ok: true, value: loggedIn }),
@@ -56,7 +67,7 @@ describe('Account settings entry', () => {
       .mockResolvedValueOnce({ ok: true, value: loggedOut })
     section({ getStatus })
     expect(await screen.findByText(zh.serviceUnavailable)).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: zh.refresh }))
+    fireEvent.click(screen.getByRole<HTMLButtonElement>('button', { name: zh.refresh }))
     expect(await screen.findByRole('button', { name: zh.loginButton })).toBeTruthy()
     expect(getStatus).toHaveBeenCalledTimes(2)
   })
@@ -70,25 +81,25 @@ describe('Account settings entry', () => {
     const logout = vi.fn().mockResolvedValue({ ok: true, value: undefined })
     section({ getStatus, login, logout })
     await screen.findByRole('button', { name: zh.loginButton })
-    fireEvent.click(screen.getByRole('checkbox', { name: zh.rememberUsername }))
+    fireEvent.click(screen.getByRole<HTMLInputElement>('checkbox', { name: zh.rememberUsername }))
     fireEvent.change(await screen.findByLabelText(zh.emailLabel), { target: { value: 'test@example.invalid' } })
     fireEvent.change(screen.getByLabelText(zh.passwordLabel), { target: { value: 'local-test-only' } })
-    fireEvent.click(screen.getByRole('button', { name: zh.loginButton }))
-    await waitFor(() => expect(screen.getByText((_, element) => (
-      element?.tagName === 'P' && element.textContent?.includes('test@example.invalid') === true
-    ))).toBeTruthy())
+    fireEvent.click(screen.getByRole<HTMLButtonElement>('button', { name: zh.loginButton }))
+    await waitFor(() =>{  expect(screen.getByText((_, element) => (
+      element?.tagName === 'P' &&  element.textContent?.includes('test@example.invalid')
+    ))).toBeTruthy() })
     expect(login).toHaveBeenCalledWith({
       email: 'test@example.invalid', password: 'local-test-only', rememberUsername: true, autoLogin: false,
     })
-    fireEvent.click(screen.getByRole('button', { name: zh.logoutButton }))
-    await waitFor(() => expect(screen.getByRole('button', { name: zh.loginButton })).toBeTruthy())
+    fireEvent.click(screen.getByRole<HTMLButtonElement>('button', { name: zh.logoutButton }))
+    await waitFor(() =>{  expect(screen.getByRole<HTMLButtonElement>('button', { name: zh.loginButton })).toBeTruthy() })
     expect(getStatus).toHaveBeenCalledTimes(3)
   })
 
   it('disables top-up when no payment method is available', async () => {
     section({ getStatus: vi.fn().mockResolvedValue({ ok: true, value: loggedIn }) })
     expect(await screen.findByText(zh.noPaymentMethods)).toBeTruthy()
-    expect((screen.getByRole('button', { name: zh.topUpButton }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole<HTMLButtonElement>('button', { name: zh.topUpButton })).disabled).toBe(true)
   })
 
   it('sends the chosen method with a top-up request and opens its checkout URL', async () => {
@@ -101,10 +112,10 @@ describe('Account settings entry', () => {
     const open = vi.spyOn(window, 'open').mockImplementation(() => null)
     section({ getStatus: vi.fn().mockResolvedValue({ ok: true, value: loggedIn }), paymentMethods, topUp })
     await screen.findByRole('button', { name: zh.topUpButton })
-    await waitFor(() => expect((screen.getByRole('button', { name: zh.topUpButton }) as HTMLButtonElement).disabled).toBe(false))
+    await waitFor(() =>{  expect((screen.getByRole<HTMLButtonElement>('button', { name: zh.topUpButton })).disabled).toBe(false) })
     fireEvent.change(screen.getByLabelText(zh.paymentMethod), { target: { value: 'wxpay' } })
-    fireEvent.click(screen.getByRole('button', { name: zh.topUpButton }))
-    await waitFor(() => expect(topUp).toHaveBeenCalledWith({ amount: 10, paymentType: 'wxpay' }))
+    fireEvent.click(screen.getByRole<HTMLButtonElement>('button', { name: zh.topUpButton }))
+    await waitFor(() =>{  expect(topUp).toHaveBeenCalledWith({ amount: 10, paymentType: 'wxpay' }) })
     expect(open).toHaveBeenCalledWith('https://pay.example/checkout', '_blank')
   })
 })
@@ -118,6 +129,7 @@ describe('Application account gate', () => {
       ok: true, value: { ...loggedIn, rememberedUsername: 'test@example.invalid', autoLogin: true },
     })
     const props = {
+      ...authActions(),
       t,
       getStatus,
       login,
@@ -130,33 +142,34 @@ describe('Application account gate', () => {
     render(<AccountGate {...props} />)
     expect(screen.getByText('AsterHub')).toBeTruthy()
     await screen.findByLabelText(zh.emailLabel)
-    fireEvent.click(screen.getByRole('checkbox', { name: zh.autoLogin }))
-    expect((screen.getByRole('checkbox', { name: zh.rememberUsername }) as HTMLInputElement).checked).toBe(true)
+    fireEvent.click(screen.getByRole<HTMLInputElement>('checkbox', { name: zh.autoLogin }))
+    expect((screen.getByRole<HTMLInputElement>('checkbox', { name: zh.rememberUsername })).checked).toBe(true)
     fireEvent.change(await screen.findByLabelText(zh.emailLabel), { target: { value: 'test@example.invalid' } })
     fireEvent.change(screen.getByLabelText(zh.passwordLabel), { target: { value: 'local-test-only' } })
-    await waitFor(() => expect((screen.getByRole('button', { name: zh.loginButton }) as HTMLButtonElement).disabled).toBe(false))
-    fireEvent.click(screen.getByRole('button', { name: zh.loginButton }))
+    await waitFor(() =>{  expect((screen.getByRole<HTMLButtonElement>('button', { name: zh.loginButton })).disabled).toBe(false) })
+    fireEvent.click(screen.getByRole<HTMLButtonElement>('button', { name: zh.loginButton }))
     expect(login).toHaveBeenCalledWith({
       email: 'test@example.invalid', password: 'local-test-only', rememberUsername: true, autoLogin: true,
     })
-    await waitFor(() => expect(screen.queryByText('AsterHub')).toBeNull())
+    await waitFor(() =>{  expect(screen.queryByText('AsterHub')).toBeNull() })
   })
 
   it('handles account open and logout commands from the native menu', async () => {
     const getStatus = vi.fn().mockResolvedValue({ ok: true, value: loggedIn })
     const logout = vi.fn().mockResolvedValue({ ok: true, value: undefined })
     const props = {
+      ...authActions(),
       t, getStatus, login: vi.fn(), logout, quota: vi.fn(),
       paymentMethods: vi.fn().mockResolvedValue({ ok: true, value: [] }),
       topUp: vi.fn(), redeem: vi.fn(),
     } as unknown as AccountGateProps
     render(<AccountGate {...props} />)
-    await waitFor(() => expect(screen.queryByText('AsterHub')).toBeNull())
+    await waitFor(() =>{  expect(screen.queryByText('AsterHub')).toBeNull() })
     window.dispatchEvent(new CustomEvent(ACCOUNT_COMMAND_EVENT, { detail: 'open' }))
     expect(await screen.findByText('AsterHub')).toBeTruthy()
     await screen.findByRole('button', { name: zh.logoutButton })
-    fireEvent.click(screen.getByRole('button', { name: zh.backToWorkspace }))
-    await waitFor(() => expect(screen.queryByText('AsterHub')).toBeNull())
+    fireEvent.click(screen.getByRole<HTMLButtonElement>('button', { name: zh.backToWorkspace }))
+    await waitFor(() =>{  expect(screen.queryByText('AsterHub')).toBeNull() })
 
     getStatus.mockResolvedValue({ ok: true, value: loggedOut })
     window.dispatchEvent(new CustomEvent(ACCOUNT_COMMAND_EVENT, { detail: 'logout' }))

@@ -857,7 +857,7 @@ resolveAgent(sessionId: SessionId): Promise<ApiSessionAgentResult>
  * @param signal - optional caller cancellation for persistence reads.
  * @returns the current attached state or persisted header and event prefix.
  */
-inspect( sessionId: SessionId, signal?: AbortSignal, ): Promise<SessionInspection>
+async inspect( sessionId: SessionId, signal?: AbortSignal, ): Promise<SessionInspection>
 
 /**
  * Read all visible Session rows without resuming an Agent.

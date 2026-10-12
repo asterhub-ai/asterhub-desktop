@@ -64,17 +64,34 @@ async function executionFixture() {
   let fifo = Promise.resolve()
   const host: AutomationRuntimeHost = {
     ctx, runtimeId: 'fixture-runtime',
-    limits: { maxConcurrent: 1, runTimeoutMs: 1800_000, historyDays: 30, historyRecords: 200, historyBytes: 2097152, receiptDays: 30, receiptRecords: 1000, receiptBytes: 1048576, maxTaskBytes: 4194304, maxTasksPerAccount: 100, maxTasks: 500, maxInstructionChars: 16000, maxInstructionBytes: 65536, confirmationTimeoutMs: 300000 },
+    limits: {
+      maxConcurrent: 1,
+      runTimeoutMs: 1800_000,
+      historyDays: 30,
+      historyRecords: 200,
+      historyBytes: 2097152,
+      receiptDays: 30,
+      receiptRecords: 1000,
+      receiptBytes: 1048576,
+      maxTaskBytes: 4194304,
+      maxTasksPerAccount: 100,
+      maxTasks: 500,
+      maxInstructionChars: 16000,
+      maxInstructionBytes: 65536,
+      confirmationTimeoutMs: 300000,
+    },
     tasks: () => [current], identity: async () => identity,
-    transact: work => { const result = fifo.then(work); fifo = result.then(() => undefined, () => undefined); return result },
-    put: async value => { current = value }, emitChanged: () => {},
+    transact: (work) => { const result = fifo.then(work); fifo = result.then(() => undefined, () => undefined); return result },
+    put: async (value) => { current = value }, emitChanged: () => {},
   }
   const reserve = () => {
     const reserved = reserveAutomationRun(current, 'manual', null, `fixture-${current.recordVersion}`, Date.now(), host.runtimeId)
     current = reserved.task
     return reserved
   }
-  return { ctx, host, identity, reserve, settle: (terminal: AutomationRun) => { current = { ...current, activeRunId: null, runs: current.runs.map(run => run.id === terminal.id ? terminal : run) } } }
+  return { ctx, host, identity, reserve, settle: (terminal: AutomationRun) => {
+    current = { ...current, activeRunId: null, runs: current.runs.map(run => run.id === terminal.id ? terminal : run) }
+  } }
 }
 
 describe('native execution interval', () => {

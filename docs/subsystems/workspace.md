@@ -396,14 +396,14 @@ Host-facing Cordis service. Register at startup independently of Workspace and S
  * @param provider - Plugin-owned legacy discovery callback.
  * @returns Disposer that unregisters this discovery source.
  */
-registerLegacySource(provider: LegacySourceProvider): () => void
+registerLegacySource(provider: LegacySourceProvider): () => void | Promise<void>
 
 /**
  * Register the single legacy adoption implementation for this plugin lifetime.
  * @param adopter - Plugin-owned callback that copies and verifies confirmed history.
  * @returns Disposer that unregisters this adopter.
  */
-registerLegacyAdopter(adopter: ProjectLegacyAdopter): () => void
+registerLegacyAdopter(adopter: ProjectLegacyAdopter): () => void | Promise<void>
 
 /**
  * Inspect project metadata and registration without publishing a binding.

@@ -30,6 +30,8 @@ kind: "package-reference"
 
 桌面原生 bundle 挂载此服务。类型化 `automation` Remote 和按作用域注册的 `automation_manage` 工具共用按账号授权的操作。部署限制在服务行中配置：`maxConcurrent` 默认为 2，`runTimeoutMs` 默认为 1800000；历史、回执、指令和任务预算在 [Config](src/index.ts) 中统一验证。
 
+`./types` 入口为 Host 和 Client 导入声明任务数据、工具结果及 Cordis 事件，不会加载 Host 服务。
+
 <a id="understand-the-implementation"></a>
 
 ## 理解实现

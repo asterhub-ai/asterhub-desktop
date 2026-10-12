@@ -473,7 +473,7 @@ async function main(): Promise<void> {
           const headers = new Headers(init?.headers)
           headers.set('cookie', hostCookie ?? '')
           return fetch(input, { ...init, headers })
-        }, async () => hostCookie ?? '', { account: 'asterhub' })
+        }, () => Promise.resolve(hostCookie ?? ''), { account: 'asterhub' })
         analyticsEnabled = await welcomeBackend.analyticsEnabled().catch(() => false)
         if (!reportedLaunch) { reportedLaunch = true; void track('desktop_app_launch', {}) }
         stopAccount?.()
@@ -660,7 +660,7 @@ async function main(): Promise<void> {
     // A confirmation on a hidden window would go unseen, so it waits for the next show; the mandatory
     // flow keeps its own taskbar and Dock attention instead.
     if (!isMandatory()) await windowShown()
-    if (quitting) return state
+    if (quitting as boolean) return state
     // The accepted manual available-version prompt already consented to install; skip the separate
     // "ready to install" confirmation when there are no active tasks.
     installConsentFromDownloadPrompt = installAuthorized

@@ -26,12 +26,11 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     },
     async rmdir(path: PathLike): Promise<void> {
       const afterRemoval = stageBarrier.afterRemovingEmptyDestination
-      const removed = await actual.rmdir(path)
+      await actual.rmdir(path)
       if (afterRemoval !== undefined && typeof path === 'string' && path.endsWith('.asterhub')) {
         stageBarrier.afterRemovingEmptyDestination = undefined
         await afterRemoval()
       }
-      return removed
     },
   }
 })
@@ -148,7 +147,7 @@ describe('prepareAsterHubHome', () => {
     await writeFile(source, 'initial source bytes')
     const barrier = blockMigrationStage()
     const migration = prepareAsterHubHome({ userHome: root, env: {} })
-    const rejected = expect(migration).rejects.toMatchObject({ message: expect.stringMatching(/staging\/recovery evidence/) })
+    const rejected = expect(migration).rejects.toThrow(/staging\/recovery evidence/)
     try {
       await barrier.ready
       await writeFile(source, 'changed while staging')
@@ -170,7 +169,7 @@ describe('prepareAsterHubHome', () => {
     const barrier = blockMigrationStage()
     const controller = new AbortController()
     const migration = prepareAsterHubHome({ userHome: root, env: {}, signal: controller.signal })
-    const rejected = expect(migration).rejects.toMatchObject({ message: expect.stringMatching(/staging\/recovery evidence/) })
+    const rejected = expect(migration).rejects.toThrow(/staging\/recovery evidence/)
     try {
       await barrier.ready
       controller.abort(new Error('cancelled by caller'))

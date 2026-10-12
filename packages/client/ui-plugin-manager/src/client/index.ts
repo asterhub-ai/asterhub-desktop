@@ -67,8 +67,8 @@ export function apply(ctx: ClientContext): void {
         .then((catalogResult) => {
           setCatalog(unwrap(catalogResult))
         })
-        .catch(() => setError(true))
-        .finally(() => setLoading(false))
+        .catch(() =>{  setError(true) })
+        .finally(() =>{  setLoading(false) })
     }
     useEffect(() => { load() }, [])
     const install = async (entry: CuratedPluginCatalog['plugins'][number]): Promise<void> => {
@@ -81,7 +81,6 @@ export function apply(ctx: ClientContext): void {
           revision: catalog.revision,
           package: entry.package,
           version: entry.version,
-          ...entry.artifactUrl === undefined ? {} : { artifactUrl: entry.artifactUrl },
           integrity: entry.integrity,
           artifactUrl: entry.artifactUrl,
         }))

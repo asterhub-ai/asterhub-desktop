@@ -80,7 +80,7 @@ export class AutomationRuntime {
       while (this.requested && !this.stopping) { this.requested = false; await this.drive() }
     })
     this.driving = drive
-    void drive.catch(() => this.host.ctx.logger.error('automation: dispatch failed; task claims are retained')).finally(() => {
+    void drive.catch(() =>{  this.host.ctx.logger.error('automation: dispatch failed; task claims are retained') }).finally(() => {
       this.driving = undefined
       if (this.requested && !this.stopping) this.requestDrive()
     })
@@ -241,7 +241,7 @@ export class AutomationRuntime {
     const abort = new AbortController()
     const finished = Promise.withResolvers<void>()
     this.active.set(run.id, { abort, done: finished.promise })
-    const timeout = setTimeout(() => abort.abort(new Error('automation timeout')), this.host.limits.runTimeoutMs)
+    const timeout = setTimeout(() =>{  abort.abort(new Error('automation timeout')) }, this.host.limits.runTimeoutMs)
     void (async () => {
       let release: (() => void) | undefined
       let settled = false

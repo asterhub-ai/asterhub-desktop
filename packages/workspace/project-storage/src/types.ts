@@ -151,6 +151,6 @@ export interface LegacySourceProvider {
  * Project storage with plugin-lifetime legacy discovery and adoption registration.
  */
 export interface ProjectStorageHost extends ProjectStorage {
-  registerLegacySource(provider: LegacySourceProvider): () => void
-  registerLegacyAdopter(adopter: ProjectLegacyAdopter): () => void
+  registerLegacySource(provider: LegacySourceProvider): () => void | Promise<void>
+  registerLegacyAdopter(adopter: ProjectLegacyAdopter): () => void | Promise<void>
 }

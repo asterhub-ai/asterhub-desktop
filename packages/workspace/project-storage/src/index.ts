@@ -25,7 +25,7 @@ export class ProjectStorageService extends Service implements ProjectStorage {
   protected async [Service.init](): Promise<void> {
     this.registry = await ProjectStorageRegistry.create(this.options)
     const registry = this.registry
-    this.ctx.effect(() => registry.onChanged(change => this.ctx.emit('project-storage/changed', change)), 'projectStorage.changed')
+    this.ctx.effect(() => registry.onChanged((change) =>{  this.ctx.emit('project-storage/changed', change) }), 'projectStorage.changed')
   }
 
   /**
@@ -33,7 +33,7 @@ export class ProjectStorageService extends Service implements ProjectStorage {
    * @param provider - Plugin-owned legacy discovery callback.
    * @returns Disposer that unregisters this discovery source.
    */
-  registerLegacySource(provider: LegacySourceProvider): () => void {
+  registerLegacySource(provider: LegacySourceProvider): () => void | Promise<void> {
     const registry = this.requireRegistry()
     return this.ctx.effect(() => registry.registerLegacySource(provider), 'projectStorage.registerLegacySource')
   }
@@ -42,7 +42,7 @@ export class ProjectStorageService extends Service implements ProjectStorage {
    * @param adopter - Plugin-owned callback that copies and verifies confirmed history.
    * @returns Disposer that unregisters this adopter.
    */
-  registerLegacyAdopter(adopter: ProjectLegacyAdopter): () => void {
+  registerLegacyAdopter(adopter: ProjectLegacyAdopter): () => void | Promise<void> {
     const registry = this.requireRegistry()
     return this.ctx.effect(() => registry.registerLegacyAdopter(adopter), 'projectStorage.registerLegacyAdopter')
   }

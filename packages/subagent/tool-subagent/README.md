@@ -101,7 +101,7 @@ The tool's description derives from `provider.inheritsParentContext`: a fresh ch
 | [`src/index.ts`](src/index.ts) | Tool registration, lifecycle mirroring, mode resolution, result settlement |
 | [`src/model-selection.ts`](src/model-selection.ts) | Request/config merge and live LLM route preflight |
 | [`src/model-selection-settings.ts`](src/model-selection-settings.ts) | Host-owned opt-in setting sampled for new Sessions |
-| [`src/model-selection-state.ts`](src/model-selection-state.ts) | Session event that records and inherits the sampled decision |
+| [`src/model-selection-state.ts`](src/model-selection-state.ts) | Session event and startup projections that retain and inherit the sampled decision |
 | [`src/list-models.ts`](src/list-models.ts) | `list_subagent_models` runtime discovery tool |
 
 </details>

@@ -123,9 +123,10 @@ export async function executeRun(host: AutomationRuntimeHost,
   const family = new Set<Agent>()
   const interactions = new Set<string>()
   let closed = false
-  let admitted = false
   let claimedTurn: number | null = null
-  const observation: { ending: TurnEndReason | null; terminalTurn: number | null } = { ending: null, terminalTurn: null }
+  const observation: { ending: TurnEndReason | null; terminalTurn: number | null; admitted: boolean } = {
+    ending: null, terminalTurn: null, admitted: false,
+  }
   let humanIntervened = false
   const approvals = new Set<string>()
   const disposers: (() => void)[] = []
@@ -139,7 +140,7 @@ export async function executeRun(host: AutomationRuntimeHost,
   const publishState = (state: AutomationRunState): void => {
     run = { ...run, state, startedAt: run.startedAt ?? (state === 'reserved' ? null : new Date().toISOString()) }
     const snapshot = run
-    queuedWrites = queuedWrites.then(() => saveRun(host, snapshot)).catch((error) => {
+    queuedWrites = queuedWrites.then(() => saveRun(host, snapshot)).catch((error: unknown) => {
       writeFailure = error; handle?.agent.cancel({ kind: 'hook', reason: 'automation persistence failed' }); result.reject(error)
     })
   }
@@ -154,7 +155,7 @@ export async function executeRun(host: AutomationRuntimeHost,
   }
   const checkEnding = (): void => {
     const agent = handle?.agent
-    if (closed || completed || finishing || agent === undefined || !admitted || observation.ending === null) return
+    if (closed || completed || finishing || agent === undefined || !observation.admitted || observation.ending === null) return
     const questions = ctx.sessionProjections.stateOf(agent.session, 'userQuestions')?.questions.active ?? []
     if (approvals.size > 0 || questions.length > 0) { publishState('waiting-approval'); return }
     finishing = true
@@ -168,7 +169,7 @@ export async function executeRun(host: AutomationRuntimeHost,
         return true
       })
       if (didClose) { completed = true; result.resolve() }
-    }).catch(error => result.reject(error)).finally(() => { finishing = false })
+    }).catch((error: unknown) =>{  result.reject(error) }).finally(() => { finishing = false })
   }
 
   try {
@@ -247,12 +248,12 @@ export async function executeRun(host: AutomationRuntimeHost,
       }
     }))
     disposers.push(agent.ctx.on('agent/inbox/discarded', ({ message: discarded }) => {
-      if (discarded.id === message.id && !admitted) result.reject(new Error('automation input canceled before admission'))
+      if (discarded.id === message.id && !observation.admitted) result.reject(new Error('automation input canceled before admission'))
     }))
     disposers.push(ctx.on('session/event', (session, event) => {
       if (session !== agent.session || closed) return
       if (event.type === 'user/message') {
-        if (event.data.id === message.id) { admitted = true; publishState('running') }
+        if (event.data.id === message.id) { observation.admitted = true; publishState('running') }
         else if (event.data.source.kind === 'user' || event.data.source.kind === 'user-question-reply') humanIntervened = true
       } else if (event.type === 'approval/asked') { approvals.add(event.data.id)
         interactions.add(event.data.id)
@@ -260,7 +261,7 @@ export async function executeRun(host: AutomationRuntimeHost,
       else if (event.type === 'approval/decided') { approvals.delete(event.data.id) }
       else if (event.type === 'turn/end' && claimedTurn !== null) {
         observation.ending = event.data.reason; observation.terminalTurn = event.data.turn
-        if (!admitted) result.reject(new Error('automation: initial input was not admitted'))
+        if (!observation.admitted) result.reject(new Error('automation: initial input was not admitted'))
       }
       for (const question of ctx.sessionProjections.stateOf(agent.session,
         'userQuestions')?.questions.active ?? []) interactions.add(question.callId)
@@ -271,7 +272,7 @@ export async function executeRun(host: AutomationRuntimeHost,
       reason: 'scheduled execution stopped' })
     result.reject(signal.reason ?? new Error('automation canceled')) }
     signal.addEventListener('abort', onAbort, { once: true })
-    disposers.push(() => signal.removeEventListener('abort', onAbort))
+    disposers.push(() =>{  signal.removeEventListener('abort', onAbort) })
     ctx.accountSub2api.assertAutomationIdentity(identity)
     signal.throwIfAborted()
     agent.followup(message)
@@ -279,9 +280,11 @@ export async function executeRun(host: AutomationRuntimeHost,
     if (!(await ctx.sessions.flush(agent.session))) throw new Error('automation input persistence unavailable')
     await result.promise
     await queuedWrites
-    if (writeFailure !== undefined) throw writeFailure
+    if (writeFailure !== undefined) {
+      throw writeFailure instanceof Error ? writeFailure : new Error('automation persistence failed', { cause: writeFailure })
+    }
     const ending = observation.ending
-    if (!admitted || ending === null) throw new Error('automation: completion lacks durable input/turn evidence')
+    if (!observation.admitted || ending === null) throw new Error('automation: completion lacks durable input/turn evidence')
     closed = true
     if (!(await ctx.sessions.flush(agent.session))) throw new Error('automation result persistence unavailable')
     run = { ...run,
@@ -305,7 +308,7 @@ export async function executeRun(host: AutomationRuntimeHost,
     await queuedWrites
     run = { ...run,
       state: signal.aborted ? (signal.reason instanceof Error
-      && signal.reason.message === 'automation timeout' ? 'failed' : 'canceled') : (admitted ? 'failed' : 'blocked'),
+      && signal.reason.message === 'automation timeout' ? 'failed' : 'canceled') : (observation.admitted ? 'failed' : 'blocked'),
       finishedAt: new Date().toISOString(),
       terminalTurn: observation.terminalTurn,
       humanIntervened,

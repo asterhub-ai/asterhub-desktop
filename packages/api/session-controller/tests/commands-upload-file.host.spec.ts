@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ApiSessionAgentController } from '../src/agent.ts'
 import { SessionCommandController } from '../src/commands.ts'
 import type { SessionRequestId } from '../src/types.ts'
+import { installSessionReadTestServices } from './test-remote.ts'
 
 const SESSION = SessionId('upload-session')
 
@@ -34,6 +35,7 @@ async function uploadHarness(origin?: 'subagent'): Promise<{
 }> {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
+  installSessionReadTestServices(ctx)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(CommandRuntime)
   const session = ctx.sessions.create(SESSION, {
@@ -187,7 +189,7 @@ describe('Session file uploads', () => {
     expect(saveFileStream).toHaveBeenCalledWith(expect.objectContaining({
       signal: abort.signal,
       name: 'huge.bin',
-    }))
+    }), undefined)
     expect(receipt.file).toMatchObject({ name: 'huge.bin', bytes: 5 })
     await controller.prompt(promptRequest([{ type: 'file', receiptId: receipt.receiptId }]))
     expect((followup.mock.calls[0]?.[0] as UserMessage).content).toEqual([
@@ -200,7 +202,7 @@ describe('Session file uploads', () => {
     const stream = (async function* (): AsyncIterable<Uint8Array> {})()
     await expect(uploads.uploadStream({ sessionId: SESSION, data: stream }))
       .resolves.toMatchObject({ file: { name: 'file', bytes: 0 } })
-    expect(saveFileStream).toHaveBeenLastCalledWith({ data: stream })
+    expect(saveFileStream).toHaveBeenLastCalledWith({ data: stream }, undefined)
     saveFileStream.mockRejectedValueOnce('disk offline')
     await expect(uploads.uploadStream({
       sessionId: SESSION,

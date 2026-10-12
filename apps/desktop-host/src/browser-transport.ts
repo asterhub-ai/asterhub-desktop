@@ -6,7 +6,7 @@ import type { DesktopBrowserTransport } from '@deepseek-ai/dsh-browser-use-deskt
 export function createDesktopHostBrowserTransport(): DesktopBrowserTransport {
   const port: DesktopBrowserTransportPort = {
     send(message) {
-      if (process.connected !== true || process.send === undefined) {
+      if (!process.connected || process.send === undefined) {
         return Promise.reject(new Error('Desktop Browser Host is unavailable'))
       }
       const { promise, resolve, reject } = Promise.withResolvers<void>()
@@ -20,11 +20,11 @@ export function createDesktopHostBrowserTransport(): DesktopBrowserTransport {
       process.on('message', listener)
       return () => { process.off('message', listener) }
     },
-    connected: () => process.connected === true && process.send !== undefined,
+    connected: () =>  process.connected && process.send !== undefined,
     onDisconnect(listener) {
       process.once('disconnect', listener)
       return () => { process.off('disconnect', listener) }
-    }
+    },
   }
   return createDesktopBrowserTransport(port)
 }

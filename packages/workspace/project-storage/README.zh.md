@@ -38,6 +38,8 @@ kind: "package-reference"
 
 Host 服务通过 `ctx.projectStorage` 暴露；浏览器安全的 `./types` 入口只声明数据契约。变更写入完整临时文件、同步后原子替换，并仅在持久化完成后发送 `project-storage/changed`。通过所属 Cordis effect 注册只读 legacy 发现器 `registerLegacySource`，并以 `registerLegacyAdopter` 注册唯一迁移实现。adopter 接收 `(proposal, destinationRoot, signal?)`，必须返回完整且已验证的 portable manifest。Legacy open 会重新验证 proposal；未注册 adopter 时抛出 `ProjectMigrationUnavailableError`，绝不把旧历史初始化为空记录。
 
+注册的注销函数遵循 Cordis effect 所有权，并可能返回 Promise；调用方应等待注销完成，再释放依赖这些注册的资源。
+
 <a id="toc-inspection-and-adoption"></a>
 ## 检查与 adoption
 

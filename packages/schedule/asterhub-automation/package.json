@@ -31,6 +31,10 @@
     "./remote": {
       "types": "./lib/typert.remote-client.d.ts",
       "default": "./lib/typert.remote-client.js"
+    },
+    "./types": {
+      "types": "./lib/types/types.d.ts",
+      "default": "./lib/types/types.js"
     }
   },
   "files": [

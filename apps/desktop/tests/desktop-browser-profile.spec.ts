@@ -89,7 +89,7 @@ describe('Desktop browser profile composition', () => {
     ctx.provide('attachments', attachments as never)
     ctx.provide('agents', agents as never)
 
-    const fiber = await ctx.plugin(DesktopBrowserProvider, {
+    const fiber = ctx.plugin(DesktopBrowserProvider, {
       operationTimeoutMs: 3000,
       navigationTimeoutMs: 30000,
       snapshotMaxChars: 50000,

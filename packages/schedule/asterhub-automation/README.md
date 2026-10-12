@@ -24,6 +24,8 @@ Create scheduled work for a registered workspace and a model available to the cu
 
 The desktop-native bundle mounts this service. Its typed `automation` Remote and the scoped `automation_manage` tool use the same account-authorized operations. Configure deployment limits on the service row: `maxConcurrent` defaults to 2 and `runTimeoutMs` to 1800000; retention, receipt, instruction, and task budgets are validated together in [Config](src/index.ts).
 
+The `./types` entry declares task data, tool results, and Cordis events for Host and Client imports without loading Host services.
+
 ## Understand the implementation
 
 Each task and its bounded run and request-receipt histories occupy one schedule storage-domain record. Preparation binds a mutation to the account, revision, digest, and expiring confirmation; commitment revalidates those facts in the shared management queue. The timer runtime reserves due work, creates a fresh Workspace Session, records terminal outcomes, and drains accepted executions during disposal. Account changes stop stale work and invalidate prepared operations.

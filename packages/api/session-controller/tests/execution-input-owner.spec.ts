@@ -76,7 +76,7 @@ describe('SessionExecutionInputOwner', () => {
     onTestFinished(() => { owner.release() })
 
     // Start an admit whose work blocks until we resolve it
-    const workGate = Promise.withResolvers<void>()
+    const workGate = Promise.withResolvers<undefined>()
     let workStarted = false
     let workFinished = false
     const slowAdmit = owner.admit(async () => {
@@ -100,7 +100,7 @@ describe('SessionExecutionInputOwner', () => {
     expect(predicateCalled).toBe(false) // Predicate not called yet
 
     // Resolve the work
-    workGate.resolve()
+    workGate.resolve(undefined)
     await slowAdmit
 
     // Now closeIf should proceed
@@ -236,7 +236,7 @@ describe('SessionExecutionInputOwner', () => {
     onTestFinished(() => { owner.release() })
 
     // First work unit blocks
-    const firstGate = Promise.withResolvers<void>()
+    const firstGate = Promise.withResolvers<undefined>()
     const first = owner.admit(async () => { await firstGate.promise; return 'first' }, new AbortController().signal)
 
     // closeIf should run after first work, before second work
@@ -253,7 +253,7 @@ describe('SessionExecutionInputOwner', () => {
     expect(predicateRan).toBe(false)
     expect(secondRan).toBe(false)
 
-    firstGate.resolve()
+    firstGate.resolve(undefined)
     await first
 
     // closeIf predicate should run now, before second work
@@ -275,7 +275,7 @@ describe('SessionExecutionInputOwner', () => {
     const { ctx, controller } = await makeHarness()
     onTestFinished(async () => { await ctx.fiber.dispose() })
     const sessionId = SessionId('test-session-13')
-    const ready = Promise.withResolvers<void>()
+    const ready = Promise.withResolvers<undefined>()
     const owner = controller.registerExecutionInputOwner(sessionId, ready.promise)
     onTestFinished(() => { owner.release() })
 
@@ -289,7 +289,7 @@ describe('SessionExecutionInputOwner', () => {
     expect(workStarted).toBe(false)
 
     // Resolve ready
-    ready.resolve()
+    ready.resolve(undefined)
     const value = await admit
     expect(value).toBe('done')
     expect(workStarted).toBe(true)
@@ -299,9 +299,9 @@ describe('SessionExecutionInputOwner', () => {
     const { ctx, controller } = await makeHarness()
     onTestFinished(async () => { await ctx.fiber.dispose() })
     const sessionId = SessionId('test-session-14')
-    const ready = Promise.withResolvers<void>()
+    const ready = Promise.withResolvers<undefined>()
     const owner = controller.registerExecutionInputOwner(sessionId, ready.promise)
-    onTestFinished(() => { owner.release(); ready.resolve() })
+    onTestFinished(() => { owner.release(); ready.resolve(undefined) })
 
     // closeIf should run immediately without waiting for ready
     const result = await owner.closeIf(() => true)
@@ -312,7 +312,7 @@ describe('SessionExecutionInputOwner', () => {
     const { ctx, controller } = await makeHarness()
     onTestFinished(async () => { await ctx.fiber.dispose() })
     const sessionId = SessionId('test-session-15')
-    const ready = Promise.withResolvers<void>()
+    const ready = Promise.withResolvers<undefined>()
     const owner = controller.registerExecutionInputOwner(sessionId, ready.promise)
 
     // Release before ready resolves
@@ -327,9 +327,9 @@ describe('SessionExecutionInputOwner', () => {
     const { ctx, controller } = await makeHarness()
     onTestFinished(async () => { await ctx.fiber.dispose() })
     const sessionId = SessionId('test-session-16')
-    const ready = Promise.withResolvers<void>()
+    const ready = Promise.withResolvers<undefined>()
     const owner = controller.registerExecutionInputOwner(sessionId, ready.promise)
-    onTestFinished(() => { owner.release(); ready.resolve() })
+    onTestFinished(() => { owner.release(); ready.resolve(undefined) })
 
     const signal = new AbortController()
     const admit = owner.admit(async () => 'done', signal.signal)
@@ -348,7 +348,7 @@ describe('SessionExecutionInputOwner', () => {
     onTestFinished(() => { owner.release() })
 
     // work1 blocks
-    const work1Gate = Promise.withResolvers<void>()
+    const work1Gate = Promise.withResolvers<undefined>()
     let work1Ran = false
     const work1 = owner.admit(async () => {
       work1Ran = true
@@ -376,7 +376,7 @@ describe('SessionExecutionInputOwner', () => {
     expect(work2Ran).toBe(false)
 
     // Release work1 - closeIf should now run and return true
-    work1Gate.resolve()
+    work1Gate.resolve(undefined)
     await work1
     const closeResult = await closeIf
     expect(closeResult).toBe(true)
@@ -402,7 +402,7 @@ describe('SessionExecutionInputOwner', () => {
     onTestFinished(() => { owner.release() })
 
     // First work blocks
-    const work1Gate = Promise.withResolvers<void>()
+    const work1Gate = Promise.withResolvers<undefined>()
     const work1 = owner.admit(async () => { await work1Gate.promise; return 'work1' }, new AbortController().signal)
 
     // Second work with abort signal
@@ -418,7 +418,7 @@ describe('SessionExecutionInputOwner', () => {
     work2Signal.abort()
 
     // Release work1
-    work1Gate.resolve()
+    work1Gate.resolve(undefined)
     await work1
 
     // work2 should reject due to abort, NOT execute

@@ -10,7 +10,22 @@ import type { AutomationTask, AutomationTaskId, AutomationLimits } from '../src/
 import { normalizeTiming } from '../src/timing.ts'
 
 const now = Date.parse('2026-10-05T00:00:00Z')
-const limits: AutomationLimits = { maxConcurrent: 1, runTimeoutMs: 1800_000, historyDays: 30, historyRecords: 200, historyBytes: 2097152, receiptDays: 30, receiptRecords: 1000, receiptBytes: 1048576, maxTaskBytes: 4194304, maxTasksPerAccount: 100, maxTasks: 500, maxInstructionChars: 16000, maxInstructionBytes: 65536, confirmationTimeoutMs: 300000 }
+const limits: AutomationLimits = {
+  maxConcurrent: 1,
+  runTimeoutMs: 1800_000,
+  historyDays: 30,
+  historyRecords: 200,
+  historyBytes: 2097152,
+  receiptDays: 30,
+  receiptRecords: 1000,
+  receiptBytes: 1048576,
+  maxTaskBytes: 4194304,
+  maxTasksPerAccount: 100,
+  maxTasks: 500,
+  maxInstructionChars: 16000,
+  maxInstructionBytes: 65536,
+  confirmationTimeoutMs: 300000,
+}
 
 function task(id: string): AutomationTask {
   return {
@@ -73,12 +88,12 @@ describe('Host backlog admission', () => {
     })
     const occupied = reserveAutomationRun(task('busy'), 'manual', null, 'manual-1', now, 'runtime-1')
     const records = new Map<AutomationTaskId, AutomationTask>([[occupied.task.id, { ...occupied.task, enabled: false, nextOccurrenceAt: null, runs: [{ ...occupied.run, state: 'running' }] }], [task('queued').id, task('queued')]])
-    const written = Promise.withResolvers<void>()
+    const written = Promise.withResolvers<undefined>()
     let chain = Promise.resolve()
     const host: AutomationRuntimeHost = {
       ctx, runtimeId: 'runtime-1', limits, tasks: () => [...records.values()], identity: async () => ({ accountId: 'account-1', epoch: 1 }),
-      transact: work => { const result = chain.then(work); chain = result.then(() => undefined, () => undefined); return result },
-      put: async value => { records.set(value.id, value); written.resolve() }, emitChanged: () => {},
+      transact: (work) => { const result = chain.then(work); chain = result.then(() => undefined, () => undefined); return result },
+      put: async (value) => { records.set(value.id, value); written.resolve(undefined) }, emitChanged: () => {},
     }
     const runtime = new AutomationRuntime(host)
     try {

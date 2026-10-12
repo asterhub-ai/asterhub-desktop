@@ -88,7 +88,7 @@ export class TestWorkspaces implements IWorkspaces {
    */
   async inspect(input: { path: string }, signal?: AbortSignal): Promise<WorkspaceInspectionView> {
     this.calls.push({ method: 'inspect', args: [input, signal] })
-    const stub = this.stubs.get('inspect' as WorkspaceAction)
+    const stub = this.stubs.get('inspect')
     if (stub !== undefined) return await (stub(input, signal) as Promise<WorkspaceInspectionView>)
     return { kind: 'new', root: input.path }
   }
@@ -104,7 +104,7 @@ export class TestWorkspaces implements IWorkspaces {
     signal?: AbortSignal,
   ): Promise<WorkspaceView> {
     this.calls.push({ method: 'openProject', args: [input, signal] })
-    const stub = this.stubs.get('openProject' as WorkspaceAction)
+    const stub = this.stubs.get('openProject')
     if (stub !== undefined) return await (stub(input, signal) as Promise<WorkspaceView>)
     return await this.create({ path: input.path })
   }

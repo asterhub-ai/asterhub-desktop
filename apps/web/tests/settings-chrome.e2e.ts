@@ -195,7 +195,7 @@ describe('web e2e: settings modal and General preferences', () => {
       reload = page.reload({ waitUntil: 'domcontentloaded' })
       const loading = page.locator('[data-dsh-boot]')
       await loading.waitFor({ timeout: 10_000 })
-      const state = await loading.evaluate((boot) => ({
+      const state = await loading.evaluate(boot => ({
         attr: document.body.hasAttribute('data-ds-dark-theme'),
         background: getComputedStyle(boot).backgroundColor,
         colorScheme: getComputedStyle(document.documentElement).colorScheme,

@@ -141,9 +141,11 @@ describe('Messages Files requests', () => {
     const h = harness({ maxRequestFilesBytes: 3, imageOffloadByteQuantum: 1, maxImagesPerRequest: 2, imageOffloadCountQuantum: 1 })
     const images = [{ type: 'image' as const, attachment: ref, offloaded: true as const }, { type: 'image' as const, attachment: second }]
     await chunks(h.adapter.stream(options({ model, messages: [{ ...user(), content: images }] })))
+    const expectedBytes: unknown = expect.any(Number)
+    const expectedBounds = { width: 1, height: 1, maxBytes: expectedBytes }
     expect(h.readImageRequest).toHaveBeenCalledExactlyOnceWith(
       second,
-      { width: 1, height: 1, maxBytes: expect.any(Number) },
+      expectedBounds,
       expect.any(AbortSignal),
       undefined,
     )

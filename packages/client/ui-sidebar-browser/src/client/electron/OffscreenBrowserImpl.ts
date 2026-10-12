@@ -192,7 +192,7 @@ export class OffscreenBrowserImpl implements BrowserFrame {
     this.workspaceKey ??= await this.workspace(this.lifetime.signal)
     if (this.lifetime.signal.aborted) return
     const reservation = await this.bridge.acquire(this.workspaceKey, this.sessionId, this.options.tabId)
-    if (this.lifetime.signal.aborted) {
+    if (this.lifetime.signal.aborted as boolean) {
       await this.bridge.release(reservation.lease)
       return
     }

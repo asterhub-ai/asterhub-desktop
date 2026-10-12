@@ -884,7 +884,7 @@ export class PluginManager extends TypertRemoteService {
         const installStatus: CuratedPluginEntry['installStatus'] = exact
           ? 'installed'
           : installed
-            ? bundle?.version === entry.version ? 'reinstall' : 'update-available'
+            ? bundle.version === entry.version ? 'reinstall' : 'update-available'
             : 'not-installed'
         return { ...entry, installed: exact, installStatus }
       }),

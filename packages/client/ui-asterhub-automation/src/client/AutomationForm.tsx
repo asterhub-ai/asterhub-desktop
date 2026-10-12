@@ -6,20 +6,23 @@ import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type {
   AutomationTask, AutomationDraft, AutomationTimingInput, AutomationChoices,
-  AutomationPreview, AutomationTaskId, AutomationRunId,
+  AutomationPreview, AutomationTaskId, AutomationPreparedOperation, AutomationMutationResult,
 } from '@deepseek-ai/dsh-asterhub-automation/client'
 import css from './AutomationPanel.module.css'
 
 /** Form mode. */
 export type AutomationFormMode = 'create' | 'edit'
 
+/** Confirmation fields consumed by the create and edit forms. */
+type FormPreparedOperation = Omit<AutomationPreparedOperation, 'expiresAt'>
+
 /** Form injected actions. */
 export interface AutomationFormInjected {
   readonly getChoices: () => Promise<AutomationChoices>
   readonly previewDraft: (draft: AutomationDraft) => Promise<AutomationPreview>
-  readonly prepareCreate: (draft: AutomationDraft) => Promise<{ readonly requestId: string; readonly confirmationId: string | null; readonly summary: string; readonly requiresConfirmation: boolean }>
-  readonly prepareUpdate: (id: AutomationTaskId, expectedRevision: number, draft: AutomationDraft) => Promise<{ readonly requestId: string; readonly confirmationId: string | null; readonly summary: string; readonly requiresConfirmation: boolean }>
-  readonly commitOperation: (requestId: string, confirmationId: string | null) => Promise<{ readonly taskId: AutomationTaskId; readonly deleted: boolean; readonly runId: AutomationRunId | null }>
+  readonly prepareCreate: (draft: AutomationDraft) => Promise<FormPreparedOperation>
+  readonly prepareUpdate: (id: AutomationTaskId, expectedRevision: number, draft: AutomationDraft) => Promise<FormPreparedOperation>
+  readonly commitOperation: (requestId: string, confirmationId: string | null) => Promise<Omit<AutomationMutationResult, 'task'>>
 }
 
 /** Form props. */
@@ -38,7 +41,7 @@ type TimingKind = typeof TIMING_KINDS[number]
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as const
 
 /** Weekday label keys. */
-const WEEKDAY_LABELS: Record<number, string> = { 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat', 7: 'sun' }
+const WEEKDAY_LABELS = { 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat', 7: 'sun' } as const
 
 /** Common timezones with UTC offsets for display. */
 const COMMON_TIMEZONES = [
@@ -196,12 +199,12 @@ function buildTimingInput(state: FormState): AutomationTimingInput {
       const firstAt = state.intervalFirstAt === ''
         ? undefined
         : (() => {
-            // Convert datetime-local to RFC 3339 with explicit offset
-            const [date, time] = state.intervalFirstAt.split('T')
-            if (!date || !time) return undefined
-            const offset = getLocalOffsetForDateTime(date, time.slice(0, 5))
-            return `${date}T${time.slice(0, 5)}:00${offset}`
-          })()
+          // Convert datetime-local to RFC 3339 with explicit offset
+          const [date, time] = state.intervalFirstAt.split('T')
+          if (!date || !time) return undefined
+          const offset = getLocalOffsetForDateTime(date, time.slice(0, 5))
+          return `${date}T${time.slice(0, 5)}:00${offset}`
+        })()
       return { kind: 'interval', seconds: state.intervalSeconds, ...(firstAt !== undefined ? { firstAt } : {}) }
     }
     case 'daily':
@@ -290,10 +293,10 @@ export function AutomationForm(props: AutomationFormProps) {
   const [choices, setChoices] = useState<AutomationChoices | null>(null)
   const [choicesLoading, setChoicesLoading] = useState(true)
   const [state, setState] = useState<FormState>(() =>
-    task ? seedFormState(task, systemTimeZone) : defaultFormState(systemTimeZone)
+    task ? seedFormState(task, systemTimeZone) : defaultFormState(systemTimeZone),
   )
   const [initialState] = useState<FormState>(() =>
-    task ? seedFormState(task, systemTimeZone) : defaultFormState(systemTimeZone)
+    task ? seedFormState(task, systemTimeZone) : defaultFormState(systemTimeZone),
   )
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [preview, setPreview] = useState<AutomationPreview | null>(null)
@@ -316,19 +319,20 @@ export function AutomationForm(props: AutomationFormProps) {
   const filteredTimezones = useMemo(() =>
     COMMON_TIMEZONES.filter(tz =>
       tz.id.toLowerCase().includes(timezoneSearch.toLowerCase()) ||
-      tz.offset.toLowerCase().includes(timezoneSearch.toLowerCase())
+      tz.offset.toLowerCase().includes(timezoneSearch.toLowerCase()),
     ),
-    [timezoneSearch]
+  [timezoneSearch],
   )
   useEffect(() => {
     let cancelled = false
     setChoicesLoading(true)
-    void getChoices().then(c => {
+    void getChoices().then((c) => {
       if (!cancelled) {
         setChoices(c)
         setChoicesLoading(false)
-        if (state.workspaceId === '' && c.workspaces.length > 0) {
-          setState(s => ({ ...s, workspaceId: c.workspaces[0]!.id }))
+        const firstWorkspace = c.workspaces[0]
+        if (state.workspaceId === '' && firstWorkspace !== undefined) {
+          setState(s => ({ ...s, workspaceId: firstWorkspace.id }))
         }
         if (state.modelId === '' && c.defaultModelId !== null) {
           setState(s => ({ ...s, modelId: c.defaultModelId ?? '' }))
@@ -354,7 +358,7 @@ export function AutomationForm(props: AutomationFormProps) {
     setPreviewLoading(true)
     const draft = buildDraft(state)
     const timer = setTimeout(() => {
-      void previewDraft(draft).then(p => {
+      void previewDraft(draft).then((p) => {
         if (!cancelled) {
           setPreview(p)
           setPreviewLoading(false)
@@ -375,7 +379,7 @@ export function AutomationForm(props: AutomationFormProps) {
   }
 
   const updateTimingKind = (kind: TimingKind): void => {
-    setState(s => {
+    setState((s) => {
       // Save current mode's draft before switching
       const currentKind = s.timingKind
       modeDraftsRef.current[currentKind] = {
@@ -421,7 +425,7 @@ export function AutomationForm(props: AutomationFormProps) {
 
   const selectedModel = useMemo(
     () => choices?.models.find(m => m.id === state.modelId),
-    [choices, state.modelId]
+    [choices, state.modelId],
   )
 
   const handleSubmit = async (): Promise<void> => {
@@ -658,7 +662,7 @@ export function AutomationForm(props: AutomationFormProps) {
                     aria-pressed={state.weeklyWeekdays.includes(day)}
                     onClick={() => { toggleWeekday(day) }}
                   >
-                    <span className={css.checkboxLabel}>{t(`form.weekday.${WEEKDAY_LABELS[day]!}` as Parameters<typeof t>[0])}</span>
+                    <span className={css.checkboxLabel}>{t(`form.weekday.${WEEKDAY_LABELS[day]}`)}</span>
                   </button>
                 ))}
               </div>
@@ -700,14 +704,14 @@ export function AutomationForm(props: AutomationFormProps) {
                   } else if (e.key === 'ArrowDown') {
                     e.preventDefault()
                     setShowTimezoneDropdown(true)
-                    setTimezoneFocusedIndex(prev => {
+                    setTimezoneFocusedIndex((prev) => {
                       const next = prev + 1
                       return next >= filteredTimezones.length ? 0 : next
                     })
                   } else if (e.key === 'ArrowUp') {
                     e.preventDefault()
                     setShowTimezoneDropdown(true)
-                    setTimezoneFocusedIndex(prev => {
+                    setTimezoneFocusedIndex((prev) => {
                       const next = prev - 1
                       return next < 0 ? filteredTimezones.length - 1 : next
                     })
@@ -744,7 +748,7 @@ export function AutomationForm(props: AutomationFormProps) {
                       className={clsx(
                         css.timezoneOption,
                         state.timeZone === tz.id && css.timezoneOptionSelected,
-                        index === timezoneFocusedIndex && css.timezoneOptionFocused
+                        index === timezoneFocusedIndex && css.timezoneOptionFocused,
                       )}
                       onClick={() => {
                         update('timeZone', tz.id)

@@ -17,7 +17,7 @@
 ## `@deepseek-ai/dsh-account-sub2api`
 
 - `inject`: `credentials`
-- `source`: [`packages/account/account-sub2api/src/index.ts:414`](../packages/account/account-sub2api/src/index.ts)
+- `source`: [`packages/account/account-sub2api/src/index.ts:417`](../packages/account/account-sub2api/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config: where the control plane lives and which group keys bind to. */
@@ -326,7 +326,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-workspace-controller`
 
 - `inject`: `typert` · `workspaceRegistry`
-- `source`: [`packages/api/workspace-controller/src/index.ts:36`](../packages/api/workspace-controller/src/index.ts)
+- `source`: [`packages/api/workspace-controller/src/index.ts:37`](../packages/api/workspace-controller/src/index.ts)
 
 ```ts config-catalog
 /** First-use directory policy for the Host account. */
@@ -373,7 +373,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-asterhub-automation`
 
-- `source`: [`packages/schedule/asterhub-automation/src/index.ts:68`](../packages/schedule/asterhub-automation/src/index.ts)
+- `source`: [`packages/schedule/asterhub-automation/src/index.ts:67`](../packages/schedule/asterhub-automation/src/index.ts)
 
 ```ts config-catalog
 /**

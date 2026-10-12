@@ -12,7 +12,37 @@ import { AutomationOperations } from '../src/operations.ts'
 import { openAutomationStore } from '../src/store.ts'
 import type { AutomationDraft, AutomationLimits, AutomationOperation, AutomationAccountIdentity } from '../src/types.ts'
 
-const limits: AutomationLimits = { maxConcurrent: 2, runTimeoutMs: 1800_000, historyDays: 30, historyRecords: 200, historyBytes: 2097152, receiptDays: 30, receiptRecords: 1000, receiptBytes: 1048576, maxTaskBytes: 4194304, maxTasksPerAccount: 100, maxTasks: 500, maxInstructionChars: 16000, maxInstructionBytes: 65536, confirmationTimeoutMs: 300000 }
+const limits: AutomationLimits = {
+
+  maxConcurrent: 2,
+
+  runTimeoutMs: 1800_000,
+
+  historyDays: 30,
+
+  historyRecords: 200,
+
+  historyBytes: 2097152,
+
+  receiptDays: 30,
+
+  receiptRecords: 1000,
+
+  receiptBytes: 1048576,
+
+  maxTaskBytes: 4194304,
+
+  maxTasksPerAccount: 100,
+
+  maxTasks: 500,
+
+  maxInstructionChars: 16000,
+
+  maxInstructionBytes: 65536,
+
+  confirmationTimeoutMs: 300000,
+
+}
 const draft: AutomationDraft = { name: 'News', instruction: 'Collect public current news and cite sources', workspaceId: WorkspaceId('fixture-workspace'), modelId: 'fixture-model', reasoningEffort: null, timing: { kind: 'interval', seconds: 3600 } }
 
 async function fixture(overrides: Partial<AutomationLimits> = {}) {
@@ -35,7 +65,7 @@ async function fixture(overrides: Partial<AutomationLimits> = {}) {
   }
   const createOps = () => {
     const ops = new AutomationOperations(ctx, store, config, identityProvider, 'fixture-runtime', transact)
-    onTestFinished(() => ops.dispose())
+    onTestFinished(() =>{  ops.dispose() })
     return ops
   }
   const ops = createOps()
@@ -68,14 +98,14 @@ describe('confirmed native task management', () => {
   it('does not rebind a confirmation while its write waits in the FIFO', async () => {
     const f = await fixture()
     const prepared = await f.ops.prepareOperation({ action: 'create', draft })
-    const entered = Promise.withResolvers<void>()
-    const release = Promise.withResolvers<void>()
-    const blocker = f.transact(async () => { entered.resolve(); await release.promise })
+    const entered = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    const blocker = f.transact(async () => { entered.resolve(undefined); await release.promise })
     await entered.promise
     const writing = f.ops.commitOperation({ requestId: prepared.requestId, confirmationId: prepared.confirmationId })
     await Promise.resolve()
     f.setIdentity({ accountId: 'account-b', epoch: 2 })
-    release.resolve()
+    release.resolve(undefined)
     await blocker
     await expect(writing).rejects.toMatchObject({ code: 'account_mismatch' })
     expect(f.store.tasks()).toEqual([])
@@ -85,7 +115,10 @@ describe('confirmed native task management', () => {
     const f = await fixture({ maxTasksPerAccount: 1 })
     const a = await f.ops.prepareOperation({ action: 'create', draft })
     const b = await f.ops.prepareOperation({ action: 'create', draft: { ...draft, name: 'Other' } })
-    const results = await Promise.allSettled([f.ops.commitOperation({ requestId: a.requestId, confirmationId: a.confirmationId }), f.ops.commitOperation({ requestId: b.requestId, confirmationId: b.confirmationId })])
+    const results = await Promise.allSettled([
+      f.ops.commitOperation({ requestId: a.requestId, confirmationId: a.confirmationId }),
+      f.ops.commitOperation({ requestId: b.requestId, confirmationId: b.confirmationId }),
+    ])
     expect(results.map(result => result.status)).toEqual(['fulfilled', 'rejected'])
     expect(f.store.tasks().map(task => task.definition.name)).toEqual(['News'])
   })

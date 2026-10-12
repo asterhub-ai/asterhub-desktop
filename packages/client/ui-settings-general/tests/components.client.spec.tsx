@@ -2,7 +2,7 @@
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
+import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import type { GeneralSectionComponentProps } from '../src/client/GeneralSection.tsx'
 import { GeneralSection } from '../src/client/GeneralSection.tsx'
 import { CloseLabel, HeaderContent, TriggerContent } from '../src/client/chrome.tsx'
@@ -22,7 +22,7 @@ afterEach(() => { cleanup(); vi.unstubAllEnvs() })
 
 // The seat's key domain is settings ∪ common; the stub answers from the
 // package dictionary and falls back to the key like the real chain.
-const t: TriggerContentProps['t'] = key => (en as Record<string, string>)[key] ?? key
+const t: TriggerContentProps['t'] = makeTranslate(en)
 
 // Global standard kit stubs: none of these components consume the hooks.
 const unusedHook = (() => { throw new Error('unused by settings-general components') }) as never

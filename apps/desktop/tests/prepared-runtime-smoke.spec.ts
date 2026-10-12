@@ -45,11 +45,11 @@ it('smokes an x64 target verified on an arm64 build host without revalidating ag
     '--import', 'tsx/esm', expect.stringContaining('smoke-runtime-entry.ts'),
     root, resources, descriptor.release.version, target.platform, target.arch,
   ]))
-  expect(smokeOptions).toMatchObject({ env: expect.objectContaining({ ELECTRON_RUN_AS_NODE: '1' }) })
   if (typeof smokeOptions !== 'object' || smokeOptions === null || !('env' in smokeOptions)
     || typeof smokeOptions.env !== 'object' || smokeOptions.env === null
     || !('NARB_NATIVE_CACHE_DIR' in smokeOptions.env) || typeof smokeOptions.env.NARB_NATIVE_CACHE_DIR !== 'string') {
     throw new Error('prepared runtime smoke must pass its private native cache to the matching Electron runtime')
   }
+  expect(Reflect.get(smokeOptions.env, 'ELECTRON_RUN_AS_NODE')).toBe('1')
   expect(existsSync(smokeOptions.env.NARB_NATIVE_CACHE_DIR)).toBe(false)
 })

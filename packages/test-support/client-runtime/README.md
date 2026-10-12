@@ -108,6 +108,8 @@ Use the bench for feature suites that exercise slots, stores, rendering, and dis
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
+`bundleRoster` recognizes each bundle's own package name before searching dependency directories.
+
 <details>
 <summary>Implementation internals — click to expand</summary>
 

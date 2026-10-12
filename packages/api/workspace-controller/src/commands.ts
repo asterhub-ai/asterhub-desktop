@@ -2,6 +2,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
+import type { ProjectId, ProjectStorage } from '@deepseek-ai/dsh-project-storage/types'
 import {
   WorkspaceActiveSessionError,
   WorkspaceArchivedSessionPinError,
@@ -52,7 +53,7 @@ export class WorkspaceCommands {
 
   private async createInternal(path: string): Promise<WorkspaceCreateValue> {
     try {
-      const projectStorage = this.ctx.get('projectStorage', false)
+      const projectStorage = this.ctx.get('projectStorage', false) as ProjectStorage | undefined
       if (projectStorage !== undefined) {
         const inspection = await projectStorage.inspect(path)
         if (inspection.kind === 'new') {
@@ -90,7 +91,7 @@ export class WorkspaceCommands {
    * @returns the inspection view (new, existing, registered, or legacy).
    */
   async inspect(request: WorkspaceInspectRequest, signal?: AbortSignal): Promise<WorkspaceInspectionView> {
-    const projectStorage = this.ctx.get('projectStorage', false)
+    const projectStorage = this.ctx.get('projectStorage', false) as ProjectStorage | undefined
     if (projectStorage === undefined) {
       return { kind: 'new', root: request.path }
     }
@@ -102,10 +103,10 @@ export class WorkspaceCommands {
         return {
           kind: 'existing',
           root: inspection.root,
-          projectId: String(inspection.manifest?.id),
-          title: inspection.manifest?.title ?? '',
-          sessionCount: inspection.manifest?.sessions.length ?? 0,
-          digest: inspection.digest ?? '',
+          projectId: inspection.manifest.id,
+          title: inspection.manifest.title,
+          sessionCount: inspection.manifest.sessions.length,
+          digest: inspection.digest,
         }
       case 'registered': {
         const workspace = await this.ctx.workspaceRegistry.resolveByPath(inspection.binding.root)
@@ -132,10 +133,10 @@ export class WorkspaceCommands {
         return {
           kind: 'legacy',
           root: inspection.root,
-          projectId: String(inspection.proposal?.projectId),
-          title: inspection.proposal?.title ?? '',
-          sessionCount: inspection.proposal?.sessions.length ?? 0,
-          digest: inspection.digest ?? '',
+          projectId: inspection.proposal.projectId,
+          title: inspection.proposal.title,
+          sessionCount: inspection.proposal.sessions.length,
+          digest: inspection.digest,
         }
       default:
         throw new Error('unknown inspection kind')
@@ -150,13 +151,13 @@ export class WorkspaceCommands {
    */
   openProject(request: WorkspaceOpenProjectRequest, signal?: AbortSignal): Promise<WorkspaceCreateValue> {
     return this.enqueue(async () => {
-      const projectStorage = this.ctx.get('projectStorage', false)
+      const projectStorage = this.ctx.get('projectStorage', false) as ProjectStorage | undefined
       if (projectStorage !== undefined) {
         try {
           await projectStorage.open({
             root: request.path,
             mode: request.mode,
-            ...(request.expectedId !== undefined ? { expectedId: request.expectedId } : {}),
+            ...(request.expectedId !== undefined ? { expectedId: request.expectedId as ProjectId } : {}),
             ...(request.expectedDigest !== undefined ? { expectedDigest: request.expectedDigest } : {}),
           }, signal)
         } catch (error) {

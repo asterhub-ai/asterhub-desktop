@@ -36,7 +36,8 @@ describe('desktop welcome Web operations', () => {
     const methods: string[] = []
     const send: Parameters<typeof connectDesktopWelcome>[1] = async (_input, init) => {
       if (init?.method !== 'POST') return new Response('index')
-      const { rpcId, method } = JSON.parse(String(init.body)) as { rpcId: string; method: string }
+      if (typeof init.body !== 'string') throw new Error('Expected a JSON request body')
+      const { rpcId, method } = JSON.parse(init.body) as { rpcId: string; method: string }
       methods.push(method)
       const value = method === 'settings/describe'
         ? { namespaces: [{ ns: 'locale', value: { preference: 'zh' } }] }
@@ -53,7 +54,8 @@ describe('desktop welcome Web operations', () => {
   it('falls back to logged-out state when AsterHub account or settings RPC encounters a failure', async () => {
     const send: Parameters<typeof connectDesktopWelcome>[1] = async (_input, init) => {
       if (init?.method !== 'POST') return new Response('index')
-      const { rpcId, method } = JSON.parse(String(init.body)) as { rpcId: string; method: string }
+      if (typeof init.body !== 'string') throw new Error('Expected a JSON request body')
+      const { rpcId, method } = JSON.parse(init.body) as { rpcId: string; method: string }
       if (method === 'accountSub2api/getStatus') {
         return Response.json({
           type: 'server-response',

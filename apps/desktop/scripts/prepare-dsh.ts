@@ -117,12 +117,12 @@ async function prepareSpeechModels(): Promise<void> {
   const modelRoot = join(DSH_OUTPUT_ROOT, 'speech-models', 'sensevoice')
   const vadRoot = join(DSH_OUTPUT_ROOT, 'speech-models', 'silero')
   const cacheRoot = join(homedir(), '.dsh', 'speech-models-cache')
-  
+
   // Check if models exist in cache
   const cacheSenseVoice = join(cacheRoot, 'sensevoice')
   const cacheSilero = join(cacheRoot, 'silero')
-  
-  if (existsSync(join(cacheSenseVoice, 'model.int8.onnx')) && 
+
+  if (existsSync(join(cacheSenseVoice, 'model.int8.onnx')) &&
       existsSync(join(cacheSenseVoice, 'tokens.txt')) &&
       existsSync(join(cacheSilero, 'silero_vad.onnx'))) {
     // Copy from cache
@@ -133,7 +133,7 @@ async function prepareSpeechModels(): Promise<void> {
     cpSync(join(cacheSilero, 'silero_vad.onnx'), join(vadRoot, 'silero_vad.onnx'))
     return
   }
-  
+
   // Fallback to download if cache miss
   for (const asset of SPEECH_ASSETS) {
     const dest = asset.name === 'silero_vad.onnx' ? join(vadRoot, asset.name) : join(modelRoot, asset.name)

@@ -43,19 +43,26 @@ function stubAgent(id: string, delegationDepth = 0): Agent {
   } as unknown as Agent
 }
 
-function liveAgent(id: string): LiveAgent {
+function liveAgent(ctx: Context, id: string): LiveAgent {
   const queuedTurns: UserMessage[] = []
   const queuedMessages: UserMessage[] = []
   const steer = vi.fn<(message: UserMessage) => void>((message) => { queuedMessages.push(message) })
   const inject = vi.fn<(message: UserMessage) => void>()
-  const session = SessionStore.prototype.create(SessionId(id))
+  const session = ctx.sessions.create(SessionId(id))
+  session.append('request/header', {
+    header: {
+      config: { provider: 'test', model: 'test' },
+      tools: [{ name: 'ask_user_question', description: 'Ask user question', parameters: { properties: { timeout: {} } } }],
+    },
+    reason: 'initial',
+  })
   return Object.assign(stubAgent(id), {
     session,
     steer,
     inject,
     queuedTurns,
     queuedMessages,
-  }) as LiveAgent
+  })
 }
 
 async function makeContext() {
@@ -71,7 +78,7 @@ async function makeContext() {
 describe('cancelPending vs late answer', () => {
   it('cancelPending appends user-questions/canceled event with callIds', async () => {
     const ctx = await makeContext()
-    const agent = liveAgent('cancel-test-1')
+    const agent = liveAgent(ctx, 'cancel-test-1')
     ctx.agents.enter(agent, undefined)
 
     // Cancel pending questions when none exist
@@ -85,7 +92,7 @@ describe('cancelPending vs late answer', () => {
 
   it('cancelPending appends event with exact callIds', async () => {
     const ctx = await makeContext()
-    const agent = liveAgent('cancel-test-2')
+    const agent = liveAgent(ctx, 'cancel-test-2')
     ctx.agents.enter(agent, undefined)
 
     // Add a pending question
@@ -96,14 +103,6 @@ describe('cancelPending vs late answer', () => {
       callId,
       name: 'ask_user_question',
       arguments: JSON.stringify({ questions: [{ id: 'q1', question: 'Test?' }] }),
-    })
-    // Add a request header that declares timed schema
-    agent.session.append('request/header', {
-      header: {
-        config: { provider: 'test', model: 'test' },
-        tools: [{ name: 'ask_user_question', description: 'Ask user question', parameters: { properties: { timeout: {} } } }],
-      },
-      reason: 'initial',
     })
 
     // Cancel pending questions
@@ -118,7 +117,7 @@ describe('cancelPending vs late answer', () => {
 
   it('cancelPending clears only canceled questions from active set', async () => {
     const ctx = await makeContext()
-    const agent = liveAgent('cancel-test-3')
+    const agent = liveAgent(ctx, 'cancel-test-3')
     ctx.agents.enter(agent, undefined)
 
     // Add two questions
@@ -138,32 +137,22 @@ describe('cancelPending vs late answer', () => {
       name: 'ask_user_question',
       arguments: JSON.stringify({ questions: [{ id: 'q2', question: 'Test 2?' }] }),
     })
-    // Add request header with timed schema
-    agent.session.append('request/header', {
-      header: {
-        config: { provider: 'test', model: 'test' },
-        tools: [{ name: 'ask_user_question', description: 'Ask user question', parameters: { properties: { timeout: {} } } }],
-      },
-      reason: 'initial',
-    })
 
     // Verify both questions are active
     let state = ctx.sessionProjections.stateOf(agent.session, 'userQuestions')
     expect(state?.questions.active.length).toBe(2)
 
-    // Cancel only one question
     ctx.userQuestions.cancelPending(agent)
 
-    // Verify only one question is canceled, the other remains
     state = ctx.sessionProjections.stateOf(agent.session, 'userQuestions')
     expect(state?.questions.active.length).toBe(0) // Both were canceled (we canceled all pending)
     expect(state?.canceledCallIds).toContain(String(callId1))
     expect(state?.canceledCallIds).toContain(String(callId2))
   })
 
-  it('answer rejects with QUESTION_CANCELED for canceled callId', async () => {
+  it('answer throws QUESTION_CANCELED for canceled callId', async () => {
     const ctx = await makeContext()
-    const agent = liveAgent('cancel-test-4')
+    const agent = liveAgent(ctx, 'cancel-test-4')
     ctx.agents.enter(agent, undefined)
 
     // Simulate a continued question
@@ -175,14 +164,7 @@ describe('cancelPending vs late answer', () => {
       name: 'ask_user_question',
       arguments: JSON.stringify({ questions: [{ id: 'q1', question: 'Test?' }] }),
     })
-    // Add request header with timed schema
-    agent.session.append('request/header', {
-      header: {
-        config: { provider: 'test', model: 'test' },
-        tools: [{ name: 'ask_user_question', description: 'Ask user question', parameters: { properties: { timeout: {} } } }],
-      },
-      reason: 'initial',
-    })
+
     // Add pending result to make it continued
     agent.session.append('tool/result', {
       turn: 1,
@@ -193,17 +175,13 @@ describe('cancelPending vs late answer', () => {
     // Cancel pending questions
     ctx.userQuestions.cancelPending(agent)
 
-    // Attempt to answer should reject with QUESTION_CANCELED
-    await expect(ctx.userQuestions.answer(agent, callId, { answers: [{ id: 'q1', selected: ['yes'] }] }))
-      .rejects.toMatchObject({
-        name: 'UserQuestionError',
-        code: USER_QUESTION_CANCELED_CODE,
-      })
+    expect(() => ctx.userQuestions.answer(agent, callId, { answers: [{ id: 'q1', selected: ['yes'] }] }))
+      .toThrow(expect.objectContaining({ name: 'UserQuestionError', code: USER_QUESTION_CANCELED_CODE }))
   })
 
   it('answer succeeds for non-canceled question after cancelPending', async () => {
     const ctx = await makeContext()
-    const agent = liveAgent('cancel-test-5')
+    const agent = liveAgent(ctx, 'cancel-test-5')
     ctx.agents.enter(agent, undefined)
 
     // Add one question that will NOT be canceled
@@ -215,18 +193,10 @@ describe('cancelPending vs late answer', () => {
       name: 'ask_user_question',
       arguments: JSON.stringify({ questions: [{ id: 'q1', question: 'Test?' }] }),
     })
-    // Add request header with timed schema
-    agent.session.append('request/header', {
-      header: {
-        config: { provider: 'test', model: 'test' },
-        tools: [{ name: 'ask_user_question', description: 'Ask user question', parameters: { properties: { timeout: {} } } }],
-      },
-      reason: 'initial',
-    })
 
     // Cancel - but then add a new question
     ctx.userQuestions.cancelPending(agent)
-    
+
     // Add a new question after cancel
     const callId2 = ToolCallId('test-call-5b')
     agent.session.append('tool/call', {
@@ -252,7 +222,7 @@ describe('cancelPending vs late answer', () => {
 
   it('cancelPending is idempotent when no questions pending', async () => {
     const ctx = await makeContext()
-    const agent = liveAgent('cancel-test-6')
+    const agent = liveAgent(ctx, 'cancel-test-6')
     ctx.agents.enter(agent, undefined)
 
     // First cancel with no questions
@@ -272,7 +242,7 @@ describe('cancelPending vs late answer', () => {
     onTestFinished(() => { vi.useRealTimers() })
 
     const ctx = await makeContext()
-    const agent = liveAgent('cancel-test-7')
+    const agent = liveAgent(ctx, 'cancel-test-7')
     ctx.agents.enter(agent, undefined)
 
     // Create a timed wait
@@ -305,20 +275,20 @@ describe('cancelPending vs late answer', () => {
 
   it('answer returns false for non-existent question even after cancel', async () => {
     const ctx = await makeContext()
-    const agent = liveAgent('cancel-test-8')
+    const agent = liveAgent(ctx, 'cancel-test-8')
     ctx.agents.enter(agent, undefined)
 
     // Cancel without any questions
     ctx.userQuestions.cancelPending(agent)
 
     // Answer for non-existent call should return false (not throw)
-    const result = await ctx.userQuestions.answer(agent, ToolCallId('non-existent'), { answers: [{ id: 'q1', selected: ['yes'] }] })
+    const result = ctx.userQuestions.answer(agent, ToolCallId('non-existent'), { answers: [{ id: 'q1', selected: ['yes'] }] })
     expect(result).toBe(false)
   })
 
   it('new questions work after cancelPending', async () => {
     const ctx = await makeContext()
-    const agent = liveAgent('cancel-test-9')
+    const agent = liveAgent(ctx, 'cancel-test-9')
     ctx.agents.enter(agent, undefined)
 
     // Add a question and cancel it
@@ -329,13 +299,6 @@ describe('cancelPending vs late answer', () => {
       callId: callId1,
       name: 'ask_user_question',
       arguments: JSON.stringify({ questions: [{ id: 'q1', question: 'Old?' }] }),
-    })
-    agent.session.append('request/header', {
-      header: {
-        config: { provider: 'test', model: 'test' },
-        tools: [{ name: 'ask_user_question', description: 'Ask user question', parameters: { properties: { timeout: {} } } }],
-      },
-      reason: 'initial',
     })
 
     // Cancel the old question
@@ -363,9 +326,9 @@ describe('cancelPending vs late answer', () => {
     expect(state?.canceledCallIds).not.toContain(String(callId2))
   })
 
-  it('projection stateVersion bumps for canceledCallIds', async () => {
+  it('retains canceled call IDs in projected state', async () => {
     const ctx = await makeContext()
-    const agent = liveAgent('cancel-test-10')
+    const agent = liveAgent(ctx, 'cancel-test-10')
     ctx.agents.enter(agent, undefined)
 
     // Add a question and cancel it
@@ -377,19 +340,12 @@ describe('cancelPending vs late answer', () => {
       name: 'ask_user_question',
       arguments: JSON.stringify({ questions: [{ id: 'q1', question: 'Test?' }] }),
     })
-    agent.session.append('request/header', {
-      header: {
-        config: { provider: 'test', model: 'test' },
-        tools: [{ name: 'ask_user_question', description: 'Ask user question', parameters: { properties: { timeout: {} } } }],
-      },
-      reason: 'initial',
-    })
 
     // Cancel and verify state has canceledCallIds
     ctx.userQuestions.cancelPending(agent)
 
     const state = ctx.sessionProjections.stateOf(agent.session, 'userQuestions')
     expect(state?.canceledCallIds).toContain(String(callId))
-    // The stateVersion is 4 (bumped from 3 when adding canceledCallIds)
+
   })
 })

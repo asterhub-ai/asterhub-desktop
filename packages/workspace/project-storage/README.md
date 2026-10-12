@@ -38,6 +38,8 @@ Mount `ProjectStorageService` with explicit `ProjectStorageOptions` after prepar
 
 The Host-facing service is exposed as `ctx.projectStorage`; the browser-safe `./types` entry declares only data contracts. Mutations write a complete temp file, sync it, atomically replace the prior file, and emit `project-storage/changed` only after durability. Register read-only legacy discovery with `registerLegacySource` and the single migration implementation with `registerLegacyAdopter` through their owning Cordis effects. The adopter receives `(proposal, destinationRoot, signal?)` and must return the complete verified portable manifest. Legacy open revalidates the proposal and fails with `ProjectMigrationUnavailableError` when no adopter is registered; it never initializes empty history.
 
+Registration disposers follow Cordis effect ownership and may return a Promise; callers await disposal before releasing dependent resources.
+
 <a id="toc-inspection-and-adoption"></a>
 ## Inspection and adoption
 

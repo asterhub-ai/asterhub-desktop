@@ -3,7 +3,7 @@
 import type { DesktopShortcutInput, ShortcutConfigSnapshot, ShortcutSaveResult } from '@deepseek-ai/dsh-client-shortcuts/protocol'
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import {
-  DESKTOP_IPC, SCHEME, type DesktopAccountMenuCommand, type DshDesktopProductApi, type DesktopUpdatePresentation,
+  DESKTOP_IPC, SCHEME, type DshDesktopProductApi, type DesktopUpdatePresentation,
 } from './ipc.ts'
 import { PLATFORM_IPC } from './platform-ipc.ts'
 import { markDocumentPlatform, syncWindowFullscreen } from './preload-platform.ts'
@@ -60,7 +60,7 @@ function createProductApi(): DshDesktopProductApi {
     },
     account: {
       subscribeCommand(listener) {
-        const handle = (_event: Electron.IpcRendererEvent, command: DesktopAccountMenuCommand): void => {
+        const handle = (_event: Electron.IpcRendererEvent, command: unknown): void => {
           if (command === 'open' || command === 'logout') listener(command)
         }
         ipcRenderer.on(DESKTOP_IPC.accountCommand, handle)

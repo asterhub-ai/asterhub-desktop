@@ -1,4 +1,5 @@
 /** Browser-safe native scheduling requests and durable task/run records. */
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
@@ -136,7 +137,11 @@ export interface AutomationGetRequest { readonly id: AutomationTaskId }
 /** Bounded execution history query. */
 export interface AutomationRunsRequest { readonly id: AutomationTaskId; readonly limit: number; readonly before?: AutomationRunId }
 /** One execution page plus truthful retention status. */
-export interface AutomationRunsPage { readonly records: readonly AutomationRun[]; readonly nextBefore: AutomationRunId | null; readonly historyPruned: boolean }
+export interface AutomationRunsPage {
+  readonly records: readonly AutomationRun[]
+  readonly nextBefore: AutomationRunId | null
+  readonly historyPruned: boolean
+}
 /** Host-approved form selections, with no private credentials. */
 export interface AutomationChoices {
   readonly accountId: string
@@ -165,3 +170,83 @@ export interface AutomationLimits {
 }
 /** No-content lifecycle inspection used by quit and installed updates. */
 export interface AutomationLifecycle { readonly armed: boolean; readonly active: boolean }
+
+/**
+ * Event payload for `automation/changed`.
+ *
+ * Carries no task content; clients re-query the authoritative record set.
+ * The event is emitted after every durable put/delete so the runtime
+ * recomputes its next timer and the Client refreshes its visible list.
+ */
+export interface AutomationChangedEvent {
+  /** Identifies a task catalog change notification. */
+  readonly kind: 'automation-changed'
+}
+
+/**
+ * Event payload for `automation/account-changed`.
+ *
+ * Emitted when the automation identity changes (login/logout/switch).
+ * Carries no task content or secrets; clients re-query the authoritative record set.
+ * List/get/runs/choices capture identity and reassert before resolving.
+ */
+export interface AutomationAccountChangedEvent {
+  /** The new account id, or null if logged out. */
+  readonly accountId: string | null
+  /** The new epoch, or 0 if logged out. */
+  readonly epoch: number
+}
+
+/**
+ * Event payload for `automation/run-stop-requested`.
+ *
+ * Emitted when a run stop is requested; observed by the runtime outside the FIFO.
+ */
+export interface AutomationRunStopRequestedEvent {
+  readonly taskId: AutomationTaskId
+  readonly runId: AutomationRunId
+}
+
+/**
+ * Automation service events declaration for Cordis.
+ * Uses method signature style (not EventMap tuples) per Cordis Events interface.
+ */
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /**
+     * Notification that automation tasks changed; re-query for authoritative state.
+     * @param event - The automation changed event.
+     * @mode emit
+     */
+    'automation/changed'(event: AutomationChangedEvent): void
+    /**
+     * Account identity changed; re-query and drop stale prepared ops.
+     * @param event - The account changed event.
+     * @mode emit
+     */
+    'automation/account-changed'(event: AutomationAccountChangedEvent): void
+    /**
+     * Request to stop one run; observed by the runtime outside the FIFO.
+     * @param event - The run stop requested event.
+     * @mode emit
+     */
+    'automation/run-stop-requested'(event: AutomationRunStopRequestedEvent): void
+  }
+}
+
+/** Persisted JSON acknowledgement rendered by native task result cards. */
+export interface AutomationManageOutput {
+  readonly action: string
+  readonly success: boolean
+  readonly result?: JsonValue
+  readonly preview?: JsonValue
+  readonly error?: { readonly code: string; readonly message: string }
+}
+/** Current-account readonly JSON response. */
+export interface AutomationReadOutput {
+  readonly action: string
+  readonly success: boolean
+  readonly tasks?: JsonValue
+  readonly task?: JsonValue
+  readonly error?: { readonly code: string; readonly message: string }
+}
