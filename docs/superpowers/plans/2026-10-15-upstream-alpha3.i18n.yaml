@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-10-15-upstream-alpha3.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/plans/2026-10-15-upstream-alpha3.md
+/asterhub-alpha-3-follow-up-checklist:
+  en: 1c99c10f32ad1c06
+  zh: ef481acdf20fa341
+/asterhub-alpha-3-follow-up-checklist/goal:
+  en: a775587f8b4c7ad7
+  zh: 5e9263c731bed4a7
+/asterhub-alpha-3-follow-up-checklist/tasks:
+  en: c87ccb1b5f7583cb
+  zh: 2671e404645e8c5a
+/asterhub-alpha-3-follow-up-checklist/constraints:
+  en: a426fd279d8e710f
+  zh: 78b14fc56651aaf7
+/asterhub-alpha-3-follow-up-checklist/verification-record:
+  en: 84eb69f3a19638c0
+  zh: 55a1746fdebe04a1
