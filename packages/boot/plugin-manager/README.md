@@ -23,7 +23,7 @@ Manage the current profile's plugins without editing configuration by hand. Enab
 - [Failure behavior](#failure-behavior)
 - [Dev Note](#dev-note)
 
-Package installation and enablement refresh the live runtime package resolution before activation. Disablement and removal refresh it after plugins stop; changing a loaded package directory or version still requires a process restart.
+Package installation and enablement refresh the live runtime package resolution before activation. Disablement and removal refresh it after plugins stop. HMR reloads changed package files; `restart-required` identifies changes the running process cannot apply.
 
 -----
 
@@ -39,7 +39,7 @@ For a deployment without agent presets, enable the tool in the profile patch. Pr
   disabled: false
 ```
 
-A plugin toggle updates only `disabled` in the last matching override in the profile's `cordis.patch.yml`, or appends an override when none matches. Matching uses the entry id and any module-name assertion. A bundle toggle changes `package.json`'s ordered `dsh.profile.bundles` list. Disabling retains the dependency; enabling appends the bundle at the end, which can change configuration precedence. Installation enables a new bundle by default. Home and invocation patches retain their higher priority.
+A plugin toggle updates only `disabled` in the last matching override in the profile's `cordis.patch.yml`, or appends an override when none matches. Matching uses the entry id and any module-name assertion. An override holding only `id` and `disabled` is removed, and none is appended, when the bundle layers and the remaining profile patches already give the entry the requested state, so the profile patch records only departures from the bundles. Home and invocation patches are left out of that comparison; they apply after the profile patch and do not decide what it records. A bundle toggle changes `package.json`'s ordered `dsh.profile.bundles` list. Disabling retains the dependency; enabling appends the bundle at the end, which can change configuration precedence. Installation enables a new bundle by default. Home and invocation patches retain their higher priority.
 
 A selected bundle that cannot load remains in `listBundles` with an `error`; `enabled` records the saved selection, not successful loading. The plugin page shows the error and allows deselection. A broken bundle cannot be enabled. Management bundles remain protected if their files become unreadable.
 
@@ -93,6 +93,8 @@ The CLI exposes `dsh plugin --profile <profile> version-exemptions`, `allow-vers
 
 The service and `dsh plugin` share the package operations in [operations.ts](src/operations.ts). The launcher supplies the current profile; [DSH HMR](../hmr/README.md) serializes module reloads, file watching and management writes. Each refresh re-reads bundle selection and patch layers, updates the original root Include, and awaits removed plugin resources as well as the remaining Loader tree. CLI and service operations share the profile manifest writer lock to prevent concurrent package and manifest writes. HMR does not acquire that lock. Pnpm runs outside the HMR queue; installation selects the bundle after pnpm succeeds, while removal deselects and unloads the bundle before pnpm runs. A service run whose captured output stays silent for `idleTimeoutMs` is terminated, reports `timedOut` alongside its exit status, is classified `timeout` whatever status the signal left behind, and is not retried on the next registry, which bounds how long one operation can hold the profile lock; the CLI inherits the terminal, captures no output, and stays unbounded for its operator to interrupt. A run completes when its process exits, and the pipes then drain under a bounded grace period, so a descendant that inherited them cannot hold the operation open. A terminated run stops its whole process tree and waits for it, because a lifecycle script outlives the pnpm process that started it (issue #4981). Each operation records the pnpm run it starts in `.plugin-manager/run.json` and removes the record when the run ends. A lock whose holder process exited is taken over by the next writer, but that process's pnpm tree can still be running, so an operation that finds a record waits up to five seconds for the recorded run to stop and otherwise fails with a diagnostic that names the process and the record, without running pnpm. Dependency-only changes do not trigger configuration reloads.
 
+With HMR, recomposition compares loaded package files and replaces affected plugins. A signed curated update uses the verified artifact and existing installation transaction; generic installations of an already installed package require removal first. Retained package mappings that move, host modules, unmanaged plugins, or files that cannot be compared require restart. `restartReason` identifies the cause for localized presentation. Without HMR, changes take effect at restart. A failed activation retains the installed files and reports the diagnostic; correcting the files allows a later recomposition to retry.
+
 Results contain the last attempted stage, target, saved-state change, application status and error codes. Web dictionaries render management text; pnpm and Loader diagnostics remain unmodified. Unrelated pre-existing inactive entries return warnings; new or changed failures and inactive explicit enablement targets fail the operation. A failed or cancelled installation restores the manifest and lockfile it snapshotted before pnpm ran ([rationale](../../../.agents/notes/implemented/architecture/2026-09-15-guided-plugin-installation.md)); a failed removal retains its partial changes and diagnostics. Installations are tracked by request id until their call settles, so a cancellation names one run and joins its settlement without taking the profile lock. The CLI inherits authentication variables and terminal descriptors; service operations use a scrubbed environment and captured output. No invariant companion is published because the manager reads files and Loader state directly and owns no independent state projection.
 
 </details>
@@ -114,7 +116,7 @@ Results contain the last attempted stage, target, saved-state change, applicatio
 
 #### What the model sees
 
-The [`plugin_manager` tool](../../../docs/tool-catalog.md#deepseek-aidsh-plugin-manager) lists plugin entries and bundles and performs profile-wide changes. Its results include saved-state changes, application status and package diagnostics. Management operations do not inject messages into Agents.
+The [`plugin_manager` tool](../../../docs/tool-catalog.md#deepseek-aidsh-plugin-manager) lists plugin entries and bundles and performs profile-wide changes. Its results include saved-state changes, application status and package diagnostics. A change result that is not plainly applied adds `nextStep`, a sentence derived from its application status, refusal code, package-manager failure kind or restart reason that says what the model does next or tells the user. Management operations do not inject messages into Agents.
 
 #### Token effect
 
@@ -129,7 +131,8 @@ Tool results append to the transcript. Enabling or disabling other tools can cha
 <a id="known-limitations-and-deferred-work"></a>
 
 - Web approves the entire displayed pending group; it has no per-package selection.
-- Package replacements require restarting the process to load a fresh JavaScript module generation.
+- pnpm verifies every lockfile tarball URL against its default registry when a command changes the lockfile. After a package was installed from another registry, installing a different package with the default registry, or removing that package after a restart, can fail with `ERR_PNPM_TARBALL_URL_MISMATCH`.
+- Package replacements require restarting the process without HMR. A package relinked outside Plugin Manager while it is still installed waits for a restart.
 - Startup-only profiles cannot remove packages used to start the current process; stop it and use `dsh plugin`.
 - The manager cannot disable its own management components, change another profile, or edit an agent preset's composition.
 - A failed removal may leave dependencies partially changed, and a failed or cancelled installation can leave downloaded files under `node_modules` or the pnpm store. Inactive dependencies with missing files remain removable. Diagnostic logs remain under the profile's `.plugin-manager/logs` directory.

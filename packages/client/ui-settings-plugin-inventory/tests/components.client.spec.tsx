@@ -111,6 +111,23 @@ describe('CuratedPluginSettingsTab', () => {
     await screen.findByText('Installed')
   })
 
+  it.each([
+    ['no-hmr', en.restartStartup],
+    ['package-moved', en.restartPackageMoved],
+    ['host-module', en.restartHostModule],
+    ['unmanaged-plugin', en.restartUnmanagedPlugin],
+    ['module-comparison', en.restartComparison],
+    [undefined, en.restartRequired],
+  ] as const)('explains why a saved plugin needs a restart: %s', async (restartReason, message) => {
+    render(<CuratedPluginSettingsTab {...props(async () => CATALOG, async () => ({
+      changed: true, application: 'restart-required', stage: 'enable', target: '@asterhub/office',
+      ...(restartReason === undefined ? {} : { restartReason }),
+    }))} />)
+    const buttons = await screen.findAllByRole('button', { name: 'Install' })
+    fireEvent.click(buttons[0]!)
+    expect(await screen.findByText(message)).toBeTruthy()
+  })
+
   it('shows failure feedback when installation does not apply', async () => {
     render(<CuratedPluginSettingsTab {...props(async () => CATALOG, async () => ({ changed: false, application: 'failed', stage: 'install', target: '@asterhub/office' }))} />)
     const installButtons = await screen.findAllByRole('button', { name: 'Install' })

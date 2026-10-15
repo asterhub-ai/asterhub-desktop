@@ -1,8 +1,17 @@
 /** Settings surface for the signed AsterHub plugin catalogue. */
 import { useEffect, useState, type ReactNode } from 'react'
-import type { ChangeResult, CuratedPluginCatalog, CuratedPluginEntry, CuratedPluginInstallRequest } from '@deepseek-ai/dsh-plugin-manager/types'
+import type { ChangeResult, CuratedPluginCatalog, CuratedPluginEntry, CuratedPluginInstallRequest, RestartReason } from '@deepseek-ai/dsh-plugin-manager/types'
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PluginInventoryLocaleKey } from './locales.ts'
 import css from './CuratedPluginSettingsTab.module.css'
+
+const restartMessages: Record<RestartReason, PluginInventoryLocaleKey> = {
+  'no-hmr': 'restartStartup',
+  'package-moved': 'restartPackageMoved',
+  'host-module': 'restartHostModule',
+  'unmanaged-plugin': 'restartUnmanagedPlugin',
+  'module-comparison': 'restartComparison',
+}
 
 /** Registration-side Remote face used by the curated catalogue section. */
 export interface CuratedPluginSettingsTabInjected {
@@ -54,7 +63,10 @@ export function CuratedPluginSettingsTab(props: CuratedPluginSettingsTabProps): 
       if (result.error?.code === 'stale-approval') {
         setMessage(t('catalogChanged'))
         void refresh()
-      } else if (result.application === 'applied' || result.application === 'restart-required') {
+      } else if (result.application === 'restart-required') {
+        setMessage(t(result.restartReason === undefined ? 'restartRequired' : restartMessages[result.restartReason]))
+        void refresh()
+      } else if (result.application === 'applied') {
         setMessage(t('installed'))
         void refresh()
       } else {

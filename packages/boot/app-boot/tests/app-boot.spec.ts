@@ -574,6 +574,7 @@ describe('auditStartupEntries', () => {
     }
     disabled?: boolean
     options: { id: string; name: string }
+    parent?: { tree: { import(name: string): Promise<unknown> } }
   }
 
   const ctxWith = (entries: FakeEntry[]): Context => ({
@@ -609,7 +610,7 @@ describe('auditStartupEntries', () => {
     const warn = vi.fn()
     const original = new Error('todo apply failure')
     await auditStartupEntries(ctxWith([
-      { options: { id: 'missing-tool', name: './missing.mjs' } },
+      { options: { id: 'missing-tool', name: './missing.mjs' }, parent: { tree: { import: () => Promise.resolve() } } },
       { fiber: fiber(3, original), options: { id: 'tool-todo', name: '@deepseek-ai/dsh-tool-todo' } },
       {
         fiber: fiber(0, undefined, { ready: {}, missing: {} }, ['ready']),
@@ -853,7 +854,7 @@ describe('boot', () => {
     const error = failure as StartupError
     expect(error.entries).toEqual([{
       id: 'webserver', module: './missing.mjs', required: true, fiberState: undefined,
-      outcome: { kind: 'failed', error: 'failed to import' },
+      outcome: { kind: 'failed', error: expect.objectContaining({ message: expect.stringContaining('missing.mjs') as string }) as Error, phase: 'failed to import' },
     }])
     expect(error.startup?.configurationPath).toBe(config)
     expect(error.startup?.messages.some(message => message.args.some(arg => arg instanceof Error && arg.message.includes('missing.mjs')))).toBe(true)
@@ -1268,7 +1269,7 @@ describe('boot', () => {
 
 describe('addHarnessSourceSection', () => {
   const SOURCE_ROOT = `${sep}opt${sep}harness-src`
-  const EXPECTED = `The AsterHub implementation checkout is at ${SOURCE_ROOT}. The checkout location and current working directory are separate values and may differ; never infer the working directory from this path. Use pwd to determine the current working directory. Use this checkout only to inspect or extend DSH itself.`
+  const EXPECTED = `AsterHub 源码检出目录为 ${SOURCE_ROOT}。检出目录与当前工作目录彼此独立，可能并不相同；不要根据该路径推断工作目录，请使用 pwd 确认。此检出目录仅用于检查或扩展 AsterHub。`
 
   it('distinguishes the source path from the current workdir after reusable instructions', async () => {
     const ctx = new Context()
@@ -1284,7 +1285,7 @@ describe('addHarnessSourceSection', () => {
       expect(rendered).toContain(EXPECTED)
       // The >= 0 guards keep a drifted opener/persona string from a false pass
       // through `-1 < n`.
-      const identityAt = rendered.indexOf('You are an AI agent powered by AsterHub.')
+      const identityAt = rendered.indexOf('你是 AsterHub 的 AI 助手。')
       const sourceAt = rendered.indexOf(EXPECTED)
       const personaAt = rendered.indexOf('You are a coding agent.')
       expect(identityAt).toBeGreaterThanOrEqual(0)

@@ -33,7 +33,7 @@ Each card uses the server catalogue's name and description verbatim, shows the c
 
 ### Installing
 
-Clicking Install sends the exact signed catalogue facts for that entry. A successful application (`applied` or `restart-required`) shows the installed message and refreshes the catalogue. A `stale-approval` result — the catalogue revision moved between display and approval — shows the changed-list message and refreshes so the user reviews the current entries. Any other outcome or transport error shows the failure message; the user can retry.
+Clicking Install sends the exact signed catalogue facts for that entry. An `applied` result shows the installed message; `restart-required` explains why AsterHub must restart before the change takes effect. Both refresh the catalogue. A `stale-approval` result — the catalogue revision moved between display and approval — shows the changed-list message and refreshes so the user reviews the current entries. Any other outcome or transport error shows the failure message; the user can retry.
 
 ### Retrying a failed read
 
