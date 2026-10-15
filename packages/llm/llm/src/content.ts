@@ -30,6 +30,7 @@ export type ImageAttachmentAccessResolver = (ref: ImageAttachmentRef, scope?: At
  * @param ref - durable normalized attachment reference.
  * @returns a read-only execution-world path, or undefined when either provider exposes no mapping.
  * @throws an attachment error when the durable reference is invalid.
+ * @param scope - Optional trusted project and Session ownership for the attachment.
  */
 export function resolveImageAttachmentAccess(
   attachments: AttachmentStore,

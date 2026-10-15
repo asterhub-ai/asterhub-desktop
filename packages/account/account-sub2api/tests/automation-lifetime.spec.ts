@@ -23,8 +23,8 @@ afterEach(async () => {
   for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
   for (const server of servers.splice(0)) {
     server.closeAllConnections()
-    const { promise, resolve } = Promise.withResolvers<void>()
-    server.close(() => resolve())
+    const { promise, resolve } = Promise.withResolvers<undefined>()
+    server.close(() =>{  resolve(undefined) })
     await promise
   }
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
@@ -47,19 +47,19 @@ function createMockServer(options: {
     if (request.url === '/api/v1/auth/login') {
       response.end(JSON.stringify({
         code: 0,
-        data: { access_token: accessToken, user: { id: userId, email: 'test@example.com' } }
+        data: { access_token: accessToken, user: { id: userId, email: 'test@example.com' } },
       }))
     } else if (request.url?.startsWith('/api/v1/keys?')) {
       response.end(JSON.stringify({
         code: 0,
-        data: { items: [{ id: 1, key: key, group_id: 6 }], pages: 1 }
+        data: { items: [{ id: 1, key: key, group_id: 6 }], pages: 1 },
       }))
     } else if (request.url === '/api/v1/user/profile') {
       response.end(JSON.stringify({ code: 0, data: { balance: balance } }))
     } else if (request.url === '/api/v1/settings/public') {
       response.end(JSON.stringify({
         code: 0,
-        data: { registration_enabled: true, email_verify_enabled: true, invitation_code_enabled: false }
+        data: { registration_enabled: true, email_verify_enabled: true, invitation_code_enabled: false },
       }))
     } else {
       response.statusCode = 404
@@ -111,7 +111,7 @@ describe('automationIdentity', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity = await ctx.accountSub2api.automationIdentity()
@@ -135,7 +135,7 @@ describe('automationIdentity', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     expect(await ctx.accountSub2api.automationIdentity()).not.toBeNull()
@@ -159,7 +159,7 @@ describe('assertAutomationIdentity', () => {
     await ctx.plugin(AccountSub2apiService, { authBaseUrl: url, groupId: 6 })
 
     // Asserting any identity when logged out must reject — no credential acquisition possible
-    expect(() => ctx.accountSub2api.assertAutomationIdentity({ accountId: 'any', epoch: 1 })).toThrow()
+    expect(() =>{  ctx.accountSub2api.assertAutomationIdentity({ accountId: 'any', epoch: 1 }) }).toThrow()
   })
 
   it('throws when no active account after logout', async () => {
@@ -177,7 +177,7 @@ describe('assertAutomationIdentity', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity = await ctx.accountSub2api.automationIdentity()
@@ -187,7 +187,7 @@ describe('assertAutomationIdentity', () => {
     await ctx.accountSub2api.logout()
 
     // Asserting old identity after logout must reject — no active account, no credential acquisition
-    expect(() => ctx.accountSub2api.assertAutomationIdentity(identity!)).toThrow()
+    expect(() =>{  ctx.accountSub2api.assertAutomationIdentity(identity!) }).toThrow()
   })
   it('throws for account mismatch', async () => {
     const root = await mkdtemp(join(tmpdir(), 'asterhub-account-lifetime-'))
@@ -204,17 +204,17 @@ describe('assertAutomationIdentity', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity = await ctx.accountSub2api.automationIdentity()
     expect(identity).not.toBeNull()
 
     // Asserting different account ID must reject — credential isolation enforced
-    expect(() => ctx.accountSub2api.assertAutomationIdentity({
+    expect(() =>{  ctx.accountSub2api.assertAutomationIdentity({
       accountId: 'different-user',
-      epoch: identity!.epoch
-    })).toThrow()
+      epoch: identity!.epoch,
+    }) }).toThrow()
   })
 
   it('succeeds for valid identity', async () => {
@@ -232,14 +232,14 @@ describe('assertAutomationIdentity', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity = await ctx.accountSub2api.automationIdentity()
     expect(identity).not.toBeNull()
 
     // Should not throw
-    expect(() => ctx.accountSub2api.assertAutomationIdentity(identity!)).not.toThrow()
+    expect(() =>{  ctx.accountSub2api.assertAutomationIdentity(identity!) }).not.toThrow()
   })
 })
 
@@ -259,7 +259,7 @@ describe('registerAutomationLease', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity = await ctx.accountSub2api.automationIdentity()
@@ -287,7 +287,7 @@ describe('registerAutomationLease', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity = await ctx.accountSub2api.automationIdentity()
@@ -300,7 +300,7 @@ describe('registerAutomationLease', () => {
     expect(typeof disposer).toBe('function')
 
     // Calling disposer should not throw
-    expect(() => disposer()).not.toThrow()
+    expect(() =>{  disposer() }).not.toThrow()
   })
 })
 
@@ -320,7 +320,7 @@ describe('account switch with deferred promises', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity = await ctx.accountSub2api.automationIdentity()
@@ -328,7 +328,7 @@ describe('account switch with deferred promises', () => {
 
     // Track lease lifecycle
     let leaseStopped = false
-    const stopDeferred = Promise.withResolvers<void>()
+    const stopDeferred = Promise.withResolvers<undefined>()
 
     ctx.accountSub2api.registerAutomationLease(identity!, async () => {
       // Simulate async cleanup work
@@ -340,13 +340,13 @@ describe('account switch with deferred promises', () => {
     const logoutPromise = ctx.accountSub2api.logout()
 
     // Logout should not complete until lease stops
-    const { promise: sleep, resolve: wake } = Promise.withResolvers<void>()
+    const { promise: sleep, resolve: wake } = Promise.withResolvers<undefined>()
     setTimeout(wake, 50)
     await sleep
     expect(leaseStopped).toBe(false)
 
     // Resolve the deferred stop
-    stopDeferred.resolve()
+    stopDeferred.resolve(undefined)
 
     // Now logout should complete
     await logoutPromise
@@ -365,12 +365,12 @@ describe('account switch with deferred promises', () => {
       if (request.url === '/api/v1/auth/login') {
         response.end(JSON.stringify({
           code: 0,
-          data: { access_token: 'token-1', user: { id: 'user-1', email: 'user1@example.com' } }
+          data: { access_token: 'token-1', user: { id: 'user-1', email: 'user1@example.com' } },
         }))
       } else if (request.url?.startsWith('/api/v1/keys?')) {
         response.end(JSON.stringify({
           code: 0,
-          data: { items: [{ id: 1, key: 'key-1', group_id: 6 }], pages: 1 }
+          data: { items: [{ id: 1, key: 'key-1', group_id: 6 }], pages: 1 },
         }))
       } else if (request.url === '/api/v1/user/profile') {
         response.end(JSON.stringify({ code: 0, data: { balance: 100 } }))
@@ -380,9 +380,9 @@ describe('account switch with deferred promises', () => {
       }
     })
 
-    const { promise: listenPromise, resolve: listenResolve, reject: listenReject } = Promise.withResolvers<void>()
+    const { promise: listenPromise, resolve: listenResolve, reject: listenReject } = Promise.withResolvers<undefined>()
     server1.once('error', listenReject)
-    server1.listen(0, '127.0.0.1', listenResolve)
+    server1.listen(0, '127.0.0.1', () => { listenResolve(undefined) })
     await listenPromise
     servers.push(server1)
 
@@ -400,7 +400,7 @@ describe('account switch with deferred promises', () => {
       email: 'user1@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity1 = await ctx.accountSub2api.automationIdentity()
@@ -412,7 +412,7 @@ describe('account switch with deferred promises', () => {
       email: 'user1@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity2 = await ctx.accountSub2api.automationIdentity()
@@ -421,7 +421,7 @@ describe('account switch with deferred promises', () => {
 
     // Old identity should be stale
     // Old identity epoch is stale - credential isolation enforced
-    expect(() => ctx.accountSub2api.assertAutomationIdentity(identity1!)).toThrow()
+    expect(() =>{  ctx.accountSub2api.assertAutomationIdentity(identity1!) }).toThrow()
   })
 
   it('stale run cannot read new credential', async () => {
@@ -433,12 +433,12 @@ describe('account switch with deferred promises', () => {
       if (request.url === '/api/v1/auth/login') {
         response.end(JSON.stringify({
           code: 0,
-          data: { access_token: 'token-1', user: { id: 'user-1', email: 'user1@example.com' } }
+          data: { access_token: 'token-1', user: { id: 'user-1', email: 'user1@example.com' } },
         }))
       } else if (request.url?.startsWith('/api/v1/keys?')) {
         response.end(JSON.stringify({
           code: 0,
-          data: { items: [{ id: 1, key: 'key-1', group_id: 6 }], pages: 1 }
+          data: { items: [{ id: 1, key: 'key-1', group_id: 6 }], pages: 1 },
         }))
       } else if (request.url === '/api/v1/user/profile') {
         response.end(JSON.stringify({ code: 0, data: { balance: 100 } }))
@@ -448,9 +448,9 @@ describe('account switch with deferred promises', () => {
       }
     })
 
-    const { promise: listenPromise, resolve: listenResolve, reject: listenReject } = Promise.withResolvers<void>()
+    const { promise: listenPromise, resolve: listenResolve, reject: listenReject } = Promise.withResolvers<undefined>()
     server1.once('error', listenReject)
-    server1.listen(0, '127.0.0.1', listenResolve)
+    server1.listen(0, '127.0.0.1', () => { listenResolve(undefined) })
     await listenPromise
     servers.push(server1)
 
@@ -468,7 +468,7 @@ describe('account switch with deferred promises', () => {
       email: 'user1@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity1 = await ctx.accountSub2api.automationIdentity()
@@ -479,14 +479,14 @@ describe('account switch with deferred promises', () => {
     await ctx.accountSub2api.logout()
 
     // Stale identity after logout must reject — no active account, no credential acquisition
-    expect(() => ctx.accountSub2api.assertAutomationIdentity(identity1!)).toThrow()
+    expect(() =>{  ctx.accountSub2api.assertAutomationIdentity(identity1!) }).toThrow()
 
     // Re-login creates new identity
     await ctx.accountSub2api.login({
       email: 'user1@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity2 = await ctx.accountSub2api.automationIdentity()
@@ -495,7 +495,7 @@ describe('account switch with deferred promises', () => {
 
     // Stale identity still fails
     // Stale identity must reject — credential isolation enforced across epoch advance
-    expect(() => ctx.accountSub2api.assertAutomationIdentity(identity1!)).toThrow()
+    expect(() =>{  ctx.accountSub2api.assertAutomationIdentity(identity1!) }).toThrow()
   })
 })
 
@@ -520,7 +520,7 @@ describe('asterhub-account/changed event', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     // Event should have been emitted
@@ -543,7 +543,7 @@ describe('asterhub-account/changed event', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const events: Array<AccountAutomationIdentity | null> = []
@@ -582,7 +582,7 @@ describe('asterhub-account/changed event', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     expect(events.length).toBeGreaterThanOrEqual(1)
@@ -602,7 +602,7 @@ describe('server invalidation', () => {
       if (request.url === '/api/v1/auth/login') {
         response.end(JSON.stringify({
           code: 0,
-          data: { access_token: 'valid-token', user: { id: 'user-abc', email: 'test@example.com' } }
+          data: { access_token: 'valid-token', user: { id: 'user-abc', email: 'test@example.com' } },
         }))
       } else if (request.url === '/api/v1/user/profile') {
         if (sessionInvalid) {
@@ -615,7 +615,7 @@ describe('server invalidation', () => {
       } else if (request.url?.startsWith('/api/v1/keys?')) {
         response.end(JSON.stringify({
           code: 0,
-          data: { items: [{ id: 1, key: 'mock-key', group_id: 6 }], pages: 1 }
+          data: { items: [{ id: 1, key: 'mock-key', group_id: 6 }], pages: 1 },
         }))
       } else {
         response.statusCode = 404
@@ -623,9 +623,9 @@ describe('server invalidation', () => {
       }
     })
 
-    const { promise: listenPromise, resolve: listenResolve, reject: listenReject } = Promise.withResolvers<void>()
+    const { promise: listenPromise, resolve: listenResolve, reject: listenReject } = Promise.withResolvers<undefined>()
     server.once('error', listenReject)
-    server.listen(0, '127.0.0.1', listenResolve)
+    server.listen(0, '127.0.0.1', () => { listenResolve(undefined) })
     await listenPromise
     servers.push(server)
 
@@ -642,7 +642,7 @@ describe('server invalidation', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity1 = await ctx.accountSub2api.automationIdentity()
@@ -677,7 +677,7 @@ describe('stop callbacks do not deadlock', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity = await ctx.accountSub2api.automationIdentity()
@@ -711,7 +711,7 @@ describe('stop callbacks do not deadlock', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity = await ctx.accountSub2api.automationIdentity()
@@ -747,7 +747,7 @@ describe('two active leases at same epoch', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity = await ctx.accountSub2api.automationIdentity()
@@ -756,8 +756,8 @@ describe('two active leases at same epoch', () => {
     // Register two simultaneous leases at the same epoch
     let lease1Stopped = false
     let lease2Stopped = false
-    const stop1Deferred = Promise.withResolvers<void>()
-    const stop2Deferred = Promise.withResolvers<void>()
+    const stop1Deferred = Promise.withResolvers<undefined>()
+    const stop2Deferred = Promise.withResolvers<undefined>()
 
     ctx.accountSub2api.registerAutomationLease(identity!, async () => {
       await stop1Deferred.promise
@@ -773,24 +773,24 @@ describe('two active leases at same epoch', () => {
     const logoutPromise = ctx.accountSub2api.logout()
 
     // Neither lease should be stopped yet
-    const { promise: sleep1, resolve: wake1 } = Promise.withResolvers<void>()
+    const { promise: sleep1, resolve: wake1 } = Promise.withResolvers<undefined>()
     setTimeout(wake1, 50)
     await sleep1
     expect(lease1Stopped).toBe(false)
     expect(lease2Stopped).toBe(false)
 
     // Resolve first lease
-    stop1Deferred.resolve()
+    stop1Deferred.resolve(undefined)
 
     // Second lease still pending
-    const { promise: sleep2, resolve: wake2 } = Promise.withResolvers<void>()
+    const { promise: sleep2, resolve: wake2 } = Promise.withResolvers<undefined>()
     setTimeout(wake2, 50)
     await sleep2
     expect(lease1Stopped).toBe(true)
     expect(lease2Stopped).toBe(false)
 
     // Resolve second lease
-    stop2Deferred.resolve()
+    stop2Deferred.resolve(undefined)
 
     // Now logout should complete
     await logoutPromise
@@ -815,7 +815,7 @@ describe('two active leases at same epoch', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity = await ctx.accountSub2api.automationIdentity()
@@ -855,7 +855,7 @@ describe('failed stop leaves credentials unchanged (fail closed)', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity = await ctx.accountSub2api.automationIdentity()
@@ -893,7 +893,7 @@ describe('failed stop leaves credentials unchanged (fail closed)', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity1 = await ctx.accountSub2api.automationIdentity()
@@ -910,7 +910,7 @@ describe('failed stop leaves credentials unchanged (fail closed)', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })).rejects.toThrow()
 
     // Epoch was advanced before drain; old identity is now stale
@@ -933,12 +933,12 @@ describe('stop callback getStatus with 401 during transition', () => {
       if (request.url === '/api/v1/auth/login') {
         response.end(JSON.stringify({
           code: 0,
-          data: { access_token: 'mock-token', user: { id: 'user-abc', email: 'test@example.com' } }
+          data: { access_token: 'mock-token', user: { id: 'user-abc', email: 'test@example.com' } },
         }))
       } else if (request.url?.startsWith('/api/v1/keys?')) {
         response.end(JSON.stringify({
           code: 0,
-          data: { items: [{ id: 1, key: 'mock-key', group_id: 6 }], pages: 1 }
+          data: { items: [{ id: 1, key: 'mock-key', group_id: 6 }], pages: 1 },
         }))
       } else if (request.url === '/api/v1/user/profile') {
         if (sessionInvalid) {
@@ -953,9 +953,9 @@ describe('stop callback getStatus with 401 during transition', () => {
       }
     })
 
-    const { promise: listenPromise, resolve: listenResolve, reject: listenReject } = Promise.withResolvers<void>()
+    const { promise: listenPromise, resolve: listenResolve, reject: listenReject } = Promise.withResolvers<undefined>()
     server.once('error', listenReject)
-    server.listen(0, '127.0.0.1', listenResolve)
+    server.listen(0, '127.0.0.1', () => { listenResolve(undefined) })
     await listenPromise
     servers.push(server)
 
@@ -972,7 +972,7 @@ describe('stop callback getStatus with 401 during transition', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity = await ctx.accountSub2api.automationIdentity()
@@ -1009,12 +1009,12 @@ describe('stop callback getStatus with 401 during transition', () => {
       if (request.url === '/api/v1/auth/login') {
         response.end(JSON.stringify({
           code: 0,
-          data: { access_token: 'mock-token', user: { id: 'user-abc', email: 'test@example.com' } }
+          data: { access_token: 'mock-token', user: { id: 'user-abc', email: 'test@example.com' } },
         }))
       } else if (request.url?.startsWith('/api/v1/keys?')) {
         response.end(JSON.stringify({
           code: 0,
-          data: { items: [{ id: 1, key: 'mock-key', group_id: 6 }], pages: 1 }
+          data: { items: [{ id: 1, key: 'mock-key', group_id: 6 }], pages: 1 },
         }))
       } else if (request.url === '/api/v1/user/profile') {
         if (sessionInvalid) {
@@ -1029,9 +1029,9 @@ describe('stop callback getStatus with 401 during transition', () => {
       }
     })
 
-    const { promise: listenPromise, resolve: listenResolve, reject: listenReject } = Promise.withResolvers<void>()
+    const { promise: listenPromise, resolve: listenResolve, reject: listenReject } = Promise.withResolvers<undefined>()
     server.once('error', listenReject)
-    server.listen(0, '127.0.0.1', listenResolve)
+    server.listen(0, '127.0.0.1', () => { listenResolve(undefined) })
     await listenPromise
     servers.push(server)
 
@@ -1048,7 +1048,7 @@ describe('stop callback getStatus with 401 during transition', () => {
       email: 'test@example.com',
       password: 'password',
       rememberUsername: false,
-      autoLogin: false
+      autoLogin: false,
     })
 
     const identity = await ctx.accountSub2api.automationIdentity()
@@ -1142,9 +1142,9 @@ describe('delayed 401 does not clear newly logged-in account', () => {
       }
     })
 
-    const { promise: listenPromise, resolve: listenResolve, reject: listenReject } = Promise.withResolvers<void>()
+    const { promise: listenPromise, resolve: listenResolve, reject: listenReject } = Promise.withResolvers<undefined>()
     server.once('error', listenReject)
-    server.listen(0, '127.0.0.1', listenResolve)
+    server.listen(0, '127.0.0.1', () => { listenResolve(undefined) })
     await listenPromise
     servers.push(server)
 
@@ -1174,7 +1174,7 @@ describe('delayed 401 does not clear newly logged-in account', () => {
     const quotaAPromise = ctx.accountSub2api.quota().catch((error: unknown) => error)
 
     // Let A's quota request reach the server (it's now polling)
-    const { promise: tick1, resolve: wake1 } = Promise.withResolvers<void>()
+    const { promise: tick1, resolve: wake1 } = Promise.withResolvers<undefined>()
     setTimeout(wake1, 50)
     await tick1
 
@@ -1241,9 +1241,9 @@ describe('transition stop awaits prior status 401 without deadlock', () => {
       }
     })
 
-    const { promise: listenPromise, resolve: listenResolve, reject: listenReject } = Promise.withResolvers<void>()
+    const { promise: listenPromise, resolve: listenResolve, reject: listenReject } = Promise.withResolvers<undefined>()
     server.once('error', listenReject)
-    server.listen(0, '127.0.0.1', listenResolve)
+    server.listen(0, '127.0.0.1', () => { listenResolve(undefined) })
     await listenPromise
     servers.push(server)
 
@@ -1268,11 +1268,10 @@ describe('transition stop awaits prior status 401 without deadlock', () => {
 
     // Register a lease whose stop callback will await a status request
     let stopCompleted = false
-    let statusPromise: Promise<AccountStatus | Error> | undefined
     ctx.accountSub2api.registerAutomationLease(identity!, async () => {
       // The prior status 401 will try to invalidate; during this transition
       // it must fail closed, not deadlock. Await it to prove no deadlock.
-      if (statusPromise) await statusPromise
+      await statusPromise
       stopCompleted = true
     })
 
@@ -1280,10 +1279,10 @@ describe('transition stop awaits prior status 401 without deadlock', () => {
     profile401 = true
 
     // Start a getStatus call — it will get 401 and try to invalidate
-    statusPromise = ctx.accountSub2api.getStatus().catch((error: unknown) => error as Error)
+    const statusPromise = ctx.accountSub2api.getStatus().catch((error: unknown) => error as Error)
 
     // Let the status request reach the server
-    const { promise: tick1, resolve: wake1 } = Promise.withResolvers<void>()
+    const { promise: tick1, resolve: wake1 } = Promise.withResolvers<undefined>()
     setTimeout(wake1, 50)
     await tick1
 
@@ -1291,7 +1290,7 @@ describe('transition stop awaits prior status 401 without deadlock', () => {
     const logoutPromise = ctx.accountSub2api.logout()
 
     // Give logout time to enter the transition and start draining
-    const { promise: tick2, resolve: wake2 } = Promise.withResolvers<void>()
+    const { promise: tick2, resolve: wake2 } = Promise.withResolvers<undefined>()
     setTimeout(wake2, 50)
     await tick2
 

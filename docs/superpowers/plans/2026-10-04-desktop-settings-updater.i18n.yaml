@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-10-04-desktop-settings-updater.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/plans/2026-10-04-desktop-settings-updater.md
+/desktop-settings-update-check-and-windows-release-implementation-plan:
+  en: 48ae27ff489bdd2f
+  zh: 3bffc606c784854e
+/desktop-settings-update-check-and-windows-release-implementation-plan/global-constraints:
+  en: 51bb02c77d86c9f1
+  zh: 3b0f37a9301d2554
+/desktop-settings-update-check-and-windows-release-implementation-plan/global-constraints/task-1-add-main-process-manual-install-consent:
+  en: a026adeaf86868f1
+  zh: 24b2fcc459bd1a33
+/desktop-settings-update-check-and-windows-release-implementation-plan/global-constraints/task-2-add-the-desktop-only-general-settings-action:
+  en: 2a161bdc2506c5f1
+  zh: 0834e6b7ea60d910
+/desktop-settings-update-check-and-windows-release-implementation-plan/global-constraints/task-3-verify-compiler-product-build-and-local-updater-behavior:
+  en: 4392084000830cd9
+  zh: 19e95e06efba4edf
+/desktop-settings-update-check-and-windows-release-implementation-plan/global-constraints/task-4-preflight-and-build-the-signed-windows-installer:
+  en: 042f4e33b4f6b289
+  zh: ac2c84dd5c21dd0b
+/desktop-settings-update-check-and-windows-release-implementation-plan/global-constraints/task-5-confirm-publish-and-verify-production-feed-objects:
+  en: 1e0b7f4d21f275f8
+  zh: c31b24abf2ba7ee8
+/desktop-settings-update-check-and-windows-release-implementation-plan/deferred-operation:
+  en: 7e0f6b10280a6172
+  zh: 5b99f36b169b71f8

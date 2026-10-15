@@ -108,6 +108,8 @@ test('registers into the sidebar', async ({ remote, start }) => {
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
+`bundleRoster` 在搜索依赖目录前先识别每个 bundle 自身的包名。
+
 <details>
 <summary>实现细节——点击展开</summary>
 

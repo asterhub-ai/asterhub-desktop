@@ -41,7 +41,7 @@ export class ProjectSessionPersistence extends SessionPersistence {
         await backend.persistence.flush()
         await backend.dispose()
       }))
-      const failures = results.flatMap(result => result.status === 'rejected' ? [result.reason] : [])
+      const failures = results.flatMap((result): unknown[] => result.status === 'rejected' ? [result.reason] : [])
       if (failures.length > 0) throw new AggregateError(failures, 'project Session persistence teardown failed')
     }, 'projectSessionPersistence.backends')
   }
@@ -81,7 +81,7 @@ export class ProjectSessionPersistence extends SessionPersistence {
    */
   async flush(): Promise<void> {
     const results = await Promise.allSettled([...this.backends.values()].map(backend => backend.persistence.flush()))
-    const failures = results.flatMap(result => result.status === 'rejected' ? [result.reason] : [])
+    const failures = results.flatMap((result): unknown[] => result.status === 'rejected' ? [result.reason] : [])
     if (failures.length > 0) throw new AggregateError(failures, 'one or more project Session stores failed to flush')
   }
 
@@ -179,7 +179,7 @@ export class ProjectSessionPersistence extends SessionPersistence {
       get(target, property, receiver) {
         if (property === 'close' || property === Symbol.asyncDispose) return close
         const value: unknown = Reflect.get(target, property, receiver)
-        return typeof value === 'function' ? value.bind(target) : value
+        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value
       },
     })
   }

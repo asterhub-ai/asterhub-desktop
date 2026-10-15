@@ -500,6 +500,7 @@ describe('Web session model selection', () => {
     }))
     ctx.llm.registerAdapter(['string-failure'], new class extends CatalogAdapter {
       override listModels(): Promise<readonly LlmModelInfo[]> {
+        // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Tests a string catalog rejection.
         return Promise.reject('string catalog failure')
       }
     }('String Failure', []))
@@ -840,6 +841,7 @@ describe('Web session model selection', () => {
     }('Image Capable', [{ provider: 'image-capable', id: 'vision', name: 'Vision' }]))
     ctx.llm.registerAdapter(['string-error'], new class extends CatalogAdapter {
       override resolveModel(): Promise<LlmResolvedModelInfo> {
+        // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Tests a string route rejection.
         return Promise.reject('string selection failure')
       }
     }('String Error', [{ provider: 'string-error', id: 'plain', name: 'Plain' }]))

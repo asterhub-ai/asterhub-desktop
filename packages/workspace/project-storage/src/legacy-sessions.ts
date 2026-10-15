@@ -13,12 +13,19 @@ import type {
   ProjectLegacyAdopter,
 } from './types.ts'
 
+/**
+ * Optional source locations for copying legacy project data.
+ */
 export interface LegacyAdoptionOptions {
   /** Optional custom attachments source root. */
   legacyAttachmentsRoot?: string
 }
 
-/** Encode a raw string segment to a filesystem-safe directory name. */
+/**
+ * Encode a raw string segment to a filesystem-safe directory name.
+ * @param raw - Raw path segment to encode without filesystem separators.
+ * @returns Filesystem-safe encoding with no path separators.
+ */
 export function encodeSegment(raw: string): string {
   if (raw.length === 0) throw new Error('cannot encode an empty path segment')
   if (raw === '.') return '~002E'
@@ -36,7 +43,11 @@ export function encodeSegment(raw: string): string {
   return out
 }
 
-/** Build the filesystem-safe key for a project path. */
+/**
+ * Build the filesystem-safe key for a project path.
+ * @param cwd - Project path whose stable filesystem key is required.
+ * @returns Stable filesystem-safe key for the project path.
+ */
 export function projectKey(cwd: string): string {
   if (cwd.length === 0) throw new Error('cannot encode an empty project path')
   let readable = ''
@@ -140,9 +151,8 @@ async function copyAndVerifyFile(sourceFile: string, targetFile: string): Promis
 /**
  * Create a ProjectLegacyAdopter that stages legacy session generations byte-for-byte,
  * verifies headers and integrity, and atomically publishes into the destination project's `.aster/sessions`.
- *
- * @param options - optional adoption configuration.
  * @returns a verified ProjectLegacyAdopter function.
+ * @param _options - Reserved adoption configuration; the current copier derives sources from the proposal.
  */
 export function createLegacyAdopter(_options?: LegacyAdoptionOptions): ProjectLegacyAdopter {
   return async (proposal: LegacyProjectProposal, destinationRoot: string, signal?: AbortSignal): Promise<PortableProjectManifest> => {

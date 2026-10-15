@@ -265,7 +265,9 @@ describe('userQuestions projection fold', () => {
       state: 'continued',
     }
     const view = { active: [full], settled: [{ callId: 'call_ask_0', answers: answerBatch }] }
-    const restored = userQuestionProjectionDefinition.stateSchema.parse({ inheritedEventCount: 3, timed: true, canceledCallIds: [], questions: view })
+    const restored = userQuestionProjectionDefinition.stateSchema.parse({
+      inheritedEventCount: 3, timed: true, canceledCallIds: [], questions: view,
+    })
     expect(restored).toEqual({ inheritedEventCount: SessionLogOffset(3), timed: true, canceledCallIds: [], questions: view })
     expect(restored.questions.active[0]?.questions[1]).not.toHaveProperty('options')
 
@@ -295,6 +297,6 @@ describe('userQuestions projection fold', () => {
     expect(userQuestionProjectionDefinition.wire.view(opened))
       .toEqual({ active: [{ callId, questions, state: 'open' }], settled: [] })
     expect(userQuestionProjectionDefinition.apply(opened, event(5, 'turn/start', { turn: 2 }))).toBe(opened)
-    expect(userQuestionProjectionDefinition.stateVersion).toBe(2)
+    expect(userQuestionProjectionDefinition.stateVersion).toBe(4)
   })
 })

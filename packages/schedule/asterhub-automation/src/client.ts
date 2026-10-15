@@ -2,8 +2,11 @@
 export type {
   AutomationManageOutput,
   AutomationReadOutput,
-} from './tools.ts'
+} from './types.ts'
 export type {
+  AutomationChangedEvent,
+  AutomationAccountChangedEvent,
+  AutomationRunStopRequestedEvent,
   AutomationTaskId,
   AutomationRunId,
   AutomationAccountIdentity,

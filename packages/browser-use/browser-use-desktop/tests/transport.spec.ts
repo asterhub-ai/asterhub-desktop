@@ -48,7 +48,7 @@ function browserPort(): BrowserPortFixture {
   return {
     transport,
     sent,
-    emit: message => { messages.emit('message', message) },
+    emit: (message) => { messages.emit('message', message) },
     disconnect() { connected = false; lifecycle.emit('disconnect') },
     listenerCount: () => messages.listenerCount('message') + lifecycle.listenerCount('disconnect'),
   }

@@ -15,7 +15,7 @@ Each package entry labels its data with three identifiers: `inject` lists the se
 ## `@deepseek-ai/dsh-account-sub2api`
 
 - `inject`: `credentials`
-- `source`: [`packages/account/account-sub2api/src/index.ts:414`](../packages/account/account-sub2api/src/index.ts)
+- `source`: [`packages/account/account-sub2api/src/index.ts:417`](../packages/account/account-sub2api/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config: where the control plane lives and which group keys bind to. */
@@ -324,7 +324,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-workspace-controller`
 
 - `inject`: `typert` · `workspaceRegistry`
-- `source`: [`packages/api/workspace-controller/src/index.ts:36`](../packages/api/workspace-controller/src/index.ts)
+- `source`: [`packages/api/workspace-controller/src/index.ts:37`](../packages/api/workspace-controller/src/index.ts)
 
 ```ts config-catalog
 /** First-use directory policy for the Host account. */
@@ -371,7 +371,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-asterhub-automation`
 
-- `source`: [`packages/schedule/asterhub-automation/src/index.ts:68`](../packages/schedule/asterhub-automation/src/index.ts)
+- `source`: [`packages/schedule/asterhub-automation/src/index.ts:67`](../packages/schedule/asterhub-automation/src/index.ts)
 
 ```ts config-catalog
 /**
@@ -1181,6 +1181,8 @@ export interface Config {
   minSpeechSeconds: number
   /** Silence separating two speech segments. */
   minSilenceSeconds: number
+  /** Recording audio restored ahead of the first VAD segment, which cold start reports late; zero disables it. */
+  vadOnsetPaddingSeconds: number
   /** Maximum decoded WAV bytes accepted by the private worker. */
   maxAudioBytes: number
   /** Deadline for runtime preparation and cold model loading. */
@@ -2334,11 +2336,17 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-project-storage`
 
-- `source`: [`packages/workspace/project-storage/src/types.ts:98`](../packages/workspace/project-storage/src/types.ts)
+- `source`: [`packages/workspace/project-storage/src/types.ts:128`](../packages/workspace/project-storage/src/types.ts)
 
 ```ts config-catalog
+/**
+ * Resolved inputs used to initialize project storage.
+ */
 export type ProjectStorageOptions = ProjectStorageConfig
 
+/**
+ * Explicit storage mode, machine-local locator, metadata limit, and mutation lock deadline.
+ */
 export interface ProjectStorageConfig {
   /** Explicitly select grouped or project-local Session persistence. */
   readonly sessionMode: 'grouped' | 'project-local'

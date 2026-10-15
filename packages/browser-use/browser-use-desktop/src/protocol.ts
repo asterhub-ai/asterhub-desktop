@@ -25,12 +25,20 @@ export const MAX_DESKTOP_BROWSER_TEXT_RESULT_CHARS = 1_000_000
 /** Maximum tab inventory returned to one model call; truncation is reported explicitly. */
 export const MAX_DESKTOP_BROWSER_TABS = 256
 
-/** Canonical object guard for this package's process-wire validators. */
+/**
+ * Canonical object guard for this package's process-wire validators.
+ * @param value - Untrusted value to validate.
+ * @returns Whether the value is a non-null, non-array object.
+ */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** Validate the public browser operation at the Host IPC boundary. */
+/**
+ * Validate the public browser operation at the Host IPC boundary.
+ * @param value - Untrusted value to validate.
+ * @returns Whether the value contains exactly one supported browser operation.
+ */
 export function isDesktopBrowserOperation(value: unknown): value is DesktopBrowserOperation {
   if (!isRecord(value) || typeof value.kind !== 'string') return false
   switch (value.kind) {
@@ -65,20 +73,32 @@ export function isDesktopBrowserOperation(value: unknown): value is DesktopBrows
   }
 }
 
-/** Validate the child-to-parent browser request message. */
+/**
+ * Validate the child-to-parent browser request message.
+ * @param value - Untrusted value to validate.
+ * @returns Whether the value is a valid correlated browser request.
+ */
 export function isDesktopBrowserRequestMessage(value: unknown): value is DesktopBrowserRequestMessage {
   return isRecord(value) && hasOnlyKeys(value, ['type', 'requestId', 'caller', 'operation'])
     && value.type === 'browser/request' && isRequestId(value.requestId)
     && isCaller(value.caller) && isDesktopBrowserOperation(value.operation)
 }
 
-/** Validate the child-to-parent cancellation message. */
+/**
+ * Validate the child-to-parent cancellation message.
+ * @param value - Untrusted value to validate.
+ * @returns Whether the value is a valid browser cancellation message.
+ */
 export function isDesktopBrowserCancelMessage(value: unknown): value is DesktopBrowserCancelMessage {
   return isRecord(value) && hasOnlyKeys(value, ['type', 'requestId'])
     && value.type === 'browser/cancel' && isRequestId(value.requestId)
 }
 
-/** Validate the parent-to-child result message before settling a caller. */
+/**
+ * Validate the parent-to-child result message before settling a caller.
+ * @param value - Untrusted value to validate.
+ * @returns Whether the value is a valid correlated browser result.
+ */
 export function isDesktopBrowserResultMessage(value: unknown): value is DesktopBrowserResultMessage {
   return isRecord(value) && hasOnlyKeys(value, ['type', 'requestId', 'result'])
     && value.type === 'browser/result' && isRequestId(value.requestId) && isBrowserResult(value.result)

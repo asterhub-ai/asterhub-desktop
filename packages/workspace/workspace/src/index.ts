@@ -115,6 +115,9 @@ export interface ArchiveSessionOptions {
    */
   readonly stopActivity?: boolean
 }
+/**
+ * Optional project ownership and directory lookup consumed by the workspace registry.
+ */
 export interface ProjectStorageLocator {
   locateSession(id: SessionId): { projectRoot: string } | undefined
   executionCwd?(header: SessionHeader): string | undefined

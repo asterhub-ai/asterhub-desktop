@@ -53,7 +53,10 @@ export class OffscreenCanvasPresentation implements BrowserPresentation {
     }
   }
 
-  /** Current canvas element if mounted. */
+  /**
+   * Current canvas element if mounted.
+   * @returns Mounted canvas, or undefined before mounting or after clearing.
+   */
   getCanvas(): HTMLCanvasElement | undefined {
     return this.canvas
   }

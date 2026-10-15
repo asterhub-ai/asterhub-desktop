@@ -4,19 +4,31 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import type { PortableProjectManifest, ProjectBindingRevision, ProjectId, ProjectSessionRecord } from './types.ts'
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
-/** Validate and brand an RFC 4122 project UUID. */
+/**
+ * Validate and brand an RFC 4122 project UUID.
+ * @param value - Untrusted value to validate.
+ * @returns Validated, lowercase branded project UUID.
+ */
 export function ProjectId(value: string): ProjectId {
   if (!uuidPattern.test(value)) throw new TypeError(`invalid project id: ${value}`)
   return brandString<ProjectId>(value.toLowerCase())
 }
 
-/** Validate and brand one binding revision UUID. */
+/**
+ * Validate and brand one binding revision UUID.
+ * @param value - Untrusted value to validate.
+ * @returns Validated, lowercase branded binding UUID.
+ */
 export function ProjectBindingRevision(value: string): ProjectBindingRevision {
   if (!uuidPattern.test(value)) throw new TypeError(`invalid project binding revision: ${value}`)
   return brandString<ProjectBindingRevision>(value.toLowerCase())
 }
 
-/** Validate a project-relative working directory; paths are portable `/`-separated data. */
+/**
+ * Validate a project-relative working directory; paths are portable `/`-separated data.
+ * @param value - Untrusted value to validate.
+ * @returns Validated slash-separated relative directory without traversal.
+ */
 export function validateRelativeCwd(value: string): string {
   if (value === '.') return value
   if (value.length === 0 || value.includes('\0') || value.includes('\\') || value.startsWith('/') || /^[a-z]:/i.test(value)) {
@@ -27,7 +39,11 @@ export function validateRelativeCwd(value: string): string {
   return parts.join('/')
 }
 
-/** Build a complete empty portable manifest. */
+/**
+ * Build a complete empty portable manifest.
+ * @param input - Project identity, title, and optional creation time for a new empty manifest.
+ * @returns Complete empty portable manifest with a validated identity and title.
+ */
 export function createManifest(input: { id?: ProjectId; title: string; createdAt?: number }): PortableProjectManifest {
   const title = validateTitle(input.title)
   const id = input.id ?? ProjectId(randomUUID())
@@ -36,18 +52,31 @@ export function createManifest(input: { id?: ProjectId; title: string; createdAt
   return { schemaVersion: 1, id, title, createdAt, sessions: [], sessionOrder: [], pinnedSessionIds: [], archivedSessionIds: [] }
 }
 
-/** Validate, encode and freeze a Session record's portable directory. */
+/**
+ * Validate, encode and freeze a Session record's portable directory.
+ * @param id - Stored task or Session identity.
+ * @param relativeCwd - Portable project-relative working directory.
+ * @returns Validated Session membership record.
+ */
 export function projectSessionRecord(id: string, relativeCwd: string): ProjectSessionRecord {
   if (id.length === 0 || id.includes('\0')) throw new TypeError('invalid session id')
   return { id: SessionId(id), relativeCwd: validateRelativeCwd(relativeCwd) }
 }
 
-/** Compute the SHA-256 digest used by project-open confirmation. */
+/**
+ * Compute the SHA-256 digest used by project-open confirmation.
+ * @param bytes - UTF-8 metadata bytes to hash or decode.
+ * @returns Hexadecimal SHA-256 digest of the supplied bytes.
+ */
 export function manifestDigest(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex')
 }
 
-/** Parse JSON while rejecting duplicate or prototype-sensitive object keys. */
+/**
+ * Parse JSON while rejecting duplicate or prototype-sensitive object keys.
+ * @param text - JSON text to parse with strict object-key validation.
+ * @returns Parsed JSON value with duplicate and prototype-sensitive keys rejected.
+ */
 export function parseStrictJson(text: string): unknown {
   const value: unknown = JSON.parse(text, (key, item: unknown) => {
     if (key === '__proto__' || key === 'constructor' || key === 'prototype') throw new TypeError(`forbidden JSON key ${key}`)
@@ -57,7 +86,12 @@ export function parseStrictJson(text: string): unknown {
   return value
 }
 
-/** Parse strict bounded JSON and validate every manifest field and relationship. */
+/**
+ * Parse strict bounded JSON and validate every manifest field and relationship.
+ * @param bytes - UTF-8 metadata bytes to hash or decode.
+ * @param maxBytes - Maximum accepted metadata byte length.
+ * @returns Validated portable manifest with consistent Session membership and ordering.
+ */
 export function decodeManifest(bytes: Uint8Array, maxBytes = 1024 * 1024): PortableProjectManifest {
   if (bytes.byteLength > maxBytes) throw new RangeError('project metadata exceeds configured size limit')
   const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)

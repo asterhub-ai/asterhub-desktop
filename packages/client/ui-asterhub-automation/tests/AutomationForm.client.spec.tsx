@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
-import type { AutomationTask, AutomationTaskId, AutomationDraft, AutomationChoices, AutomationPreview } from '@deepseek-ai/dsh-asterhub-automation/client'
+import type { AutomationTask, AutomationTaskId, AutomationDraft, AutomationChoices } from '@deepseek-ai/dsh-asterhub-automation/client'
 import { AutomationForm, type AutomationFormProps } from '../src/client/AutomationForm.tsx'
 import { en } from '../src/client/locales.ts'
 
@@ -64,13 +64,13 @@ function makeTask(overrides: Partial<AutomationTask> = {}): AutomationTask {
 function makeFormProps(overrides: Partial<AutomationFormProps> = {}): AutomationFormProps {
   return {
     getChoices: vi.fn(async () => makeChoices()),
-    previewDraft: vi.fn(async () => ({ draft: {} as AutomationDraft, nextOccurrences: ['2026-10-06T00:00:00.000Z'] } as AutomationPreview)),
+    previewDraft: vi.fn(async () => ({ draft: {} as AutomationDraft, nextOccurrences: ['2026-10-06T00:00:00.000Z'] })),
     prepareCreate: vi.fn(async () => ({ requestId: 'req-1', confirmationId: null, summary: 'summary', requiresConfirmation: false })),
     prepareUpdate: vi.fn(async () => ({ requestId: 'req-2', confirmationId: null, summary: 'summary', requiresConfirmation: false })),
     commitOperation: vi.fn(async () => ({ taskId: 'task-1' as AutomationTaskId, deleted: false, runId: null })),
     onCancel: vi.fn(),
     onSaved: vi.fn(),
-    t: t as any,
+    t,
     ...overrides,
   } as unknown as AutomationFormProps
 }
@@ -149,7 +149,7 @@ describe('AutomationForm preservation of draft after failure/conflict', () => {
 
     const submitButton = screen.getByRole('button', { name: 'Create Task' })
     expect(submitButton).toBeTruthy()
-    fireEvent.click(submitButton!)
+    fireEvent.click(submitButton)
 
     await waitFor(() => {
       expect(screen.getByDisplayValue('Test Task')).toBeTruthy()
@@ -193,7 +193,7 @@ describe('AutomationForm no duplicate save', () => {
   })
 
   it('disables submit button while submitting to prevent duplicate save', async () => {
-    const { promise, resolve } = Promise.withResolvers<{ requestId: string; confirmationId: string | null; summary: string; requiresConfirmation: boolean }>()
+    const { promise, resolve } = Promise.withResolvers<Awaited<ReturnType<AutomationFormProps['prepareCreate']>>>()
     const prepareCreate = vi.fn(() => promise)
     const props = makeFormProps({ prepareCreate })
     render(<AutomationForm {...props} />)

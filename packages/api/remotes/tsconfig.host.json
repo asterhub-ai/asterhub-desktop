@@ -88,6 +88,9 @@
     },
     {
       "path": "../../credentials/deepseek-account"
+    },
+    {
+      "path": "../../schedule/asterhub-automation"
     }
   ]
 }

@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/architecture.md
 /asterhub-architecture:
-  en: d891469ea9d552fa
-  zh: 3e8d398bc48cdcf0
+  en: 36df085043c45acc
+  zh: dc0defb0f57a2b62
 /asterhub-architecture/cordis:
   en: da5060e577578ea7
   zh: 2e77d570e32d8938

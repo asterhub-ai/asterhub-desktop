@@ -82,6 +82,98 @@ export interface TypeApiEntry {
 /** Every harness `ctx.<key>` service, sorted by key. */
 export const SERVICE_API: readonly ServiceApiEntry[] = [
   {
+    key: 'accountSub2api',
+    summary: 'Account service: login, provisioning, quota, and top-up over sub2api.',
+    description: 'Account service: login, provisioning, quota, and top-up over sub2api.',
+    methods: [
+      {
+        signature: 'async automationIdentity(): Promise<AccountAutomationIdentity | null>',
+        description: 'Host-only: Get current automation account identity. Awaits readiness before returning. If the epoch has been advanced since the identity was issued (e.g., during a concurrent transition), returns null.',
+        parameters: [],
+        returns: 'Current identity with epoch, or null if logged out/stale.',
+      },
+      {
+        signature: 'assertAutomationIdentity(identity: AccountAutomationIdentity): void',
+        description: 'Host-only: Assert identity matches current epoch before model requests. Validates the identity against both the current epoch counter and the active identity (accountId and epoch must match).',
+        parameters: [{ name: 'identity', description: 'The identity to validate.' }],
+        throws: ['Error if identity epoch is stale, account mismatch, or epoch does not match active identity.'],
+      },
+      {
+        signature: 'registerAutomationLease(identity: AccountAutomationIdentity, stop: () => Promise<void>): () => void',
+        description: 'Host-only: Register a lease for automation execution. Synchronous and rejects stale epochs. Validates the identity against both the current epoch and the active identity (account and epoch).',
+        parameters: [{ name: 'identity', description: 'The identity to lease under.' }, { name: 'stop', description: 'Callback to stop/drain the leased work.' }],
+        returns: 'Disposer function to unregister the lease.',
+        throws: ['Error if identity epoch is stale or account mismatch.'],
+      },
+      {
+        signature: '@Remote async getStatus(): Promise<AccountStatus>',
+        description: 'Read the current account state, including a live balance when logged in.',
+        parameters: [],
+        returns: 'current sign-in state, identity, preferences, and available balance.',
+      },
+      {
+        signature: '@Remote async authSettings(): Promise<AccountAuthSettings>',
+        description: 'Read the public sign-up requirements from the authentication service.',
+        parameters: [],
+        returns: 'public registration and email verification requirements.',
+      },
+      {
+        signature: '@Remote async sendVerifyCode(email: string): Promise<{ countdown: number }>',
+        description: 'Send the upstream email verification code for a prospective account.',
+        parameters: [{ name: 'email', description: 'prospective account email address.' }],
+        returns: 'verification resend countdown in seconds.',
+      },
+      {
+        signature: '@Remote async register(input: AccountRegisterInput): Promise<AccountStatus>',
+        description: 'Register directly with the authentication service and bind the returned session to this installation.',
+        parameters: [{ name: 'input', description: 'account details and email verification code.' }],
+        returns: 'signed-in account state after registration.',
+      },
+      {
+        signature: '@Remote async login(input: AccountLoginInput): Promise<AccountStatus>',
+        description: 'Sign in and bind one reusable model key to this account.',
+        parameters: [{ name: 'input', description: 'account credentials and local sign-in preferences.' }],
+        returns: 'current account state after credentials are stored.',
+      },
+      {
+        signature: '@Remote async logout(): Promise<void>',
+        description: 'Forget the active session and unbind the model key.',
+        parameters: [],
+        returns: 'resolves after active credentials and automatic sign-in are cleared.',
+      },
+      {
+        signature: '@Remote async quota(): Promise<QuotaSnapshot>',
+        description: 'Read one live quota snapshot.',
+        parameters: [],
+        returns: 'remaining compute credits.',
+      },
+      {
+        signature: '@Remote async usage(): Promise<AccountUsageSnapshot>',
+        description: 'Read account totals, last seven calendar days, and today\'s usage.',
+        parameters: [],
+        returns: 'request, token, and compute-credit totals for each period.',
+      },
+      {
+        signature: '@Remote async paymentMethods(): Promise<AccountPaymentMethod[]>',
+        description: 'List payment methods enabled for this account.',
+        parameters: [],
+        returns: 'available payment methods.',
+      },
+      {
+        signature: '@Remote async topUp(input: { amount: number; paymentType: string }): Promise<TopUpResult>',
+        description: 'Create one top-up order; open the returned checkout URL in a browser to pay.',
+        parameters: [{ name: 'input', description: 'requested amount and payment method.' }],
+        returns: 'created order and its checkout address, when available.',
+      },
+      {
+        signature: '@Remote async redeem(input: { code: string }): Promise<RedeemResult>',
+        description: 'Redeem one code into the account balance.',
+        parameters: [{ name: 'input', description: 'redemption code.' }],
+        returns: 'redemption result and updated balance, when reported.',
+      },
+    ],
+  },
+  {
     key: 'agentDefaultModel',
     summary: 'Owns the default model selection independently of any Host or transport.',
     description: 'Owns the default model selection independently of any Host or transport. Each operation reads the owning Config references.',
@@ -410,6 +502,114 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'asterhubAutomation',
+    summary: 'Native scheduled-task management and execution service.',
+    description: 'Native scheduled-task management and execution service.\n\nExtends TypertRemoteService so its methods are exposed to the authenticated Client through the `automation` Remote namespace. Implements the frozen AutomationRuntimeHost interface for the runtime worker.\n\nThe service owns:\n\n- The single storage-domain store with schema-validated task aggregates.\n- One shared management FIFO serializing all write operations and runtime reservations, so no task can cross global quota/concurrency checks while another await is in flight.\n- The AutomationRuntime instance, started after the store opens and disposed before the store closes.\n- The `automation_manage` chat tool, registered on root interactive Agent scopes only; scheduled-run/descendant scopes never receive it.',
+    methods: [
+      {
+        signature: 'readonly runtimeId: string',
+        description: 'Exact startup owner shared by manual and timer-created reservations.',
+        parameters: [],
+      },
+      {
+        signature: 'declare readonly ctx: Context',
+        description: 'Host context (Cordis Service base exposes `ctx` as a protected property).',
+        parameters: [],
+      },
+      {
+        signature: 'tasks(): readonly AutomationTask[]',
+        description: 'All tasks for runtime scanning outside the management FIFO.',
+        parameters: [],
+        returns: 'Current task snapshot, or an empty list before initialization.',
+      },
+      {
+        signature: 'identity(): Promise<AutomationAccountIdentity | null>',
+        description: 'Resolve the current account lifetime through the account service.',
+        parameters: [],
+        returns: 'Account identity and epoch, or null when acquisition is unavailable.',
+      },
+      {
+        signature: 'transact<T>(work: () => Promise<T>): Promise<T>',
+        description: 'Serialized transaction wrapper — the single shared management+runtime FIFO.\n\nEvery management write and every runtime reservation enters this queue so no task can cross global quota/concurrency checks while another await is in flight. The runtime calls this for reservation; management operations call it through AutomationOperations.',
+        parameters: [{ name: 'work', description: 'Mutation or reservation to execute after prior queued work settles.' }],
+        returns: 'The operation result or rejection without poisoning later queued work.',
+      },
+      {
+        signature: 'async put(task: AutomationTask): Promise<void>',
+        description: 'Persist a task before notifying consumers and requesting another scheduling scan.',
+        parameters: [{ name: 'task', description: 'Complete task aggregate to publish.' }],
+      },
+      {
+        signature: 'emitChanged(): void',
+        description: 'Emit `automation/changed` without leaking task content.',
+        parameters: [],
+      },
+      {
+        signature: '@Remote(\'preview\') async preview(draft: AutomationDraft): Promise<AutomationPreview>',
+        description: 'Preview a task draft without persisting.',
+        parameters: [{ name: 'draft', description: 'Task draft to validate and preview.' }],
+        returns: 'Normalized draft and the next three occurrence timestamps.',
+      },
+      {
+        signature: '@Remote(\'prepareOperation\') async prepareOperation(operation: AutomationOperation): Promise<AutomationPreparedOperation>',
+        description: 'Prepare an operation, issuing a Host-signed request ticket bound to the current account/epoch. Does not execute the write.',
+        parameters: [{ name: 'operation', description: 'The operation to prepare.' }],
+        returns: 'Prepared operation with requestId and confirmation challenge.',
+      },
+      {
+        signature: '@Remote(\'commitOperation\') async commitOperation(request: AutomationCommitRequest): Promise<AutomationMutationResult>',
+        description: 'Commit a prepared operation after user confirmation (GUI) or internal approval (chat tool). Idempotent by requestId within the receipt window.',
+        parameters: [{ name: 'request', description: 'Commit request carrying the requestId and confirmationId.' }],
+        returns: 'Mutation result; a runId acknowledges admission, not success.',
+      },
+      {
+        signature: '@Remote(\'list\') async list(request: AutomationListRequest): Promise<AutomationTaskPage>',
+        description: 'List tasks for the current account with optional filters and pagination.',
+        parameters: [{ name: 'request', description: 'List request with cursor, search, and status filters.' }],
+        returns: 'One page of tasks scoped to the active account.',
+      },
+      {
+        signature: '@Remote(\'get\') async get(request: AutomationGetRequest): Promise<AutomationTask>',
+        description: 'Get a single task by id (must belong to the current account).',
+        parameters: [{ name: 'request', description: 'Get request with the task id.' }],
+        returns: 'The authoritative task record.',
+      },
+      {
+        signature: '@Remote(\'runs\') async runs(request: AutomationRunsRequest): Promise<AutomationRunsPage>',
+        description: 'Get bounded execution history for a task.',
+        parameters: [{ name: 'request', description: 'Runs request with task id, limit, and optional cursor.' }],
+        returns: 'One page of runs plus the truthful history-pruned flag.',
+      },
+      {
+        signature: '@Remote(\'choices\') async choices(): Promise<AutomationChoices>',
+        description: 'Get Host-approved form selections (workspaces and models) for the current account. No private credentials are included.',
+        parameters: [],
+        returns: 'Available workspaces and catalog models.',
+      },
+      {
+        signature: 'inspectLifecycle(): { armed: boolean; active: boolean }',
+        description: 'Inspect lifecycle state for quit/update checks. Emits no task content.',
+        parameters: [],
+        returns: '`armed` when the runtime is not stopping; `active` when any timer or execution is in flight.',
+      },
+      {
+        signature: 'setAdmissionLocked(locked: boolean): void',
+        description: 'Lock or unlock admission. When locked, no new run reservations are admitted; active runs drain. Used by quit and installed-update paths.',
+        parameters: [{ name: 'locked', description: 'Whether to lock admission.' }],
+      },
+      {
+        signature: 'async stopRun(runId: AutomationRunId): Promise<void>',
+        description: 'Stop a run. Called outside the management FIFO to avoid runtime reentry deadlock; the runtime observes the abort signal during execution.',
+        parameters: [{ name: 'runId', description: 'The run to stop.' }],
+      },
+      {
+        signature: 'async disposeRuntime(): Promise<void>',
+        description: 'Dispose the runtime and close the store (Host only). Called by the plugin effect cleanup; not intended for direct callers.',
+        parameters: [],
+      },
+    ],
+  },
+  {
     key: 'attachments',
     summary: 'Immutable binary attachment service.',
     description: 'Immutable binary attachment service. Implementations validate bytes before publishing a reference.',
@@ -426,22 +626,22 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'completion after the encoded raster has been fully decoded.',
       },
       {
-        signature: 'async saveImages(inputs: readonly SaveImageAttachment[]): Promise<readonly ImageAttachmentRef[]>',
+        signature: 'async saveImages(inputs: readonly SaveImageAttachment[], scope?: AttachmentScope): Promise<readonly ImageAttachmentRef[]>',
         description: 'Validate and durably commit one ordered image batch.',
-        parameters: [{ name: 'inputs', description: 'encoded images in owning-message order.' }],
+        parameters: [{ name: 'inputs', description: 'encoded images in owning-message order.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
         returns: 'durable normalized attachment references in the same order after every member succeeds.',
       },
       {
-        signature: 'async admitPromptContent( content: readonly AttachmentAdmissionPart[], ): Promise<AdmittedPromptContentPart[]>',
+        signature: 'async admitPromptContent( content: readonly AttachmentAdmissionPart[], scope?: AttachmentScope, ): Promise<AdmittedPromptContentPart[]>',
         description: 'Admit one Host prompt and replace each uploaded image with its durable reference. Text and durable file references pass through unchanged. A prompt without image parts performs no storage operation.',
-        parameters: [{ name: 'content', description: 'prompt parts in message order after file receipt resolution.' }],
+        parameters: [{ name: 'content', description: 'prompt parts in message order after file receipt resolution.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
         returns: 'admitted prompt parts in the same order as `content`.',
         throws: ['AttachmentError when the image batch is refused.'],
       },
       {
-        signature: 'admitEncodedFile(input: EncodedFileAttachment): Promise<FileAttachmentRef>',
+        signature: 'admitEncodedFile(input: EncodedFileAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef>',
         description: 'Decode and durably commit one canonical base64 file upload.',
-        parameters: [{ name: 'input', description: 'canonical base64 bytes and optional display name.' }],
+        parameters: [{ name: 'input', description: 'canonical base64 bytes and optional display name.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
         returns: 'the durable content-addressed file reference.',
         throws: ['AttachmentError when the encoding or storage operation is refused.'],
       },
@@ -452,54 +652,54 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'whether the value is an attachment failure.',
       },
       {
-        signature: 'abstract saveImage(input: SaveImageAttachment): Promise<ImageAttachmentRef>',
+        signature: 'abstract saveImage(input: SaveImageAttachment, scope?: AttachmentScope): Promise<ImageAttachmentRef>',
         description: 'Validate and durably commit one image before its owning session event is appended. The returned reference describes the persisted normalized image. When normalization reduces the raster, its `originalDimensions` records the orientation-applied input dimensions.',
-        parameters: [{ name: 'input', description: 'encoded bytes, declared media type, and optional display name.' }],
+        parameters: [{ name: 'input', description: 'encoded bytes, declared media type, and optional display name.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
         returns: 'the durable content-addressed normalized image reference.',
       },
       {
-        signature: 'abstract readImage(ref: ImageAttachmentRef, signal?: AbortSignal): Promise<StoredImageAttachment>',
+        signature: 'abstract readImage(ref: ImageAttachmentRef, signal?: AbortSignal, scope?: AttachmentScope): Promise<StoredImageAttachment>',
         description: 'Read one image and verify that bytes still match the recorded reference.',
-        parameters: [{ name: 'ref', description: 'durable reference from the session log.' }, { name: 'signal', description: 'optional cancellation for backend read and verification work.' }],
+        parameters: [{ name: 'ref', description: 'durable reference from the session log.' }, { name: 'signal', description: 'optional cancellation for backend read and verification work.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
         returns: 'the verified bytes and normalized attachment reference.',
         throws: ['the signal reason when aborted, or a storage error when verification fails.'],
       },
       {
-        signature: 'imageHostPath(ref: ImageAttachmentRef): string | undefined',
+        signature: 'imageHostPath(ref: ImageAttachmentRef, scope?: AttachmentScope): string | undefined',
         description: 'Locate the provider-owned normalized object in the harness host filesystem.',
-        parameters: [{ name: 'ref', description: 'durable normalized attachment reference.' }],
+        parameters: [{ name: 'ref', description: 'durable normalized attachment reference.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
         returns: 'an absolute host path, or undefined when this backend is not host-file-backed.',
-        throws: ['an AttachmentError when the durable reference is invalid.'],
+        throws: ['an AttachmentError when the durable reference or scope is invalid.'],
       },
       {
-        signature: 'saveFile(input: SaveFileAttachment): Promise<FileAttachmentRef>',
+        signature: 'saveFile(input: SaveFileAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef>',
         description: 'Durably commit one file byte-for-byte before its owning session event is appended. Files carry no admission limits: any byte content and length is accepted, and the stored object is the exact submitted bytes. Backends without verbatim file storage keep this default rejection.',
-        parameters: [{ name: 'input', description: 'exact bytes and optional display name.' }],
+        parameters: [{ name: 'input', description: 'exact bytes and optional display name.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
         returns: 'the durable content-addressed file reference.',
       },
       {
-        signature: 'saveFileStream(input: SaveFileStreamAttachment): Promise<FileAttachmentRef>',
+        signature: 'saveFileStream(input: SaveFileStreamAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef>',
         description: 'Durably commit one file byte-for-byte from bounded chunks. Providers must apply backpressure and must not collect the complete file in memory. Backends without streamed verbatim storage keep this default rejection.',
-        parameters: [{ name: 'input', description: 'ordered exact bytes, optional cancellation, and display name.' }],
+        parameters: [{ name: 'input', description: 'ordered exact bytes, optional cancellation, and display name.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
         returns: 'the durable content-addressed file reference.',
       },
       {
-        signature: 'async *readFileStream( ref: FileAttachmentRef, signal?: AbortSignal, ): AsyncIterable<Uint8Array>',
+        signature: 'async *readFileStream( ref: FileAttachmentRef, signal?: AbortSignal, scope?: AttachmentScope, ): AsyncIterable<Uint8Array>',
         description: 'Read and verify one verbatim stored file as bounded chunks. Providers must not collect the complete file in memory. Backends without verbatim file reads keep this default rejection.',
-        parameters: [{ name: 'ref', description: 'durable reference from the session log.' }, { name: 'signal', description: 'optional cancellation for backend reads and verification work.' }],
+        parameters: [{ name: 'ref', description: 'durable reference from the session log.' }, { name: 'signal', description: 'optional cancellation for backend reads and verification work.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
         returns: 'exact file bytes in order; integrity failures reject the iteration.',
       },
       {
-        signature: 'fileHostPath(ref: FileAttachmentRef): string | undefined',
-        description: 'Locate the verbatim stored file object in the harness host filesystem.',
-        parameters: [{ name: 'ref', description: 'durable file reference.' }],
+        signature: 'fileHostPath(ref: FileAttachmentRef, scope?: AttachmentScope): string | undefined',
+        description: 'Resolve an original file attachment to a host-local path when the backend supports it.',
+        parameters: [{ name: 'ref', description: 'durable file reference.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
         returns: 'an absolute host path, or undefined when this backend is not host-file-backed.',
-        throws: ['an AttachmentError when the durable reference is invalid.'],
+        throws: ['an AttachmentError when the durable reference or scope is invalid.'],
       },
       {
-        signature: 'readImageRequest( ref: ImageAttachmentRef, target: ImageRequestTarget, signal?: AbortSignal, ): Promise<RequestImageAttachment>',
+        signature: 'readImageRequest( ref: ImageAttachmentRef, target: ImageRequestTarget, signal?: AbortSignal, scope?: AttachmentScope, ): Promise<RequestImageAttachment>',
         description: 'Generate or read one deterministic model-request version from the stored normalized image.',
-        parameters: [{ name: 'ref', description: 'durable provider-independent normalized attachment reference.' }, { name: 'target', description: 'route-chosen dimensions and byte target; an unmet byte target yields the smallest ladder output.' }, { name: 'signal', description: 'optional cancellation.' }],
+        parameters: [{ name: 'ref', description: 'durable provider-independent normalized attachment reference.' }, { name: 'target', description: 'route-chosen dimensions and byte target; an unmet byte target yields the smallest ladder output.' }, { name: 'signal', description: 'optional cancellation.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
         returns: 'request bytes and the cache/upload identity covering every transform input.',
       },
     ],
@@ -947,6 +1147,30 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'desktopBrowserTransport',
+    summary: 'Host-provided bridge for model tools to operate Desktop\'s Sidebar Browser.',
+    description: 'Host-provided bridge for model tools to operate Desktop\'s Sidebar Browser.',
+    methods: [
+      {
+        signature: 'request(caller: DesktopBrowserCaller, operation: DesktopBrowserOperation, signal: AbortSignal): Promise<DesktopBrowserResult>',
+        description: 'Execute one validated operation in the caller\'s Session-owned browser.',
+        parameters: [{ name: 'caller', description: 'exact live agent and owner generation.' }, { name: 'operation', description: 'one validated browser operation.' }, { name: 'signal', description: 'tool-call cancellation.' }],
+        returns: 'the correlated operation outcome.',
+      },
+      {
+        signature: 'releaseOwner(caller: DesktopBrowserCaller): Promise<void>',
+        description: 'Cancel and release every browser request belonging to one live owner generation.',
+        parameters: [{ name: 'caller', description: 'exact live browser owner to cancel and release.' }],
+        returns: 'after every owned request settles or the parent disconnects.',
+      },
+      {
+        signature: 'dispose(): Promise<void>',
+        description: 'Stop admitting requests, cancel pending operations, await remote settlement, and detach process listeners.',
+        parameters: [],
+      },
+    ],
+  },
+  {
     key: 'directoryPicker',
     summary: 'Abstract directory-picking service.',
     description: 'Abstract directory-picking service. Subclass, implement `capability()`, and load the subclass as a plugin — it registers as `ctx.directoryPicker` (one implementation per context; loading a second throws, cordis\' standard duplicate-service behavior). The capability object must be stable for the service lifetime: consumers may capture it across calls.',
@@ -1367,6 +1591,22 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'The abstract `llm` service: an adapter registry plus a streaming model-call API, interceptable via the `llm/stream` waterfall.',
     methods: [
       {
+        signature: 'lockRoute(provider: string, model: string): void',
+        description: 'Install an application-owned route ceiling before adapters are mounted.',
+        parameters: [{ name: 'provider', description: 'Provider id that every model call must use.' }, { name: 'model', description: 'Model id that every model call must use.' }],
+      },
+      {
+        signature: 'lockProvider(provider: string): void',
+        description: 'Lock the application to one provider while allowing its advertised models.',
+        parameters: [{ name: 'provider', description: 'application-owned provider id.' }],
+      },
+      {
+        signature: 'hasFixedRoute(): boolean',
+        description: 'Whether an application-owned fixed route has been installed.',
+        parameters: [],
+        returns: '`true` when calls are constrained to the application route.',
+      },
+      {
         signature: 'registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle',
         description: 'Register an adapter for the given provider routes. Throws `LlmError` with code `DUPLICATE_ADAPTER` if any provider already has an adapter (all-or-nothing). Disposed with the fiber.',
         parameters: [{ name: 'providers', description: 'every provider route this adapter should serve.' }, { name: 'adapter', description: 'the adapter that streams calls for those providers.' }],
@@ -1689,6 +1929,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Package-manager diagnostics, the registries asked, and the observed activation outcome.',
       },
       {
+        signature: '@Remote async installCuratedBundle(request: CuratedPluginInstallRequest): Promise<ChangeResult>',
+        description: 'Install the exact signed catalogue item shown to the user.',
+        parameters: [{ name: 'request', description: 'Catalogue identity and signed package facts displayed when the user selected Install.' }],
+        returns: 'Package-manager diagnostics and the resulting application state.',
+      },
+      {
         signature: '@Remote async waitForInstall(requestId: PluginInstallRequestId): Promise<ChangeResult | null>',
         description: 'Recover the result of an active installation without cancelling it.',
         parameters: [{ name: 'requestId', description: 'The id supplied when installation started.' }],
@@ -1699,6 +1945,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Stop an installation this manager owns and wait until its files are back.',
         parameters: [{ name: 'requestId', description: 'The id the installation was started with.' }],
         returns: '`cancelled` once the Git check or pnpm exited and the files are restored, `too-late` once the bundle is being applied, `not-running` for any other id.',
+      },
+      {
+        signature: '@Remote async curatedCatalog(): Promise<CuratedPluginCatalog>',
+        description: 'Fetch and verify the separately curated catalogue for the app Plugins page.',
+        parameters: [],
+        returns: 'Verified catalogue entries with Host-computed exact installed state.',
       },
       {
         signature: '@Remote removeBundle(name: string): Promise<ChangeResult>',
@@ -1783,6 +2035,98 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'readonly telemetryDisabledEnv: string | undefined',
         description: 'Launch-time DSH_TELEMETRY_DISABLED value; any non-empty value opts out.',
         parameters: [],
+      },
+    ],
+  },
+  {
+    key: 'projectStorage',
+    summary: 'Host-facing Cordis service.',
+    description: 'Host-facing Cordis service. Register at startup independently of Workspace and Session persistence.',
+    methods: [
+      {
+        signature: 'registerLegacySource(provider: LegacySourceProvider): () => void | Promise<void>',
+        description: 'Register read-only legacy discovery for this plugin lifetime.',
+        parameters: [{ name: 'provider', description: 'Plugin-owned legacy discovery callback.' }],
+        returns: 'Disposer that unregisters this discovery source.',
+      },
+      {
+        signature: 'registerLegacyAdopter(adopter: ProjectLegacyAdopter): () => void | Promise<void>',
+        description: 'Register the single legacy adoption implementation for this plugin lifetime.',
+        parameters: [{ name: 'adopter', description: 'Plugin-owned callback that copies and verifies confirmed history.' }],
+        returns: 'Disposer that unregisters this adopter.',
+      },
+      {
+        signature: 'inspect(root: string, signal?: AbortSignal): Promise<ProjectInspection>',
+        description: 'Inspect project metadata and registration without publishing a binding.',
+        parameters: [{ name: 'root', description: 'Selected project directory.' }, { name: 'signal', description: 'Optional filesystem cancellation.' }],
+        returns: 'Validated new, existing, registered, or legacy project state.',
+      },
+      {
+        signature: 'open(request: OpenProjectRequest, signal?: AbortSignal): Promise<ProjectBinding>',
+        description: 'Confirm and publish a project binding after validating its current metadata.',
+        parameters: [{ name: 'request', description: 'Root, explicit open mode, and inspected confirmation facts.' }, { name: 'signal', description: 'Optional mutation cancellation.' }],
+        returns: 'Durable binding for the canonical project root.',
+      },
+      {
+        signature: 'list(): readonly ProjectBinding[]',
+        description: 'Read the machine-local project registry.',
+        parameters: [],
+        returns: 'Snapshot of registered project bindings.',
+      },
+      {
+        signature: 'status(id: ProjectId, signal?: AbortSignal): Promise<\'available\' | \'missing\' | \'read-only\'>',
+        description: 'Observe the current availability of one registered project.',
+        parameters: [{ name: 'id', description: 'Registered project identity.' }, { name: 'signal', description: 'Optional filesystem cancellation.' }],
+        returns: 'Available, missing, or read-only status.',
+      },
+      {
+        signature: 'manifest(id: ProjectId): PortableProjectManifest',
+        description: 'Read the validated manifest for a registered project.',
+        parameters: [{ name: 'id', description: 'Registered project identity.' }],
+        returns: 'Current portable manifest snapshot.',
+      },
+      {
+        signature: 'bindSession(header: SessionHeader, signal?: AbortSignal): Promise<ProjectSessionLocation>',
+        description: 'Persist one Session\'s membership in its registered project.',
+        parameters: [{ name: 'header', description: 'Immutable Session identity and execution directory.' }, { name: 'signal', description: 'Optional mutation cancellation.' }],
+        returns: 'Project-owned Session and attachment locations.',
+      },
+      {
+        signature: 'locateSession(id: SessionId): ProjectSessionLocation | undefined',
+        description: 'Resolve Session storage from registered project membership.',
+        parameters: [{ name: 'id', description: 'Session identity to locate.' }],
+        returns: 'Project-owned locations, or undefined when no project owns the Session.',
+      },
+      {
+        signature: 'executionCwd(header: SessionHeader): string | undefined',
+        description: 'Resolve a Session\'s execution directory through its portable project membership.',
+        parameters: [{ name: 'header', description: 'Session whose registered membership is being resolved.' }],
+        returns: 'Project-bound execution directory, or undefined when unregistered.',
+      },
+      {
+        signature: 'reorderSessions(id: ProjectId, orderedIds: readonly SessionId[]): Promise<void>',
+        description: 'Persist the project\'s complete Session display order.',
+        parameters: [{ name: 'id', description: 'Registered project identity.' }, { name: 'orderedIds', description: 'Unique Session identities in the requested order.' }],
+      },
+      {
+        signature: 'setSessionArchived(id: ProjectId, sessionId: SessionId, archived: boolean): Promise<void>',
+        description: 'Update portable archive membership without deleting Session data.',
+        parameters: [{ name: 'id', description: 'Registered project identity.' }, { name: 'sessionId', description: 'Session owned by that project.' }, { name: 'archived', description: 'Requested archive membership.' }],
+      },
+      {
+        signature: 'setSessionPinned(id: ProjectId, sessionId: SessionId, pinned: boolean): Promise<void>',
+        description: 'Update portable pin membership for one project-owned Session.',
+        parameters: [{ name: 'id', description: 'Registered project identity.' }, { name: 'sessionId', description: 'Session owned by that project.' }, { name: 'pinned', description: 'Requested pin membership.' }],
+      },
+      {
+        signature: 'rename(id: ProjectId, title: string): Promise<void>',
+        description: 'Persist a validated project display title.',
+        parameters: [{ name: 'id', description: 'Registered project identity.' }, { name: 'title', description: 'Nonblank project title within the metadata limit.' }],
+      },
+      {
+        signature: 'unregister(id: ProjectId): Promise<void>',
+        description: 'Remove a machine-local binding while retaining all project files.',
+        parameters: [{ name: 'id', description: 'Registered project identity to forget.' }],
       },
     ],
   },
@@ -1908,13 +2252,20 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Host service backing the generated `ctx.remote.session` namespace.',
     methods: [
       {
+        signature: 'registerExecutionInputOwner(sessionId: SessionId, ready?: Promise<void>): SessionExecutionInputOwner',
+        description: 'Register an execution input owner for one Session. The owner serializes work behind a check predicate: `closeIf` waits until the predicate passes, then blocks further work until `release` is called. This prevents terminal scheduler close from overlapping with incoming work and ensures pending work waits for the owner to release before executing normally.\n\nWhen `ready` is supplied, `admit` first awaits it (outside the FIFO) before submitting work, so work never reaches a Session whose creation has not yet completed. This lets the caller register the owner before the Session/Agent is fully created, install observers, enqueue the initial message, and then resolve `ready`. `closeIf` does NOT await `ready`: failure cleanup must be able to close the owner before creation settles. Releasing the owner resolves `ready` so a failed creation does not hang waiting admits; the normal resolver then reports the Session as not-found.',
+        parameters: [{ name: 'sessionId', description: 'Session identity to own.' }, { name: 'ready', description: 'Optional creation readiness promise; `admit` awaits it before submitting work. Omit for an already-created Session.' }],
+        returns: 'The owner handle that controls work admission for this Session.',
+        throws: ['{DuplicateExecutionInputOwnerError} when an owner already exists for this Session.'],
+      },
+      {
         signature: 'resolveAgent(sessionId: SessionId): Promise<ApiSessionAgentResult>',
         description: 'Resolve or resume one ordinary Session for another Host API domain.',
         parameters: [{ name: 'sessionId', description: 'Session identity whose Agent owns the operation.' }],
         returns: 'the live Agent or the stable Session-domain failure.',
       },
       {
-        signature: 'inspect( sessionId: SessionId, signal?: AbortSignal, ): Promise<SessionInspection>',
+        signature: 'async inspect( sessionId: SessionId, signal?: AbortSignal, ): Promise<SessionInspection>',
         description: 'Inspect one attached or persisted Session without activating its Agent.',
         parameters: [{ name: 'sessionId', description: 'durable Session identity.' }, { name: 'signal', description: 'optional caller cancellation for persistence reads.' }],
         returns: 'the current attached state or persisted header and event prefix.',
@@ -1994,7 +2345,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the new Session identity.',
       },
       {
-        signature: '@Remote(\'prompt\') prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue>',
+        signature: '@Remote(\'prompt\') async prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue>',
         description: 'Admit one prompt after explicitly resuming its Session.',
         parameters: [{ name: 'request', description: 'Session identity, prompt content, source metadata, and delivery mode.' }, { name: 'signal', description: 'caller cancellation before prompt admission begins.' }],
         returns: 'acknowledgement that the Agent accepted the prompt.',
@@ -3416,6 +3767,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         throws: ['{UserQuestionError} `BAD_ANSWER` when the batch does not name each question of the call exactly once, or `REPLY_QUEUED` when a reply is already waiting for admission.'],
       },
       {
+        signature: 'cancelPending(agent: Agent): void',
+        description: 'Cancel every open and continued timed question currently pending for one Session, preventing any later late answer from steering the agent for those calls. Appends a single durable `user-questions/canceled` event listing the exact canceled callIds; the projection folds them out of the active set and records them so late answers reject per-call. Closes every live foreground wait for this agent so a connected Client countdown ends immediately. Future questions in the same Session remain usable. Idempotent: when no questions are pending this is a no-op.',
+        parameters: [{ name: 'agent', description: 'Live root agent whose Session\'s pending timed questions are canceled.' }],
+      },
+      {
         signature: '@Remote({ mode: \'stream\' }) async *attachWait(agent: Agent, callId: ToolCallId, signal: AbortSignal): AsyncIterable<{ remainingMs: number }>',
         description: 'Let one answer UI hold a live timed wait. Closing the stream releases its claim.',
         parameters: [{ name: 'agent', description: 'Live root agent owning the question.' }, { name: 'callId', description: 'Foreground tool call to attach to.' }, { name: 'signal', description: 'Remote stream cancellation, including Client disconnect.' }],
@@ -3581,6 +3937,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the Workspace and whether this call created it.',
       },
       {
+        signature: '@Remote(\'inspect\') inspect(request: WorkspaceInspectRequest, signal: AbortSignal): Promise<WorkspaceInspectionView>',
+        description: 'Inspect a directory before creating or adopting a Workspace.',
+        parameters: [{ name: 'request', description: 'path to inspect.' }, { name: 'signal', description: 'caller cancellation signal.' }],
+        returns: 'the inspection view (new, existing, registered, or legacy).',
+      },
+      {
+        signature: '@Remote(\'openProject\') openProject(request: WorkspaceOpenProjectRequest, signal: AbortSignal): Promise<WorkspaceCreateValue>',
+        description: 'Confirm and open an existing, legacy, or new project directory.',
+        parameters: [{ name: 'request', description: 'confirmed parameters including path, mode, and optional expected ID/digest.' }, { name: 'signal', description: 'caller cancellation signal.' }],
+        returns: 'the created or resolved Workspace projection.',
+      },
+      {
         signature: '@Remote(\'initializeDefault\') async initializeDefault(signal: AbortSignal): Promise<WorkspaceValue | undefined>',
         description: 'Initialize or reuse the default Workspace during first-use startup. The directory name is fixed, so the Host never renames or relocates an existing default; its initial title is that same name, which browser consumers label in the reader\'s language.',
         parameters: [{ name: 'signal', description: 'caller lifetime; cancels native directory lookup.' }],
@@ -3723,7 +4091,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'archiveSession(sessionId: SessionId, options: ArchiveSessionOptions = {}): Promise<void>',
-        description: 'Archive one session durably. The session must exist (live or in session persistence); its workspace accounting — or lack of one — is irrelevant. Without `stopActivity` the session must also be inactive: the `workspace/session-activity` waterfall is asked once, and any reported activity rejects with WorkspaceActiveSessionError before anything is written. With `stopActivity` the archive is written without an activity check, and the `workspace/session-stop` providers are then asked to stop the session\'s work: the durable archive set is what a provider\'s `agent/pre-step` gate reads, so every wake the stops induce is already blocked. Archiving drops the session\'s pin in the same durable write (pinning and archival are mutually exclusive). An already archived id resolves without writing, asking, or stopping.',
+        description: 'Archive one session durably. The session must exist (live or in session persistence); its workspace accounting — or lack of one — is irrelevant. Without `stopActivity` the session must also be inactive: the `workspace/session-activity` waterfall is asked once, and any reported activity rejects with WorkspaceActiveSessionError before anything is written. With `stopActivity` the `workspace/session-archive/admit` waterfall runs before the durable write: a listener may stop and await running work (e.g. an automation run) before the archive set is committed. The default (no listeners) delegates unchanged — the archive is written and `workspace/session-stop` is dispatched after, as before. Archiving drops the session\'s pin in the same durable write (pinning and archival are mutually exclusive). An already archived id resolves without writing, asking, or stopping.',
         parameters: [{ name: 'sessionId', description: 'The session to archive.' }, { name: 'options', description: 'Whether running work is stopped instead of refusing.' }],
         returns: 'resolution after durability and, with `stopActivity`, after every stop request was issued.',
       },
@@ -3926,12 +4294,44 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'req', description: 'pending approval request.' }],
   },
   {
+    name: 'asterhub-account/changed',
+    mode: 'emit',
+    signature: '\'asterhub-account/changed\'(identity: AccountAutomationIdentity | null): void',
+    summary: 'Publish the active account lifetime without credentials.',
+    description: 'Publish the active account lifetime without credentials.',
+    parameters: [{ name: 'identity', description: 'Active identity, or null when acquisition is unavailable.' }],
+  },
+  {
     name: 'authorization/settled',
     mode: 'emit',
     signature: '\'authorization/settled\'(key: CredentialKey, settlement: AuthorizationSettlement): void',
     summary: 'One authorization attempt has finished and released its key.',
     description: 'One authorization attempt has finished and released its key. Fires for every terminal outcome, failures included, so a surface watching a key it did not start (a second browser tab) learns the attempt is over.',
     parameters: [{ name: 'key', description: 'the credential record the finished attempt was authorizing.' }, { name: 'settlement', description: 'how it ended, including the `failed` case its caller sees as a thrown error.' }],
+  },
+  {
+    name: 'automation/account-changed',
+    mode: 'emit',
+    signature: '\'automation/account-changed\'(event: AutomationAccountChangedEvent): void',
+    summary: 'Account identity changed; re-query and drop stale prepared ops.',
+    description: 'Account identity changed; re-query and drop stale prepared ops.',
+    parameters: [{ name: 'event', description: 'The account changed event.' }],
+  },
+  {
+    name: 'automation/changed',
+    mode: 'emit',
+    signature: '\'automation/changed\'(event: AutomationChangedEvent): void',
+    summary: 'Notification that automation tasks changed; re-query for authoritative state.',
+    description: 'Notification that automation tasks changed; re-query for authoritative state.',
+    parameters: [{ name: 'event', description: 'The automation changed event.' }],
+  },
+  {
+    name: 'automation/run-stop-requested',
+    mode: 'emit',
+    signature: '\'automation/run-stop-requested\'(event: AutomationRunStopRequestedEvent): void',
+    summary: 'Request to stop one run; observed by the runtime outside the FIFO.',
+    description: 'Request to stop one run; observed by the runtime outside the FIFO.',
+    parameters: [{ name: 'event', description: 'The run stop requested event.' }],
   },
   {
     name: 'commands/change',
@@ -4166,6 +4566,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'progress', description: 'the installation\'s request id and phase, with the attempt while installing.' }],
   },
   {
+    name: 'project-storage/changed',
+    mode: 'emit',
+    signature: '\'project-storage/changed\'(change: ProjectStorageChanged): void',
+    summary: 'Publish a project manifest or locator change after durable storage.',
+    description: 'Publish a project manifest or locator change after durable storage.',
+    parameters: [{ name: 'change', description: 'the affected project binding and manifest projection.' }],
+  },
+  {
     name: 'schedule/changed',
     mode: 'emit',
     signature: '\'schedule/changed\'(): void',
@@ -4398,6 +4806,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'request', description: 'the session about to be archived.' }, { name: 'next', description: 'delegate to the remaining providers.' }],
   },
   {
+    name: 'workspace/session-archive/admit',
+    mode: 'waterfall',
+    signature: '\'workspace/session-archive/admit\'( request: SessionArchiveAdmitRequest, next: () => Promise<void>, ): Promise<void>',
+    summary: 'Admit one archive request before the registry writes the archive set.',
+    description: 'Admit one archive request before the registry writes the archive set. Called after the session is known and (when `stopActivity` is false) after the activity check passes; a listener may stop and await running work before allowing the write to proceed, or reject to refuse the archive. The default (no listeners) delegates unchanged. A listener that needs to await teardown must NOT hold the registry FIFO — it should release it before awaiting long-running stop operations.',
+    parameters: [{ name: 'request', description: 'the session about to be archived, with caller options.' }, { name: 'next', description: 'delegate to the remaining providers.' }],
+  },
+  {
     name: 'workspace/session-stop',
     mode: 'parallel',
     signature: '\'workspace/session-stop\'(request: SessionActivityRequest): Promise<void> | void',
@@ -4409,6 +4825,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
 
 /** Shapes of every exported type the Service and Event signatures reference (transitively), sorted by name. */
 export const TYPE_API: readonly TypeApiEntry[] = [
+  {
+    name: 'AccountAuthSettings',
+    declaration: 'export interface AccountAuthSettings {\n    readonly registrationEnabled: boolean;\n    readonly emailVerifyEnabled: boolean;\n    readonly invitationCodeEnabled: boolean;\n}',
+  },
+  {
+    name: 'AccountAutomationIdentity',
+    declaration: 'export interface AccountAutomationIdentity {\n    readonly accountId: string;\n    readonly epoch: number;\n}',
+  },
   {
     name: 'AccountBonusBatch',
     declaration: 'export interface AccountBonusBatch {\n    readonly accountId: AccountUserId;\n    readonly bonuses: readonly AccountBonusNotification[];\n}',
@@ -4434,8 +4858,32 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AccountLinks {\n    readonly usageUrl: string;\n    readonly topUpUrl: string;\n}',
   },
   {
+    name: 'AccountLoginInput',
+    declaration: 'export interface AccountLoginInput {\n    readonly email: string;\n    readonly password: string;\n    readonly rememberUsername: boolean;\n    readonly autoLogin: boolean;\n}',
+  },
+  {
+    name: 'AccountPaymentMethod',
+    declaration: 'export interface AccountPaymentMethod {\n    readonly id: string;\n    readonly label: string;\n    readonly minAmount?: number;\n    readonly maxAmount?: number;\n}',
+  },
+  {
     name: 'AccountProfile',
     declaration: 'export interface AccountProfile {\n    readonly id: AccountUserId | null;\n    readonly name: string | null;\n    readonly contact: string | null;\n    readonly avatarUrl?: string | null;\n}',
+  },
+  {
+    name: 'AccountRegisterInput',
+    declaration: 'export interface AccountRegisterInput extends AccountLoginInput {\n    readonly verifyCode: string;\n    readonly invitationCode?: string;\n}',
+  },
+  {
+    name: 'AccountStatus',
+    declaration: 'export interface AccountStatus {\n    readonly loggedIn: boolean;\n    readonly keyBound: boolean;\n    readonly user?: AccountUser;\n    readonly balance?: number;\n    readonly rememberedUsername?: string;\n    readonly autoLogin?: boolean;\n}',
+  },
+  {
+    name: 'AccountUsageSnapshot',
+    declaration: 'export interface AccountUsageSnapshot {\n    readonly cumulative: UsagePeriodSnapshot;\n    readonly last7Days: UsagePeriodSnapshot;\n    readonly today: UsagePeriodSnapshot;\n}',
+  },
+  {
+    name: 'AccountUser',
+    declaration: 'export interface AccountUser {\n    readonly id: string;\n    readonly email?: string;\n    readonly username?: string;\n}',
   },
   {
     name: 'AccountUserId',
@@ -4630,6 +5078,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AttachmentId = Branded<\'AttachmentId\'>;',
   },
   {
+    name: 'AttachmentScope',
+    declaration: 'export interface AttachmentScope {\n    readonly projectId: string;\n    readonly sessionId: Branded<\'SessionId\'>;\n}',
+  },
+  {
     name: 'AuthorizationEntry',
     declaration: 'export interface AuthorizationEntry {\n    key: CredentialKey;\n    label: string;\n    methods: readonly AuthorizationMethod[];\n    inFlight: boolean;\n}',
   },
@@ -4676,6 +5128,106 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AuthorizationStatus',
     declaration: 'export type AuthorizationStatus = \'authorized\' | \'cancelled\';',
+  },
+  {
+    name: 'AutomationAccountChangedEvent',
+    declaration: 'export interface AutomationAccountChangedEvent {\n    readonly accountId: string | null;\n    readonly epoch: number;\n}',
+  },
+  {
+    name: 'AutomationAccountIdentity',
+    declaration: 'export interface AutomationAccountIdentity {\n    readonly accountId: string;\n    readonly epoch: number;\n}',
+  },
+  {
+    name: 'AutomationChangedEvent',
+    declaration: 'export interface AutomationChangedEvent {\n    readonly kind: \'automation-changed\';\n}',
+  },
+  {
+    name: 'AutomationChoices',
+    declaration: 'export interface AutomationChoices {\n    readonly accountId: string;\n    readonly legacyScheduleStatus: \'none\' | \'present\' | \'unreadable\';\n    readonly workspaces: readonly {\n        readonly id: WorkspaceId;\n        readonly name: string;\n        readonly path: string;\n    }[];\n    readonly models: readonly {\n        readonly id: string;\n        readonly name: string;\n        readonly reasoningEfforts: readonly string[];\n    }[];\n    readonly defaultModelId: string | null;\n}',
+  },
+  {
+    name: 'AutomationCommitRequest',
+    declaration: 'export interface AutomationCommitRequest {\n    readonly requestId: string;\n    readonly confirmationId: string | null;\n}',
+  },
+  {
+    name: 'AutomationDraft',
+    declaration: 'export interface AutomationDraft {\n    readonly name: string;\n    readonly instruction: string;\n    readonly workspaceId: WorkspaceId;\n    readonly modelId: string;\n    readonly reasoningEffort: string | null;\n    readonly timing: AutomationTimingInput;\n}',
+  },
+  {
+    name: 'AutomationGetRequest',
+    declaration: 'export interface AutomationGetRequest {\n    readonly id: AutomationTaskId;\n}',
+  },
+  {
+    name: 'AutomationListRequest',
+    declaration: 'export interface AutomationListRequest {\n    readonly limit?: number;\n    readonly cursor?: string;\n    readonly search?: string;\n    readonly status?: \'all\' | \'enabled\' | \'paused\' | \'deleted\';\n}',
+  },
+  {
+    name: 'AutomationMutationResult',
+    declaration: 'export interface AutomationMutationResult {\n    readonly task: AutomationTask | null;\n    readonly taskId: AutomationTaskId;\n    readonly runId: AutomationRunId | null;\n    readonly deleted: boolean;\n}',
+  },
+  {
+    name: 'AutomationOperation',
+    declaration: 'export type AutomationOperation = {\n    readonly action: \'create\';\n    readonly draft: AutomationDraft;\n} | {\n    readonly action: \'update\';\n    readonly id: AutomationTaskId;\n    readonly expectedRevision: number;\n    readonly draft: AutomationDraft;\n} | {\n    readonly action: \'pause\' | \'resume\' | \'remove\' | \'purgeDeleted\';\n    readonly id: AutomationTaskId;\n    readonly expectedRevision: number;\n} | {\n    readonly action: \'run\';\n    readonly id: AutomationTaskId;\n    readonly expectedRevision: number;\n} | {\n    readonly action: \'stop\';\n    readonly id: AutomationTaskId;\n    readonly runId: AutomationRunId;\n};',
+  },
+  {
+    name: 'AutomationPreparedOperation',
+    declaration: 'export interface AutomationPreparedOperation {\n    readonly requestId: string;\n    readonly confirmationId: string | null;\n    readonly requiresConfirmation: boolean;\n    readonly summary: string;\n    readonly expiresAt: number;\n}',
+  },
+  {
+    name: 'AutomationPreview',
+    declaration: 'export interface AutomationPreview {\n    readonly draft: AutomationDraft;\n    readonly nextOccurrences: readonly string[];\n}',
+  },
+  {
+    name: 'AutomationReceipt',
+    declaration: 'export interface AutomationReceipt {\n    readonly requestId: string;\n    readonly digest: string;\n    readonly acceptedAt: number;\n    readonly expiresAt: number;\n    readonly result: {\n        readonly taskId: AutomationTaskId;\n        readonly runId: AutomationRunId | null;\n        readonly deleted: boolean;\n    };\n}',
+  },
+  {
+    name: 'AutomationRun',
+    declaration: 'export interface AutomationRun {\n    readonly id: AutomationRunId;\n    readonly taskId: AutomationTaskId;\n    readonly trigger: \'scheduled\' | \'catch-up\' | \'manual\';\n    readonly scheduledAt: string | null;\n    readonly requestedAt: string;\n    readonly requestId: string | null;\n    readonly definitionRevision: number;\n    readonly snapshot: AutomationSnapshot;\n    readonly sessionId: SessionId | null;\n    readonly sessionCreated: boolean;\n    readonly state: AutomationRunState;\n    readonly startedAt: string | null;\n    readonly finishedAt: string | null;\n    readonly reason: {\n        readonly code: string;\n        readonly message: string;\n    } | null;\n    readonly ownerRuntimeId: string;\n    readonly inputMessageId: string | null;\n    readonly startLogOffset: number | null;\n    readonly endLogOffset: number | null;\n    readonly terminalTurn: number | null;\n    readonly interactionIds: readonly string[];\n    readonly humanIntervened: boolean;\n}',
+  },
+  {
+    name: 'AutomationRunId',
+    declaration: 'export type AutomationRunId = Branded<\'AutomationRunId\'>;',
+  },
+  {
+    name: 'AutomationRunsPage',
+    declaration: 'export interface AutomationRunsPage {\n    readonly records: readonly AutomationRun[];\n    readonly nextBefore: AutomationRunId | null;\n    readonly historyPruned: boolean;\n}',
+  },
+  {
+    name: 'AutomationRunsRequest',
+    declaration: 'export interface AutomationRunsRequest {\n    readonly id: AutomationTaskId;\n    readonly limit: number;\n    readonly before?: AutomationRunId;\n}',
+  },
+  {
+    name: 'AutomationRunState',
+    declaration: 'export type AutomationRunState = \'reserved\' | \'running\' | \'waiting-approval\' | \'stopping\' | \'succeeded\' | \'failed\' | \'canceled\' | \'interrupted\' | \'unknown\' | \'blocked\' | \'skipped\';',
+  },
+  {
+    name: 'AutomationRunStopRequestedEvent',
+    declaration: 'export interface AutomationRunStopRequestedEvent {\n    readonly taskId: AutomationTaskId;\n    readonly runId: AutomationRunId;\n}',
+  },
+  {
+    name: 'AutomationSnapshot',
+    declaration: 'export interface AutomationSnapshot {\n    readonly name: string;\n    readonly instruction: string;\n    readonly workspaceId: WorkspaceId;\n    readonly modelId: string;\n    readonly reasoningEffort: string | null;\n    readonly timing: AutomationTiming;\n}',
+  },
+  {
+    name: 'AutomationTask',
+    declaration: 'export interface AutomationTask {\n    readonly id: AutomationTaskId;\n    readonly ownerAccountId: string;\n    readonly revision: number;\n    readonly recordVersion: number;\n    readonly authorizationRevision: number;\n    readonly consentRevision: number;\n    readonly ruleRevision: number;\n    readonly definition: AutomationSnapshot;\n    readonly enabled: boolean;\n    readonly deletedAt: string | null;\n    readonly nextOccurrenceAt: string | null;\n    readonly occurrenceWatermark: {\n        readonly ruleRevision: number;\n        readonly at: string;\n    } | null;\n    readonly pendingOccurrence: {\n        readonly at: string;\n        readonly from: string;\n        readonly ruleRevision: number;\n    } | null;\n    readonly activeRunId: AutomationRunId | null;\n    readonly runs: readonly AutomationRun[];\n    readonly requestReceipts: readonly AutomationReceipt[];\n    readonly creationRequest: {\n        readonly requestId: string;\n        readonly digest: string;\n    };\n    readonly historyPruned: boolean;\n    readonly skippedRange: {\n        readonly from: string;\n        readonly through: string;\n        readonly reason: string;\n    } | null;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
+  },
+  {
+    name: 'AutomationTaskId',
+    declaration: 'export type AutomationTaskId = Branded<\'AutomationTaskId\'>;',
+  },
+  {
+    name: 'AutomationTaskPage',
+    declaration: 'export interface AutomationTaskPage {\n    readonly tasks: readonly AutomationTask[];\n    readonly nextCursor: string | null;\n}',
+  },
+  {
+    name: 'AutomationTiming',
+    declaration: 'export type AutomationTiming = {\n    readonly kind: \'once\';\n    readonly at: string;\n} | {\n    readonly kind: \'delay\';\n    readonly seconds: number;\n    readonly anchorAt: string;\n    readonly at: string;\n} | {\n    readonly kind: \'interval\';\n    readonly seconds: number;\n    readonly firstAt: string;\n    readonly anchorAt: string;\n} | {\n    readonly kind: \'daily\';\n    readonly time: string;\n    readonly timeZone: string;\n} | {\n    readonly kind: \'weekly\';\n    readonly time: string;\n    readonly timeZone: string;\n    readonly weekdays: readonly number[];\n} | {\n    readonly kind: \'cron\';\n    readonly expression: string;\n    readonly timeZone: string;\n};',
+  },
+  {
+    name: 'AutomationTimingInput',
+    declaration: 'export type AutomationTimingInput = {\n    readonly kind: \'once\';\n    readonly at: string;\n} | {\n    readonly kind: \'delay\';\n    readonly seconds: number;\n} | {\n    readonly kind: \'interval\';\n    readonly seconds: number;\n    readonly firstAt?: string;\n} | {\n    readonly kind: \'daily\';\n    readonly time: string;\n    readonly timeZone: string;\n} | {\n    readonly kind: \'weekly\';\n    readonly time: string;\n    readonly timeZone: string;\n    readonly weekdays: readonly number[];\n} | {\n    readonly kind: \'cron\';\n    readonly expression: string;\n    readonly timeZone: string;\n};',
   },
   {
     name: 'BackendRegistry',
@@ -5002,6 +5554,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface CronScheduleRecord {\n    readonly id: ScheduleId;\n    readonly kind: \'cron\';\n    readonly title: string;\n    readonly prompt: string;\n    readonly expression: string;\n    readonly timeZone: string;\n    readonly scheduledAt: string;\n}',
   },
   {
+    name: 'CuratedPluginCatalog',
+    declaration: 'export interface CuratedPluginCatalog {\n    revision: number;\n    generatedAt: string;\n    plugins: CuratedPluginEntry[];\n}',
+  },
+  {
+    name: 'CuratedPluginEntry',
+    declaration: 'export interface CuratedPluginEntry {\n    id: string;\n    name: string;\n    description: string;\n    category?: string;\n    package: string;\n    version: string;\n    integrity: string;\n    artifactUrl: string;\n    installed?: boolean;\n    installStatus?: \'installed\' | \'update-available\' | \'reinstall\' | \'not-installed\';\n    iconUrl?: string;\n}',
+  },
+  {
+    name: 'CuratedPluginInstallRequest',
+    declaration: 'export interface CuratedPluginInstallRequest {\n    id: string;\n    revision: number;\n    package: string;\n    version: string;\n    integrity: string;\n    artifactUrl: string;\n}',
+  },
+  {
     name: 'DailyInput',
     declaration: 'export interface DailyInput {\n    readonly time: string;\n    readonly time_zone: string;\n}',
   },
@@ -5028,6 +5592,78 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'DeliveryRetentionBounds',
     declaration: 'export interface DeliveryRetentionBounds {\n    readonly days: number;\n    readonly records: number;\n}',
+  },
+  {
+    name: 'DesktopBrowserCaller',
+    declaration: 'export interface DesktopBrowserCaller {\n    readonly sessionId: SessionId;\n    readonly ownerGeneration: DesktopBrowserOwnerGeneration;\n}',
+  },
+  {
+    name: 'DesktopBrowserErrorCode',
+    declaration: 'export type DesktopBrowserErrorCode = \'unavailable\' | \'invalid-request\' | \'invalid-target\' | \'stale-target\' | \'unsupported\' | \'timeout\' | \'cancelled\' | \'failed\';',
+  },
+  {
+    name: 'DesktopBrowserLocator',
+    declaration: 'export type DesktopBrowserLocator = {\n    readonly kind: \'ref\';\n    readonly snapshotId: DesktopBrowserSnapshotId;\n    readonly ref: DesktopBrowserRef;\n} | {\n    readonly kind: \'role\';\n    readonly snapshotId: DesktopBrowserSnapshotId;\n    readonly role: string;\n    readonly name: string;\n    readonly exact: true;\n};',
+  },
+  {
+    name: 'DesktopBrowserObservation',
+    declaration: 'export interface DesktopBrowserObservation {\n    readonly wait?: DesktopBrowserWaitCondition;\n    readonly screenshot?: boolean;\n}',
+  },
+  {
+    name: 'DesktopBrowserOperation',
+    declaration: 'export type DesktopBrowserOperation = {\n    readonly kind: \'tabs.list\';\n} | {\n    readonly kind: \'tabs.open\';\n    readonly url: string;\n    readonly newTab?: boolean;\n} | {\n    readonly kind: \'tabs.close\';\n    readonly target: DesktopBrowserTarget;\n} | {\n    readonly kind: \'page.snapshot\';\n    readonly target: DesktopBrowserTarget;\n} | {\n    readonly kind: \'page.read\';\n    readonly target: DesktopBrowserTarget;\n    readonly locator: DesktopBrowserLocator;\n    readonly property: DesktopBrowserReadProperty;\n    readonly maxChars: number;\n    readonly attribute?: string;\n} | {\n    readonly kind: \'page.act\';\n    readonly target: DesktopBrowserTarget;\n    readonly locator: DesktopBrowserLocator;\n    readonly action: DesktopBrowserSemanticAction;\n    readonly text?: string;\n    readonly keys?: readonly string[];\n    readonly values?: readonly string[];\n    readonly observe?: DesktopBrowserObservation;\n} | {\n    readonly kind: \'page.actAt\';\n    readonly target: DesktopBrowserTarget;\n    readonly screenshotId: DesktopBrowserSnapshotId;\n    readonly action: DesktopBrowserPointerAction;\n    readonly x?: number;\n    readonly y?: number;\n    readonly deltaX?: number;\n    readonly deltaY?: number;\n    readonly path?: readonly DesktopBrowserPoint[];\n    readonly observe?: DesktopBrowserObservation;\n} | {\n    readonly kind: \'page.wait\';\n    readonly target: DesktopBrowserTarget;\n    readonly condition: DesktopBrowserWaitCondition;\n} | {\n    readonly kind: \'page.screenshot\';\n    readonly tar /* …truncated — full shape in source */',
+  },
+  {
+    name: 'DesktopBrowserOwnerGeneration',
+    declaration: 'export type DesktopBrowserOwnerGeneration = BrandedNumber<\'DesktopBrowserOwnerGeneration\'>;',
+  },
+  {
+    name: 'DesktopBrowserPoint',
+    declaration: 'export interface DesktopBrowserPoint {\n    readonly x: number;\n    readonly y: number;\n}',
+  },
+  {
+    name: 'DesktopBrowserPointerAction',
+    declaration: 'export type DesktopBrowserPointerAction = \'click\' | \'doubleClick\' | \'move\' | \'scroll\' | \'drag\';',
+  },
+  {
+    name: 'DesktopBrowserReadProperty',
+    declaration: 'export type DesktopBrowserReadProperty = \'text\' | \'attribute\' | \'visible\' | \'enabled\' | \'checked\';',
+  },
+  {
+    name: 'DesktopBrowserResult',
+    declaration: 'export type DesktopBrowserResult = {\n    readonly status: \'success\';\n    readonly value: DesktopBrowserValue;\n} | {\n    readonly status: \'error\';\n    readonly code: DesktopBrowserErrorCode;\n    readonly message: string;\n};',
+  },
+  {
+    name: 'DesktopBrowserScreenshot',
+    declaration: 'export interface DesktopBrowserScreenshot {\n    readonly target: DesktopBrowserTarget;\n    readonly screenshotId: DesktopBrowserSnapshotId;\n    readonly bytes: Uint8Array;\n    readonly viewport: {\n        readonly width: number;\n        readonly height: number;\n    };\n}',
+  },
+  {
+    name: 'DesktopBrowserSemanticAction',
+    declaration: 'export type DesktopBrowserSemanticAction = \'click\' | \'doubleClick\' | \'fill\' | \'type\' | \'press\' | \'check\' | \'uncheck\' | \'select\' | \'hover\';',
+  },
+  {
+    name: 'DesktopBrowserSnapshot',
+    declaration: 'export interface DesktopBrowserSnapshot {\n    readonly target: DesktopBrowserTarget;\n    readonly snapshotId: DesktopBrowserSnapshotId;\n    readonly text: string;\n    readonly truncated: boolean;\n}',
+  },
+  {
+    name: 'DesktopBrowserTabId',
+    declaration: 'export type DesktopBrowserTabId = Branded<\'DesktopBrowserTabId\'>;',
+  },
+  {
+    name: 'DesktopBrowserTabInfo',
+    declaration: 'export interface DesktopBrowserTabInfo {\n    readonly target: DesktopBrowserTarget;\n    readonly url: string;\n    readonly title: string;\n    readonly active: boolean;\n    readonly ownership: \'user\' | \'agent\';\n    readonly attached: boolean;\n}',
+  },
+  {
+    name: 'DesktopBrowserTarget',
+    declaration: 'export interface DesktopBrowserTarget {\n    readonly tabId: DesktopBrowserTabId;\n    readonly generation: DesktopBrowserTargetGeneration;\n}',
+  },
+  {
+    name: 'DesktopBrowserValue',
+    declaration: 'export type DesktopBrowserValue = {\n    readonly kind: \'tabs\';\n    readonly tabs: readonly DesktopBrowserTabInfo[];\n    readonly truncated: boolean;\n} | {\n    readonly kind: \'tab\';\n    readonly tab: DesktopBrowserTabInfo;\n} | {\n    readonly kind: \'closed\';\n    readonly target: DesktopBrowserTarget;\n    readonly closed: true;\n} | {\n    readonly kind: \'snapshot\';\n    readonly snapshot: DesktopBrowserSnapshot;\n} | {\n    readonly kind: \'read\';\n    readonly target: DesktopBrowserTarget;\n    readonly value: string | boolean | null;\n    readonly truncated: boolean;\n} | {\n    readonly kind: \'action\';\n    readonly target: DesktopBrowserTarget;\n    readonly delivered: boolean;\n    readonly observation?: DesktopBrowserSnapshot;\n    readonly screenshot?: DesktopBrowserScreenshot;\n} | {\n    readonly kind: \'wait\';\n    readonly target: DesktopBrowserTarget;\n    readonly matched: true;\n} | {\n    readonly kind: \'screenshot\';\n    readonly screenshot: DesktopBrowserScreenshot;\n};',
+  },
+  {
+    name: 'DesktopBrowserWaitCondition',
+    declaration: 'export type DesktopBrowserWaitCondition = {\n    readonly kind: \'load\';\n    readonly state: \'domcontentloaded\';\n} | {\n    readonly kind: \'url\';\n    readonly url: string;\n} | {\n    readonly kind: \'element\';\n    readonly locator: DesktopBrowserLocator;\n    readonly state: \'visible\' | \'hidden\' | \'enabled\' | \'checked\';\n};',
   },
   {
     name: 'DeveloperMessage',
@@ -5107,7 +5743,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'DomainSpec',
-    declaration: 'export interface DomainSpec {\n    readonly name: string;\n    readonly version: number;\n    readonly layout?: \'single\' | \'per-record\';\n    readonly compatibleVersions?: readonly number[];\n    readonly invalidRecords?: \'backup-and-skip\';\n    readonly global?: DomainGlobalSpec<unknown>;\n    readonly tables: Record<string, DomainTableSpec>;\n}',
+    declaration: 'export interface DomainSpec {\n    readonly name: string;\n    readonly version: number;\n    readonly layout?: \'single\' | \'per-record\';\n    readonly compatibleVersions?: readonly number[];\n    readonly invalidRecords?: \'backup-and-skip\';\n    readonly exclusive?: boolean;\n    readonly global?: DomainGlobalSpec<unknown>;\n    readonly tables: Record<string, DomainTableSpec>;\n}',
   },
   {
     name: 'DomainTableSpec',
@@ -5559,7 +6195,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'KvFacet',
-    declaration: 'export interface KvFacet {\n    open(descriptor: KvUnitDescriptor): Promise<KvUnit>;\n}',
+    declaration: 'export interface KvFacet {\n    readonly supportsExclusive?: true;\n    open(descriptor: KvUnitDescriptor): Promise<KvUnit>;\n}',
   },
   {
     name: 'KvTable',
@@ -5571,7 +6207,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'KvUnitDescriptor',
-    declaration: 'export interface KvUnitDescriptor {\n    readonly name: string;\n    readonly version: number;\n    readonly tables: readonly string[];\n    readonly hasGlobal: boolean;\n    readonly layout?: \'single\' | \'per-record\';\n    readonly compatibleVersions?: readonly number[];\n}',
+    declaration: 'export interface KvUnitDescriptor {\n    readonly name: string;\n    readonly version: number;\n    readonly tables: readonly string[];\n    readonly hasGlobal: boolean;\n    readonly layout?: \'single\' | \'per-record\';\n    readonly compatibleVersions?: readonly number[];\n    readonly exclusive?: boolean;\n}',
+  },
+  {
+    name: 'LegacyProjectProposal',
+    declaration: 'export interface LegacyProjectProposal {\n    readonly projectId: ProjectId;\n    readonly title: string;\n    readonly sourceRoot: string;\n    readonly sessions: readonly ProjectSessionRecord[];\n    readonly sessionOrder: readonly SessionId[];\n    readonly pinnedSessionIds: readonly SessionId[];\n    readonly archivedSessionIds: readonly SessionId[];\n}',
+  },
+  {
+    name: 'LegacySourceProvider',
+    declaration: 'export interface LegacySourceProvider {\n    inspect(root: string, signal?: AbortSignal): Promise<LegacyProjectProposal | undefined>;\n}',
   },
   {
     name: 'LlmAdapter',
@@ -5639,7 +6283,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmRuntime',
-    declaration: 'export class LlmRuntime extends TypertRemoteService {\n    constructor(ctx: Context);\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    @Remote\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    @Remote\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    async discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    @Remote(\'discoverModels\')\n    async remoteDiscoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    providerRetryPolicy(provider: string): ResolvedRetryPolicy;\n    imageRequestPricing(provider: string, model: string): LlmImageRequestPricing | undefined;\n    fileRequestText(ref: FileAttachmentRef): string;\n    async listModels(provider: string): Promise<LlmModelInfo[]>;\n    async resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>;\n    async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlmCall>;\n    stream(options: GenerateOptions) /* …truncated — full shape in source */',
+    declaration: 'export class LlmRuntime extends TypertRemoteService {\n    constructor(ctx: Context);\n    lockRoute(provider: string, model: string): void;\n    lockProvider(provider: string): void;\n    hasFixedRoute(): boolean;\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    @Remote\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    @Remote\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    async discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    @Remote(\'discoverModels\')\n    async remoteDiscoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    providerRetryPolicy(provider: string): ResolvedRetryPolicy;\n    imageRequestPricing(provider: string, model: string): LlmImageRequestPricing | undefined;\n    fileRequestText(ref: FileAttachmentRef): string;\n    async listModels(provider: string): Promise<LlmModelInfo[]>;\n    async resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>;\n     /* …truncated — full shape in source */',
   },
   {
     name: 'LocalAtInput',
@@ -5886,6 +6530,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface OneShotSubagentDescriptorData extends SubagentDescriptorBase {\n    readonly mode: \'one-shot\';\n    readonly label?: string;\n}',
   },
   {
+    name: 'OpenProjectRequest',
+    declaration: 'export interface OpenProjectRequest {\n    readonly root: string;\n    readonly mode: \'new\' | \'existing\' | \'legacy\';\n    readonly expectedId?: ProjectId;\n    readonly expectedDigest?: string;\n}',
+  },
+  {
     name: 'OptionalSessionSeq',
     declaration: 'export type OptionalSessionSeq = SessionSeq | null;',
   },
@@ -5978,6 +6626,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type PluginSpecInspection = {\n    readonly status: \'accepted\';\n    readonly kind: InstallSpecKind;\n    readonly name?: string;\n    readonly version?: string;\n    readonly description?: string;\n    readonly bundle: boolean | null;\n    readonly registry: Registry;\n    readonly host?: string;\n} | {\n    readonly status: \'refused\';\n    readonly problem: PluginInspectProblem;\n    readonly reason: string;\n    readonly registries?: Registry[];\n};',
   },
   {
+    name: 'PortableProjectManifest',
+    declaration: 'export interface PortableProjectManifest {\n    readonly schemaVersion: 1;\n    readonly id: ProjectId;\n    readonly title: string;\n    readonly createdAt: number;\n    readonly sessions: readonly ProjectSessionRecord[];\n    readonly sessionOrder: readonly SessionId[];\n    readonly pinnedSessionIds: readonly SessionId[];\n    readonly archivedSessionIds: readonly SessionId[];\n}',
+  },
+  {
     name: 'PostToolDecision',
     declaration: 'export type PostToolDecision = {\n    kind: \'accept\';\n    content?: ContentBlock[];\n    value?: never;\n    additionalContexts?: UserMessage[];\n} | {\n    kind: \'accept\';\n    value: JsonValue;\n    content?: never;\n    additionalContexts?: UserMessage[];\n} | {\n    kind: \'block\';\n    feedback: ContentBlock[];\n    additionalContexts?: UserMessage[];\n};',
   },
@@ -6042,6 +6694,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ProfilePnpmInvocation {\n    readonly command: string;\n    readonly args: readonly string[];\n    readonly env: Readonly<Record<string, string>>;\n}',
   },
   {
+    name: 'ProjectBinding',
+    declaration: 'export interface ProjectBinding {\n    readonly id: ProjectId;\n    readonly root: string;\n    readonly revision: ProjectBindingRevision;\n}',
+  },
+  {
+    name: 'ProjectBindingRevision',
+    declaration: 'export type ProjectBindingRevision = Branded<\'ProjectBindingRevision\'>;',
+  },
+  {
+    name: 'ProjectId',
+    declaration: 'export type ProjectId = Branded<\'ProjectId\'>;',
+  },
+  {
+    name: 'ProjectInspection',
+    declaration: 'export type ProjectInspection = {\n    readonly kind: \'new\';\n    readonly root: string;\n} | {\n    readonly kind: \'existing\';\n    readonly root: string;\n    readonly manifest: PortableProjectManifest;\n    readonly digest: string;\n} | {\n    readonly kind: \'registered\';\n    readonly binding: ProjectBinding;\n    readonly manifest: PortableProjectManifest;\n    readonly digest: string;\n} | {\n    readonly kind: \'legacy\';\n    readonly root: string;\n    readonly proposal: LegacyProjectProposal;\n    readonly digest: string;\n};',
+  },
+  {
     name: 'ProjectionChangeListener',
     declaration: 'export type ProjectionChangeListener = (session: Session, key: Extract<keyof SessionProjectionMap, string>, value: unknown, seq: SessionSeq) => void;',
   },
@@ -6060,6 +6728,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ProjectionSnapshot',
     declaration: 'export interface ProjectionSnapshot {\n    asOfSeq: SessionSeqCursor;\n    values: Partial<SessionProjectionMap>;\n}',
+  },
+  {
+    name: 'ProjectLegacyAdopter',
+    declaration: 'export type ProjectLegacyAdopter = (proposal: LegacyProjectProposal, root: string, signal?: AbortSignal) => Promise<PortableProjectManifest>;',
+  },
+  {
+    name: 'ProjectSessionLocation',
+    declaration: 'export interface ProjectSessionLocation {\n    readonly projectId: ProjectId;\n    readonly projectRoot: string;\n    readonly relativeCwd: string;\n    readonly sessionsRoot: string;\n    readonly attachmentsRoot: string;\n    readonly bindingRevision: ProjectBindingRevision;\n}',
+  },
+  {
+    name: 'ProjectSessionRecord',
+    declaration: 'export interface ProjectSessionRecord {\n    readonly id: SessionId;\n    readonly relativeCwd: string;\n}',
+  },
+  {
+    name: 'ProjectStorageChanged',
+    declaration: 'export interface ProjectStorageChanged {\n    readonly id: ProjectId;\n    readonly binding: ProjectBinding | undefined;\n    readonly manifest: PortableProjectManifest | undefined;\n}',
   },
   {
     name: 'PromptAssembly',
@@ -6142,6 +6826,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type QueueAction = {\n    readonly kind: \'edit\';\n    readonly content: readonly TextBlock[];\n} | {\n    readonly kind: \'remove\';\n} | {\n    readonly kind: \'steer\';\n};',
   },
   {
+    name: 'QuotaSnapshot',
+    declaration: 'export interface QuotaSnapshot {\n    readonly balance: number;\n}',
+  },
+  {
     name: 'ReadFileLine',
     declaration: 'export interface ReadFileLine {\n    number: number;\n    text: string;\n}',
   },
@@ -6170,12 +6858,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface RedactedSecret {\n    path: string[];\n    set: boolean;\n}',
   },
   {
+    name: 'RedeemResult',
+    declaration: 'export interface RedeemResult {\n    readonly status: string;\n    readonly balance?: number;\n}',
+  },
+  {
     name: 'Registry',
     declaration: 'export type Registry = string | null;',
   },
   {
     name: 'Reload',
-    declaration: 'export interface Reload {\n    filename: string;\n    runtime?: Plugin.Runtime | undefined;\n}',
+    declaration: 'export interface Reload {\n    filename: string;\n    modules: ReloadModules;\n    runtime?: Plugin.Runtime | undefined;\n}',
   },
   {
     name: 'RemoteError',
@@ -6454,6 +7146,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type SessionAddress = {\n    readonly kind: \'session\';\n    readonly sessionId: SessionId;\n} | {\n    readonly kind: \'subagent\';\n    readonly parentSessionId: SessionId;\n    readonly childSessionId: SessionId;\n    readonly mode: \'one-shot\' | \'continuable\' | \'unknown\';\n};',
   },
   {
+    name: 'SessionArchiveAdmitRequest',
+    declaration: 'export interface SessionArchiveAdmitRequest {\n    readonly sessionId: SessionId;\n    readonly stopActivity: boolean;\n}',
+  },
+  {
     name: 'SessionAssistantStreamAttempt',
     declaration: 'export interface SessionAssistantStreamAttempt {\n    readonly attemptId: LlmAttemptId;\n    readonly startedAfterSeq: SessionSeqCursor;\n    readonly turn: number;\n    readonly step: number;\n    readonly nextIndex: number;\n    readonly stream: readonly JsonValue[];\n}',
   },
@@ -6570,6 +7266,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionEventWindow {\n    session: SessionHeader;\n    inheritedEventCount: SessionLogOffset;\n    target: SessionEvent;\n    events: SessionEvent[];\n    startSeq: SessionSeq;\n    endSeq: SessionSeq;\n}',
   },
   {
+    name: 'SessionExecutionInputOwner',
+    declaration: 'export interface SessionExecutionInputOwner {\n    admit<T>(work: () => Promise<T>, signal: AbortSignal): Promise<T>;\n    closeIf(check: () => boolean): Promise<boolean>;\n    release(): void;\n}',
+  },
+  {
     name: 'SessionFeedbackRecordRequest',
     declaration: 'export interface SessionFeedbackRecordRequest {\n    readonly sessionId: SessionId;\n    readonly text?: string;\n    readonly category?: FeedbackCategory;\n}',
   },
@@ -6632,10 +7332,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SessionHistoryRecord',
     declaration: 'export type SessionHistoryRecord = SessionEventEntry;',
-  },
-  {
-    name: 'SessionId',
-    declaration: 'export type SessionId = Branded<\'SessionId\'>;',
   },
   {
     name: 'SessionInspection',
@@ -7039,7 +7735,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SignInErrorCode',
-    declaration: 'export type SignInErrorCode = \'network\' | \'protocol\' | \'expired\' | \'storage\';',
+    declaration: 'export type SignInErrorCode = \'no-response\' | \'network\' | \'protocol\' | \'expired\' | \'storage\';',
   },
   {
     name: 'SkillCandidate',
@@ -7706,6 +8402,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ToolUpdate = \'in-history\' | \'addition-only\';',
   },
   {
+    name: 'TopUpResult',
+    declaration: 'export interface TopUpResult {\n    readonly id: string;\n    readonly status: string;\n    readonly checkoutUrl?: string;\n}',
+  },
+  {
     name: 'Transcript',
     declaration: 'export interface Transcript {\n    readonly text: string;\n    readonly audioSeconds: number;\n    readonly inferenceSeconds: number;\n}',
   },
@@ -7832,6 +8532,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'UpdateTeamTaskRequest',
     declaration: 'export interface UpdateTeamTaskRequest {\n    readonly taskId: TeamTaskId;\n    readonly expectedRevision: number;\n    readonly action: TeamTaskAction;\n    readonly subject?: string;\n    readonly description?: string;\n    readonly blockedBy?: readonly TeamTaskId[];\n    readonly writeScopes?: readonly string[];\n    readonly owner?: string;\n}',
+  },
+  {
+    name: 'UsagePeriodSnapshot',
+    declaration: 'export interface UsagePeriodSnapshot {\n    readonly requests: number;\n    readonly tokens: number;\n    readonly credits: number;\n}',
   },
   {
     name: 'UserMessage',
@@ -8120,6 +8824,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkspaceInsertSessionBeforeRequest',
     declaration: 'export interface WorkspaceInsertSessionBeforeRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly sessionId: SessionId;\n    readonly beforeSessionId?: SessionId;\n}',
+  },
+  {
+    name: 'WorkspaceInspectionView',
+    declaration: 'export type WorkspaceInspectionView = {\n    readonly kind: \'new\';\n    readonly root: string;\n} | {\n    readonly kind: \'existing\';\n    readonly root: string;\n    readonly projectId: string;\n    readonly title: string;\n    readonly sessionCount: number;\n    readonly digest: string;\n} | {\n    readonly kind: \'registered\';\n    readonly root: string;\n    readonly workspaceId: WorkspaceId;\n    readonly title: string;\n    readonly sessionCount: number;\n    readonly digest: string;\n} | {\n    readonly kind: \'legacy\';\n    readonly root: string;\n    readonly projectId: string;\n    readonly title: string;\n    readonly sessionCount: number;\n    readonly digest: string;\n};',
+  },
+  {
+    name: 'WorkspaceInspectRequest',
+    declaration: 'export interface WorkspaceInspectRequest {\n    readonly path: string;\n}',
+  },
+  {
+    name: 'WorkspaceOpenProjectRequest',
+    declaration: 'export interface WorkspaceOpenProjectRequest {\n    readonly path: string;\n    readonly mode: \'new\' | \'existing\' | \'legacy\';\n    readonly expectedId?: string;\n    readonly expectedDigest?: string;\n}',
   },
   {
     name: 'WorkspaceOrderValue',

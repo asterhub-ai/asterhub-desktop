@@ -79,6 +79,23 @@ function invocationOf(value: unknown): TypertRemoteEventInvocation {
 }
 
 describe('Remote event Host source', () => {
+  it.each([
+    { event: 'automation/changed', args: [{ kind: 'automation-changed' }] },
+    { event: 'automation/account-changed', args: [{ accountId: 'account-a', epoch: 2 }] },
+  ])('forwards $event without task content or credentials', async ({ event, args }) => {
+    const { ctx, gateway, fiber } = await setup()
+    const abort = new AbortController()
+    const stream = sourceOf(gateway)(abort.signal)[Symbol.asyncIterator]()
+    try {
+      emitRaw(ctx, event, args)
+      await expect(stream.next()).resolves.toEqual({ done: false, value: { event, args } })
+    } finally {
+      abort.abort()
+      await fiber.dispose()
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('registers the Host home used by Client connection generations', async () => {
     const { gateway, fiber } = await setup()
     expect(gateway.host?.home).toBeTypeOf('string')

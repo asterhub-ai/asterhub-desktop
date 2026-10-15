@@ -8,3 +8,9 @@
 /account-service/public-types:
   en: 514e3a869e355a86
   zh: 4b6f416f8ff3847f
+/account-service/automation-identity:
+  en: b2f5ddc49b9136fc
+  zh: c8ec5bfe58aa401d
+/account-service/native-service-request-and-result-types:
+  en: fa4eb45b462769b9
+  zh: acb1c29e6521f651

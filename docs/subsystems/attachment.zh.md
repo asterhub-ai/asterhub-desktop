@@ -169,6 +169,23 @@ interface RequestImageAttachment {
 
 `saveImage()` 准备并原子提交提供方无关的规范化附件，然后直接返回 `ImageAttachmentRef`。`saveImages()` 在发布批次前为每个成员各准备一次经过验证的附件，因此校验拒绝不会留下部分对象，发布也不会重复解码或选择质量。`admitPromptContent()` 在文件凭证解析后接收完整且有序的 Host prompt，把 base64 图片上传替换为持久引用，并让持久文件引用原样通过。`admitEncodedImages()` 支持其他 wire 入口，把张数、聚合字节和有序批量准入交给 `saveImages()`。`admitEncodedFile()` 让编码协议适配器使用服务拥有的规范 base64 准入，`isAttachmentError()` 让这些适配器无需导入实现辅助函数即可识别稳定的附件错误。`readImage()` 校验来自已授权会话路径的规范化附件。`imageHostPath()` 只公开提供方所持对象的宿主位置，不判断当前工具执行环境能否读取它。`readImageRequest()` 按确切的路由目标尺寸和编码字节目标派生并缓存确定性请求版本。该版本包含编码字节和元数据，不包含执行环境路径。新条目在发布前完整解码，缓存命中只做有界元数据探测。调用方需要有序批次时，对单数方法使用 `Promise.all`。本地实现按需编码首选候选、合并相同请求身份的并发任务、允许每个等待方单独取消、没有等待方时停止共享任务，并通过实例级限流器限制全部变换，默认同时执行两项。该服务不规定保留策略：恢复和 fork 后的会话可能共享对象，因此基于引用的垃圾回收会延期实现，不与单个会话的删除绑定。
 
+## 原生服务请求与结果类型
+
+以下类型定义原生账号、工作区和任务服务之间的公开输入与结果。
+
+```ts type-equiv
+/**
+ * Trusted project and Session address used by project-local attachment storage.
+ * Project-local providers route durable object reads and writes to the owning
+ * project's `.aster` trees through this scope; grouped providers ignore it.
+ * Callers obtain it from the Host or live Agent for a trusted Session address.
+ */
+interface AttachmentScope {
+  readonly projectId: string
+  readonly sessionId: Branded<'SessionId'>
+}
+```
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -195,26 +212,29 @@ abstract validateImage(input: SaveImageAttachment): Promise<void>
 /**
  * Validate and durably commit one ordered image batch.
  * @param inputs - encoded images in owning-message order.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns durable normalized attachment references in the same order after every member succeeds.
  */
-async saveImages(inputs: readonly SaveImageAttachment[]): Promise<readonly ImageAttachmentRef[]>
+async saveImages(inputs: readonly SaveImageAttachment[], scope?: AttachmentScope): Promise<readonly ImageAttachmentRef[]>
 
 /**
  * Admit one Host prompt and replace each uploaded image with its durable reference.
  * Text and durable file references pass through unchanged. A prompt without image parts performs no storage operation.
  * @param content - prompt parts in message order after file receipt resolution.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns admitted prompt parts in the same order as `content`.
  * @throws AttachmentError when the image batch is refused.
  */
-async admitPromptContent( content: readonly AttachmentAdmissionPart[], ): Promise<AdmittedPromptContentPart[]>
+async admitPromptContent( content: readonly AttachmentAdmissionPart[], scope?: AttachmentScope, ): Promise<AdmittedPromptContentPart[]>
 
 /**
  * Decode and durably commit one canonical base64 file upload.
  * @param input - canonical base64 bytes and optional display name.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns the durable content-addressed file reference.
  * @throws AttachmentError when the encoding or storage operation is refused.
  */
-admitEncodedFile(input: EncodedFileAttachment): Promise<FileAttachmentRef>
+admitEncodedFile(input: EncodedFileAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef>
 
 /**
  * Identify a failure emitted by this attachment capability by its stable code.
@@ -229,26 +249,29 @@ isAttachmentError(error: unknown): error is AttachmentError
  * normalization reduces the raster, its `originalDimensions` records the
  * orientation-applied input dimensions.
  * @param input - encoded bytes, declared media type, and optional display name.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns the durable content-addressed normalized image reference.
  */
-abstract saveImage(input: SaveImageAttachment): Promise<ImageAttachmentRef>
+abstract saveImage(input: SaveImageAttachment, scope?: AttachmentScope): Promise<ImageAttachmentRef>
 
 /**
  * Read one image and verify that bytes still match the recorded reference.
  * @param ref - durable reference from the session log.
  * @param signal - optional cancellation for backend read and verification work.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns the verified bytes and normalized attachment reference.
  * @throws the signal reason when aborted, or a storage error when verification fails.
  */
-abstract readImage(ref: ImageAttachmentRef, signal?: AbortSignal): Promise<StoredImageAttachment>
+abstract readImage(ref: ImageAttachmentRef, signal?: AbortSignal, scope?: AttachmentScope): Promise<StoredImageAttachment>
 
 /**
  * Locate the provider-owned normalized object in the harness host filesystem.
  * @param ref - durable normalized attachment reference.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns an absolute host path, or undefined when this backend is not host-file-backed.
- * @throws an AttachmentError when the durable reference is invalid.
+ * @throws an AttachmentError when the durable reference or scope is invalid.
  */
-imageHostPath(ref: ImageAttachmentRef): string | undefined
+imageHostPath(ref: ImageAttachmentRef, scope?: AttachmentScope): string | undefined
 
 /**
  * Durably commit one file byte-for-byte before its owning session event is
@@ -256,18 +279,20 @@ imageHostPath(ref: ImageAttachmentRef): string | undefined
  * accepted, and the stored object is the exact submitted bytes. Backends
  * without verbatim file storage keep this default rejection.
  * @param input - exact bytes and optional display name.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns the durable content-addressed file reference.
  */
-saveFile(input: SaveFileAttachment): Promise<FileAttachmentRef>
+saveFile(input: SaveFileAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef>
 
 /**
  * Durably commit one file byte-for-byte from bounded chunks. Providers must
  * apply backpressure and must not collect the complete file in memory.
  * Backends without streamed verbatim storage keep this default rejection.
  * @param input - ordered exact bytes, optional cancellation, and display name.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns the durable content-addressed file reference.
  */
-saveFileStream(input: SaveFileStreamAttachment): Promise<FileAttachmentRef>
+saveFileStream(input: SaveFileStreamAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef>
 
 /**
  * Read and verify one verbatim stored file as bounded chunks. Providers must
@@ -275,26 +300,29 @@ saveFileStream(input: SaveFileStreamAttachment): Promise<FileAttachmentRef>
  * reads keep this default rejection.
  * @param ref - durable reference from the session log.
  * @param signal - optional cancellation for backend reads and verification work.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns exact file bytes in order; integrity failures reject the iteration.
  */
-async *readFileStream( ref: FileAttachmentRef, signal?: AbortSignal, ): AsyncIterable<Uint8Array>
+async *readFileStream( ref: FileAttachmentRef, signal?: AbortSignal, scope?: AttachmentScope, ): AsyncIterable<Uint8Array>
 
 /**
- * Locate the verbatim stored file object in the harness host filesystem.
+ * Resolve an original file attachment to a host-local path when the backend supports it.
  * @param ref - durable file reference.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns an absolute host path, or undefined when this backend is not host-file-backed.
- * @throws an AttachmentError when the durable reference is invalid.
+ * @throws an AttachmentError when the durable reference or scope is invalid.
  */
-fileHostPath(ref: FileAttachmentRef): string | undefined
+fileHostPath(ref: FileAttachmentRef, scope?: AttachmentScope): string | undefined
 
 /**
  * Generate or read one deterministic model-request version from the stored normalized image.
  * @param ref - durable provider-independent normalized attachment reference.
  * @param target - route-chosen dimensions and byte target; an unmet byte target yields the smallest ladder output.
  * @param signal - optional cancellation.
+ * @param scope - trusted project Session scope; required by project-local providers.
  * @returns request bytes and the cache/upload identity covering every transform input.
  */
-readImageRequest( ref: ImageAttachmentRef, target: ImageRequestTarget, signal?: AbortSignal, ): Promise<RequestImageAttachment>
+readImageRequest( ref: ImageAttachmentRef, target: ImageRequestTarget, signal?: AbortSignal, scope?: AttachmentScope, ): Promise<RequestImageAttachment>
 ```
 
 Source: [`packages/attachment/attachment/src/index.ts`](../../packages/attachment/attachment/src/index.ts)

@@ -38,3 +38,9 @@
 /host-wide-schedule/host-delivery:
   en: b6d522d24b9b97ba
   zh: 84df8ea09bedf51c
+/host-wide-schedule/native-desktop-automation:
+  en: 1ad832464ead682a
+  zh: 893a6c8ce6ccc958
+/host-wide-schedule/native-service-request-and-result-types:
+  en: fa4eb45b462769b9
+  zh: acb1c29e6521f651

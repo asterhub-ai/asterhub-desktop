@@ -320,7 +320,7 @@ export class DesktopHostProcess {
     if (child === undefined || !child.connected || this.stopping || this.failureReported) {
       const code = this.stopping ? 'cancelled' : 'unavailable'
       void this.sendBrowserResult(message.requestId, browserError(code, 'Desktop Browser is unavailable'))
-        .catch((error) => { if (!this.stopping) this.fail(error instanceof Error ? error : new Error('dsh desktop browser reply failed')) })
+        .catch((error: unknown) => { if (!this.stopping) this.fail(error instanceof Error ? error : new Error('dsh desktop browser reply failed')) })
       return
     }
     if (message.requestId <= this.lastBrowserRequestId) {
@@ -353,7 +353,7 @@ export class DesktopHostProcess {
         result = browserError('failed', 'Browser operation returned an invalid result')
       }
       await this.sendBrowserResult(message.requestId, result)
-    }).catch((error) => {
+    }).catch((error: unknown) => {
       if (!this.stopping) this.fail(error instanceof Error ? error : new Error('dsh desktop browser result send failed'))
     }).finally(() => {
       if (this.browserRequests.get(message.requestId) === state) this.browserRequests.delete(message.requestId)

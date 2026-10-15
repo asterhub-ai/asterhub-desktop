@@ -68,12 +68,16 @@ it('withdraws its Remote, localized slot and microphone captures on disposal', a
     await fiber
     const entry = b.ctx.slots.entries('conversation.input.activity').find(item => item.component === VoiceInput)
     expect(entry).toMatchObject({ locale: 'voice-input' })
-    const actions = entry!.inject!()
+    assert(entry?.inject !== undefined)
+    const actions = entry.inject()
     assertVoiceActions(actions)
-    const settings = b.ctx.slots.entries('shell.overlay')[0]!.inject!()
+    const settingsEntry = b.ctx.slots.entries('shell.overlay')[0]
+    assert(settingsEntry?.inject !== undefined)
+    const settings = settingsEntry.inject()
     assert(typeof settings.subscribeOpen === 'function')
     const opened = vi.fn()
-    const unsubscribe = settings.subscribeOpen(opened)
+    const subscribeOpen = settings.subscribeOpen as (listener: () => void) => () => void
+    const unsubscribe = subscribeOpen(opened)
     actions.openSettings()
     expect(opened).toHaveBeenCalledOnce()
     unsubscribe()
@@ -124,8 +128,9 @@ it('joins the same audio closure when cancellation overlaps Client plugin withdr
   try {
     const fiber = b.ctx.plugin({ inject: [...inject], apply: ctx => mountVoiceInput(ctx, REMOTE) })
     await fiber
-    const entry = b.ctx.slots.entries('conversation.input.activity').find(item => item.component === VoiceInput)!
-    const actions = entry.inject!()
+    const entry = b.ctx.slots.entries('conversation.input.activity').find(item => item.component === VoiceInput)
+    assert(entry?.inject !== undefined)
+    const actions = entry.inject()
     assertVoiceActions(actions)
     const recording = actions.createRecording()
     assert(recording instanceof Recording)

@@ -11,14 +11,18 @@ const DESKTOP_SKILL_NAMES = ['control-browser', 'web-gui-tester'] as const
 function parseSkill(raw: string, path: string): { description: string; content: string } {
   const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(raw)
   if (frontmatter?.[1] === undefined) throw new Error(`skill: ${path} has no YAML frontmatter`)
-  const metadata = parseYaml(frontmatter[1]) as Record<string, unknown>
+  const metadata: unknown = parseYaml(frontmatter[1])
   const description = typeof metadata === 'object' && metadata !== null && 'description' in metadata
-    ? String(metadata.description) : undefined
+    && typeof metadata.description === 'string' ? metadata.description : undefined
   if (!description || description.length === 0) throw new Error(`skill: ${path} has no description`)
   return { description, content: raw.slice(frontmatter[0].length).trim() }
 }
 
-/** Construct the bundled desktop browser skill provider. */
+/**
+ * Construct the bundled desktop browser skill provider.
+ * @param assetRoot - Optional directory containing the bundled browser skill assets.
+ * @returns Provider that discovers and reads the bundled browser skills.
+ */
 export function createDesktopSkillProvider(assetRoot?: string): SkillProvider {
   const root = assetRoot ?? fileURLToPath(new URL('../assets/', import.meta.url))
 

@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for 2026-10-04-desktop-settings-updater-design.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/specs/2026-10-04-desktop-settings-updater-design.md
+/asterhub-desktop-update-check-and-windows-release-design:
+  en: 23f40ba4478a31b5
+  zh: 3a731d0bf9dc8b24
+/asterhub-desktop-update-check-and-windows-release-design/goal:
+  en: 66785d0fcef687ab
+  zh: 1c40449652ce8307
+/asterhub-desktop-update-check-and-windows-release-design/current-implementation:
+  en: f6114737c55d9e5f
+  zh: 8afcbc3597aa9498
+/asterhub-desktop-update-check-and-windows-release-design/settings-interaction:
+  en: 9708e1e5f0587257
+  zh: 1d1357780bcd6e7e
+/asterhub-desktop-update-check-and-windows-release-design/windows-release-and-server-flow:
+  en: 196ae3945d9ee685
+  zh: 8db0b8dc5fa37957
+/asterhub-desktop-update-check-and-windows-release-design/verification:
+  en: ad3cf2e37a88453b
+  zh: bbfb1f2bf22db8a6
+/asterhub-desktop-update-check-and-windows-release-design/risks-and-constraints:
+  en: 36aab9790bda54ab
+  zh: b5c9119383fd3500

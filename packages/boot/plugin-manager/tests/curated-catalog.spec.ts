@@ -245,7 +245,8 @@ it('matches real pnpm tarball URL resolutions with and without peer dependencies
     integrity: 'sha512-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=',
   }
   const futureBundle = [{
-    name: futureEntry.package, version: futureEntry.version, enabled: true, installed: true, optional: false, removable: true, rows: [], overrides: [],
+    name: futureEntry.package, version: futureEntry.version, enabled: true, installed: true,
+    optional: false, removable: true, rows: [], overrides: [],
   }]
   const futureLock = {
     importers: {

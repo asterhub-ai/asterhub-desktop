@@ -21,7 +21,6 @@ import { AutomationRuntime } from './runtime.ts'
 import { registerAutomationTools } from './tools.ts'
 import type {
   AutomationTask,
-  AutomationTaskId,
   AutomationRunId,
   AutomationDraft,
   AutomationOperation,
@@ -149,65 +148,7 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/**
- * Event payload for `automation/changed`.
- *
- * Carries no task content; clients re-query the authoritative record set.
- * The event is emitted after every durable put/delete so the runtime
- * recomputes its next timer and the Client refreshes its visible list.
- */
-export interface AutomationChangedEvent {
-  /** Always empty; the payload exists so the event type is declared. */
-  readonly kind: 'automation-changed'
-}
-
-/**
- * Event payload for `automation/account-changed`.
- *
- * Emitted when the automation identity changes (login/logout/switch).
- * Carries no task content or secrets; clients re-query the authoritative record set.
- * List/get/runs/choices capture identity and reassert before resolving.
- */
-export interface AutomationAccountChangedEvent {
-  /** The new account id, or null if logged out. */
-  readonly accountId: string | null
-  /** The new epoch, or 0 if logged out. */
-  readonly epoch: number
-}
-
-/**
- * Event payload for `automation/run-stop-requested`.
- *
- * Emitted when a run stop is requested; observed by the runtime outside the FIFO.
- */
-export interface AutomationRunStopRequestedEvent {
-  readonly taskId: AutomationTaskId
-  readonly runId: AutomationRunId
-}
-
-/**
- * Automation service events declaration for Cordis.
- * Uses method signature style (not EventMap tuples) per Cordis Events interface.
- */
-declare module '@deepseek-ai/cordis' {
-  interface Events {
-    /**
-     * Notification that automation tasks changed; re-query for authoritative state.
-     * @param event - The automation changed event.
-     */
-    'automation/changed'(event: AutomationChangedEvent): void
-    /**
-     * Account identity changed; re-query and drop stale prepared ops.
-     * @param event - The account changed event.
-     */
-    'automation/account-changed'(event: AutomationAccountChangedEvent): void
-    /**
-     * Request to stop one run; observed by the runtime outside the FIFO.
-     * @param event - The run stop requested event.
-     */
-    'automation/run-stop-requested'(event: AutomationRunStopRequestedEvent): void
-  }
-}
+export type { AutomationChangedEvent, AutomationAccountChangedEvent, AutomationRunStopRequestedEvent } from './types.ts'
 
 /**
  * Native scheduled-task management and execution service.
@@ -247,7 +188,22 @@ export class AutomationService extends TypertRemoteService implements Automation
    */
   constructor(ctx: Context, config: Config) {
     super(ctx, 'asterhubAutomation', { namespace: 'automation' })
-    const effective: Required<Config> = { ...DEFAULT_LIMITS, ...config }
+    const effective: Required<Config> = {
+      maxConcurrent: config.maxConcurrent ?? DEFAULT_LIMITS.maxConcurrent,
+      runTimeoutMs: config.runTimeoutMs ?? DEFAULT_LIMITS.runTimeoutMs,
+      historyDays: config.historyDays ?? DEFAULT_LIMITS.historyDays,
+      historyRecords: config.historyRecords ?? DEFAULT_LIMITS.historyRecords,
+      historyBytes: config.historyBytes ?? DEFAULT_LIMITS.historyBytes,
+      receiptDays: config.receiptDays ?? DEFAULT_LIMITS.receiptDays,
+      receiptRecords: config.receiptRecords ?? DEFAULT_LIMITS.receiptRecords,
+      receiptBytes: config.receiptBytes ?? DEFAULT_LIMITS.receiptBytes,
+      maxTaskBytes: config.maxTaskBytes ?? DEFAULT_LIMITS.maxTaskBytes,
+      maxTasksPerAccount: config.maxTasksPerAccount ?? DEFAULT_LIMITS.maxTasksPerAccount,
+      maxTasks: config.maxTasks ?? DEFAULT_LIMITS.maxTasks,
+      maxInstructionChars: config.maxInstructionChars ?? DEFAULT_LIMITS.maxInstructionChars,
+      maxInstructionBytes: config.maxInstructionBytes ?? DEFAULT_LIMITS.maxInstructionBytes,
+      confirmationTimeoutMs: config.confirmationTimeoutMs ?? DEFAULT_LIMITS.confirmationTimeoutMs,
+    }
     this.runtimeId = `runtime-${randomUUID()}`
     this.limitsCache = {
       maxConcurrent: effective.maxConcurrent,
@@ -273,8 +229,8 @@ export class AutomationService extends TypertRemoteService implements Automation
     }
 
     // Open the store, validate stored records, and wire the runtime + operations.
-    this.ready = openAutomationStore(ctx).then(async (store) => {
-      const identityProvider = async (): Promise<AutomationAccountIdentity | null> => {
+    this.ready = openAutomationStore(ctx).then((store) => {
+      const identityProvider = (): Promise<AutomationAccountIdentity | null> => {
         return ctx.accountSub2api.automationIdentity()
       }
       this.operations = new AutomationOperations(ctx, store, effective, identityProvider,
@@ -388,7 +344,10 @@ export class AutomationService extends TypertRemoteService implements Automation
   get limits(): AutomationLimits {
     return this.limitsCache
   }
-  /** All tasks (synchronous snapshot for runtime scanning outside the FIFO). */
+  /**
+   * All tasks for runtime scanning outside the management FIFO.
+   * @returns Current task snapshot, or an empty list before initialization.
+   */
   tasks(): readonly AutomationTask[] {
     if (this.operations) {
       return this.operations.store.tasks()
@@ -396,7 +355,10 @@ export class AutomationService extends TypertRemoteService implements Automation
     return []
   }
 
-  /** Current account identity (delegates to accountSub2api). */
+  /**
+   * Resolve the current account lifetime through the account service.
+   * @returns Account identity and epoch, or null when acquisition is unavailable.
+   */
   identity(): Promise<AutomationAccountIdentity | null> {
     return this.ctx.accountSub2api.automationIdentity()
   }
@@ -408,6 +370,8 @@ export class AutomationService extends TypertRemoteService implements Automation
    * no task can cross global quota/concurrency checks while another await is
    * in flight. The runtime calls this for reservation; management operations
    * call it through {@link AutomationOperations}.
+   * @param work - Mutation or reservation to execute after prior queued work settles.
+   * @returns The operation result or rejection without poisoning later queued work.
    */
   transact<T>(work: () => Promise<T>): Promise<T> {
     const run = this.chain.then(work, work)
@@ -417,7 +381,10 @@ export class AutomationService extends TypertRemoteService implements Automation
     return run
   }
 
-  /** Persist a task and emit change. */
+  /**
+   * Persist a task before notifying consumers and requesting another scheduling scan.
+   * @param task - Complete task aggregate to publish.
+   */
   async put(task: AutomationTask): Promise<void> {
     const store = await this.getStore()
     await store.put(task)

@@ -56,7 +56,7 @@ describe('desktop runtime smoke: workspace inspect validation', () => {
       },
     }
 
-    expect(() => { assertWorkspaceInspectResponse(response, dir) }).toThrowError(
+    expect(() => { assertWorkspaceInspectResponse(response, dir) }).toThrow(
       /desktop runtime: workspace inspect wrote private metadata/u,
     )
   })
@@ -73,7 +73,7 @@ describe('desktop runtime smoke: workspace inspect validation', () => {
       },
     }
 
-    expect(() => { assertWorkspaceInspectResponse(response, dir) }).toThrowError(
+    expect(() => { assertWorkspaceInspectResponse(response, dir) }).toThrow(
       /desktop runtime: workspace inspect modified empty directory/u,
     )
   })
@@ -83,14 +83,14 @@ describe('desktop runtime smoke: workspace inspect validation', () => {
 
     expect(() => {
       assertWorkspaceInspectResponse({ result: { ok: true, value: { kind: 'existing' } } }, dir)
-    }).toThrowError(/desktop runtime: workspace inspect expected kind 'new', received 'existing'/u)
+    }).toThrow(/desktop runtime: workspace inspect expected kind 'new', received 'existing'/u)
 
     expect(() => {
       assertWorkspaceInspectResponse(null, dir)
-    }).toThrowError(/desktop runtime: workspace inspect returned malformed response/u)
+    }).toThrow(/desktop runtime: workspace inspect returned malformed response/u)
 
     expect(() => {
       assertWorkspaceInspectResponse({}, dir)
-    }).toThrowError(/desktop runtime: workspace inspect returned malformed response/u)
+    }).toThrow(/desktop runtime: workspace inspect returned malformed response/u)
   })
 })

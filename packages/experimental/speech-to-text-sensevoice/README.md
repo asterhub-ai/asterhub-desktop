@@ -35,6 +35,8 @@ Download failures identify the asset and source origin, with a classified cause 
 
 Every activation checks the selected model, tokens and VAD on disk. Complete verified caches restore readiness immediately after inspection; the first recording wakes the worker. Missing files or mismatched managed checksums require explicit preparation, while unreadable paths report an error. Explicit deployment paths are checked for accessibility; their contents remain the deployer's responsibility. Disabling the plugin or restarting the Host does not require downloading intact caches again.
 
+`vadOnsetPaddingSeconds` restores up to 0.3 seconds before the first VAD segment by default; it accepts 0–1 seconds and zero disables restoration. Later segments are unchanged.
+
 -----
 
 <a id="understand-the-implementation"></a>

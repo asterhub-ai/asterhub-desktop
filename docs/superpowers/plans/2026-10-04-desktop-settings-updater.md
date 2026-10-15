@@ -1,5 +1,7 @@
 # Desktop Settings Update Check and Windows Release Implementation Plan
 
+English | [中文](2026-10-04-desktop-settings-updater.zh.md)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a Desktop-only manual update action beside the General Settings version and publish one signed Windows x64 `0.2.0-rc.3` installer through the existing AsterHub Nightly feed.
@@ -12,7 +14,7 @@
 
 ## Global Constraints
 
-- Product version is `0.2.0-rc.3`; root and Desktop manifests already carry this version in local commit `8de40828`.
+- This plan targets product version `0.2.0-rc.3` in the root and Desktop manifests.
 - Release target is `win-x64`, standard signed installer, production origin `https://asterhub.xapi.fans`.
 - The live Windows Nightly feed currently returns HTTP 404.
 - One explicit confirmation authorizes downloading and installing the exact checked candidate; installation that may interrupt running work requires a separate confirmation.

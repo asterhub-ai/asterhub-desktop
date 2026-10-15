@@ -24,11 +24,20 @@
   en: 745734945ae3c9eb
   zh: 015558291796a562
 /deepseek-ai-dsh-browser-use-desktop/model-experience:
-  en: 1df14c56cbedb4de
-  zh: 8c4baabe9271b324
-/deepseek-ai-dsh-browser-use-desktop/model-experience/kv-cache-effect:
-  en: ce65d7983102bb6c
-  zh: cd582b5a17817597
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-browser-use-desktop/model-experience/browser-operations-and-observations:
+  en: 28c1749525278d8d
+  zh: a96bd37e318ea024
+/deepseek-ai-dsh-browser-use-desktop/model-experience/browser-operations-and-observations/what-the-model-sees:
+  en: 97df9db8325c75ac
+  zh: 26c97d46e3572178
+/deepseek-ai-dsh-browser-use-desktop/model-experience/browser-operations-and-observations/token-effect:
+  en: 5d61bec64fd3a010
+  zh: 2936e2a704eccf0c
+/deepseek-ai-dsh-browser-use-desktop/model-experience/browser-operations-and-observations/kv-cache-effect:
+  en: 27391520b9ab1933
+  zh: 24bcd4add6f35693
 /deepseek-ai-dsh-browser-use-desktop/known-limitations-and-deferred-work:
   en: ff1b8e7027fa4380
   zh: 7559aa5cdb19f1b0

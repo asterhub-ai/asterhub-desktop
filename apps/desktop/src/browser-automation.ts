@@ -61,11 +61,11 @@ export class AutomationSession {
   constructor(private readonly ctx: AutomationGuestContext) {}
 
   private getRoot(): Element | undefined {
-    const documentValue = Reflect.get(this.ctx.guest, 'ownerDocument') ?? Reflect.get(globalThis, 'document')
+    const documentValue: unknown = Reflect.get(this.ctx.guest, 'ownerDocument') ?? Reflect.get(globalThis, 'document')
     if (typeof documentValue !== 'object' || documentValue === null) return undefined
-    const body = Reflect.get(documentValue, 'body')
+    const body: unknown = Reflect.get(documentValue, 'body')
     if (this.isElement(body)) return body
-    const documentElement = Reflect.get(documentValue, 'documentElement')
+    const documentElement: unknown = Reflect.get(documentValue, 'documentElement')
     return this.isElement(documentElement) ? documentElement : undefined
   }
 
@@ -260,7 +260,7 @@ export class AutomationSession {
       case 'click':
       case 'doubleClick':
       case 'hover': {
-        const rect = element.getBoundingClientRect?.() ?? { left: 0, top: 0, width: 10, height: 10 }
+        const rect = element.getBoundingClientRect()
         const x = rect.left + rect.width / 2
         const y = rect.top + rect.height / 2
         await dispatchPointerAction(this.ctx.guest, this.ctx.viewport, action === 'hover' ? 'move' : action, { x, y })
@@ -395,10 +395,7 @@ export class AutomationSession {
           try {
             const res = await this.readProperty(target, locator, state === 'hidden' ? 'visible' : state, 100)
             if (state === 'hidden') return res.value === false
-            if (state === 'visible') return res.value === true
-            if (state === 'enabled') return res.value === true
-            if (state === 'checked') return res.value === true
-            return false
+            return res.value === true
           } catch {
             return state === 'hidden'
           }
@@ -409,12 +406,17 @@ export class AutomationSession {
             clearInterval(poll)
             reject(new Error(`Timeout waiting for element ${JSON.stringify(locator)} to be ${state}`))
           }, 10_000)
-          const poll = setInterval(async () => {
-            if (await checkState()) {
+          const poll = setInterval(() => {
+            void checkState().then((ready) => {
+              if (!ready) return
               clearTimeout(timeout)
               clearInterval(poll)
               resolve()
-            }
+            }, (error: unknown) => {
+              clearTimeout(timeout)
+              clearInterval(poll)
+              reject(error instanceof Error ? error : new Error('Browser state check failed', { cause: error }))
+            })
           }, 100)
         })
         break

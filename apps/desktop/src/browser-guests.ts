@@ -92,7 +92,7 @@ export class DesktopBrowserGuests {
     const validTabId = typeof tabId === 'string' && tabId.length > 0 ? tabId : undefined
 
     const windowFactory = this.createWindow ?? (options =>
-      new BrowserWindow(options as ConstructorParameters<typeof BrowserWindow>[0]))
+      new BrowserWindow(options))
     const guestWindow = windowFactory({
       show: false,
       skipTaskbar: true,
@@ -117,7 +117,7 @@ export class DesktopBrowserGuests {
       sessionId: validSessionId,
       tabId: validTabId,
       lease,
-      attached: guest !== undefined,
+      attached: true,
       guest,
       window: guestWindow,
       sequence: 0,
@@ -126,9 +126,7 @@ export class DesktopBrowserGuests {
     }
     this.leases.set(lease, leaseRecord)
 
-    if (guest !== undefined && guestWindow !== undefined) {
-      this.setupOffscreenGuest(owner, leaseRecord, guest, guestWindow)
-    }
+    this.setupOffscreenGuest(owner, leaseRecord, guest, guestWindow)
 
     return { lease, partition }
   }

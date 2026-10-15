@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
 import { execFile } from 'node:child_process'
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { readPrimaryRuntime, workspaceDependencyPaths } from '../../../packages/skill/tool-workspace-dependencies/src/index.ts'
@@ -26,9 +27,25 @@ export async function smokeDesktopRuntime(
 ): Promise<void> {
   const home = mkdtempSync(join(tmpdir(), 'dsh-desktop-smoke-'))
   const profile = join(home, 'profiles', 'desktop')
+  // This per-run cipher exercises credential IPC; the separate Electron test covers safeStorage.
+  const credentialKey = randomBytes(32)
+  const smokeCredentialCipher = (operation: 'encrypt' | 'decrypt', value: string): string => {
+    if (operation === 'encrypt') {
+      const iv = randomBytes(12)
+      const cipher = createCipheriv('aes-256-gcm', credentialKey, iv)
+      const ciphertext = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()])
+      return Buffer.concat([iv, cipher.getAuthTag(), ciphertext]).toString('base64')
+    }
+    const payload = Buffer.from(value, 'base64')
+    if (payload.length < 28) throw new Error('desktop runtime smoke: invalid encrypted credential')
+    const decipher = createDecipheriv('aes-256-gcm', credentialKey, payload.subarray(0, 12))
+    decipher.setAuthTag(payload.subarray(12, 28))
+    return Buffer.concat([decipher.update(payload.subarray(28)), decipher.final()]).toString('utf8')
+  }
   const host = new DesktopHostProcess(node, root, profile, undefined, { ...environment, DSH_HOME: home },
     undefined, join(resourcesRuntime, 'primary-runtime'),
-    { pnpm: join(resourcesRuntime, 'pnpm', 'bin', 'pnpm.cjs'), nodeBin: join(resourcesRuntime, 'bin') })
+    { pnpm: join(resourcesRuntime, 'pnpm', 'bin', 'pnpm.cjs'), nodeBin: join(resourcesRuntime, 'bin') },
+    undefined, undefined, smokeCredentialCipher)
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     createPluginProfile(profile)
@@ -206,6 +223,7 @@ export function apply(ctx) {
   } finally {
     clearTimeout(timer)
     await host.stop()
+    credentialKey.fill(0)
     rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }
 }

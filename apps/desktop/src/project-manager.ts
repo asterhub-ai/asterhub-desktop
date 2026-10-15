@@ -24,7 +24,8 @@ import type { DesktopRelease } from './release.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import {
-  initProfile, loadOverlayPatches, PROFILE_TEMPLATES, readProfileManifest, removeLinkProjections, sanitizeProfile, type ProfileManifest, type ProfileTemplate,
+  initProfile, loadOverlayPatches, PROFILE_TEMPLATES, readProfileManifest, removeLinkProjections, sanitizeProfile,
+  type ProfileManifest, type ProfileTemplate,
 } from '@deepseek-ai/dsh-app-boot'
 
 /** Write a value as formatted JSON with the project-manager convention. */
@@ -116,7 +117,7 @@ export function rejectConflictingSchedulePatch(projectDir: string, hasNativeTime
     const conflictingId = findConflictingScheduleEntry(loadOverlayPatches('dsh', patchPath), hasNativeTimeContext)
     if (conflictingId !== undefined) {
       if (conflictingId === 'time-context') {
-        throw new Error(`desktop automation cutover: user patch declares duplicate time-context row; the native bundle already provides the clock service`)
+        throw new Error('desktop automation cutover: user patch declares duplicate time-context row; the native bundle already provides the clock service')
       }
       throw new Error(`desktop automation cutover: user patch declares conflicting old row '${conflictingId}'; remove it before the native scheduler can start`)
     }

@@ -21,7 +21,7 @@ export interface PrepareAsterHubHomeOptions {
   signal?: AbortSignal
 }
 
-/** Prepared path and work performed by this invocation, not historical migration provenance. */
+/** Prepared path and migration work performed by this invocation. */
 export interface PrepareAsterHubHomeResult {
   home: string
   /** `copied` only when this call publishes a copy; an already-completed default returns `none`. */
@@ -225,6 +225,11 @@ function resolveExplicit(value: string, userHome: string): string {
   return resolve(expandHomePath(value))
 }
 
+/**
+ * Prepare the configured global home or publish a locked copy of the legacy default home.
+ * @param options - User home, configured override, launch environment, and migration cancellation.
+ * @returns Prepared home path and migration work performed by this invocation.
+ */
 export async function prepareAsterHubHome(options: PrepareAsterHubHomeOptions): Promise<PrepareAsterHubHomeResult> {
   const userHome = resolve(options.userHome)
   const env = options.env ?? process.env

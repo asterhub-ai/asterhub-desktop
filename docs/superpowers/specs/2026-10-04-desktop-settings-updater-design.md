@@ -1,8 +1,10 @@
 # AsterHub Desktop update check and Windows release design
 
-**Status:** Approved by user for implementation  
-**Scope:** `AsterHub-reference` Desktop update UI and one Windows x64 production update release  
-**Release target:** `0.2.0-rc.3`, Windows x64 standard signed installer
+English | [中文](2026-10-04-desktop-settings-updater-design.zh.md)
+
+- **Status:** Approved by user for implementation
+- **Scope:** `AsterHub-reference` Desktop update UI and one Windows x64 production update release
+- **Release target:** `0.2.0-rc.3`, Windows x64 standard signed installer
 
 ## Goal
 

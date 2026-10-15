@@ -37,7 +37,7 @@ export function installDesktopQuitInspection(ctx: Context): () => Promise<Deskto
     let scheduledTasks = false
     const automation = ctx.get('asterhubAutomation')
     if (automation !== undefined && typeof automation.inspectLifecycle === 'function') {
-      const lifecycle = await automation.inspectLifecycle()
+      const lifecycle = automation.inspectLifecycle()
       if (lifecycle.armed || lifecycle.active) scheduledTasks = true
     }
     if (!scheduledTasks) {

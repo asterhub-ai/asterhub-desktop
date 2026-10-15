@@ -162,6 +162,8 @@ The welcome window follows system appearance with the design’s Platform light/
 
 ## Package
 
+The desktop runtime pins Electron 44.7.0 and node-addon-require-builtin 0.1.9. Packaging uses electron-builder and app-builder-lib 26.17.0.
+
 <a id="release-versions"></a>
 
 ### Release versions

@@ -16,6 +16,9 @@ export const name = 'browser-use-desktop'
 
 export const inject = ['browserUse', 'tools', 'agents', 'desktopBrowserTransport', 'attachments', 'skills'] as const
 
+/**
+ * Desktop browser timeouts, output limits, and optional bundled skill directory.
+ */
 export interface Config extends DesktopBrowserToolConfig {
   readonly assetRoot?: string | null
 }
@@ -28,6 +31,10 @@ export const Config: z<Config> = z.object({
   assetRoot: z.string().description('Optional custom directory containing skill assets.'),
 })
 
+/**
+ * Reject invalid browser timeouts and output limits before registering tools.
+ * @param config - Validated deployment configuration.
+ */
 export function validateConfig(config: Config): void {
   if (!Number.isInteger(config.operationTimeoutMs) || config.operationTimeoutMs <= 0) {
     throw new Error(`operationTimeoutMs must be a positive integer, got ${config.operationTimeoutMs}`)
@@ -81,6 +88,9 @@ export function apply(ctx: Context, config: Config): void {
   }, 'browser-use-desktop.provider')
 }
 
+/**
+ * Desktop browser provider plugin with its required Host services.
+ */
 export default {
   name,
   inject,

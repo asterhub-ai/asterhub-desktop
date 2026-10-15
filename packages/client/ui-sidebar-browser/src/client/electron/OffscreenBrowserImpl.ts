@@ -53,7 +53,11 @@ export class OffscreenBrowserImpl implements BrowserFrame {
   getSnapshot = (): BrowserFrameState => this.store.getSnapshot()
   subscribe = (listener: () => void): (() => void) => this.store.subscribe(listener)
 
-  /** Attach offscreen canvas rendering when mounted in the DOM. */
+  /**
+   * Attach offscreen canvas rendering when mounted in the DOM.
+   * @param canvas - Mounted canvas receiving offscreen frames and input events.
+   * @param viewport - Current content dimensions and device scale.
+   */
   attach(canvas: HTMLCanvasElement, viewport: DesktopBrowserViewport): void {
     if (this.disposed) return
     this.canvas = canvas
@@ -68,7 +72,10 @@ export class OffscreenBrowserImpl implements BrowserFrame {
     }
   }
 
-  /** Handle container resize. */
+  /**
+   * Handle container resize.
+   * @param viewport - Current content dimensions and device scale.
+   */
   resize(viewport: DesktopBrowserViewport): void {
     if (this.disposed) return
     this.currentViewport = viewport
@@ -185,7 +192,7 @@ export class OffscreenBrowserImpl implements BrowserFrame {
     this.workspaceKey ??= await this.workspace(this.lifetime.signal)
     if (this.lifetime.signal.aborted) return
     const reservation = await this.bridge.acquire(this.workspaceKey, this.sessionId, this.options.tabId)
-    if (this.lifetime.signal.aborted) {
+    if (this.lifetime.signal.aborted as boolean) {
       await this.bridge.release(reservation.lease)
       return
     }

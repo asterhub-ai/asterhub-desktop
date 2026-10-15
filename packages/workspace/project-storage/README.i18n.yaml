@@ -2,27 +2,48 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/workspace/project-storage/README.md
+/:
+  en: b35808c5830172ea
+  zh: faabf1dac3e63e8f
 /project-storage:
-  en: 613ad435f3322524
-  zh: fba93f709def5813
+  en: 8a63d10a5b805c49
+  zh: 39db7eb1c38cf624
+/project-storage/summary:
+  en: 6e91c355e318fb71
+  zh: aca13cc9b4d3fa37
+/project-storage/table-of-contents:
+  en: ba332ed6c3bd7492
+  zh: cb7963f9d2d91000
 /project-storage/host-service:
-  en: 6b06da8240207779
-  zh: 58ee18f47566e891
+  en: ae363fd6adf7eff4
+  zh: 36951ac6650865a5
 /project-storage/inspection-and-adoption:
-  en: 3c79d6db2897ed61
-  zh: 02825d5407fd9ca8
+  en: faa36d384a69cecd
+  zh: f83a060923d9fc5b
 /project-storage/project-session-persistence:
-  en: 365879e7c31be616
-  zh: e0ebf33d150b8af2
+  en: 9165b57cd6db6cc5
+  zh: 3560392cf51edef1
 /project-storage/attachment-scope:
-  en: 3f53869e99eb7f16
-  zh: 32c342bed4d55a2d
+  en: 54cad0c8f7bdb92a
+  zh: 820afc06a6ac228f
 /project-storage/git-privacy:
-  en: 8449c3b77e826578
-  zh: 48c0aa5f630d897a
+  en: a7d4fd9b598d2627
+  zh: cb38765860644b78
 /project-storage/packaging-contract:
-  en: 24c5fbd93d224907
-  zh: a51f12f2f8614a48
+  en: 95eb49bf7777190e
+  zh: aa4e941a9f017413
 /project-storage/verification:
   en: 807ba11803c0890b
   zh: b00ec6cd0f352918
+/project-storage/model-experience:
+  en: d15b0ac2e97cdc80
+  zh: 2ccb22d8418bb9e2
+/project-storage/model-experience/kv-cache-effect:
+  en: ae7d92aba98ce8ef
+  zh: c638db5c1c685733
+/project-storage/known-limitations-and-deferred-work:
+  en: 00cedac75ea2933d
+  zh: c94a9e4d5df59de3
+/project-storage/known-limitations-and-deferred-work/dev-note:
+  en: fa433f49090bdd68
+  zh: 78063ba4312b5f68

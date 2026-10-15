@@ -1,0 +1,46 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/schedule/asterhub-automation/README.md
+/:
+  en: e02d53ccfefef076
+  zh: 031dd8760011c1ac
+/deepseek-ai-dsh-asterhub-automation:
+  en: 217c73ff3a11321d
+  zh: 04713c025fefbd78
+/deepseek-ai-dsh-asterhub-automation/summary:
+  en: 92583890a72b164a
+  zh: 33015fe382e5b5e3
+/deepseek-ai-dsh-asterhub-automation/table-of-contents:
+  en: 65663b0d5dfa1600
+  zh: dc8dd4f5941b9f74
+/deepseek-ai-dsh-asterhub-automation/use-this-package:
+  en: d4e70b233d0dd828
+  zh: d5d2fff678f4f276
+/deepseek-ai-dsh-asterhub-automation/understand-the-implementation:
+  en: f42d1b19fe7e97f9
+  zh: a1c097314c651c0f
+/deepseek-ai-dsh-asterhub-automation/further-exploration:
+  en: 0776c99b44783ca0
+  zh: 3de942e2bd01a1ec
+/deepseek-ai-dsh-asterhub-automation/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-asterhub-automation/model-experience/scheduled-task-authoring-and-execution:
+  en: bb5f212dffab0661
+  zh: cd7f81ec6fb01d2f
+/deepseek-ai-dsh-asterhub-automation/model-experience/scheduled-task-authoring-and-execution/what-the-model-sees:
+  en: 9d130c21f9a341a4
+  zh: 24eadd26b74f78f4
+/deepseek-ai-dsh-asterhub-automation/model-experience/scheduled-task-authoring-and-execution/token-effect:
+  en: ae5a462457692376
+  zh: 1eb3b05d72f29b36
+/deepseek-ai-dsh-asterhub-automation/model-experience/scheduled-task-authoring-and-execution/kv-cache-effect:
+  en: 23247b2b9689679c
+  zh: 7f099885ae33d418
+/deepseek-ai-dsh-asterhub-automation/known-limitations-and-deferred-work:
+  en: f252167d983ee0d2
+  zh: 9997d0aea402312b
+/deepseek-ai-dsh-asterhub-automation/known-limitations-and-deferred-work/dev-note:
+  en: 389640b63de48a64
+  zh: 5fddb15bb1b3c3d1

@@ -16,7 +16,7 @@ import { DesktopBrowserGuests } from '../src/browser-guests.ts'
 
 const electron = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- vi.hoisted runs before module imports
-  const { EventEmitter: EE } = require('node:events')
+  const { EventEmitter: EE } = require('node:events') as typeof import('node:events')
   const browserSession = {
     setPermissionRequestHandler: vi.fn(),
     setPermissionCheckHandler: vi.fn(),
@@ -76,7 +76,8 @@ const electron = vi.hoisted(() => {
           if (code === undefined || isolatedWindow === null || isolatedWindow === undefined) {
             throw new Error('Isolated-world fixture is unavailable')
           }
-          return isolatedWindow.eval(code)
+          const value: unknown = isolatedWindow.eval(code)
+          return value
         }),
       })
       this.webContents = guest
@@ -164,7 +165,7 @@ describe('browser automation e2e', () => {
     const owner = makeOwner()
 
     // 1. Acquire lease
-    const reservation = await guests.acquire(owner as never, 'ws-1', SESSION_A, TAB_A)
+    const reservation = guests.acquire(owner as never, 'ws-1', SESSION_A, TAB_A)
     const leaseId = reservation.lease
     const target: DesktopBrowserTarget = {
       tabId: brandString<DesktopBrowserTabId>(TAB_A),
@@ -340,7 +341,7 @@ describe('browser automation e2e', () => {
     rendererDocument.body.innerHTML = fixtureHtml
     const owner = makeOwner()
     const guests = new DesktopBrowserGuests(() => 'https://host.example:8443')
-    const reservation = await guests.acquire(owner as never, 'isolated-world-workspace', SESSION_A, TAB_A)
+    const reservation = guests.acquire(owner as never, 'isolated-world-workspace', SESSION_A, TAB_A)
     const target: DesktopBrowserTarget = { tabId: brandString<DesktopBrowserTabId>(TAB_A), generation: GEN_1 }
     const caller = makeCaller()
     const signal = new AbortController().signal
@@ -426,8 +427,8 @@ describe('browser automation e2e', () => {
         },
       }, signal)
       expect(readResult).toMatchObject({ status: 'success', value: { kind: 'read', value: 'isolated-world-user' } })
-      expect(guest.sendInputEvent).toHaveBeenCalledWith({ type: 'keyDown', keyCode: 'Control' })
-      expect(guest.insertText).toHaveBeenCalledWith('isolated-world-user')
+      expect(vi.mocked(guest).sendInputEvent.mock.calls).toContainEqual([{ type: 'keyDown', keyCode: 'Control' }])
+      expect(vi.mocked(guest).insertText.mock.calls).toContainEqual(['isolated-world-user'])
     } finally {
       vi.stubGlobal('document', rendererDocument)
       await guests.release(owner as never, reservation.lease)

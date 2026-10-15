@@ -42,4 +42,4 @@ Status: implemented
 
 ## Testing
 
-`packages/boot/plugin-manager/tests/registry.spec.ts` 钉住计划（含私有与未知的 pnpm 注册表）与归因；`install-spec.spec.ts` 钉住各 spec 形式携带的主机和分类器的模式；`manager.spec.ts` 从检查和安装依次询问注册表、读取打印在 stdout 的拒绝、在尝试之间恢复文件、在 git 主机和配置集合之外的注册表处停下、把两次尝试之间的取消报告为已取消，并在加载时拒绝不是 http(s) URL 的注册表；`operations.spec.ts` 钉住查询的参数和 pnpm 注册表的读取。`packages/client/ui-plugin-manager/tests` 覆盖 store 的选择、跨控制器的记忆、Host 通告的尝试、带着展开选项回到 spec，以及页面的选择器、尝试文案、运行标记和失败句子。
+`packages/boot/plugin-manager/tests/registry.spec.ts`、`install-spec.spec.ts`、`manager.spec.ts` 和 `operations.spec.ts` 覆盖 registry 规划、spec 主机、顺序尝试、取消、回滚和 pnpm 配置。`apps/web/tests/plugin-install-registry.e2e.ts` 通过浏览器与 Host 验证 registry 选择。目前没有 registry 选择器的独立 Client 单元测试。

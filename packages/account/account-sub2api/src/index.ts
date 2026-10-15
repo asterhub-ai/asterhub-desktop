@@ -276,8 +276,9 @@ class Sub2ApiClient {
       const body = await this.request(`keys?page=${page}&page_size=${pageSize}`, {}, accessToken)
       const items = Array.isArray(body.items) ? body.items : Array.isArray(body.keys) ? body.keys : []
       for (const value of items) {
+        if (typeof value !== 'object' || value === null) continue
         const item = value as Record<string, unknown>
-        if (!item || (typeof item.id !== 'string' && typeof item.id !== 'number')) continue
+        if (typeof item.id !== 'string' && typeof item.id !== 'number') continue
         const groupId = typeof item.group_id === 'string' || typeof item.group_id === 'number' ? item.group_id : undefined
         if (groupId !== undefined && String(groupId) !== String(this.groupValue())) continue
         if (item.status === 'inactive' || item.status === 'disabled' || item.status === 'revoked') continue
@@ -316,7 +317,7 @@ class Sub2ApiClient {
   }
 
   async getDashboardStats(accessToken: string): Promise<Sub2ApiDashboardStats> {
-    return await this.request('usage/dashboard/stats', {}, accessToken) as Sub2ApiDashboardStats
+    return await this.request('usage/dashboard/stats', {}, accessToken)
   }
 
   usageDateRange(now = new Date()): { today: string; last7DaysStart: string } {
@@ -338,8 +339,10 @@ class Sub2ApiClient {
     const body = await this.request('keys', { method: 'POST', body: JSON.stringify({ name, group_id: this.groupValue() }) }, accessToken)
     if (typeof body.key !== 'string' || body.key === '')
       throw accountServiceUnavailable()
+    const id = body.id
+    if (id !== undefined && id !== null && typeof id !== 'string' && typeof id !== 'number') throw accountServiceUnavailable()
     return {
-      id: String(body.id ?? ''),
+      id: String(id ?? ''),
       key: body.key,
     }
   }
@@ -359,7 +362,7 @@ class Sub2ApiClient {
       body = await this.request('payment/orders', {
         method: 'POST',
         body: JSON.stringify({ amount, payment_type: paymentType, order_type: 'balance' }),
-      }, accessToken) as Sub2ApiOrder
+      }, accessToken)
     } catch (error) {
       if (error instanceof InvalidAccountSessionError) throw error
       throw paymentServiceUnavailable()
@@ -377,7 +380,7 @@ class Sub2ApiClient {
   async getPaymentMethods(accessToken: string): Promise<AccountPaymentMethod[]> {
     const body = await this.request('payment/checkout-info', {}, accessToken) as Sub2ApiCheckoutInfo
     return Object.entries(body.methods ?? {})
-      .filter(([, method]) => method?.available !== false)
+      .filter(([, method]) => method.available !== false)
       .map(([id, method]) => ({
         id,
         label: typeof method.display_name === 'string' && method.display_name.trim()
@@ -456,7 +459,7 @@ export class AccountSub2apiService extends TypertRemoteService {
     // readiness promise resolves, automationIdentity returns null (fail closed).
     // Guard readiness promise against unhandled rejection: verifyStoredIdentity
     // catches internally and logs, so the promise always resolves.
-    this.automationReadiness = this.verifyStoredIdentity().catch((error) => {
+    this.automationReadiness = this.verifyStoredIdentity().catch((error: unknown) => {
       this.ctx.logger.warn('account automation readiness check failed', error)
     })
   }
@@ -660,7 +663,7 @@ export class AccountSub2apiService extends TypertRemoteService {
       } catch { /* replace malformed local cache with the newly validated binding */ }
     }
     mapping[userId] = key
-    await this.credentials.modifyRecord(MODEL_KEYS_RECORD, async () => ({ kind: 'api-key', key: JSON.stringify(mapping) }))
+    await this.credentials.modifyRecord(MODEL_KEYS_RECORD, () => Promise.resolve({ kind: 'api-key', key: JSON.stringify(mapping) }))
   }
 
   private async token(): Promise<string | undefined> {
@@ -794,7 +797,7 @@ export class AccountSub2apiService extends TypertRemoteService {
     const raw = (await this.credentials.resolve(credentialRef(USER_REF)))?.value
     if (!raw) return undefined
     try {
-      const parsed = JSON.parse(raw) as AccountUser
+      const parsed = JSON.parse(raw) as AccountUser | null | undefined
       return typeof parsed?.id === 'string' ? parsed : undefined
     } catch {
       return undefined
@@ -918,7 +921,7 @@ export class AccountSub2apiService extends TypertRemoteService {
     rememberUsername: boolean,
     autoLogin: boolean,
   ): Promise<AccountStatus> {
-    const userId = String(auth.user.id)
+    const userId = auth.user.id
     const keyName = this.keyName(userId)
     // Provision the upstream key before entering the transition. Key provisioning
     // is independent of the active credential set and may re-use a retained key.
@@ -957,7 +960,7 @@ export class AccountSub2apiService extends TypertRemoteService {
       try {
         await this.credentials.set(credentialRef(TOKEN_REF), auth.accessToken)
         await this.credentials.set(credentialRef(USER_REF), JSON.stringify(auth.user))
-        await this.credentials.modifyRecord(MODEL_KEY_RECORD, async () => ({ kind: 'api-key', key }))
+        await this.credentials.modifyRecord(MODEL_KEY_RECORD, () => Promise.resolve({ kind: 'api-key', key }))
         await this.retainKey(userId, key)
         if (rememberUsername || autoLogin) {
           await this.credentials.set(credentialRef(REMEMBERED_USERNAME_REF), email)

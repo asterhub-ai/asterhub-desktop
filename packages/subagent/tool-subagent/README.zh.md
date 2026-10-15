@@ -101,7 +101,7 @@ kind: "package-reference"
 | [`src/index.ts`](src/index.ts) | 工具注册、生命周期镜像、模式解析、结果结算 |
 | [`src/model-selection.ts`](src/model-selection.ts) | 请求／配置合并与实时 LLM 路由预检 |
 | [`src/model-selection-settings.ts`](src/model-selection-settings.ts) | 为新 Session 读取的宿主所有 opt-in 设置 |
-| [`src/model-selection-state.ts`](src/model-selection-state.ts) | 记录并继承已读取决定的 Session 事件 |
+| [`src/model-selection-state.ts`](src/model-selection-state.ts) | 保留启动状态与已读取决定并支持继承的 Session 事件及投影 |
 | [`src/list-models.ts`](src/list-models.ts) | `list_subagent_models` 运行时发现工具 |
 
 </details>

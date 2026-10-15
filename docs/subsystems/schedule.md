@@ -437,6 +437,187 @@ Plugin-sourced `followup()` synchronously appends the message to the Session inb
 
 A failure to resolve the Session, enqueue the message, or confirm persistence leaves the task stored and reports a Host warning. A later management change or Host restart retries it. Session persistence and the task put are not atomic across stores. A crash after inbox persistence but before the task put can repeat delivery; the receipt does not close this gap. Schedule provides no model-result acknowledgement, execution cancellation, or external notification channel.
 
+## Native Desktop automation
+
+The [native automation Host](../../packages/schedule/asterhub-automation/README.md) owns account-scoped tasks, fresh execution Sessions, and run-stop requests. These notifications contain identity or invalidation facts; consumers re-read authoritative state.
+
+```ts type-equiv
+/**
+ * Event payload for `automation/changed`.
+ *
+ * Carries no task content; clients re-query the authoritative record set.
+ * The event is emitted after every durable put/delete so the runtime
+ * recomputes its next timer and the Client refreshes its visible list.
+ */
+interface AutomationChangedEvent {
+  /** Identifies a task catalog change notification. */
+  readonly kind: 'automation-changed'
+}
+```
+
+```ts type-equiv
+/**
+ * Event payload for `automation/account-changed`.
+ *
+ * Emitted when the automation identity changes (login/logout/switch).
+ * Carries no task content or secrets; clients re-query the authoritative record set.
+ * List/get/runs/choices capture identity and reassert before resolving.
+ */
+interface AutomationAccountChangedEvent {
+  /** The new account id, or null if logged out. */
+  readonly accountId: string | null
+  /** The new epoch, or 0 if logged out. */
+  readonly epoch: number
+}
+```
+
+```ts type-equiv
+/**
+ * Event payload for `automation/run-stop-requested`.
+ *
+ * Emitted when a run stop is requested; observed by the runtime outside the FIFO.
+ */
+interface AutomationRunStopRequestedEvent {
+  readonly taskId: AutomationTaskId
+  readonly runId: AutomationRunId
+}
+```
+
+## Native service request and result types
+
+These types define public inputs and results used by the native account, workspace, and task services.
+
+```ts type-equiv
+/** One atomic durable aggregate; no task/run cross-table transaction is required. */
+interface AutomationTask {
+  readonly id: AutomationTaskId
+  readonly ownerAccountId: string
+  readonly revision: number
+  readonly recordVersion: number
+  readonly authorizationRevision: number
+  readonly consentRevision: number
+  readonly ruleRevision: number
+  readonly definition: AutomationSnapshot
+  readonly enabled: boolean
+  readonly deletedAt: string | null
+  readonly nextOccurrenceAt: string | null
+  readonly occurrenceWatermark: { readonly ruleRevision: number; readonly at: string } | null
+  readonly pendingOccurrence: { readonly at: string; readonly from: string; readonly ruleRevision: number } | null
+  readonly activeRunId: AutomationRunId | null
+  readonly runs: readonly AutomationRun[]
+  readonly requestReceipts: readonly AutomationReceipt[]
+  readonly creationRequest: { readonly requestId: string; readonly digest: string }
+  readonly historyPruned: boolean
+  readonly skippedRange: { readonly from: string; readonly through: string; readonly reason: string } | null
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+```
+
+```ts type-equiv
+/** Active account lifetime sampled by the Host. */
+interface AutomationAccountIdentity { readonly accountId: string; readonly epoch: number }
+```
+
+```ts type-equiv
+/** Complete explicit user task definition; provider and credentials remain Host-owned. */
+interface AutomationDraft {
+  readonly name: string
+  readonly instruction: string
+  readonly workspaceId: WorkspaceId
+  readonly modelId: string
+  readonly reasoningEffort: string | null
+  readonly timing: AutomationTimingInput
+}
+```
+
+```ts type-equiv
+/** Preview of the normalized rule before user confirmation. */
+interface AutomationPreview { readonly draft: AutomationDraft; readonly nextOccurrences: readonly string[] }
+```
+
+```ts type-equiv
+/** Typed management action, used by both GUI and chat producers. */
+type AutomationOperation =
+  | { readonly action: 'create'; readonly draft: AutomationDraft }
+  | { readonly action: 'update'; readonly id: AutomationTaskId; readonly expectedRevision: number; readonly draft: AutomationDraft }
+  | { readonly action: 'pause' | 'resume' | 'remove' | 'purgeDeleted'; readonly id: AutomationTaskId; readonly expectedRevision: number }
+  | { readonly action: 'run'; readonly id: AutomationTaskId; readonly expectedRevision: number }
+  | { readonly action: 'stop'; readonly id: AutomationTaskId; readonly runId: AutomationRunId }
+```
+
+```ts type-equiv
+/** Host-issued request identity and user-only confirmation challenge. */
+interface AutomationPreparedOperation {
+  readonly requestId: string
+  readonly confirmationId: string | null
+  readonly requiresConfirmation: boolean
+  readonly summary: string
+  readonly expiresAt: number
+}
+```
+
+```ts type-equiv
+/** GUI confirmation carrying no model-supplied authorization boolean. */
+interface AutomationCommitRequest { readonly requestId: string; readonly confirmationId: string | null }
+```
+
+```ts type-equiv
+/** Durable mutation response; a runId acknowledges admission, not execution success. */
+interface AutomationMutationResult {
+  readonly task: AutomationTask | null
+  readonly taskId: AutomationTaskId
+  readonly runId: AutomationRunId | null
+  readonly deleted: boolean
+}
+```
+
+```ts type-equiv
+/** Page query scoped to the active account. */
+interface AutomationListRequest { readonly limit?: number; readonly cursor?: string; readonly search?: string; readonly status?: 'all' | 'enabled' | 'paused' | 'deleted' }
+```
+
+```ts type-equiv
+/** One authoritative task page. */
+interface AutomationTaskPage { readonly tasks: readonly AutomationTask[]; readonly nextCursor: string | null }
+```
+
+```ts type-equiv
+/** Task detail identity. */
+interface AutomationGetRequest { readonly id: AutomationTaskId }
+```
+
+```ts type-equiv
+/** One execution page plus truthful retention status. */
+interface AutomationRunsPage {
+  readonly records: readonly AutomationRun[]
+  readonly nextBefore: AutomationRunId | null
+  readonly historyPruned: boolean
+}
+```
+
+```ts type-equiv
+/** Bounded execution history query. */
+interface AutomationRunsRequest { readonly id: AutomationTaskId; readonly limit: number; readonly before?: AutomationRunId }
+```
+
+```ts type-equiv
+/** Host-approved form selections, with no private credentials. */
+interface AutomationChoices {
+  readonly accountId: string
+  /** Read-only installation legacy-store detection; never includes old task content. */
+  readonly legacyScheduleStatus: 'none' | 'present' | 'unreadable'
+  readonly workspaces: readonly { readonly id: WorkspaceId; readonly name: string; readonly path: string }[]
+  readonly models: readonly { readonly id: string; readonly name: string; readonly reasoningEfforts: readonly string[] }[]
+  readonly defaultModelId: string | null
+}
+```
+
+```ts type-equiv
+/** Stable native task execution identity. */
+type AutomationRunId = Branded<'AutomationRunId'>
+```
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -444,6 +625,136 @@ A failure to resolve the Session, enqueue the message, or confirm persistence le
 ## Cordis API
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
+
+<a id="ctxasterhubautomation--automationservice"></a>
+
+### `ctx.asterhubAutomation` — `AutomationService`
+
+Native scheduled-task management and execution service.
+
+Extends TypertRemoteService so its methods are exposed to the authenticated Client through the `automation` Remote namespace. Implements the frozen AutomationRuntimeHost interface for the runtime worker.
+
+The service owns:
+
+- The single storage-domain store with schema-validated task aggregates.
+- One shared management FIFO serializing all write operations and runtime reservations, so no task can cross global quota/concurrency checks while another await is in flight.
+- The AutomationRuntime instance, started after the store opens and disposed before the store closes.
+- The `automation_manage` chat tool, registered on root interactive Agent scopes only; scheduled-run/descendant scopes never receive it.
+
+```ts cordis-catalog
+/**
+ * All tasks for runtime scanning outside the management FIFO.
+ * @returns Current task snapshot, or an empty list before initialization.
+ */
+tasks(): readonly AutomationTask[]
+
+/**
+ * Resolve the current account lifetime through the account service.
+ * @returns Account identity and epoch, or null when acquisition is unavailable.
+ */
+identity(): Promise<AutomationAccountIdentity | null>
+
+/**
+ * Serialized transaction wrapper — the single shared management+runtime FIFO.
+ *
+ * Every management write and every runtime reservation enters this queue so
+ * no task can cross global quota/concurrency checks while another await is
+ * in flight. The runtime calls this for reservation; management operations
+ * call it through {@link AutomationOperations}.
+ * @param work - Mutation or reservation to execute after prior queued work settles.
+ * @returns The operation result or rejection without poisoning later queued work.
+ */
+transact<T>(work: () => Promise<T>): Promise<T>
+
+/**
+ * Persist a task before notifying consumers and requesting another scheduling scan.
+ * @param task - Complete task aggregate to publish.
+ */
+async put(task: AutomationTask): Promise<void>
+
+/** Emit `automation/changed` without leaking task content. */
+emitChanged(): void
+
+/**
+ * Preview a task draft without persisting.
+ * @param draft - Task draft to validate and preview.
+ * @returns Normalized draft and the next three occurrence timestamps.
+ */
+@Remote('preview') async preview(draft: AutomationDraft): Promise<AutomationPreview>
+
+/**
+ * Prepare an operation, issuing a Host-signed request ticket bound to the
+ * current account/epoch. Does not execute the write.
+ * @param operation - The operation to prepare.
+ * @returns Prepared operation with requestId and confirmation challenge.
+ */
+@Remote('prepareOperation') async prepareOperation(operation: AutomationOperation): Promise<AutomationPreparedOperation>
+
+/**
+ * Commit a prepared operation after user confirmation (GUI) or internal
+ * approval (chat tool). Idempotent by requestId within the receipt window.
+ * @param request - Commit request carrying the requestId and confirmationId.
+ * @returns Mutation result; a runId acknowledges admission, not success.
+ */
+@Remote('commitOperation') async commitOperation(request: AutomationCommitRequest): Promise<AutomationMutationResult>
+
+/**
+ * List tasks for the current account with optional filters and pagination.
+ * @param request - List request with cursor, search, and status filters.
+ * @returns One page of tasks scoped to the active account.
+ */
+@Remote('list') async list(request: AutomationListRequest): Promise<AutomationTaskPage>
+
+/**
+ * Get a single task by id (must belong to the current account).
+ * @param request - Get request with the task id.
+ * @returns The authoritative task record.
+ */
+@Remote('get') async get(request: AutomationGetRequest): Promise<AutomationTask>
+
+/**
+ * Get bounded execution history for a task.
+ * @param request - Runs request with task id, limit, and optional cursor.
+ * @returns One page of runs plus the truthful history-pruned flag.
+ */
+@Remote('runs') async runs(request: AutomationRunsRequest): Promise<AutomationRunsPage>
+
+/**
+ * Get Host-approved form selections (workspaces and models) for the current
+ * account. No private credentials are included.
+ * @returns Available workspaces and catalog models.
+ */
+@Remote('choices') async choices(): Promise<AutomationChoices>
+
+/**
+ * Inspect lifecycle state for quit/update checks. Emits no task content.
+ * @returns `armed` when the runtime is not stopping; `active` when any
+ * timer or execution is in flight.
+ */
+inspectLifecycle(): { armed: boolean; active: boolean }
+
+/**
+ * Lock or unlock admission. When locked, no new run reservations are
+ * admitted; active runs drain. Used by quit and installed-update paths.
+ * @param locked - Whether to lock admission.
+ */
+setAdmissionLocked(locked: boolean): void
+
+/**
+ * Stop a run. Called outside the management FIFO to avoid runtime reentry
+ * deadlock; the runtime observes the abort signal during execution.
+ * @param runId - The run to stop.
+ */
+async stopRun(runId: AutomationRunId): Promise<void>
+
+/**
+ * Dispose the runtime and close the store (Host only).
+ * Called by the plugin effect cleanup; not intended for direct callers.
+ */
+async disposeRuntime(): Promise<void>
+```
+
+Source: [`packages/schedule/asterhub-automation/src/index.ts`](../../packages/schedule/asterhub-automation/src/index.ts)
 
 <a id="ctxschedule--scheduleservice"></a>
 
@@ -521,6 +832,61 @@ async create(sessionId: SessionId, request: ScheduleCreateRequest, signal?: Abor
 Types: [SessionId](core.md)
 
 Source: [`packages/schedule/schedule/src/index.ts`](../../packages/schedule/schedule/src/index.ts)
+
+<a id="automation-events"></a>
+
+### `automation/*` events
+
+<a id="automationaccount-changed--emit"></a>
+
+#### `automation/account-changed` — emit
+
+Account identity changed; re-query and drop stale prepared ops.
+
+```ts cordis-catalog
+/**
+ * Account identity changed; re-query and drop stale prepared ops.
+ * @param event - The account changed event.
+ * @mode emit
+ */
+'automation/account-changed'(event: AutomationAccountChangedEvent): void
+```
+
+Source: [`packages/schedule/asterhub-automation/src/types.ts`](../../packages/schedule/asterhub-automation/src/types.ts)
+
+<a id="automationchanged--emit"></a>
+
+#### `automation/changed` — emit
+
+Notification that automation tasks changed; re-query for authoritative state.
+
+```ts cordis-catalog
+/**
+ * Notification that automation tasks changed; re-query for authoritative state.
+ * @param event - The automation changed event.
+ * @mode emit
+ */
+'automation/changed'(event: AutomationChangedEvent): void
+```
+
+Source: [`packages/schedule/asterhub-automation/src/types.ts`](../../packages/schedule/asterhub-automation/src/types.ts)
+
+<a id="automationrun-stop-requested--emit"></a>
+
+#### `automation/run-stop-requested` — emit
+
+Request to stop one run; observed by the runtime outside the FIFO.
+
+```ts cordis-catalog
+/**
+ * Request to stop one run; observed by the runtime outside the FIFO.
+ * @param event - The run stop requested event.
+ * @mode emit
+ */
+'automation/run-stop-requested'(event: AutomationRunStopRequestedEvent): void
+```
+
+Source: [`packages/schedule/asterhub-automation/src/types.ts`](../../packages/schedule/asterhub-automation/src/types.ts)
 
 <a id="schedule-events"></a>
 

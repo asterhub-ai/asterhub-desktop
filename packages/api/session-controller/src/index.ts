@@ -290,16 +290,17 @@ export class SessionController extends TypertRemoteService {
     // `readyGate` gates every admit on creation readiness outside the FIFO;
     // release() resolves it so a failed creation does not hang waiting admits.
     let admitChain: Promise<void> = Promise.resolve()
-    let closed = false
-    let releaseGate = Promise.withResolvers<void>()
+    const state = { closed: false, released: false, ready: ready === undefined }
+    const releaseGate = Promise.withResolvers<void>()
     const readyGate = Promise.withResolvers<void>()
-    let released = false
+
+    const markReady = (): void => { state.ready = true; readyGate.resolve() }
     if (ready !== undefined) {
-      ready.then(() => { readyGate.resolve() }, () => { readyGate.resolve() })
+      void ready.then(markReady, markReady)
     } else {
-      readyGate.resolve()
+      markReady()
     }
-    const self = this
+    const executionInputOwners = this.executionInputOwners
     // Sentinel returned by the FIFO callback when the owner is closed at
     // execution time. The admit method detects it and awaits release outside
     // the FIFO before running work, so closure-attributed work never runs
@@ -307,11 +308,11 @@ export class SessionController extends TypertRemoteService {
     const waitForRelease = Symbol('wait-for-release')
     const owner: SessionExecutionInputOwner = {
       async admit<T>(work: () => Promise<T>, signal: AbortSignal): Promise<T> {
-        if (released) return work()
+        if (state.released) return work()
         // Wait for creation readiness outside the FIFO before submitting work.
-        await raceAbort(readyGate.promise, signal)
-        if (released) return work()
-        if (closed) {
+        if (!state.ready) await raceAbort(readyGate.promise, signal)
+        if (state.released as boolean) return work()
+        if (state.closed) {
           // Already closed at queue time: wait for release outside FIFO,
           // then execute work. Aborting drops the wait.
           await raceAbort(releaseGate.promise, signal)
@@ -323,11 +324,11 @@ export class SessionController extends TypertRemoteService {
         // outside the FIFO instead of running work inside it.
         const fifoResult = admitChain.then(async (): Promise<T | typeof waitForRelease> => {
           if (signal.aborted) throw signal.reason
-          if (closed || released) return waitForRelease
+          if (state.closed || state.released) return waitForRelease
           return work()
         }, async (): Promise<T | typeof waitForRelease> => {
           if (signal.aborted) throw signal.reason
-          if (closed || released) return waitForRelease
+          if (state.closed || state.released) return waitForRelease
           return work()
         })
         admitChain = fifoResult.then(() => undefined, () => undefined)
@@ -340,26 +341,27 @@ export class SessionController extends TypertRemoteService {
         return result
       },
       async closeIf(check: () => boolean): Promise<boolean> {
+        if (state.released) return false
         // Append to FIFO as an actual serialized operation: wait for pending
         // work to complete, then evaluate the predicate. This ensures closeIf
         // runs serially with admits and no admit queued behind it executes
         // before the predicate sets `closed`.
         const closePromise = admitChain.then(() => {
-          if (closed) return false
+          if (state.closed || state.released) return false
           const result = check()
           if (!result) return false
-          closed = true
+          state.closed = true
           return true
         })
         admitChain = closePromise.then(() => undefined, () => undefined)
         return closePromise
       },
       release(): void {
-        if (released) return
-        released = true
+        if (state.released) return
+        state.released = true
         releaseGate.resolve()
-        readyGate.resolve()
-        self.executionInputOwners.delete(sessionId)
+        markReady()
+        executionInputOwners.delete(sessionId)
       },
     }
     this.executionInputOwners.set(sessionId, owner)
@@ -380,17 +382,21 @@ export class SessionController extends TypertRemoteService {
    * @param signal - optional caller cancellation for persistence reads.
    * @returns the current attached state or persisted header and event prefix.
    */
-  inspect(
+  async inspect(
     sessionId: SessionId,
     signal?: AbortSignal,
   ): Promise<SessionInspection> {
     const attached = this.ctx.sessions.get(sessionId)
     if (attached !== undefined) {
-      return Promise.resolve({
-        meta: attached.header,
-        inheritedEventCount: attached.inheritedEventCount,
-        events: attached.snapshotEvents(),
+      using observation = await this.ctx.sessionQuery.observeSession(sessionId, {
+        ...(signal === undefined ? {} : { signal }),
+        projectionMode: 'none',
       })
+      return {
+        meta: observation.header,
+        inheritedEventCount: observation.inheritedEventCount,
+        events: observation.events,
+      }
     }
     return inspectApiSession(this.ctx, sessionId, signal)
   }
@@ -683,16 +689,26 @@ export class SessionController extends TypertRemoteService {
 }
 
 function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) return Promise.reject(signal.reason)
+  if (signal.aborted) {
+    const reason: unknown = signal.reason
+    // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- AbortSignal reasons retain their original identity.
+    return Promise.reject(reason)
+  }
   return new Promise<T>((resolve, reject) => {
     const onAbort = () => {
       signal.removeEventListener('abort', onAbort)
-      reject(signal.reason)
+      const reason: unknown = signal.reason
+      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- AbortSignal reasons retain their original identity.
+      reject(reason)
     }
     signal.addEventListener('abort', onAbort, { once: true })
     promise.then(
       (value) => { signal.removeEventListener('abort', onAbort); resolve(value) },
-      (error) => { signal.removeEventListener('abort', onAbort); reject(error) },
+      (error: unknown) => {
+        signal.removeEventListener('abort', onAbort)
+        // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Forward the work's rejection without replacement.
+        reject(error)
+      },
     )
   })
 }

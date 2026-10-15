@@ -17,7 +17,7 @@ afterEach(async () => {
   for (const ctx of contexts.splice(0)) await ctx.fiber.dispose()
   for (const server of servers.splice(0)) {
     server.closeAllConnections()
-    await new Promise<void>(resolve => server.close(() => resolve()))
+    await new Promise<void>(resolve => server.close(() =>{  resolve() }))
   }
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
 })

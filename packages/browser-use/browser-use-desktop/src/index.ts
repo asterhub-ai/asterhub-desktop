@@ -29,6 +29,9 @@ export {
   apply,
   validateConfig,
 }
+/**
+ * Desktop browser transport and provider composition.
+ */
 export default {
   name,
   inject,

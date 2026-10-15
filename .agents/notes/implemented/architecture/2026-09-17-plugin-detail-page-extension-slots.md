@@ -32,4 +32,4 @@ The Plugins page's detail pages — a bundle's page, a row's page, an official p
 
 ## Testing
 
-`packages/client/ui-plugin-manager/tests/components.client.spec.tsx` renders contributions on a bundle's page, a row's page, and an official plugin's page with the subject each is about, and pins the projection; `browser-plugin.client.spec.tsx` pins the declarations. `apps/web/tests/plugin-config.e2e.ts` switches the fixture bundle on and asserts its action, badge, and section on the bundle's page and the row's page, their absence on an official plugin's page, and holds the bundle page's golden.
+`apps/web/tests/plugin-config.e2e.ts` exercises the fixture bundle and its detail-page contributions. The fixture browser entry declares `plugins.detail.actions`, `plugins.detail.badge`, and `plugins.detail.section`; dedicated Client component tests for the detail-page projection are not present.

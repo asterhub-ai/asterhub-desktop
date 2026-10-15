@@ -99,6 +99,45 @@ interface RedeemResult {
 }
 ```
 
+## 自动化身份
+
+账号服务向原生调度器发布不含凭据的账号生命周期变化。
+
+```ts type-equiv
+/**
+ * Host-only account identity for automation credential isolation.
+ * Structurally compatible with @deepseek-ai/dsh-asterhub-automation's AutomationAccountIdentity.
+ * Account package remains scheduler-implementation-independent.
+ */
+interface AccountAutomationIdentity {
+  /** Stable account identifier. */
+  readonly accountId: string
+  /** Monotonically increasing epoch for credential isolation. */
+  readonly epoch: number
+}
+```
+
+## 原生服务请求与结果类型
+
+以下类型定义原生账号、工作区和任务服务之间的公开输入与结果。
+
+```ts type-equiv
+/** Public account-creation requirements returned by the authentication service. */
+interface AccountAuthSettings {
+  readonly registrationEnabled: boolean
+  readonly emailVerifyEnabled: boolean
+  readonly invitationCodeEnabled: boolean
+}
+```
+
+```ts type-equiv
+/** Sub2API registration fields and local sign-in preferences. */
+interface AccountRegisterInput extends AccountLoginInput {
+  readonly verifyCode: string
+  readonly invitationCode?: string
+}
+```
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -114,10 +153,56 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 Account service: login, provisioning, quota, and top-up over sub2api.
 
 ```ts cordis-catalog
+/**
+ * Host-only: Get current automation account identity.
+ * Awaits readiness before returning. If the epoch has been advanced since
+ * the identity was issued (e.g., during a concurrent transition), returns null.
+ * @returns Current identity with epoch, or null if logged out/stale.
+ */
+async automationIdentity(): Promise<AccountAutomationIdentity | null>
+
+/**
+ * Host-only: Assert identity matches current epoch before model requests.
+ * Validates the identity against both the current epoch counter and the active
+ * identity (accountId and epoch must match).
+ * @param identity - The identity to validate.
+ * @throws Error if identity epoch is stale, account mismatch, or epoch does
+ * not match active identity.
+ */
+assertAutomationIdentity(identity: AccountAutomationIdentity): void
+
+/**
+ * Host-only: Register a lease for automation execution.
+ * Synchronous and rejects stale epochs. Validates the identity against both
+ * the current epoch and the active identity (account and epoch).
+ * @param identity - The identity to lease under.
+ * @param stop - Callback to stop/drain the leased work.
+ * @returns Disposer function to unregister the lease.
+ * @throws Error if identity epoch is stale or account mismatch.
+ */
+registerAutomationLease(identity: AccountAutomationIdentity, stop: () => Promise<void>): () => void
+
 /** Read the current account state, including a live balance when logged in.
  * @returns current sign-in state, identity, preferences, and available balance.
  */
 @Remote async getStatus(): Promise<AccountStatus>
+
+/** Read the public sign-up requirements from the authentication service.
+ * @returns public registration and email verification requirements.
+ */
+@Remote async authSettings(): Promise<AccountAuthSettings>
+
+/** Send the upstream email verification code for a prospective account.
+ * @param email prospective account email address.
+ * @returns verification resend countdown in seconds.
+ */
+@Remote async sendVerifyCode(email: string): Promise<{ countdown: number }>
+
+/** Register directly with the authentication service and bind the returned session to this installation.
+ * @param input account details and email verification code.
+ * @returns signed-in account state after registration.
+ */
+@Remote async register(input: AccountRegisterInput): Promise<AccountStatus>
 
 /** Sign in and bind one reusable model key to this account.
  * @param input - account credentials and local sign-in preferences.
@@ -156,6 +241,27 @@ Account service: login, provisioning, quota, and top-up over sub2api.
  * @returns redemption result and updated balance, when reported.
  */
 @Remote async redeem(input: { code: string }): Promise<RedeemResult>
+```
+
+Source: [`packages/account/account-sub2api/src/index.ts`](../../packages/account/account-sub2api/src/index.ts)
+
+<a id="asterhub-account-events"></a>
+
+### `asterhub-account/*` events
+
+<a id="asterhub-accountchanged--emit"></a>
+
+#### `asterhub-account/changed` — emit
+
+Publish the active account lifetime without credentials.
+
+```ts cordis-catalog
+/**
+ * Publish the active account lifetime without credentials.
+ * @param identity - Active identity, or null when acquisition is unavailable.
+ * @mode emit
+ */
+'asterhub-account/changed'(identity: AccountAutomationIdentity | null): void
 ```
 
 Source: [`packages/account/account-sub2api/src/index.ts`](../../packages/account/account-sub2api/src/index.ts)

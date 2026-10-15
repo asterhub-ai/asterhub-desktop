@@ -28,6 +28,7 @@ type StatusFilter = 'all' | 'enabled' | 'paused'
 /** Format timing for list row: full frequency + timezone. */
 function formatTiming(task: AutomationTask, t: (key: string) => string): string {
   const timing = task.definition.timing
+  const weekdayNames = { 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat', 7: 'sun' } as const
   switch (timing.kind) {
     case 'once':
       return `${t('form.timing.once')} ${new Date(timing.at).toLocaleString()}`
@@ -42,7 +43,7 @@ function formatTiming(task: AutomationTask, t: (key: string) => string): string 
     case 'daily':
       return `${t('form.timing.daily')} ${timing.time} ${timing.timeZone}`
     case 'weekly': {
-      const days = timing.weekdays.map(d => t(`form.weekday.${['', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'][d]!}`)).join(', ')
+      const days = timing.weekdays.map(d => t(`form.weekday.${weekdayNames[d as keyof typeof weekdayNames]}`)).join(', ')
       return `${t('form.timing.weekly')} ${timing.time} ${days} ${timing.timeZone}`
     }
     case 'cron':
@@ -65,9 +66,8 @@ function recentRunState(task: AutomationTask, t: (key: string) => string): strin
     const activeRun = task.runs.find(r => r.id === task.activeRunId)
     if (activeRun !== undefined) return t(`run.state.${activeRun.state}`)
   }
-  if (task.runs.length > 0) {
-    return t(`run.state.${task.runs[task.runs.length - 1]!.state}`)
-  }
+  const latest = task.runs.at(-1)
+  if (latest !== undefined) return t(`run.state.${latest.state}`)
   return ''
 }
 
@@ -107,7 +107,7 @@ export function AutomationPanel(props: AutomationPanelProps) {
   // to navigate to a task without sending model input
   useEffect(() => {
     const handler = (event: Event): void => {
-      const detail = (event as CustomEvent<{ taskId: AutomationTaskId }>).detail
+      const detail = (event as CustomEvent<{ taskId: AutomationTaskId } | undefined>).detail
       if (detail && typeof detail.taskId === 'string') {
         setSelectedId(detail.taskId)
         setTab('config')
@@ -132,7 +132,7 @@ export function AutomationPanel(props: AutomationPanelProps) {
 
   const rows = useMemo(() => {
     const query = search.trim().toLowerCase()
-    return records.filter(record => {
+    return records.filter((record) => {
       const matchesStatus = statusFilter === 'all'
         || (statusFilter === 'enabled' && record.enabled && record.deletedAt === null)
         || (statusFilter === 'paused' && !record.enabled && record.deletedAt === null)
@@ -152,7 +152,7 @@ export function AutomationPanel(props: AutomationPanelProps) {
 
   const selected = useMemo(() =>
     records.find(item => item.id === selectedId),
-    [records, selectedId]
+  [records, selectedId],
   )
 
   useEffect(() => {
@@ -273,7 +273,7 @@ export function AutomationPanel(props: AutomationPanelProps) {
                         className={clsx(
                           css.row,
                           selectedId === record.id && css.selectedRow,
-                          isPaused && css.pausedRow
+                          isPaused && css.pausedRow,
                         )}
                         aria-label={record.definition.name}
                         aria-describedby={`${detailId}-metadata-${record.id}`}
@@ -360,7 +360,7 @@ export function AutomationPanel(props: AutomationPanelProps) {
           onClose={closeDetails}
           tab={tab}
           onTabChange={setTab}
-          t={t as any}
+          t={t}
         />
 
 

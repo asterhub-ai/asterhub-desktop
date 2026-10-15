@@ -1,6 +1,7 @@
 /** Host Workspace Remote owner: explicit commands and reconnect-safe state. */
 
 import { Context } from '@deepseek-ai/cordis'
+import type { ProjectStorage } from '@deepseek-ai/dsh-project-storage/types'
 import z from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { WorkspaceCommands } from './commands.ts'
@@ -129,7 +130,7 @@ export class WorkspaceController extends TypertRemoteService {
       )
     })
     if (workspace === undefined) return undefined
-    const projectStorage = this.ctx.get('projectStorage', false)
+    const projectStorage = this.ctx.get('projectStorage', false) as ProjectStorage | undefined
     if (projectStorage !== undefined) {
       const inspection = await projectStorage.inspect(workspace.path, signal)
       if (inspection.kind === 'new') {

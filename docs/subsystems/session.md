@@ -766,6 +766,46 @@ The backends that consume this contract are on [persistence.md](persistence.md).
 
 The optional `application` selects a registered file handler without changing the system default; `workspacePathApplications({ path })` returns current handlers, names, icons, and default selection after Host path verification.
 
+## Native service request and result types
+
+These types define public inputs and results used by the native account, workspace, and task services.
+
+```ts type-equiv
+/** Handle returned by {@link SessionController.registerExecutionInputOwner} that
+ * serializes prompt admission and can temporarily block or release it. */
+interface SessionExecutionInputOwner {
+  /**
+   * Serialize one work unit behind any already-admitted work. If the owner
+   * has already been closed, wait for {@link release} to resolve normally.
+   * When a creation readiness promise was supplied to
+   * {@link SessionController.registerExecutionInputOwner}, this first waits
+   * for that promise (outside the FIFO) before submitting the work, so work
+   * never reaches a Session whose creation has not yet completed.
+   * @param work - async work to execute serially behind already-admitted work.
+   * @param signal - caller cancellation; aborting drops the wait.
+   * @returns the work result.
+   */
+  admit<T>(work: () => Promise<T>, signal: AbortSignal): Promise<T>
+  /**
+   * Wait until all already-admitted work settles, then evaluate the predicate.
+   * If it passes, mark this Session's input as closed; future work waits for
+   * release and then executes normally. Does NOT await the creation readiness
+   * promise: failure cleanup must be able to close the owner before creation
+   * settles.
+   * @param check - synchronous predicate; serialized behind admitted work.
+   * @returns `true` only when the predicate passed and the owner was newly closed.
+   */
+  closeIf(check: () => boolean): Promise<boolean>
+  /**
+   * Release this owner. Pending closed work executes normally; new work
+   * bypasses this owner entirely. When a creation readiness promise was
+   * supplied, releasing it lets a failed creation report not-found without
+   * hanging waiting admits.
+   */
+  release(): void
+}
+```
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -782,6 +822,29 @@ Host service backing the generated `ctx.remote.session` namespace.
 
 ```ts cordis-catalog
 /**
+ * Register an execution input owner for one Session. The owner serializes work
+ * behind a check predicate: `closeIf` waits until the predicate passes,
+ * then blocks further work until `release` is called. This prevents terminal
+ * scheduler close from overlapping with incoming work and ensures pending
+ * work waits for the owner to release before executing normally.
+ *
+ * When `ready` is supplied, `admit` first awaits it (outside the FIFO) before
+ * submitting work, so work never reaches a Session whose creation has not yet
+ * completed. This lets the caller register the owner before the Session/Agent
+ * is fully created, install observers, enqueue the initial message, and then
+ * resolve `ready`. `closeIf` does NOT await `ready`: failure cleanup must be
+ * able to close the owner before creation settles. Releasing the owner
+ * resolves `ready` so a failed creation does not hang waiting admits; the
+ * normal resolver then reports the Session as not-found.
+ * @param sessionId - Session identity to own.
+ * @param ready - Optional creation readiness promise; `admit` awaits it before
+ *   submitting work. Omit for an already-created Session.
+ * @returns The owner handle that controls work admission for this Session.
+ * @throws {DuplicateExecutionInputOwnerError} when an owner already exists for this Session.
+ */
+registerExecutionInputOwner(sessionId: SessionId, ready?: Promise<void>): SessionExecutionInputOwner
+
+/**
  * Resolve or resume one ordinary Session for another Host API domain.
  * @param sessionId - Session identity whose Agent owns the operation.
  * @returns the live Agent or the stable Session-domain failure.
@@ -794,7 +857,7 @@ resolveAgent(sessionId: SessionId): Promise<ApiSessionAgentResult>
  * @param signal - optional caller cancellation for persistence reads.
  * @returns the current attached state or persisted header and event prefix.
  */
-inspect( sessionId: SessionId, signal?: AbortSignal, ): Promise<SessionInspection>
+async inspect( sessionId: SessionId, signal?: AbortSignal, ): Promise<SessionInspection>
 
 /**
  * Read all visible Session rows without resuming an Agent.
@@ -890,7 +953,7 @@ workspaceDesktop(): { name: string; available: boolean; fileManager: 'finder' | 
  * @param signal - caller cancellation before prompt admission begins.
  * @returns acknowledgement that the Agent accepted the prompt.
  */
-@Remote('prompt') prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue>
+@Remote('prompt') async prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue>
 
 /**
  * Read one image proven reachable from the addressed Session log.

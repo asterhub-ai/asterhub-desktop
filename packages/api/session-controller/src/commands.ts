@@ -332,7 +332,7 @@ export class SessionCommandController {
       )
     }
     const agent = await this.resolveAgent(request.sessionId)
-    if (hasPromptRequest(agent, request.requestId)) return { accepted: true }
+    if (await hasPromptRequest(this.ctx, agent, request.requestId)) return { accepted: true }
     const source: MessageSource = {
       kind: 'user',
       rpcId: request.requestId,
@@ -563,7 +563,8 @@ export class SessionCommandController {
   private async readSessionState(sessionId: SessionId): Promise<SessionReadState> {
     const attached = this.ctx.sessions.get(sessionId)
     if (attached !== undefined) {
-      return { id: attached.id, header: attached.header, events: attached.snapshotEvents() }
+      using observation = await this.ctx.sessionQuery.observeSession(sessionId, { projectionMode: 'none' })
+      return { id: observation.header.id, header: observation.header, events: observation.events }
     }
     const inspected = await inspectApiSession(this.ctx, sessionId)
     return { id: inspected.meta.id, header: inspected.meta, events: inspected.events }
@@ -603,13 +604,14 @@ function resolvePromptFileReceipts(
   return { content: resolved, receiptIds: [...receiptIds] }
 }
 
-function hasPromptRequest(agent: Agent, requestId: SessionRequestId): boolean {
+async function hasPromptRequest(ctx: Context, agent: Agent, requestId: SessionRequestId): Promise<boolean> {
   const matches = (message: UserMessage): boolean => {
     const source = message.source
     return source.kind === 'user' && 'rpcId' in source && source.rpcId === requestId
   }
   if (agent.inbox.nextTurn.some(matches) || agent.inbox.nextStep.some(matches)) return true
-  return agent.session.snapshotEvents().some((event) => {
+  using observation = await ctx.sessionQuery.observeSession(agent.session.id, { projectionMode: 'none' })
+  return observation.events.some((event) => {
     if (event.type !== 'user/message') return false
     const source = event.data.source
     return source.kind === 'user' && 'rpcId' in source && source.rpcId === requestId

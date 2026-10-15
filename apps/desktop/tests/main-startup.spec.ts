@@ -15,6 +15,8 @@ import { writeCrashReport } from '../src/crash-report.ts'
 type InvokeEvent = { sender?: unknown; senderFrame: { url: string } }
 type InvokeHandler = (event: InvokeEvent, ...args: unknown[]) => unknown
 
+type MessageBoxProbeArgument = Partial<MessageBoxOptions> & { options?: { modal?: boolean } }
+
 vi.mock('../src/web-document.ts', () => ({ authenticateWebHost: async () => 'test-cookie', serveWebDocument: vi.fn(), forwardWebRequest: vi.fn() }))
 // Report persistence has its own unit tests; here it resolves within microtasks so the fatal
 // dialog never outlives the test that triggered it.
@@ -203,7 +205,12 @@ const harness = await vi.hoisted(async () => {
     set prepareUpdate(value: () => Promise<boolean>) { prepareUpdate = value },
     get publishUpdate() { return publishUpdate! },
     set publishUpdate(value: (state: DesktopUpdateState) => DesktopUpdateState) { publishUpdate = value },
-    dialog: { showOpenDialog: vi.fn(), showErrorBox: vi.fn(), showMessageBox: vi.fn() },
+    dialog: {
+      showOpenDialog: vi.fn(), showErrorBox: vi.fn(),
+      showMessageBox: vi.fn<(
+        options: MessageBoxProbeArgument, modalOptions?: MessageBoxOptions,
+      ) => Promise<{ response: number; checkboxChecked?: boolean }>>(),
+    },
     openExternal: vi.fn(async () => {}),
     protocolHandle: vi.fn<(scheme: string, handler: (request: Request) => Response | Promise<Response>) => void>(),
     applyRelease: vi.fn(() => { preparing.resolve(); return prepared.promise }),
@@ -317,7 +324,7 @@ vi.mock('../src/host-process.ts', async importOriginal => ({
 }))
 vi.mock('../src/update-dialog.ts', () => ({ DesktopUpdateDialog: class {
   get isOpen() { return harness.shellDialog.isOpen }
-  show(owner: { options: { modal?: boolean } }, options: unknown) {
+  show(owner: { options: { modal?: boolean } }, options: MessageBoxOptions) {
     return (owner.options.modal ? harness.dialog.showMessageBox(owner, options)
       : harness.dialog.showMessageBox(options)) as Promise<Electron.MessageBoxReturnValue>
   }
@@ -551,7 +558,7 @@ describe('desktop main startup', () => {
       await Promise.all(checks)
       await vi.advanceTimersByTimeAsync(10_000)
       expect(testAuth.login).toHaveBeenCalledOnce()
-      const messages = harness.dialog.showMessageBox.mock.calls.map(call => (call.at(-1) as { message: string }).message)
+      const messages = harness.dialog.showMessageBox.mock.calls.map(call => call.at(-1)?.message)
       expect(messages.filter(message => message === en.policyLoginRequired)).toHaveLength(1)
     } finally {
       explanation.resolve({ response: 1 })
@@ -613,10 +620,9 @@ describe('desktop main startup', () => {
     harness.updateState = { phase: 'idle' }
     await invoke(DESKTOP_IPC.updatesCheck, 'app')
     expect(harness.updateCheck).toHaveBeenCalledWith(true)
-    expect(harness.dialog.showMessageBox).toHaveBeenCalledWith(expect.objectContaining({
-      message: en.updateCurrent,
-      detail: expect.stringContaining('1.0.0'),
-    }))
+    expect(harness.dialog.showMessageBox.mock.calls.some(([options]) =>
+      options.message === en.updateCurrent && options.detail?.includes('1.0.0'),
+    )).toBe(true)
   })
 
   it('accepting the available-version download prompt downloads and installs without a second prompt when no active tasks', async () => {
@@ -677,7 +683,7 @@ describe('desktop main startup', () => {
     // The download happens, but the install confirmation is shown separately when prepareUpdate is called.
     // For nonmanual flow, installAuthorized is false, so confirmation should appear.
     await harness.prepareUpdate()
-    const messages = harness.dialog.showMessageBox.mock.calls.map(call => call[0] && call[0].message || '')
+    const messages = harness.dialog.showMessageBox.mock.calls.map(([options]) => options.message ?? '')
     expect(messages.some(m => m.includes('ready to install'))).toBe(true)
   })
 
@@ -1148,7 +1154,7 @@ describe('desktop main startup', () => {
     harness.updateState = { phase: 'ready', version: '0.1.7-alpha.2' }
     harness.dialog.showMessageBox.mockResolvedValueOnce({ response: 1 })
     await expect(harness.prepareUpdate()).resolves.toBe(false)
-    const { message, detail, buttons } = harness.dialog.showMessageBox.mock.lastCall![0] as MessageBoxOptions
+    const { message, detail, buttons } = harness.dialog.showMessageBox.mock.lastCall![0]
     await expect(JSON.stringify({ message, detail, buttons }, null, 2) + '\n')
       .toMatchFileSnapshot(`./expected/update-restart-${platform}-${language}.json`)
   })
@@ -1502,7 +1508,8 @@ describe('desktop main startup', () => {
     const checking = Promise.withResolvers<AbortSignal>()
     const requested = Promise.withResolvers<undefined>()
     harness.updateCheck.mockImplementationOnce(() => { requested.resolve(undefined); return checked.promise })
-    harness.dialog.showMessageBox.mockImplementationOnce(({ signal }: { signal: AbortSignal }) => {
+    harness.dialog.showMessageBox.mockImplementationOnce(({ signal }) => {
+      if (signal === undefined) throw new Error('Checking dialog requires a cancellation signal')
       checking.resolve(signal)
       return new Promise((resolve) => { signal.addEventListener('abort', () => { resolve({ response: 0 }) }, { once: true }) })
     }).mockImplementationOnce(() => {
@@ -1588,7 +1595,7 @@ describe('desktop main startup', () => {
     const available = Promise.withResolvers<AbortSignal>()
     vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockImplementation(() => policy.promise))
     harness.updateCheck.mockResolvedValue({ phase: 'available', version: '1.0.1-nightly.1' })
-    harness.dialog.showMessageBox.mockImplementation(({ signal, message }: { signal?: AbortSignal; message: string }) => {
+    harness.dialog.showMessageBox.mockImplementation(({ signal, message }) => {
       if (message !== en.updateAvailable.replace('{version}', '1.0.1-nightly.1') || signal === undefined) return Promise.resolve({ response: 1 })
       available.resolve(signal)
       return new Promise((resolve) => { signal.addEventListener('abort', () => { resolve({ response: 0 }) }, { once: true }) })
@@ -1625,7 +1632,7 @@ describe('desktop main startup', () => {
     const ordinaryResult = Promise.withResolvers<{ response: number }>()
     const ordinaryShown = Promise.withResolvers<undefined>()
     const policyShown = Promise.withResolvers<undefined>()
-    harness.dialog.showMessageBox.mockImplementation(({ message }: { message: string }) => {
+    harness.dialog.showMessageBox.mockImplementation(({ message }) => {
       if (message === en.updateCurrent) {
         ordinaryShown.resolve(undefined)
         return ordinaryResult.promise
@@ -1909,7 +1916,7 @@ describe('desktop main startup', () => {
     replacement.exited.resolve()
     await harness.dialogShown.promise
     expect(harness.dialog.showMessageBox.mock.calls.some(call =>
-      (call.at(-1) as MessageBoxOptions).detail?.includes('replacement startup failed'))).toBe(true)
+      call.at(-1)?.detail?.includes('replacement startup failed'))).toBe(true)
     await expect(harness.prepareUpdate()).rejects.toThrow('replacement startup failed')
     expect(harness.hosts).toHaveLength(2)
   })
@@ -1923,7 +1930,7 @@ describe('desktop main startup', () => {
     await expect(preparing).resolves.toBe(true)
     const window = harness.windows[0]!
     vi.spyOn(window, 'loadURL').mockRejectedValueOnce(new Error('replacement page failed to load'))
-    harness.dialog.showMessageBox.mockImplementation((options: MessageBoxOptions) => {
+    harness.dialog.showMessageBox.mockImplementation((options) => {
       if (options.detail?.includes('replacement page failed to load')) {
         harness.dialogShown.resolve()
         return new Promise(() => {})
@@ -1936,7 +1943,7 @@ describe('desktop main startup', () => {
     harness.hosts[1]!.ready.resolve()
     await harness.dialogShown.promise
     expect(harness.dialog.showMessageBox.mock.calls.some(call =>
-      (call.at(-1) as MessageBoxOptions).detail?.includes('replacement page failed to load'))).toBe(true)
+      call.at(-1)?.detail?.includes('replacement page failed to load'))).toBe(true)
   })
 
   it('reports a window construction failure without requiring a window', async () => {
@@ -1946,7 +1953,7 @@ describe('desktop main startup', () => {
     await import('../src/main.ts')
     await shown.promise
     expect(harness.windows).toHaveLength(0)
-    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).toContain('window creation failed')
+    expect((harness.dialog.showMessageBox.mock.calls[0]![0]).detail).toContain('window creation failed')
   })
 
   it('accepts Web fatal reports only from the primary application frame', async () => {
@@ -1963,8 +1970,8 @@ describe('desktop main startup', () => {
     expect(harness.dialog.showMessageBox).not.toHaveBeenCalled()
     handler(event, 'client mount failed')
     await harness.dialogShown.promise
-    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).toContain('client mount failed')
-    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).toContain('desktop-test-logs/crash-test.log')
+    expect((harness.dialog.showMessageBox.mock.calls[0]![0]).detail).toContain('client mount failed')
+    expect((harness.dialog.showMessageBox.mock.calls[0]![0]).detail).toContain('desktop-test-logs/crash-test.log')
     expect(writeCrashReport).toHaveBeenCalledWith('desktop-test-logs', expect.objectContaining({ source: 'web-boot', phase: 'startup' }))
     expect(window.urls).toEqual(['dsh-app://app/'])
   })
@@ -1978,7 +1985,7 @@ describe('desktop main startup', () => {
     expect(harness.dialog.showMessageBox).not.toHaveBeenCalled()
     window.webContents.emit('did-fail-load', {}, -2, 'failed', 'dsh-app://app/', true)
     await harness.dialogShown.promise
-    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).toContain('Desktop page failed to load')
+    expect((harness.dialog.showMessageBox.mock.calls[0]![0]).detail).toContain('Desktop page failed to load')
     expect(writeCrashReport).toHaveBeenCalledWith('desktop-test-logs', expect.objectContaining({ source: 'renderer' }))
   })
 
@@ -1987,8 +1994,8 @@ describe('desktop main startup', () => {
     await harness.preparing.promise
     harness.prepared.reject(new Error('runtime resources missing'))
     await harness.dialogShown.promise
-    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).toContain('runtime resources missing')
-    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).buttons).toEqual(['Exit', 'Restart', 'Disable third-party plugins, back up profile patch, and restart'])
+    expect((harness.dialog.showMessageBox.mock.calls[0]![0]).detail).toContain('runtime resources missing')
+    expect((harness.dialog.showMessageBox.mock.calls[0]![0]).buttons).toEqual(['Exit', 'Restart', 'Disable third-party plugins, back up profile patch, and restart'])
     expect(harness.windows[0]!.urls).toEqual(['dsh-app://app/'])
   })
 
@@ -2002,7 +2009,7 @@ describe('desktop main startup', () => {
     harness.prepared.reject(new Error('backend also failed'))
     await harness.dialogShown.promise
     expect(harness.dialog.showMessageBox).toHaveBeenCalledOnce()
-    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).not.toContain('secondary failure')
+    expect((harness.dialog.showMessageBox.mock.calls[0]![0]).detail).not.toContain('secondary failure')
     expect(window.urls).toEqual(['dsh-app://app/'])
   })
 
@@ -2024,7 +2031,7 @@ describe('desktop main startup', () => {
     await import('../src/main.ts')
     await shown.promise
     expect(harness.dialog.showMessageBox).toHaveBeenCalledOnce()
-    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).toContain('document missing')
+    expect((harness.dialog.showMessageBox.mock.calls[0]![0]).detail).toContain('document missing')
     expect(harness.hosts).toHaveLength(0)
   })
 
@@ -2048,7 +2055,7 @@ describe('desktop main startup', () => {
     expect(report.phase).toBe('startup')
     expect(report.error).toBeInstanceOf(DesktopHostFatalError)
     expect(report.hostDiagnostic).toBe(diagnostic)
-    expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).detail).toContain('profile has no cordis.yml')
+    expect((harness.dialog.showMessageBox.mock.calls[0]![0]).detail).toContain('profile has no cordis.yml')
   })
 
   it('attaches the primary window\'s error-level console output to a running-phase Host crash report', async () => {
@@ -2186,7 +2193,7 @@ describe('desktop main startup', () => {
     vi.stubEnv('DSH_DESKTOP_PRIMARY_RUNTIME_DIR', undefined)
     await import('../src/main.ts')
     await harness.dialogShown.promise
-    const options = harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions
+    const options = harness.dialog.showMessageBox.mock.calls[0]![0]
     expect(options.detail).toContain('DSH_DESKTOP_PRIMARY_RUNTIME_DIR is required for an unpackaged launch')
     expect(harness.hosts).toHaveLength(0)
   })

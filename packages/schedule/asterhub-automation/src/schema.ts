@@ -22,8 +22,8 @@ const runIdSchema = z.string().min(1).transform((v): AutomationRunId => brandStr
 
 /** ISO timestamp validator. */
 const instantSchema = z.string().refine(
-  (v) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/.test(v),
-  { message: 'Expected ISO 8601 UTC timestamp' }
+  v => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/.test(v),
+  { message: 'Expected ISO 8601 UTC timestamp' },
 )
 
 /** Normalized timing validator. */
@@ -75,7 +75,7 @@ const snapshotSchema: z.ZodType<AutomationSnapshot> = z.object({
 /** Run state validator. */
 const runStateSchema = z.enum([
   'reserved', 'running', 'waiting-approval', 'stopping',
-  'succeeded', 'failed', 'canceled', 'interrupted', 'unknown', 'blocked', 'skipped'
+  'succeeded', 'failed', 'canceled', 'interrupted', 'unknown', 'blocked', 'skipped',
 ])
 
 /** Run record validator. */
@@ -88,7 +88,7 @@ const runSchema: z.ZodType<AutomationRun> = z.object({
   requestId: z.string().nullable(),
   definitionRevision: z.number().int().nonnegative(),
   snapshot: snapshotSchema,
-  sessionId: z.string().nullable().transform((v) => v === null ? null : brandString<SessionId>(v)),
+  sessionId: z.string().nullable().transform(v => v === null ? null : brandString<SessionId>(v)),
   sessionCreated: z.boolean(),
   state: runStateSchema,
   startedAt: instantSchema.nullable(),
@@ -176,13 +176,17 @@ export class AutomationSchemaError extends Error {
   }
 }
 
-/** Validate a task aggregate at the durable boundary. */
+/**
+ * Validate a task aggregate at the durable boundary.
+ * @param value - Untrusted value to validate.
+ * @returns Validated task aggregate; rejects malformed durable records.
+ */
 export function validateTaskAggregate(value: unknown): AutomationTask {
   const result = taskAggregateSchema.safeParse(value)
   if (!result.success) {
     throw new AutomationSchemaError(
       `Invalid task aggregate: ${result.error.message}`,
-      result.error
+      result.error,
     )
   }
   return result.data

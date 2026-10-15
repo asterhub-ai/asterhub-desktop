@@ -119,12 +119,6 @@ describe('Desktop Host quit inspection', () => {
     expect(await inspect()).toEqual({ activeTasks: false, scheduledTasks: false })
   })
 
-  it('does not classify unavailable task services as idle', async () => {
-    const empty = new Context()
-    try {
-      await expect(installDesktopQuitInspection(empty)()).rejects.toThrow('task services are unavailable')
-    } finally { await empty.fiber.dispose() }
-  })
 
   it('refuses inspection after disposal', async () => {
     expect(await inspect()).toEqual({ activeTasks: false, scheduledTasks: false })

@@ -38,7 +38,7 @@ export function AutomationToast({ useToasts, dismiss, t }: AutomationToastProps)
   if (toasts.length === 0) return null
   return (
     <div data-testid="automation-toast-overlay">
-      {toasts.map(toast => {
+      {toasts.map((toast) => {
         const text = toast.message ?? t(`toast.${toast.kind}` as const)
         return (
           <Toast key={toast.id} text={text} onDone={() => { dismiss(toast.id) }} />

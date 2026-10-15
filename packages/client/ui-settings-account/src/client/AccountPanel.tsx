@@ -140,8 +140,8 @@ export function AccountPanel({
 
   useEffect(() => {
     if (verifyCountdown <= 0) return
-    const timer = window.setInterval(() => setVerifyCountdown(value => Math.max(0, value - 1)), 1000)
-    return () => window.clearInterval(timer)
+    const timer = window.setInterval(() =>{  setVerifyCountdown(value => Math.max(0, value - 1)) }, 1000)
+    return () =>{  window.clearInterval(timer) }
   }, [verifyCountdown])
 
   const login = async (): Promise<void> => {

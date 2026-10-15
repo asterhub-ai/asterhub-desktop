@@ -22,7 +22,7 @@ export function CurrentVersionRow({ t, checkUpdates }: PropsRuntime<'settings.ge
     return (
       <div className={css.row}>
         <span>{t('general.currentVersion', { version })}</span>
-        <Button variant="ghost" size="sm" onClick={() => { checkUpdates() }}>
+        <Button variant="ghost" size="sm" onClick={() => { void checkUpdates() }}>
           {t('general.checkUpdates')}
         </Button>
       </div>

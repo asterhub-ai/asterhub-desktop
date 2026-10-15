@@ -1,4 +1,4 @@
-import { appendFile, mkdir, mkdtemp, open, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, mkdtemp, open, realpath, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -171,9 +171,13 @@ describe('SessionMediaReferences /api/file', () => {
       const path = join(outside, 'image.png')
       await writeFile(path, PNG_BYTES)
       expect(await responseBytes(await route.call(path))).toEqual(PNG_BYTES)
-      const link = join(root, 'linked.png')
-      await symlink(path, link)
-      expect(await responseBytes(await route.call(link))).toEqual(PNG_BYTES)
+      const link = join(root, 'linked')
+      await symlink(outside, link, 'junction')
+      try {
+        expect(await responseBytes(await route.call(join(link, 'image.png')))).toEqual(PNG_BYTES)
+      } finally {
+        await unlink(link)
+      }
     } finally {
       await rm(outside, { recursive: true, force: true })
     }

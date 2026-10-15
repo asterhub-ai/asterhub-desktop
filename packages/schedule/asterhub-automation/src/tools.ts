@@ -9,24 +9,11 @@ import { isJsonValue, type JsonValue } from '@deepseek-ai/dsh-util-values'
 import type {} from '@deepseek-ai/dsh-user-questions'
 import type {} from './index.ts'
 import { AutomationOperationError } from './operations.ts'
-import type { AutomationTaskId, AutomationRunId, AutomationOperation, AutomationDraft } from './types.ts'
+import type {
+  AutomationManageOutput, AutomationReadOutput, AutomationTaskId, AutomationRunId, AutomationOperation, AutomationDraft,
+} from './types.ts'
 
-/** Persisted JSON acknowledgement rendered by native task result cards. */
-export interface AutomationManageOutput {
-  readonly action: string
-  readonly success: boolean
-  readonly result?: JsonValue
-  readonly preview?: JsonValue
-  readonly error?: { readonly code: string; readonly message: string }
-}
-/** Current-account readonly JSON response. */
-export interface AutomationReadOutput {
-  readonly action: string
-  readonly success: boolean
-  readonly tasks?: JsonValue
-  readonly task?: JsonValue
-  readonly error?: { readonly code: string; readonly message: string }
-}
+export type { AutomationManageOutput, AutomationReadOutput } from './types.ts'
 
 const timingSchema = {
   oneOf: [
@@ -58,7 +45,12 @@ const outputSchema = {
 
 /** Validate the outgoing JSON value without copying the task and history again. */
 function resultValue(value: unknown): {
-  action: string; success: boolean; result?: JsonValue; preview?: JsonValue; tasks?: JsonValue; task?: JsonValue;
+  action: string
+  success: boolean
+  result?: JsonValue
+  preview?: JsonValue
+  tasks?: JsonValue
+  task?: JsonValue
   error?: { code: string; message: string }
 } {
   if (!isJsonValue(value)) throw new Error('automation: tool acknowledgement is not lossless JSON')
@@ -128,7 +120,9 @@ export function registerAutomationTools(rootCtx: Context, toolCtx: Context, agen
           }
         }
         exec.signal.throwIfAborted()
-        const result = await rootCtx.asterhubAutomation.commitOperation({ requestId: prepared.requestId, confirmationId: prepared.confirmationId })
+        const result = await rootCtx.asterhubAutomation.commitOperation({
+          requestId: prepared.requestId, confirmationId: prepared.confirmationId,
+        })
         return resultValue({ action, success: true, result })
       } catch (error) {
         return resultValue({ action, success: false, error: error instanceof AutomationOperationError ? { code: error.code, message: error.message } : { code: 'operation_failed', message: 'The automation operation could not be completed.' } })

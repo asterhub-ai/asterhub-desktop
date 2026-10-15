@@ -48,6 +48,8 @@ Host entry 为每条 Client 流独立注册一组 allowlist listener 和一个�
 
 无 payload 的 `schedule/changed` 事件使 Schedule 任务查询失效；Client 在收到通知及重连后重新读取。无 payload 的 `permission-presets/catalog-changed` 事件使进程目录失效。Client 在首次读取 `permissionPresets.catalog()` 前先订阅，并在通知后重新读取完整快照；该事件不携带目录状态，也不改变 Session 序号。
 
+`automation/changed` 与 `automation/account-changed` 通知不携带任务内容或凭据。原生自动化客户端在任务变更后刷新目录，并在身份变更后丢弃先前账号的草稿。
+
 <a id="build-boundary"></a>
 ## 构建边界
 

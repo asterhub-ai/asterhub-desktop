@@ -1,346 +1,348 @@
-# AsterHub 原生定时任务详细设计
+# AsterHub native scheduled-task detailed design
 
-**状态：用户已批准按本文实施；实现与验收进行中。** AsterHub 原生调度替代桌面产品的 DSH Schedule Bundle，随安装包交付，不作为精选插件；只在 AsterHub Host 运行期间执行；每次触发新建会话；支持聊天创建和任务管理页，包括“插件”下方入口、任务列表及手动创建/查看/编辑/删除。本文规定目标行为，不表示所有能力已经实现或验证。
+English | [中文](2026-10-05-asterhub-native-scheduler-design.zh.md)
 
-## 概述
+**Status: the user approved implementation from this document; implementation and acceptance are in progress.** Native AsterHub scheduling replaces the desktop product's DSH Schedule Bundle, ships in the installer, and is not a curated plugin. It executes only while the AsterHub Host runs; every trigger creates a fresh conversation. Chat authoring and the task-management page support creation, inspection, editing, and deletion, with an entry below Plugins. This document specifies intended behavior; it does not assert that every capability is implemented or verified.
 
-用户可以说“每天早上 8 点查询新闻并整理”，确认任务内容、时区、工作区和模型后保存。Host 到期启动独立会话；用户在“定时任务”页查看下次时间、运行状态、结果和失败原因。窗口隐藏到托盘不停止调度；完全退出、电脑关机或休眠期间不保证执行，应用恢复后按错过规则处理。
+## Summary
 
-## 目录
+A user can ask for a news briefing every morning at 08:00 and save it after confirming the instruction, zone, workspace, and model. The Host starts an independent Session when due; the task page shows the next time, execution status, result, and failure reason. Hiding the window in the tray does not stop scheduling. Execution is not guaranteed while the app is fully closed or the computer is shut down or asleep; recovery applies the missed-occurrence rules.
 
-- [产品范围与取舍](#产品范围与取舍)
-- [用户流程](#用户流程)
-- [任务与运行数据](#任务与运行数据)
-- [调度与并发](#调度与并发)
-- [执行与会话生命周期](#执行与会话生命周期)
-- [账户、模型与审批](#账户模型与审批)
-- [持久化与恢复](#持久化与恢复)
-- [Host API 与模型工具](#host-api-与模型工具)
-- [任务管理页](#任务管理页)
-- [原生组装与安装包](#原生组装与安装包)
-- [旧 Schedule 数据](#旧-schedule-数据)
-- [验收标准](#验收标准)
-- [依据与审阅事项](#依据与审阅事项)
+## Table of Contents
 
-## 产品范围与取舍
+- [Product scope and tradeoffs](#产品范围与取舍)
+- [User flows](#用户流程)
+- [Task and run data](#任务与运行数据)
+- [Scheduling and concurrency](#调度与并发)
+- [Execution and Session lifecycle](#执行与会话生命周期)
+- [Accounts, models, and approval](#账户模型与审批)
+- [Persistence and recovery](#持久化与恢复)
+- [Host API and model tools](#host-api-与模型工具)
+- [Task-management page](#任务管理页)
+- [Native composition and installer](#原生组装与安装包)
+- [Legacy Schedule data](#旧-schedule-数据)
+- [Acceptance criteria](#验收标准)
+- [References and review items](#依据与审阅事项)
 
-本功能是 AsterHub 桌面产品的默认能力。实现仍遵循 Cordis 的服务、插件贡献与可撤销注册方式；“原生”指产品内置、安装包携带和默认组装，不指新增 OS 服务或另一个 Python Agent。调度不改 Agent 主循环，不使用外部 npm 插件市场作为运行依赖。
+## Product scope and tradeoffs <a id="产品范围与取舍"></a>
 
-支持一次性指定时间、延迟、每日、每周、固定间隔和自定义五字段 Cron；支持创建、查看、编辑、暂停、恢复、立即运行、停止本次运行、删除任务和查看运行历史。每日/每周使用明确的 IANA 时区，不把“每天 8 点”解释为创建后每 86400 秒。
+This feature is a default capability of the AsterHub desktop product. It follows Cordis services, plugin contributions, and reversible registrations. Native means built into the product, carried in its installer, and mounted by default; it does not introduce an OS service or another Python Agent. Scheduling does not modify the Agent loop or depend on an external npm plugin marketplace.
 
-不包含应用退出后仍运行、唤醒电脑、开机自启动、云端调度、跨设备同步、Webhook 触发、独立脚本模式和自动发送到 IM/邮件。结果首先保存在 AsterHub 会话；任务可在用户授权的工作区生成文件。外部发布和发送不因创建周期任务而免除审批。
+Support a one-time target, delay, daily, weekly, fixed interval, and custom five-field Cron; support creation, inspection, editing, pause, resume, immediate execution, stopping the current run, deletion, and run history. Daily and weekly rules use explicit IANA zones; daily 08:00 is not an interval of 86400 seconds after creation.
 
-不引入第三方记忆层。新会话没有创建对话或上次运行的消息历史；将来合入的原生记忆能力按普通新会话的权限和组装规则使用，不由调度器自行复制记忆。
+Exclude execution after app exit, waking the computer, automatic startup, cloud scheduling, cross-device synchronization, Webhook triggers, independent script mode, and automatic IM/email delivery. Results are stored first in AsterHub Sessions; tasks may write files in an authorized workspace. Creating a recurring task does not waive approval for external publication or sending.
 
-## 用户流程
+Do not introduce third-party memory. A fresh Session receives neither the authoring conversation nor the preceding run's messages. Future native memory follows ordinary new-Session permissions and composition; the scheduler does not copy memory itself.
 
-### 聊天创建
+## User flows <a id="用户流程"></a>
 
-1. 用户表达任务与频率；Agent 整理为自足指令，不保存“按刚才说的做”这样的上下文依赖。
-2. 当前会话有工作区时预填该工作区；没有时请用户选择。默认时区来自设备，而不是界面语言；默认模型来自当前会话已选择且属于当前账户目录的模型。
-3. 展示确认卡：任务名称、完整指令、重复规则、时区、工作区、模型/思考档、下三次运行时间、结果位置，以及“应用需保持运行、执行会消耗算力积分、敏感操作仍需审批”。频率必须用自然语言显示，不要求用户懂 Cron。
-4. 用户确认后 Host 才持久化启用；取消不创建任务。模型不能提交一个可替代用户确认的布尔值。确认期间配置变化时，旧确认失效。
-5. 创建成功展示任务卡和“查看任务”入口，回执来自已持久化记录；不把模型回复当作保存证明。
+### Chat authoring
 
-例如：名称“每日新闻简报”，时间“每天 08:00，Asia/Shanghai”，指令“检索过去 24 小时的国内与国际重要新闻，按主题整理 10 条，每条附来源链接和发布时间，生成中文简报；来源不足时明确说明，不使用上次报告补足数量。”工作区和模型必须实际选定。结果会话可命名为“每日新闻简报 · 2026-10-06 08:00”，不强制额外生成本地文件。
+1. The user supplies an instruction and frequency; the Agent produces a self-contained instruction, not a reference such as doing what was just discussed.
+2. Prefill the current workspace when present; otherwise ask the user to select one. The default zone comes from the device, not UI language. The default model is the current Session's selected model in the current account catalog.
+3. Show a confirmation card with the task name, complete instruction, recurrence, zone, workspace, model/reasoning effort, next three times, result location, and the facts that the app must remain running, execution consumes credits, and sensitive operations retain approval. Display frequency in natural language without requiring Cron knowledge.
+4. The Host persists and enables the task only after confirmation; cancellation creates nothing. The model cannot submit a boolean that replaces human confirmation. Configuration changes invalidate an outstanding confirmation.
+5. Success shows a task card and View task entry backed by a durable receipt; model text is not evidence that saving succeeded.
 
-### 任务页创建与编辑
+Example: name Daily news briefing; time every day at 08:00, Asia/Shanghai; instruction to search important domestic and international news from the last 24 hours, organize ten items by topic with source links and publication times, produce a Chinese briefing, and explain insufficient sources rather than filling the count from an earlier report. A real workspace and model must be selected. A result Session can be named Daily news briefing · 2026-10-06 08:00; an additional local file is not mandatory.
 
-任务页提供直接表单，不通过打开新聊天让模型代替填写。两种入口使用相同校验、确认与存储服务。手动表单以“标题、执行时间、重复/间隔、任务目标”为主要字段，辅以时区、工作区和目录模型；允许每天、工作日、选定星期、每 N 分钟/小时、仅一次和高级 Cron。保存前预览下三次时间。编辑必须携带 revision，冲突保留草稿并要求刷新；不覆盖另一窗口或聊天刚修改的设置。
+### Task-page creation and editing
 
-修改名称不改变时间；修改指令、规则、工作区、模型或思考档需要重新确认将来的执行授权。运行中修改只影响下次运行，本次保留启动快照。暂停不停止已开始的运行；“停止本次”是单独操作。
+Provide a direct form rather than opening another chat for the model to fill it. Both entry points use the same validation, confirmation, and storage service. The main fields are title, execution time, recurrence/interval, and task objective, with zone, workspace, and catalog model. Offer daily, weekdays, selected weekdays, every N minutes/hours, once, and advanced Cron. Preview the next three times before saving. Edits carry a revision; conflicts retain the draft and request refresh instead of overwriting another window or chat's changes.
 
-## 任务与运行数据
+Renaming does not change timing. Changes to instructions, timing, workspace, model, or reasoning effort require renewed authorization for future executions. Editing during execution affects only the next run; the current run retains its startup snapshot. Pausing does not stop a started run; stopping this run is a separate operation.
 
-任务定义和运行记录是不同概念，但在现有无跨表事务的 storage-domain 中，建议先将一个任务及其有界运行记录存为同一记录。一次 put 原子保存触发认领、下次目标与本次运行，不依赖“先写 tasks 再写 runs”的假事务。运行全文与工具过程仍由 Session 日志持有，不复制到任务记录。
+## Task and run data <a id="任务与运行数据"></a>
 
-### TaskAggregate（拟新增版本 1 数据）
+Task definitions and runs are distinct concepts. Because the existing storage-domain lacks cross-table transactions, initially store a task and its bounded runs in one record. A single atomic put saves occurrence claiming, next target, and current run without pretending that separate task/run writes form a transaction. Full execution text and tool traffic remain in the Session log and are not copied into the task record.
 
-| 字段 | 语义 |
+### TaskAggregate (proposed version 1 data)
+
+| Field | Meaning |
 |---|---|
-| `id` | 品牌化任务 ID；全局唯一，创建后不复用 |
-| `ownerAccountId` | Host 认证服务确认的账户 ID；不接受模型指定，不存 token/key |
-| `revision` / `recordVersion` | revision 用于用户编辑冲突；每次持久写入另递增 recordVersion，用于调度/恢复比较 |
-| `authorizationRevision` / `ruleRevision` | 指令、工作区、模型/思考档或时间规则变化推进授权版本；仅时间规则变化推进 ruleRevision；改名、启停不推进授权版本 |
-| `name` / `instruction` | 用户确认的任务名称与自足指令；有明确长度上限 |
-| `workspaceId` | 显式保存的工作区；运行时再次验证目录和登记状态 |
-| `timing` | 带判别字段的 once/delay/interval/daily/weekly/cron 规则；钟表规则保存 IANA 时区 |
-| `modelSelection` | 固定目录模型 ID 与可选思考档，不保存 provider/Base URL/凭据 |
-| `enabled` / `deletedAt` | 周期是否启用与软删除标记；删除后不会再调度 |
-| `nextOccurrenceAt` | 下次计划 UTC 时点；一次性结束或暂停时无调度目标 |
-| `consentRevision` | 最近确认的 authorizationRevision；两者不符时不可自动执行 |
-| `occurrenceWatermark` | 已处理到的周期发生时点与规则版本；裁剪历史后仍防止时钟回拨重复消费 |
-| `pendingOccurrence` | 等待运行槽位的最近到期时点，以及覆盖的错过时间范围；最多一项 |
-| `activeRunId` | 占用本任务执行权的运行，包括等待审批和正在停止 |
-| `lastOutcome` | 最近运行摘要；配置阻塞、跳过与执行结果分别说明 |
-| `runs` | 有界 RunRecord 列表，仅元数据与 Session/交付物引用 |
-| `creationRequest` / `requestReceipts` | 创建请求身份、参数摘要和有时限的写操作回执；与任务变更同一次 put，不随 runs 裁剪 |
-| `historyPruned` / `skippedRange` | 是否裁剪历史，以及因暂停/合并未执行的时间范围和原因 |
-| `createdAt` / `updatedAt` | Host 采样的时间；不用于替代 revision 排序 |
+| `id` | Branded, globally unique task identity that is never reused |
+| `ownerAccountId` | Account ID confirmed by Host authentication; not model-selected and contains no token/key |
+| `revision` / `recordVersion` | User-edit conflict revision; every durable write also increments recordVersion for scheduling/recovery comparisons |
+| `authorizationRevision` / `ruleRevision` | Instructions, workspace, model/effort, or timing changes advance authorization; only timing changes advance ruleRevision; rename and enable/disable do not advance authorization |
+| `name` / `instruction` | Confirmed name and self-contained instruction with explicit length limits |
+| `workspaceId` | Explicit stored workspace; execution revalidates directory and registration |
+| `timing` | Discriminated once/delay/interval/daily/weekly/cron rule; clock rules retain an IANA zone |
+| `modelSelection` | Fixed catalog model ID and optional effort, without provider/Base URL/credentials |
+| `enabled` / `deletedAt` | Recurrence enablement and soft deletion; deleted tasks never schedule |
+| `nextOccurrenceAt` | Next planned UTC instant; no scheduling target after one-time completion or while paused |
+| `consentRevision` | Last confirmed authorizationRevision; a mismatch prevents automatic execution |
+| `occurrenceWatermark` | Processed occurrence instant and rule revision; prevents replay after history pruning or clock rollback |
+| `pendingOccurrence` | Latest due occurrence waiting for capacity, plus its merged missed range; at most one |
+| `activeRunId` | Run holding task execution ownership, including approval waits and stopping |
+| `lastOutcome` | Latest summary distinguishing blocked configuration, skipped work, and execution results |
+| `runs` | Bounded RunRecord list with metadata and Session/deliverable references only |
+| `creationRequest` / `requestReceipts` | Creation identity, parameter digest, and expiring mutation receipts stored in the same put; independent of run pruning |
+| `historyPruned` / `skippedRange` | History-pruning flag and time ranges skipped through pause/merging with reasons |
+| `createdAt` / `updatedAt` | Host-sampled times; never substitute for revision ordering |
 
-所有配置值在工具/Remote/文件入口校验；每个任务记录启动时完整验证。无效记录或未来版本停止调度并显示可定位的诊断；不静默删除、不返回假空列表、不修复用户文件。任务内容、工作目录和历史是本机私有数据，不进入精选目录服务。
+Validate all configuration at tool, Remote, and file entry points, and fully validate every task record on startup. Invalid or future-version records stop scheduling and produce locatable diagnostics. Never silently delete them, return a false empty list, or repair user files. Instructions, working directories, and history remain private local data and never enter the curated catalog service.
 
-timing 采用规范化判别联合：once 保存 `atUtc`；delay 保存正整数 `seconds` 与首次持久创建时确定的 `anchorAt` / `atUtc`；interval 保存至少 60 的整数 `seconds`、`firstAt` 与 `anchorAt`，firstAt 是首次目标，anchorAt = firstAt − seconds，后续发生时点按该锚点计算；daily 保存 `time`、`timeZone`；weekly 另存唯一升序 ISO `weekdays`；cron 保存规范化五字段 `expression`、`timeZone`。全部目标存 UTC。interval 改规则时采用用户填写的未来首次时间，未填写则从接受写入时间加间隔首次运行；暂停后恢复按接受恢复时间加间隔重新起算，并推进 ruleRevision；只改名称/指令不重置相位。delay 不因回执重放重新起算，修改时间时转换成 once。`schemaVersion: 1` 属于 domain 声明；ruleRevision 与发生时点共同构成周期身份，记录版本不替代 schema 版本。
+Use a normalized discriminated timing union: once stores `atUtc`; delay stores positive integer `seconds` and `anchorAt` / `atUtc` fixed at first durable creation; interval stores integer `seconds` of at least 60, `firstAt`, and `anchorAt`, where firstAt is the first target and anchorAt = firstAt − seconds. Later interval occurrences follow that anchor. Daily stores `time` and `timeZone`; weekly adds unique ascending ISO `weekdays`; cron stores a canonical five-field `expression` and `timeZone`. All targets are UTC. An interval-rule edit uses a supplied future first time, or accepted-write time plus interval when omitted. Resuming a paused interval reanchors at accepted-resume time plus interval and advances ruleRevision; changing only name/instruction retains phase. Replaying a delay receipt never reanchors it; editing its time converts it to once. `schemaVersion: 1` belongs to the domain declaration. Rule revision and occurrence instant jointly identify recurrence; record version does not replace schema version.
 
 ### RunRecord
 
-| 字段 | 语义 |
+| Field | Meaning |
 |---|---|
-| `id` / `taskId` | 品牌化运行 ID 与任务绑定 |
-| `trigger` | scheduled / catch-up / manual；manual 不消费未来的周期发生时点 |
-| `scheduledAt` | 周期应发生的 UTC 时点；manual 单独记录 requestedAt |
-| `definitionRevision` / `snapshot` | 此次确认过的名称、完整指令、规则、工作区、模型与思考档快照 |
-| `sessionId` | 在认领时生成并保存的独立 Session ID；不是原会话 ID，也不作为历史 fork |
+| `id` / `taskId` | Branded run identity and task binding |
+| `trigger` | scheduled / catch-up / manual; manual never consumes a future recurring occurrence |
+| `scheduledAt` | Planned UTC occurrence; manual requests separately record requestedAt |
+| `definitionRevision` / `snapshot` | Confirmed name, full instruction, timing, workspace, model, and effort snapshot |
+| `sessionId` | Independent Session ID generated and stored at reservation; neither the authoring ID nor a history fork |
 | `state` | reserved / running / waiting-approval / stopping / succeeded / failed / canceled / interrupted / unknown / blocked / skipped |
-| `startedAt` / `finishedAt` | 实际开始/终结时间；未开始时 startedAt 为空 |
-| `reason` | 稳定错误或跳过代码与去敏说明；不得含密钥或原始认证响应 |
-| `resultRef` | Session 与结果消息/交付物引用；无成功结果时不填假值 |
-| `ownerRuntimeId` | 此次 Host 启动的随机身份；用于重启时判断遗留状态 |
+| `startedAt` / `finishedAt` | Actual start/termination times; startedAt absent before start |
+| `reason` | Stable error/skip code and sanitized explanation without keys or raw authentication responses |
+| `resultRef` | Session and result-message/deliverable references; never fabricate values without a successful result |
+| `ownerRuntimeId` | Random identity of this Host startup used to recognize retained state after restart |
 
-`blocked` 表示执行前检查未通过，未发起本次模型调用；`failed` 表示已开始但失败；`interrupted` 表示已确认停止/退出打断；`unknown` 表示崩溃后不能确认最终结果；`skipped` 表示调度策略未执行。UI 的“成功”只陈述执行区间正常结束，不证明新闻真实性或外部业务结果正确。
+`blocked` means preflight refused execution before a model call; `failed` means started execution failed; `interrupted` means a confirmed stop/exit interrupted it; `unknown` means crash recovery cannot determine the final outcome; `skipped` means policy did not execute it. UI success describes a normally ended execution interval, not the accuracy of news or an external business result.
 
-初始保留建议：每任务最多 200 条终结记录、30 天、2 MiB 终结历史快照，任一上限达到时按追加顺序裁剪最旧的终结记录；活动运行与一条最近终结记录保留。任务名称最多 120 字符，指令最多 16000 字符且 UTF-8 编码不超过 64 KiB，每账户最多 100 条未删除任务，同一数据根最多 500 条任务（含删除后的历史）。上述上限通过 Host Config 校验且可配置；一次快照的最大值必须小于历史字节预算。达到任务上限时拒绝创建并给出清理历史入口，不自动删除。Session 按现有会话数据策略保留，任务历史裁剪不删除 Session；历史有“较早记录已清理”标记。
+Initial retention: at most 200 terminal records, 30 days, and 2 MiB of terminal snapshots per task; reaching any bound prunes the oldest terminal entries in append order. Retain active runs and the latest terminal entry. Names are at most 120 characters; instructions at most 16000 characters and 64 KiB UTF-8; at most 100 undeleted tasks per account and 500 total tasks per data root, including deleted history. Host Config validates and exposes these limits; one maximum snapshot must fit below the history byte budget. Reaching task quota rejects creation with an entry for cleaning history rather than deleting automatically. Sessions follow existing Session retention; pruning task history does not delete Sessions and displays an earlier-records-cleaned marker.
 
-## 调度与并发
+## Scheduling and concurrency <a id="调度与并发"></a>
 
-Host 服务在 domain 和账户状态初始化完成后开始调度；UI 没打开也工作。只维护一个下次到期定时器，使用墙钟重新核对到期，长延迟分段处理；恢复、账户变化、任务编辑和运行槽位释放时重新计算。不照搬 Hermes 多进程每分钟 ticker、云端 provider 和租约心跳拓扑。
+The Host starts scheduling after domain and account initialization, even without the UI open. Maintain one next-due timer, recheck wall-clock due state, and segment long delays. Recalculate after recovery, account changes, edits, and capacity release. Do not copy Hermes's multiprocess minute ticker, cloud provider, or lease-heartbeat topology.
 
-时间算法复用现有 DSH 的每日/每周/Cron 解析与发生时点计算；建议把纯计算函数及浏览器安全类型整理为明确的库入口供两个实现使用，不加载原 ScheduleService、不复制手写 Cron 算法、不为纯库添加空服务。提取时保持旧消费者与公开导出语义，避免形成两套时间规则。
+Reuse DSH daily/weekly/Cron parsing and occurrence arithmetic. Extract pure functions and browser-safe types into an explicit library entry shared by both implementations; do not load the original ScheduleService, duplicate handwritten Cron arithmetic, or add an empty service to a pure library. Preserve existing consumers and public export behavior during extraction so there is one timing rule implementation.
 
-钟表规则按保存的时区执行；DST 缺失时间跳过、重叠时间取较早一次。固定间隔最少 60 秒，Cron 采用现有五字段 Vixie 方言。用户修改系统时区不改变已保存规则，模型创建的规则也必须有明确时区。
+Clock rules follow their saved zone. Skip missing DST times and choose the earlier overlap. Fixed intervals are at least 60 seconds; Cron uses the existing five-field Vixie dialect. System-zone changes do not modify saved rules; model-authored rules also require an explicit zone.
 
-### 错过发生时点
+### Missed occurrences
 
-- Host 停止、设备休眠或资源排队期间，周期任务只保留最近一次到期发生时点；更早时点合并为一个范围摘要，不逐次补跑。
-- 原本 08:00 的任务在 09:00 启动应用时可补一次；用户看到“计划 08:00，实际 09:00（补跑）”。补跑仍生成新会话。
-- 暂停是用户明确停止触发，不在恢复后补执行暂停期间的任务；恢复从下一未来时点开始。过期的一次性任务恢复时必须重新选定时间，不隐式运行。
-- 已启用的一次性任务因停机逾期，在应用恢复且前置条件通过后执行一次，并标示延迟；不使用 Hermes 默认的短宽限直接丢弃。
-- 失败不自动重试本次发生时点；周期继续保持将来规则，用户可显式立即运行。配置阻塞解除后仅补最近一次到期，不循环尝试坏配置或不断花费额度。
+- During Host downtime, sleep, or capacity queueing, retain only the latest due recurring occurrence and merge older ones into one summarized range rather than replaying each.
+- Starting the app at 09:00 can catch up an 08:00 task once; show planned 08:00, actual 09:00 (catch-up). Catch-up still creates a fresh Session.
+- Pause explicitly stops triggers; resuming never catches up paused time and starts at the next future target. Resuming an expired one-time task requires selecting a new time and never executes implicitly.
+- An enabled one-time task overdue through downtime executes once after recovery and successful preflight, with a delay label; do not discard it using Hermes's default short grace window.
+- Failure never automatically retries that occurrence. Recurrence retains future timing, and the user may explicitly run now. Clearing blocked configuration catches up only the latest due occurrence; never repeatedly try bad configuration or continuously spend credits.
 
-### 执行限制
+### Execution limits
 
-同一任务最多一个活动 Run；等待审批也占槽位。同任务到期不启动并行副本，最多保留最近待执行时点。Host 建议默认最多两项并发，作为 Config 可调整；全局 FIFO 按计划时点和任务 ID 确定排序。编辑时取消未认领的旧配置待项；已认领的运行不换快照。
+At most one active Run exists per task; approval waits also occupy capacity. A due occurrence never launches a parallel copy of the same task, and at most the latest pending occurrence remains. Default Host concurrency is two, configurable through Config. The global FIFO orders by planned instant and task ID. Editing cancels unclaimed pending work for the old definition; a claimed run never changes snapshot.
 
-立即运行与周期运行共享认领和并发准入。重复点击必须带 requestId，实现幂等回执；同任务已活动时拒绝并给出打开当前运行的入口，不能悄悄创建第二次。立即运行不推进周期水位和下一目标。暂停任务可由明确的“立即运行一次”确认执行，但不自动恢复周期。
+Run now shares reservation and concurrency admission with scheduled work. Repeated clicks carry requestId and receive an idempotent receipt. An already active task is refused with an entry to its current run, never silently started twice. Manual execution does not advance the recurrence watermark or next target. An explicitly confirmed one-time manual run of a paused task does not resume recurrence.
 
-pause 在同一次 put 中禁用、清除 nextOccurrenceAt 与未认领 pendingOccurrence，并保存跳过范围/规则水位；resume 原子设定下一未来目标且不带回旧待项。槽位释放后的认领也必须重新检查 enabled、授权版本和规则版本；已认领 Run 不受 pause 清除影响。暂停前排队、暂停中错过的时点都不再补跑。
+Pause atomically disables the task, clears nextOccurrenceAt and unclaimed pendingOccurrence, and saves the skipped range/rule watermark. Resume atomically sets the next future target without restoring stale pending work. A reservation after capacity release rechecks enabled, authorization revision, and rule revision. Pause does not clear a claimed Run. Occurrences queued before pause or missed while paused never catch up.
 
-任务运行超时建议默认 30 分钟，包括等待审批，以 Host Config 提供明确的正数范围。超时走现有协作取消并等待 quiescence；不能仅写“超时”就释放槽位，而让旧工具继续与下次运行重叠。
+Default execution timeout is 30 minutes including approval waits, exposed as a positive bounded Host Config field. Timeout follows cooperative cancellation and awaits quiescence. Merely writing timeout and releasing capacity while old tools continue would allow overlap with the next run and is forbidden.
 
-## 执行与会话生命周期
+## Execution and Session lifecycle <a id="执行与会话生命周期"></a>
 
-1. 检查任务未删除、已启用或手动授权、配置已确认、当前账户匹配、工作区存在、所选模型和思考档有效、应用没有进入退出/更新准入锁。
-2. 在 domain 管理 FIFO 中重新核对记录版本和全局执行槽位；一次持久 put 写入 reserved Run、固定 Session ID、执行快照、activeRunId 和将来的周期目标/发生时点水位。写入失败不得创建 Agent 或调用模型。
-3. 经现有工作区与 preset 组装路径创建新的顶级 Agent/Session；使用普通 AsterHub 助手与受控模型，注册运行观察和安全限制后才投递首条消息。不能直接调用 agent-loop 实现绕过组装与持久化。
-4. 首条持久消息标明“用户已确认的定时任务”、任务 ID、计划/实际时间、时区和完整指令。来源是类型化的调度生产者，不伪造用户实时输入。模型可见输入必须从 Session 日志重建。
-5. 以认领的 inbox 消息与该独占运行区间观察执行；跟踪领取、turn/end、请求错误、取消和持久 flush。followup 返回、agent/status 空闲或 whenIdle 单独出现都不是任务完成证明。
-6. 在整个运行中挂载 Session owner；用户打开结果只导航，不提前释放运行 owner。终结时先封闭区间、确认并 flush 持久结果，再 dispose 精确句柄并等待关联资源静止，最后原子保存任务终态并释放槽位。终结 put 失败时保留认领与待恢复事实、不放行下一次运行；不能把持久化失败呈现为成功。用户正常续聊在 owner 释放后使用既有 Session Controller 获取/恢复逻辑。
-7. 若用户在运行会话续聊，消息进入同一执行区间，结果必须标明有人工介入；不能声称最后一条回答只归因于原任务。用户停止本次运行后可继续在该会话手动工作，但不能使 scheduler 把手动续聊重新结算为原 Run。
+1. Check that the task is undeleted, enabled or manually authorized, confirmed, owned by the current account, bound to an existing workspace, and uses a valid model/effort; the app must not hold quit/update admission.
+2. Recheck record version and global capacity in the domain management FIFO. One durable put records the reserved Run, fixed Session ID, execution snapshot, activeRunId, and future recurrence target/watermark. A failed write creates neither Agent nor model request.
+3. Create a fresh root Agent/Session through workspace and preset composition, using the ordinary AsterHub assistant and controlled model. Install observation and safety rules before the first message. Never call agent-loop directly to bypass composition or persistence.
+4. The first durable message identifies a user-confirmed scheduled task and contains task ID, planned/actual time, zone, and complete instruction. Its source is a typed scheduling producer, not fabricated real-time user input. All model-visible input must be reconstructable from the Session log.
+5. Observe execution through the claimed inbox message and the exclusively owned run interval, tracking claim, turn/end, request failures, cancellation, and durable flush. A followup return, idle agent/status, or whenIdle alone never proves task completion.
+6. Hold a Session owner throughout execution. Opening the result only navigates and never releases ownership early. At termination, close the interval, confirm and flush durable result evidence, dispose the exact handle, await associated resources, and finally atomically store task termination and release capacity. Failed terminal persistence retains reservation/recovery facts and blocks another run; never present persistence failure as success. Ordinary continuation after owner release uses existing Session Controller acquisition/resumption.
+7. Human messages in the running Session enter the same execution interval and mark the result as human-intervened. Never attribute its final answer solely to the original task. After stopping the run, the user may continue manually without the scheduler settling that continuation as the original Run.
 
-waiting-approval 从 [user-approval](../../../packages/interaction/user-approval/README.md) 的未配对 `approval/asked` / `approval/decided` 和 [user-questions](../../../packages/interaction/user-questions/README.md) 的 `userQuestions` 投影推导，而非从 Agent idle 猜测。人类交互统一显示“等待你处理”，并在原因中区分审批与回答；任何未终结问题（open 或 continued）尚未回答时，即使本轮 turn/end 已出现，也不结算成功。用户答复启动的后续轮次仍归入本 Run 的明确执行区间。
+Derive waiting-approval from unmatched `approval/asked` / `approval/decided` events in [user-approval](../../../packages/interaction/user-approval/README.md) and the `userQuestions` projection in [user-questions](../../../packages/interaction/user-questions/README.md), never from Agent idle. Human interactions display waiting for your action, distinguishing approval from answers in the reason. Any unanswered nonterminal question (open or continued) prevents success even after turn/end. Later turns started by a user answer remain inside this Run's explicit interval.
 
-运行观察使用核心 Agent 的公开事件、Session 投影和 owner 句柄，不修改 AgentLoop。若 Session Controller 没有暴露合适的“按执行选项创建并持有”内部接口，则在该创建入口增加明确的 Host 方法，和普通会话共享 preset/权限/模型验证，不从 UI Remote 假造一次用户 Send。
+Observation uses public core Agent events, Session projections, and owner handles without changing AgentLoop. If Session Controller lacks an internal create-and-hold operation accepting execution options, add an explicit Host method at that entry point, sharing preset/permission/model validation with ordinary conversations instead of faking a user Send through UI Remote.
 
-Run 增加 `inputMessageId`、`startLogOffset`、`endLogOffset`、`terminalTurn`、`interactionIds` 和 `humanIntervened`，持久关联执行区间与人工介入；运行前已生成的 Session ID 不等于 Session 实际存在，另保存 `sessionCreated`。进入结束检查先在 Session Controller 的输入准入中封闭此 Run 的输入归属，再核对无未终结交互/输入、已记录的正常 turn 结束以及资源静止；区间关闭后的消息必须等 owner 释放后以普通手动续聊提交。超时/停止/账户切换还要撤销本 Run 的审批、问题和继续自动执行能力；现有接口不足时增加可取消交互的明确方法，不只写终态。核对、关闭区间与新的输入归属采用同一序列化 owner，不能靠前端禁用按钮防竞态。
+Add `inputMessageId`, `startLogOffset`, `endLogOffset`, `terminalTurn`, `interactionIds`, and `humanIntervened` to Run so the execution interval and intervention are durable. A pregenerated Session ID does not prove Session creation; separately retain `sessionCreated`. Ending first closes this Run's input attribution in Session Controller admission, then checks no pending interaction/input, a recorded normal turn end, and resource quiescence. Messages after closure wait for owner release and enter as ordinary manual continuation. Timeout/stop/account switch also revoke this Run's approval, question, and automatic-continuation capabilities. Add explicit cancellable-interaction methods when existing APIs are insufficient; writing a terminal state alone is insufficient. Checking, closing, and attributing new input share one serialized owner; frontend button disablement cannot prevent races.
 
-| Run 转换 | 必须满足的条件 |
+| Run transition | Required conditions |
 |---|---|
-| reserved → running | Session 已创建/登记且开始消息被持久领取；startedAt 确定 |
-| reserved → blocked/failed/interrupted/unknown | 新会话无法建立或启动未确认；无模型调用才可 blocked；原因与 Session 存在事实保留 |
-| running ↔ waiting-approval | 以本区间的未终结交互集合为准；Agent 可 idle 但 Run 仍等待 |
-| reserved/running/waiting-approval → stopping | 取消已受理但仍占槽位，撤销交互并等待资源静止 |
-| running → succeeded/failed | 已关闭区间、提交终结证据和结果引用；成功不能由 idle 单独推断 |
-| stopping → canceled/interrupted | 资源已停止且 Session 已 flush；超时使用 failed 并记录 timeout |
-| 启动恢复 → unknown/interrupted/已证实终态 | 上个 owner 已退出，依持久区间证据判定；没有证据不重发 |
-| 未认领触发 → blocked/skipped | 仅记录未执行事实，不创建虚构执行 Session |
+| reserved → running | Session created/registered and initial message durably claimed; startedAt fixed |
+| reserved → blocked/failed/interrupted/unknown | New Session cannot be established or startup is unconfirmed; blocked requires no model call; retain reason and Session existence facts |
+| running ↔ waiting-approval | Determined by nonterminal interactions in this interval; an idle Agent can still have a waiting Run |
+| reserved/running/waiting-approval → stopping | Cancellation accepted but capacity held; revoke interactions and await quiescence |
+| running → succeeded/failed | Interval closed and terminal evidence/results committed; idle alone never proves success |
+| stopping → canceled/interrupted | Resources stopped and Session flushed; timeout uses failed with timeout reason |
+| startup recovery → unknown/interrupted/proven terminal state | Previous owner exited; classify by durable interval evidence without replaying when evidence is absent |
+| unclaimed trigger → blocked/skipped | Record nonexecution only; never invent an execution Session |
 
-所有终态带 finishedAt，且不可被后续通知写回 running。reserved/running/waiting-approval/stopping 占 activeRunId；资源收束之后，保存终结记录与清除 activeRunId 共用一次 put。配置阻塞/跳过记录可以没有 Session；调度重算与 UI 必须接受这一明确区分。
+Every terminal state has finishedAt and cannot return to running through later notifications. Reserved/running/waiting-approval/stopping hold activeRunId. After resources settle, one put stores terminal history and clears activeRunId. Configuration-blocked/skipped entries may have no Session; rescheduling and UI must preserve this distinction.
 
-## 账户、模型与审批
+## Accounts, models, and approval <a id="账户模型与审批"></a>
 
-### 账户隔离
+### Account isolation
 
-任务和 Run 绑定稳定账户身份；账户信息必须由 Host 提供，不能靠 renderer 标签或可编辑邮箱来认领。登出或其他账户登录时，该账户任务不可自动执行、不可被新账户查看或管理；不跨账户共享任务快照和新生成结果导航。遗留 Session 的全局历史策略不由本功能扩大。
+Tasks and Runs bind to stable account identities supplied by the Host, never claimed through renderer labels or editable email. After logout or another login, the old account's tasks neither execute nor become visible/manageable to the new account. Do not share task snapshots or new result navigation across accounts. This feature does not broaden global history policy for retained Sessions.
 
-不能只在任务开始检查账户：模型适配器使用活跃 credential record，切换时可能更换 key。实施需要账户服务提供认证代次与读写协调：运行每次模型请求在确认 ownerAccountId/epoch 后取得短期凭据使用许可；账户切换先阻止旧代新调用，取消相关 Run 并等待请求/工具停止，再发布新账户凭据。许可覆盖实际凭据解析与请求发起，排除“检查完再被换 key”的竞态，不长时间占锁等待用户审批。
+Checking only at startup is insufficient because adapters read the active credential record and a switch can replace its key. The account service must provide authentication epochs and read/write coordination. Before each model request, a run confirms ownerAccountId/epoch and obtains a short credential-use permit. A switch blocks new calls from the old epoch, cancels its Runs and awaits requests/tools, then publishes new credentials. The permit spans actual credential resolution and request dispatch, excluding the race between checking and key replacement; never hold a long lock while waiting for human approval.
 
-旧账户运行已产生的结果保留在旧账户下；停止原因是账户变化，不自动迁移到新账户。账户服务缺少身份/代次时 fail closed；不能在设计里假定现有 getPlatformSession 即已满足隔离要求。
+Results already produced by the old account remain under it. Stop for account change without automatically migrating results. Missing account identity/epoch fails closed; do not assume getPlatformSession already supplies isolation.
 
-确认凭据是 Host 单次操作 ticket，绑定账户 ID、认证代次、操作种类、目标任务、expectedRevision、授权版本及规范化配置摘要，建议有效期 5 分钟。模型只提交待确认草稿，不能获得可转交的授权票据；Client 的确认通过现有用户交互通道回到 Host。下次运行预览随时间自然推进不会使内容相同的票据失效，授权/账户变化才失效。create/update/resume/runNow 等写操作进入时捕获身份，并在串行写入点再次验证；账户切换使旧未提交票据失效，晚到回执也不得在新账户页面显示。改变执行配置的 update 与暂停任务的 runNow 均要求相应确认；改名、暂停、按已确认配置恢复不撤销既有周期授权。
+Confirmation is a Host-owned single-operation ticket binding account ID, authentication epoch, operation kind, target task, expectedRevision, authorization revision, and normalized configuration digest, with a suggested five-minute expiry. The model submits drafts but receives no transferable authorization ticket. Client confirmation returns through existing interaction channels. Natural advancement of next-run previews does not invalidate otherwise identical content; authorization/account changes do. Create/update/resume/runNow capture identity on entry and recheck at serialized writing. A switch invalidates uncommitted tickets; late receipts never appear on the new account page. Execution-changing update and runNow on a paused task require confirmation. Rename, pause, and resume under confirmed configuration do not revoke existing recurrence authorization.
 
-### 模型和能力
+### Models and capabilities
 
-创建时固定用户当前选择的目录模型和思考档；任务页可由用户改成该账户其他有效模型。任务不保存/接受 provider、Base URL、API Key 或第三方模型配置；所有调用仍走 applicationModelRoute 和 Host credential record。模型被下架、未登录或目录首次同步失败时阻塞，不自动挑选另一模型，不静默降低思考档。选定模型之后对话里切换模型，不改变已保存任务。
+Creation fixes the user's selected catalog model and effort; the task page may select another valid model from that account. Tasks neither accept nor store provider, Base URL, API Key, or third-party model configuration. Calls retain applicationModelRoute and Host credential records. Removed models, logout, or failed initial catalog synchronization block execution without choosing a replacement or silently lowering effort. Later model changes in the authoring conversation do not modify the saved task.
 
-执行前核对已存在的技能/工具引用及工作区。正常网络请求可能失败；此时如实记录运行错误，不承诺前置检查保证新闻网站可访问。不存在的工作区、被停用的依赖或无效配置不得在后台自动安装、创建文件夹或授权权限。
+Before execution, validate referenced existing skills/tools and the workspace. Ordinary network requests may still fail; record the error rather than promising that preflight guarantees news-site reachability. Missing workspaces, disabled dependencies, or invalid configuration never trigger background installation, directory creation, or permission grants.
 
-### 审批与自主调度
+### Approval and autonomous scheduling
 
-聊天确认授权任务内容和周期，不等同于任意外部副作用或“完全权限”。使用普通 AsterHub 审批策略；需要审批/回答时持久显示 waiting-approval，并提供进入运行会话的入口。用户不在场时保持等待直至超时，不自动同意，不伪造回答，不把创建定时任务当作审批豁免。
+Chat confirmation authorizes task content and recurrence, not arbitrary external effects or full access. Retain ordinary AsterHub approval. Approval/questions durably show waiting-approval with a link to the run Session. When the user is away, wait until timeout without approving, fabricating answers, or treating task creation as an exemption.
 
-定时 Run 及其子 Agent 不注册定时任务变更工具，Host 也按运行来源拒绝创建、编辑、暂停、运行或删除定时任务，防止工具注入与子代理绕过。可只读查看自身任务信息；运行不得自我延长授权周期或生成一棵新任务树。第三方 Host 插件仍具有同进程权限，这些策略不能宣传为对恶意插件的 OS 隔离。
+Scheduled Runs and descendant Agents do not register task-mutation tools. The Host also rejects create/edit/pause/run/delete by run origin, preventing tool injection or subagent bypass. A run may read its own task information but cannot extend authorization or create another task tree. Third-party Host plugins retain same-process authority; these policies are not OS isolation against malicious plugins.
 
-## 持久化与恢复
+## Persistence and recovery <a id="持久化与恢复"></a>
 
-建议 domain `asterhub-automation` 版本 1，每条 TaskAggregate 保存任务与有界 Run 元数据，JSON/SQLite 后端继续由 storage-domain 路由。引入新数据类型时更新持久化声明与 type acknowledgements；不修改、移动或重写已提交的历史 Session 格式代次。
+Use version 1 of the proposed `asterhub-automation` domain, storing each task and bounded Run metadata together. Storage-domain continues routing JSON/SQLite backends. New data types update persistence declarations and type acknowledgements; never alter, move, or rewrite committed historical Session generations.
 
-整个 domain 只有一个已登记的 Host owner；Desktop 单实例不替代存储写所有权。同一数据根第二个调度 owner 必须被锁/后端独占打开拒绝；取得不到独占权时显示错误并不执行，不能仿照 Hermes 退化为各进程自以为拥有的内存锁。
+The domain has one registered Host owner; Desktop single-instance behavior does not replace storage write ownership. Locks/backend exclusive opening must reject a second scheduler on the same data root. Without exclusive ownership, show an error and execute nothing rather than falling back to independent in-memory locks in each process.
 
-| 中断位置 | 恢复行为 |
+| Interruption point | Recovery |
 |---|---|
-| 认领持久化之前 | 记录未消费，可按最新到期规则认领 |
-| reserved 已提交，尚未确认创建 Session | 留存该尝试；标记 interrupted/unknown，检查固定 Session ID 是否存在；不自动重发 |
-| Session 已创建，消息是否提交不确定 | 显示对应会话和 unknown，不从“空闲”猜测未执行 |
-| 已执行工具但未写终结记录 | 从持久 Session 区间尝试确认终结；没有完整证据则 unknown，绝不自动重跑外部副作用 |
-| 终结记录已写入 | 不重复触发；按已保存下一目标继续 |
-| 创建/管理回执丢失 | 在幂等窗口内按账户 + requestId 返回已保存回执；不重复创建/运行；过期明确拒绝自动重放 |
+| Before durable reservation | Record unconsumed; may claim under the latest-due rule |
+| Reserved committed, Session creation unconfirmed | Retain attempt, mark interrupted/unknown, inspect fixed Session ID; never resend automatically |
+| Session created, message submission uncertain | Show Session and unknown; idle does not imply nonexecution |
+| Tool executed before terminal record | Try to prove termination from the durable interval; otherwise unknown, never replay external effects |
+| Terminal record persisted | Do not trigger again; follow saved next target |
+| Creation/management receipt lost | Return saved account + requestId receipt within the idempotency window; never duplicate creation/run; reject expired automatic replay |
 
-周期认领水位与下一目标同一次写入，因此不会仅因 Run 历史裁剪或时钟回拨重复认领。允许“已认领但未真正开始”的一次运行在崩溃后需要人工检查/重跑；这是避免重复副作用的明确取舍，不保证端到端 exactly-once。记录状态未知不等于业务未发生。
+Occurrence watermark and next target share one write, so history pruning or clock rollback alone cannot repeat claiming. A claimed but unstarted run may require manual inspection/retry after a crash. This explicitly favors avoiding duplicate effects and does not promise end-to-end exactly-once. Unknown state does not mean the business operation never happened.
 
-任务删除采用软删除以保留历史、认领水位与在途归属。默认运行中的任务不能直接删除：用户先停止并等待停止完成，再删除；暂停可立即操作以防止下次触发。删除不删除原会话、已生成文件或运行记录；历史清理由明确且独立的用户动作负责，不自动递归删除目录。
+Soft deletion retains history, watermark, and in-flight ownership. Running tasks cannot be directly deleted by default; stop and await settlement first, then delete. Pause can immediately prevent the next trigger. Deleting does not remove the original Session, generated files, or run history. History cleanup is an explicit independent user action and never recursively deletes directories automatically.
 
-所有写 API 携带 requestId。创建在 domain 级 FIFO 内执行“查重—配额—身份/确认校验—put”，已有任务操作也进入同一管理写序列；不得在一个 await 持久写尚未完成时由另一任务越过全局配额/并发检查。回执绑定规范化参数摘要，建议保留 30 天、每任务最多 1000 项；上限达到且没有过期项可裁剪时拒绝新写操作，不抹掉仍有效回执。请求由 Host 签发的带账户与有效期的请求标识关联；超过 30 天拒绝重放，用户重新确认才能获取新标识。写操作先验证当前账户，再在有效期内查已提交回执；已提交请求返回原回执，不因为旧票据过期或 expectedRevision 改变而重做，同键不同参数拒绝。创建回执与初始任务在同一记录，其他回执与对应 task put 一起存储；内存索引只作可重建加速，不作为真相源。
+Every write API carries requestId. Creation serializes deduplication, quota, identity/confirmation validation, and put through the domain FIFO. Existing-task writes use the same sequence; another task cannot cross global quota/concurrency checks while a durable write is pending. Receipts bind normalized parameter digests and are retained for a suggested 30 days, at most 1000 per task. A full budget without expired entries rejects new writes instead of erasing valid receipts. Host-issued request identities bind account and expiry; after 30 days, replay is refused and renewed confirmation obtains a new ID. Writes validate current account before looking up valid committed receipts. A committed request returns its original receipt despite expired confirmation or changed expectedRevision; same key with different parameters is refused. Creation receipt and initial task share one record; other receipts share their task put. In-memory indexes are reconstructable accelerators, not truth.
 
-增加用户显式 `purgeDeleted`：只能清理本人已删除、无活动运行且全部回执已过 30 天窗口的任务，确认后移除 aggregate，不移除 Session/交付物。记录容量计算为 TaskAggregate 规范 UTF-8 JSON 字节；终结历史 2 MiB 和回执 1 MiB 分别预算，整 aggregate 硬上限建议 4 MiB。Config 必须确保一个最大快照、一个活动 Run、一个最近结果及回执预算可容纳，否则配置拒绝加载。无法容纳且没有合法可裁剪项时停止认领并记录存储配额阻塞，不截断指令。全局 500 项包含其他账户，达到时明确说明安装数据根限额而不泄露他人任务；管理员只能通过单独授权的本机维护操作清理其他账户已过保留期的删除数据，普通账户页面不能越权。当前功能不新增后台跨账户自动清理。
+Add explicit `purgeDeleted` for the current user's deleted tasks with no active run and all receipts outside the 30-day window. Confirmation removes the aggregate, not Sessions/deliverables. Capacity uses canonical UTF-8 JSON bytes. Budget terminal history at 2 MiB, receipts at 1 MiB, and the aggregate at a suggested 4 MiB. Config must accommodate a maximum snapshot, an active Run, latest result, and receipt budget or refuse loading. When no legal pruning can fit a record, stop claiming and report storage-quota blocking; never truncate instructions. The global 500-task bound includes other accounts and reports installation-root capacity without disclosing their tasks. Only separately authorized local maintenance can clean another account's expired deleted data; ordinary account pages cannot. No automatic cross-account cleanup is introduced.
 
-活动结果 Session 不允许直接删除或归档：沿用 workspace admission 增加 automation-run 活动项，需先停止 Run 并等待结束；完成后的 Session/交付物被正常删除则只标记引用不可用。工作区被移除后该任务 blocked，保持定义与历史，不自动创建目录或转到另一个工作区。
+Active result Sessions cannot be directly deleted or archived. Add automation-run activity through workspace admission, requiring stop and settlement first. Normal deletion of completed Sessions/deliverables only marks references unavailable. Removing a workspace blocks its tasks while retaining definitions/history; never recreate its directory or move work elsewhere.
 
-## Host API 与模型工具
+## Host API and model tools <a id="host-api-与模型工具"></a>
 
-拟新增 `ctx.asterhubAutomation` 服务，Host、模型工具和 Client 使用同一实现。Remote namespace 拟为 `automation`，名称和类型在实施时纳入 Typert 生成；以下是拟新增方法而不是当前 API：
+The proposed `ctx.asterhubAutomation` service is shared by Host, tools, and Client. Its proposed Remote namespace is `automation`, with names/types added to Typert during implementation. The methods below are proposed additions, not current APIs:
 
-| 方法 | 输入与承诺 |
+| Method | Inputs and obligations |
 |---|---|
-| `preview` | 任务草稿；校验身份/规则/模型/工作区，返回规范化草稿、授权摘要和下三次时点；不产生任务 |
-| `prepareOperation` | 操作种类、目标与规范化参数；签发绑定账户/有效期的 requestId，必要时发起用户确认，不直接执行写操作 |
-| `create` | 草稿 + requestId + Host 持有的用户确认凭据；持久化后回执 |
-| `list` / `get` | 只返回当前账户任务；分页/状态筛选，读取不启动 Session |
-| `update` | taskId + requestId + expectedRevision + 变更 + 必要的 Host 确认 ticket；冲突不写入 |
-| `pause` / `resume` | taskId + requestId + expectedRevision；resume 计算下一未来目标且清除旧待项 |
-| `runNow` | taskId + requestId + 目标授权版本，暂停/未知后重跑需确认；返回 runId 与实际状态而非执行成功 |
-| `stopRun` | runId + requestId；请求协作取消、进入 stopping，最终状态经服务发布 |
-| `remove` / `purgeDeleted` | taskId + requestId + expectedRevision + 确认；分别软删除、保留期后的本人删除记录清理 |
-| `runs` | taskId + 独占 cursor + limit；返回有界页面和较早记录清理标记 |
-| `inspectLifecycle` | Host 私有查询；所有账户是否有启用任务、活动 Run 和停止中的资源，不输出任务内容 |
+| `preview` | Draft; validate identity/rule/model/workspace and return normalized draft, authorization digest, and next three instants without creating a task |
+| `prepareOperation` | Operation kind, target, normalized parameters; issue account/expiry-bound requestId and request confirmation when required without writing |
+| `create` | Draft + requestId + Host-owned human confirmation; return receipt after persistence |
+| `list` / `get` | Current-account tasks only, with paging/state filters; reads never start Sessions |
+| `update` | taskId + requestId + expectedRevision + changes + required Host confirmation; conflict writes nothing |
+| `pause` / `resume` | taskId + requestId + expectedRevision; resume chooses the next future target and clears stale pending work |
+| `runNow` | taskId + requestId + target authorization revision; paused/unknown retries require confirmation; return runId and actual state, not execution success |
+| `stopRun` | runId + requestId; request cooperative cancellation and enter stopping; publish final state later |
+| `remove` / `purgeDeleted` | taskId + requestId + expectedRevision + confirmation; soft deletion or post-retention cleanup of the user's deleted records |
+| `runs` | taskId + exclusive cursor + limit; return a bounded page and earlier-history-pruned marker |
+| `inspectLifecycle` | Private Host query across accounts for enabled tasks, active Runs, and stopping resources without task content |
 
-聊天可以采用一个 action 风格工具 `automation_manage`，覆盖 create/list/get/update/pause/resume/run/remove；schema 用 action 判别联合表达每个动作必需字段。Host 决定身份、工作区和模型目录的合法性。人类确认走现有 interaction 机制；tool payload 不包含私钥、账户 key 或可伪造的“已授权”。参数错误、冲突、账户不符、未登录、模型不可用、运行中、存储不可用分别返回稳定错误，任务文本不冒充系统指令。
+Chat can expose one action-style `automation_manage` tool for create/list/get/update/pause/resume/run/remove, with a discriminated action schema requiring each operation's fields. The Host validates identities, workspaces, and catalog models. Human confirmation uses existing interaction mechanisms; payloads contain no private keys, account keys, or forgeable authorization flags. Invalid parameters, conflicts, account mismatch, logout, unavailable models, active runs, and unavailable storage return stable errors. Task text never masquerades as a system instruction.
 
-Client 使用鉴权的 Typert Remote；增量变更通知只通知当前账户的可见任务，断线重连重新查询权威记录。分页游标绑定账户、任务及排序版本；跨账户游标不允许读取数据。模型可见回执、任务快照和执行输入写入现有工具/消息日志；UI 草稿和纯列表查询不额外注入模型。
+Client uses authenticated Typert Remote. Incremental notifications cover only current-account visible tasks; reconnect re-reads authoritative records. Cursors bind account, task, and ordering revision and cannot read across accounts. Model-visible receipts, snapshots, and execution inputs enter existing tool/message logs; UI drafts and pure list reads do not add model context.
 
-## 任务管理页
+## Task-management page <a id="任务管理页"></a>
 
-根据用户提供的主界面位置，左侧“插件”正下方、工作区列表上方增加常驻“定时任务”看板入口；图标、缩进、行高、悬停和选中样式与“插件”一致。入口不是插件子菜单、设置子页或精选列表条目；没有任务时也保留。使用已有 `sidebar.panellist` 注册，当前 Plugins 的 order 为 0，原生任务入口采用其后的位置（建议 order 10），替换旧 ui-schedule 后不得出现两个任务入口；以真实最终侧栏顺序验证两者紧邻，不仅检查注册数值。
+Add a persistent Scheduled tasks entry directly below Plugins and above the workspace list, matching Plugins icon treatment, indentation, row height, hover, and selection. It is not a plugin submenu, settings subpage, or curated item, and remains visible with zero tasks. Register through existing `sidebar.panellist`; Plugins currently has order 0, so place native tasks next (suggested order 10). Replacing ui-schedule must not produce two task entries. Verify actual final adjacency, not only numeric registration values.
 
-点击入口选中“定时任务”，在主内容区打开任务管理面板，保留左侧工作区与会话导航，不弹第二个原生窗口。通过现有 `main` keyed panel 组装，并复用 Plugins 全页布局。进入面板不自动创建或激活 Agent/Session，不改变当前会话草稿；回到聊天后恢复其原草稿、滚动位置和选择。产品文案走 typed locale dictionaries，复用现有侧栏、表单、确认层、toast、日期/时区组件，不引入独立风格系统。
+Clicking selects Scheduled tasks and opens its management panel in the main content area while retaining workspace/Session navigation, without another native window. Use the existing `main` keyed panel and Plugins full-page layout. Entering neither creates nor activates an Agent/Session nor changes the current draft. Returning restores draft, scrolling, and selection. Product text uses typed locale dictionaries; reuse sidebar, forms, confirmations, toast, date/zone components rather than introducing a separate style system.
 
-面板顶部为标题“定时任务”和主按钮“新建任务”；其下为搜索、状态筛选和当前登录账户拥有的任务列表。每行显示标题、已启用/暂停、任务目标摘要、频率与时区、下次执行时间及最近运行状态；任务标题或整行的主点击区域打开该任务详情，独立行操作不触发详情点击。列表保留分页和选中项，空态提供“新建任务”与简短示例。首次加载显示列表 skeleton；加载失败显示重试，有旧数据时保留，不把查询失败当作空列表。账户未登录时显示门禁，不用“暂无任务”掩盖认证失败。时区同时显示可理解名称与 UTC 偏移，区分规则时区和本机下次时间。
+The panel header has Scheduled tasks and New task. Below it, show search, state filters, and the current account's tasks. Rows show title, enabled/paused state, instruction summary, frequency/zone, next execution, and latest run status. Title or primary row area opens detail; independent row actions do not. Retain paging and selection. Empty state offers New task and a brief example. Initial loading uses skeletons; failures offer retry and retain old data instead of pretending to be empty. Logged-out state shows an authentication gate, not no tasks. Zones display a recognizable name and UTC offset, distinguishing saved rule zone from the next time in the device zone.
 
-点击任务后在同一主面板展示详情，保留返回列表入口与原搜索/筛选/滚动位置；宽屏可以采用列表与详情分区，窄窗口转为列表→详情的单区导航，不强制打开右侧聊天栏。详情提供“任务配置”“运行历史”两个页签，并有明确“编辑”“删除”操作。任务配置显示完整标题、时间、间隔/重复、任务目标、时区、工作区和模型；点击编辑进入相同字段的表单。保存成功显示 Host 最新值，取消恢复存储值；未保存离开时确认是否放弃草稿。运行行显示计划时点、实际开始、状态、手动/补跑标识、持续时间、失败原因及“查看结果”；失败或未知仍可打开已有 Session，Session 已删除时显示结果不可用。结果文件通过现有 deliverables 入口读取，不允许前端任意读取 Host 路径。
+Detail stays in the same main panel with a back-to-list entry restoring search/filter/scroll. Wide layouts may split list/detail; narrow windows navigate between them without forcing the chat right sidebar. Detail has Task configuration and Run history tabs plus explicit Edit/Delete. Configuration displays full title, time, interval/recurrence, instruction, zone, workspace, and model. Editing uses the same fields. Successful save displays the latest Host values; cancel restores stored values. Leaving unsaved asks whether to discard. Run rows show planned/actual start, state, manual/catch-up markers, duration, failure reason, and View result. Failed/unknown runs may still open their Session; deleted Sessions show unavailable results. Files use existing deliverables access, never arbitrary frontend reads of Host paths.
 
-任务详情的删除确认明确显示任务标题，并说明“停止今后的执行，保留已有运行历史、会话和文件”。有活动运行时删除被阻止，并提供先停止本次运行的操作；停止需单独确认并等资源收束后才能删除。删除成功返回列表并移除任务行，由应用级 toast 报告结果；删除失败保留任务和详情，toast 给出可重试结果。暂停/恢复仍可快捷操作，创建和需要授权的修改展示完整摘要；保存冲突或字段校验失败保留草稿，错误放在字段/表单旁，不通过关闭表单丢弃输入。
+Delete confirmation names the task and explains that future executions stop while history, Sessions, and files remain. Active runs block deletion with a stop-current-run operation; stopping is separately confirmed and must settle before deletion. Successful deletion returns to the list, removes the row, and uses an application toast. Failure retains task/detail with a retryable toast. Pause/resume remain shortcuts. Creation and authorization-changing edits show a complete summary. Conflicts/validation failures retain drafts with field/form errors instead of closing and losing input.
 
-### 手动创建表单
+### Direct creation form
 
-在任务管理面板点击“新建任务”直接打开创建表单；不创建聊天、不发送模型请求、不需要用户理解工具参数。编辑复用同一个表单，标题为“编辑任务”；当前任务的配置完整回填。
+New task directly opens the form without creating a chat, sending a model request, or requiring tool-parameter knowledge. Edit reuses it under Edit task and fully prefills saved configuration.
 
-| 字段 | 控件与校验 |
+| Field | Control and validation |
 |---|---|
-| 标题 | 必填文本，例如“每日新闻简报”；去除首尾空白，最多 120 字符 |
-| 重复方式 | 仅一次、每天、工作日、选定星期、按间隔、高级 Cron；默认每天，由用户确认后启用 |
-| 执行时间 | 仅一次显示日期与时间；每天/每周显示固定钟点；按间隔显示首次执行日期时间；使用现有 24 小时日期/时间选择器 |
-| 间隔 | 仅“按间隔”显示数值与分钟/小时单位，最短 1 分钟；可见中文例如“每 2 小时”，不能与每天固定钟点同时生效 |
-| 星期 / Cron | 只在对应模式显示星期选择或五字段表达式，不要求普通用户填写 Cron；无效 Cron 显示字段错误且禁止提交 |
-| 任务目标 | 必填多行文本，保存为 instruction；例如“检索过去 24 小时新闻，按主题整理并附来源链接”，保留原文，不经模型改写 |
-| 时区 | 预填设备真实时区，提供可搜索选择；切换时保留所填本地钟点，并刷新时间预览 |
-| 工作区 | 必选已登记工作区；可以预填当前选择但不能后台创建不存在的目录 |
-| 模型 / 思考档 | 从当前账户有效目录选择；已保存默认模型可以预填，无有效选择时要求用户选，不自动选第一项 |
+| Title | Required trimmed text, e.g. Daily news briefing, at most 120 characters |
+| Recurrence | Once, daily, weekdays, selected weekdays, interval, advanced Cron; default daily, enabled after confirmation |
+| Execution time | Date/time for once; clock time for daily/weekly; first date/time for interval; reuse a 24-hour picker |
+| Interval | Numeric value and minute/hour unit only for interval mode; minimum one minute; understandable copy such as every two hours, mutually exclusive with daily clock time |
+| Weekdays / Cron | Weekday selector or five-field expression only for the relevant mode; ordinary users need not fill Cron; invalid Cron shows a field error and prevents submission |
+| Objective | Required multiline instruction, preserved without model rewriting; e.g. search the last 24 hours of news, organize by topic, and include sources |
+| Zone | Device's real zone prefilled with searchable choices; changes preserve local clock input and refresh preview |
+| Workspace | Required registered workspace; may prefill current selection but never create a missing directory in the background |
+| Model / effort | Valid current-account catalog choice; saved defaults may prefill, otherwise require selection rather than taking the first entry |
 
-重复方式切换只提交该模式的字段，旧模式隐藏字段不得残留到请求；来回切换可保留本地草稿，但不能形成 time 与 interval 双规则。每日 08:00 对应钟表规则，按间隔首次 08:00、每 2 小时对应 interval：保存 `firstAt` 和 `anchorAt`，初始下一目标为 firstAt，后续为 firstAt + N × seconds。未填写首次时间时，表单明确显示“保存后一个间隔首次执行”，Host 用接受保存时间加间隔确定 firstAt；首次绝对时点必须严格未来。修改间隔或首次时间重新确定锚点/规则版本并需确认；仅改名称/目标不改变时间相位。
+Switching recurrence submits only fields for that mode. Hidden values from another mode cannot remain in the request. Local draft retention across mode switches is allowed but cannot combine time and interval rules. Daily 08:00 is a clock rule; first 08:00 and every two hours is interval with `firstAt` and `anchorAt`, initially targeting firstAt and then firstAt + N × seconds. Without an explicit first time, show that the first run is one interval after saving; the Host sets firstAt from accepted-save time plus interval. An absolute first instant must be strictly future. Editing interval/first time reanchors, advances rule revision, and requires confirmation; name/objective edits do not reset phase.
 
-表单底部提供“取消”和“创建任务”（编辑为“保存修改”），并显示下三次执行时间、每次新建会话、应用必须运行和积分消耗说明。有效表单进入确认摘要再提交，不能点击创建就立即执行一次；想立即执行需另用已创建任务的“立即运行”。保存中阻止双击，服务器 requestId 去重；失败保留全部输入和明确重试。通过 Host 确认并保存后返回列表、定位新任务并打开其详情，不抢占其他正在运行的会话。
+The footer offers Cancel and Create task (Save changes for edits), next three times, and explanations of fresh Sessions, running-app requirement, and credits. A valid form proceeds through confirmation before submission; creation never immediately executes once. Immediate execution uses Run now on a saved task. Block duplicate save clicks and deduplicate server requestId. Failure retains all inputs and explicit retry. After Host confirmation/save, return to the list, locate the new task, and open detail without taking over another running conversation.
 
-控件标签和错误文字不靠 placeholder 代替；可键盘导航，打开日历/时间菜单后 Escape 关闭并恢复焦点。关闭创建表单或切到别的任务时，有未保存输入则询问是否放弃。实现验证浅色/深色、Windows 窗口控制区与小窗口不遮挡按钮、菜单不溢出视口。视觉采用仓库 [样式规则](../../web-styling.md) 和现有 Plugins 页 tokens/components，不新增配色、字体体系或外部组件库。
+Use labels and error text rather than placeholders alone. Support keyboard navigation; Escape closes calendar/time menus and restores focus. Closing creation or switching tasks asks before discarding unsaved input. Verify light/dark, Windows controls, and small windows so buttons remain visible and menus stay inside the viewport. Follow repository [styling rules](../../web-styling.md) and existing Plugins tokens/components without new palettes, typography, or external component libraries.
 
-每次 Run 在普通会话列表显示可识别标题和“定时任务”来源；任务页是历史聚合入口，不自动抢用户当前会话焦点。完成、失败、等待审批使用现有通知通道；若当前壳没有所需原生通知接口，实施时补入明确的只通知能力。通知失败不回滚已保存结果，也不将任务成功改成执行失败；不包含新闻正文、文件内容或秘密。未授权 OS 通知时界面状态仍可见。
+Each Run appears in ordinary Session lists with a recognizable title and Scheduled task origin. The task page aggregates history without stealing current-conversation focus. Completion, failure, and approval waits use existing notifications. If a shell lacks the needed native notification API, add an explicit notification-only capability. Notification failure never rolls back saved results or changes success to execution failure. Notifications contain no news body, file contents, or secrets. UI status remains visible without OS notification authorization.
 
-## 原生组装与安装包
+## Native composition and installer <a id="原生组装与安装包"></a>
 
-建议一个 Host owning package 与一个 Client owning package，复用现有 core/API/storage/interaction 服务。拟议位置为 `packages/schedule/asterhub-automation/` 和 `packages/client/ui-asterhub-automation/`；不用为不可替换的单实现另建 Service Definition/Provider/Consumer 三个空包，定义、提供和工具消费者可在 owning package 内分模块。
+Use one Host-owning and one Client-owning package, reusing core/API/storage/interaction services. Proposed locations are `packages/schedule/asterhub-automation/` and `packages/client/ui-asterhub-automation/`. A single nonreplaceable implementation does not need three empty Service Definition/Provider/Consumer packages; definitions, provider, and tools may be modules inside the owning package.
 
-通过 Desktop 专属组合挂载，进入 `apps/desktop-host` 的解析清单与 runtime materialization；Client 入口纳入桌面渲染器生成组合和打包。默认启动服务及常驻管理入口，不要求用户在插件页启用，不允许普通插件安装/卸载误停该产品核心功能。纯时间库打包为内部依赖，不挂载 DSH Schedule Bundle。
+Mount through Desktop-specific composition and include it in `apps/desktop-host` resolution and runtime materialization. Include the Client entry in desktop renderer generation and packaging. Service and persistent panel activate by default without plugin-page enablement; ordinary plugin installation/removal cannot accidentally stop this product capability. Ship the pure timing library as an internal dependency without mounting DSH Schedule Bundle.
 
-从 AsterHub Desktop 可选官方 bundle 目录/已选择 bundle 的 reconcile 中排除 `@deepseek-ai/dsh-experimental-schedule-bundle`，并确保 `schedule`、`ui-schedule`、Bundle 自带 `time-context` 不被该 Bundle 挂载。若桌面其他功能需要时间上下文，应由 AsterHub 组合单独声明且只加载一次。上游 CLI/SDK 和共享包源可保留，不全仓删除 Schedule。
+Exclude `@deepseek-ai/dsh-experimental-schedule-bundle` from Desktop's optional official bundle list and selected-bundle reconciliation. Its `schedule`, `ui-schedule`, and bundled `time-context` rows must not mount. Other desktop time-context needs are declared once by AsterHub composition. Upstream CLI/SDK and shared package source may remain; do not remove Schedule repository-wide.
 
-启动和配置迁移不得仅修改已有 README 或 UI 隐藏名称；实际 reserved desktop profile、安装依赖、Client 注册、工具 schema 和退出检查必须全部切换。不能把原生功能自动加入共享 web/headless/SDK profile，也不能为了移除 Bundle 删除用户其他插件。
+Startup/configuration changes must switch the actual reserved desktop profile, installed dependencies, Client registrations, tool schemas, and quit inspection, not merely hide names in README or UI. Do not automatically add native functionality to shared web/headless/SDK profiles or delete other user plugins while removing the old bundle.
 
-Desktop 自有 profile 归属为 reserved `desktop` 外部插件 profile 与应用创建的开发/runtime 镜像；普通 `web`、headless、SDK 及用户自建 profile 不迁移。幂等迁移只更新应用拥有的内置组合与旧 Schedule Bundle 选择，保留其他依赖/patch。若用户在 Desktop patch 中手动挂载旧 ScheduleService/ui-schedule，启动检查须在任何调度器获准工作前阻止两个服务同时激活，并显示冲突条目与修正操作；不静默删除用户 patch，也不允许自动运行互相重叠。
+Desktop owns its reserved `desktop` external-plugin profile and app-created development/runtime images. Ordinary web/headless/SDK/custom profiles do not migrate. Idempotent migration changes only app-owned built-in composition and old Schedule selection, retaining other dependencies/patches. If the Desktop patch manually mounts old ScheduleService/ui-schedule, startup detects conflict before either scheduler is admitted and shows conflicting rows and corrections. Never silently delete patches or permit overlapping automatic execution.
 
-安装自有 profile 存版本化 `automationCutover: 1` 标记，切换标记和完整应用组合写入同一配置文档；迁移完成前新调度不开始，升级启动路径也不先启动旧调度。若配置写入或实际加载检查失败，保持两个调度均不触发并呈现可恢复错误。产品回退不承诺自动恢复旧 Schedule：在实施此升级前同步收紧回退入口；检测标记而不支持它的构建必须拒绝该 profile，已有旧安装器无法识别标记时明确禁止覆盖降级并保留备份，不宣称可以透明回退。验收包括已有 profile、其他插件保持、用户手工旧行冲突、迁移中断、重复启动，以及非 Desktop 组合不受影响。
+Store versioned `automationCutover: 1` with the complete app composition in the installed profile's configuration document. New scheduling does not start before migration completes; upgrade startup never starts old scheduling first. A failed configuration write/load verification keeps both schedulers from triggering and reports a recoverable error. Product rollback does not promise automatic restoration of old Schedule. Tighten rollback admission with the upgrade: builds that recognize but do not support the marker refuse the profile; when older installers cannot recognize it, explicitly forbid overwrite downgrade and retain backup rather than claiming transparent rollback. Acceptance covers existing profiles, retained plugins, manually conflicting rows, interrupted migration, repeated startup, and unaffected non-Desktop composition.
 
-实施接入点如下；表中路径为现有 owner，新增方法和包仍是拟议设计，不代表已经具备该能力。
+Implementation entry points:
 
-| Owner | 必要接入 |
+| Owner | Required integration |
 |---|---|
-| `apps/desktop/src/project-manager.ts` | `createPluginProfile` 及开发/runtime profile 元数据改用 Desktop 专属内置组合；保留外部插件依赖 |
-| `apps/desktop-host/src/index.ts` | 在 profile runner 中加载原生 Host 服务；不新增绕过 dsh profile 的应用入口 |
-| `apps/desktop-host/package.json` 与 `apps/desktop/scripts/prepare-dsh.ts` | 明确 runtime 依赖解析并验证 Host/Client 产物及纯时间库均进入安装包 |
-| `packages/api/session-controller/src/agent.ts`、`commands.ts` | 共享 preset、模型选择、工作区登记和 Session owner；需要时补 Host-only 创建方法 |
-| `packages/webhook/webhook/src/session.ts` | 参考 fresh Session 的 setup、attachSession、权限与标题注册顺序，不直接调用 Webhook 业务接口 |
-| `packages/account/account-sub2api/src/index.ts` 与模型请求路径 | 补身份代次、切换准入与短期凭据许可，取消/收束旧账户任务后才更新 key |
-| `apps/desktop-host/src/quit-inspection.ts`、`update-tasks.ts` | 全局任务检查、更新调度准入锁和活动资源停止 |
-| `packages/client/ui-schedule` 的组件、slot/Remote 模式 | 可复用纯日期/时区组件与布局模式；原 same-session 数据源和 schedule Remote 不进入原生任务页 |
-| `packages/boot/app-boot/src/profile.ts` 的可选 bundle 解析 | 只在 Desktop 产品中排除旧 bundle，保留上游非 Desktop 组合行为 |
+| `apps/desktop/src/project-manager.ts` | `createPluginProfile` and development/runtime metadata use desktop-native composition while retaining external dependencies |
+| `apps/desktop-host/src/index.ts` | Load the native Host through the profile runner, without a launcher bypassing dsh profiles |
+| `apps/desktop-host/package.json` and `apps/desktop/scripts/prepare-dsh.ts` | Explicit runtime resolution and verification that Host/Client artifacts and timing library ship |
+| `packages/api/session-controller/src/agent.ts`, `commands.ts` | Share preset, model choice, workspace registration, and Session ownership; add Host-only creation if needed |
+| `packages/webhook/webhook/src/session.ts` | Reuse fresh-Session setup, attachSession, permission, and title ordering without calling Webhook business APIs |
+| `packages/account/account-sub2api/src/index.ts` and request paths | Add identity epochs, switching admission, and short credential permits; replace keys only after old-account work settles |
+| `apps/desktop-host/src/quit-inspection.ts`, `update-tasks.ts` | Global task checks, update admission locking, and active-resource stopping |
+| `packages/client/ui-schedule` components and slot/Remote patterns | Reuse pure date/zone controls and layout, excluding same-Session data sources and schedule Remote from the native panel |
+| Optional bundle resolution in `packages/boot/app-boot/src/profile.ts` | Exclude old bundle only for Desktop while retaining upstream non-Desktop behavior |
 
-退出检查覆盖全局任务表，而非仅已加载 Session 的 schedule family。窗口隐藏不停止服务；真正退出时提示启用任务暂停和活动运行被打断。更新安装先关闭调度准入，再按现有更新策略检查/处理活动 Run 与子 Agent、jobs、审批等待；接受停止的运行与资源完全停止后才关闭存储。仅未来定时任务不构成“运行中任务”，不阻止用户明确同意的安装；新版 Host 重新打开存储恢复未来目标。
+Quit inspection covers the global task table rather than only schedule families of loaded Sessions. Hiding the window keeps services alive; real quit warns about suspended enabled tasks and interrupted active runs. Update installation closes scheduling admission, then applies existing update policy to active Runs, descendants, jobs, and approval waits. Stop accepted runs/resources fully before closing storage. Future scheduled tasks alone are not running work and do not block an explicitly accepted installation; the new Host reopens storage and restores future targets.
 
-## 旧 Schedule 数据
+## Legacy Schedule data <a id="旧-schedule-数据"></a>
 
-DSH 原来的同会话提醒不静默改成新会话任务：模型选择、工作区、自足指令、账户身份和周期执行授权均不等价。第一次切换发现旧提醒时，显示明确说明，允许用户审阅后创建新的原生任务。旧 task domain 与历史 Session 日志原样保留、不自动删除或全库扫描迁移。
+Do not silently convert DSH same-Session reminders into fresh-Session tasks: model choice, workspace, self-contained instruction, account identity, and recurrence authorization are not equivalent. On first cutover with old reminders, explain the change and let the user review/create new native tasks. Retain old task domains and Session logs without automatic deletion or whole-database scanning/migration.
 
-Desktop 切换期间只能有一个自动调度实现活跃，先停止旧服务并等待 quiescence，再启动新服务。旧 Bundle 从产品选择中移除时不执行普通 uninstall 去删除用户包数据。新任务保存成功仍不推断旧任务已取消；切换后旧提醒不调度，并在迁移提示说明该事实。需要出具对应升级指南，列出手动重新创建与旧数据保留路径。
+Only one scheduler may activate during Desktop cutover: stop the old service and await quiescence before starting the new one. Removing old bundle selection does not invoke ordinary uninstall that deletes user package data. A successful new task does not imply the old reminder was canceled. Old reminders no longer schedule after cutover; explain this in migration guidance. Provide an upgrade guide with manual recreation and retained-data locations.
 
-## 验收标准
+## Acceptance criteria <a id="验收标准"></a>
 
-本文仅设计，以下是实施验收要求，不是已经通过的检查。时间与并发场景使用注入墙钟/受控计时器，隔离数据根、账户和监听资源，避免真实 sleep 与共享 CI 目录。
+This is a design; the following are required checks, not completed results. Timing/concurrency use injected wall clocks/controlled timers and isolated data roots, accounts, and listeners rather than real sleeps or shared CI directories.
 
-| 场景 | 必须观察到的结果 |
+| Scenario | Required observation |
 |---|---|
-| 聊天创建每日 08:00 新闻任务 | 用户确认后持久化；下三次预览与 Host 规则一致；重启不丢配置 |
-| 直接任务页创建 | 与聊天共用服务；取消不留下启用任务；不需模型代填表单 |
-| 主界面入口与面板导航 | “定时任务”紧邻“插件”下方，工作区列表上方；点击在主内容区打开，仅一次注册；返回聊天保留草稿 |
-| 本人任务列表与点击详情 | 当前账户任务正确加载；点击任务显示完整配置与历史；搜索/筛选状态在返回列表后保留 |
-| 手动标题/时间/间隔/目标表单 | 所有字段回显、必填校验；每天 08:00 与首次 08:00 每 2 小时不混用；不经模型调用创建 |
-| 编辑、取消、删除成功与失败 | 编辑回填；取消不保存；冲突保留草稿；删除确认后仅停止未来任务，失败不移除行 |
-| 连续两个周期 | 不同 Session ID，无继承对话；同工作区与固定目录模型；结果分别可导航 |
-| 托盘隐藏 | 不打开任务页也到期执行；不抢当前会话焦点 |
-| 退出/休眠跨多个周期 | Host 停止期间无执行；启动/恢复最多补最新一次；用户主动暂停期间的任务不补 |
-| DST 与时钟回拨 | 缺失跳过/重叠较早一次；已消费发生时点不再次执行 |
-| 同任务长运行和 Run now 双击 | 同任务不并发；手动 requestId 幂等；不消耗下次周期 |
-| 修改/暂停与到期竞争 | 按 FIFO 的持久化先后线性化；本次快照不混入后改配置 |
-| 改名、暂停/恢复与执行授权 | 改名或恢复不意外撤销授权；暂停清除未认领待项，释放槽位也不运行旧项 |
-| 回执丢失、重启和历史裁剪 | 30 天窗口内原 requestId 返回原回执；同键异参拒绝；过期请求不得自动重新执行 |
-| 在账户 A 确认后切到 B 再提交 | 旧 ticket/requestId 不重绑定 B；旧回执不在 B 界面显示 |
-| 停止后回答遗留问题或在结束检查时续聊 | 原 Run 不重新执行；新输入走明确的普通手动会话准入 |
-| 账户切换/登出，含请求发起竞态 | 旧任务不使用新账户 key/额度；停止旧 Run 后切换；新账户不可读取旧任务 |
-| 模型下架/目录不可用/无工作区 | 无自动模型调用；明确 blocked 原因；不创建伪成功 Session |
-| 等待审批和超时停止 | UI 有可进入的等待会话；无自动放行；资源停止后释放槽位 |
-| 运行内部及子代理创建任务 | Host 拒绝，即使工具被额外注入也不创建任务 |
-| 认领、Session flush、工具副作用、结算各崩溃点 | 不默默重复副作用；未知显示 unknown 与已有 Session；手动重跑需告知风险 |
-| 存储损坏/另一 Host owner | fail closed；原数据保留；不返回空目录或启用第二个调度器 |
-| 更新打断与安装恢复 | 停止准入、收束活动资源、存储关闭按序完成；新版恢复任务 |
-| 历史裁剪和删除 | 水位仍在；不删除会话/交付物；软删除无未来触发 |
-| 真正安装包 | 离线已携带 Host/Client 和时间依赖；入口默认可见；无原 Schedule 工具或 Bundle 激活 |
-| 已有 Desktop profile 升级、手工旧调度行和降级 | 其他插件保持；冲突不双调度；迁移失败不自动触发；非 Desktop 不变；不宣称旧构建自动支持回退 |
-| 删除历史达到配额后清理 | 合格本人删除记录可清理且释放配额；不清理未过幂等期或其他账户数据 |
+| Chat creates daily 08:00 news task | Durable only after confirmation; next-three preview matches Host rules; restart retains configuration |
+| Direct task-page creation | Same service as chat; cancellation leaves no enabled task; no model filling required |
+| Main entry and panel navigation | Scheduled tasks directly below Plugins and above workspaces; one main-panel registration; returning retains chat draft |
+| Own tasks and detail navigation | Correct current-account loading, full configuration/history, retained search/filter on return |
+| Manual title/time/interval/objective form | Prefill and required validation; distinguish daily 08:00 from first 08:00/every two hours; no model call to create |
+| Edit, cancel, delete success/failure | Prefill; cancel saves nothing; conflict retains draft; confirmed deletion stops future work only; failure retains row |
+| Two consecutive occurrences | Distinct Session IDs without inherited conversation; same workspace/fixed catalog model; independently navigable results |
+| Tray hidden | Due work executes without the panel open or taking conversation focus |
+| Exit/sleep across occurrences | No execution while stopped; startup/recovery catches up at most latest; paused periods never catch up |
+| DST and clock rollback | Skip missing times/earlier overlap; consumed occurrences never execute again |
+| Long same-task run and double Run now | No task overlap; manual requestId idempotency; next recurrence unchanged |
+| Edit/pause racing due time | Linearize by FIFO durable order; current snapshot excludes later edits |
+| Rename, pause/resume, authorization | Rename/resume do not unexpectedly revoke consent; pause clears unclaimed pending work and capacity release never revives it |
+| Lost receipt, restart, history pruning | Original requestId returns original receipt for 30 days; different parameters rejected; expiry never automatically reexecutes |
+| Confirm under A, switch to B, submit | Old ticket/requestId never rebound to B; old receipt never shown under B |
+| Answer retained question after stop or send during ending | Original Run never resumes; new input uses explicit ordinary manual admission |
+| Account switch/logout including request-start race | Old task never uses new account credits/key; stop old Run before replacement; new account cannot read old tasks |
+| Removed model/unavailable catalog/no workspace | No automatic request; explicit blocked reason; no fabricated successful Session |
+| Approval waits and timeout | Navigable waiting Session, no automatic approval, capacity released after resource settlement |
+| Run or descendant creates tasks | Host refuses even if tools are additionally injected |
+| Crash at reservation, Session flush, tool effect, settlement | No silent duplicated effects; unknown plus retained Session; manual retry explains risk |
+| Corrupt storage/second Host owner | Fail closed, preserve data, never return an empty catalog or start a second scheduler |
+| Update interruption and recovery | Admission closure, active-resource settlement, and storage close are ordered; new version restores tasks |
+| History pruning and deletion | Watermark retained, Sessions/deliverables preserved, soft deletion has no future trigger |
+| Real installer | Host/Client/timing dependencies available offline, default visible entry, no old Schedule tool/bundle activation |
+| Existing profile upgrade, manual old rows, downgrade | Other plugins retained, no dual scheduling, failed migration never triggers, non-Desktop unchanged, no claim of automatic old-build rollback |
+| Cleanup after deleted history reaches quota | Eligible own deleted records release capacity without deleting unexpired-idempotency or foreign-account data |
 
-验证面包括 focused Host 生命周期/存储测试、账户隔离与模型路由集成、Client Remote/交互测试、真实桌面烟测、模型可见消息 keyless snapshot 以及 Windows 打包后的任务创建和短周期实测。模型调用需获授权并真实执行；不能用只验证投递或编译替代执行与交付证明。涉及产品 UI 的 PR 使用真实服务与模型路径录制 GIF。
+Evidence includes focused Host lifecycle/storage tests, account isolation and routing integration, Client Remote/interaction tests, real desktop smoke, model-visible keyless snapshots, and Windows packaged task creation/short-interval runs. Model calls need authorization and real execution; delivery-only or compilation checks do not establish execution/deliverable proof. Product-UI PRs record a GIF through the real service/model path.
 
-## 依据与审阅事项
+## References and review items <a id="依据与审阅事项"></a>
 
-- [Hermes Cron 用户指南](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/cron.md)和[内部设计](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/developer-guide/cron-internals.md)：参考 fresh Session、任务生命周期、执行前检查和执行/投递结果分离；不照搬其 provider fallback、脚本/云端拓扑和全部恢复机制。
-- [DSH Schedule](../../../packages/schedule/schedule/README.zh.md)与[任务 UI](../../../packages/client/ui-schedule/README.zh.md)：已有钟表规则、原 Session 投递、无每次新会话/暂停/立即执行；这些现有行为不是原生任务设计的完成证据。
-- [Agent Loop 创建入口](../../../packages/core/agent-loop/README.zh.md)、[架构](../../architecture.md)与[防御规则](../../defensive-patterns.md)：复用公开 Agent/Session API、持久消息和精确 teardown；不将 idle 当作一条消息完成。
-- [storage-domain](../../../packages/storage/storage-domain/README.md)：durable 单记录写入，无跨表事务；任务与认领原子性据此设计。
-- [Desktop 生命周期](../../../apps/desktop/README.zh.md)与[账户服务](../../../packages/account/account-sub2api/README.zh.md)：关窗/退出区别、固定路由和 Host 凭据。旧文档中与新任务能力冲突的说明由实施同步更新，本文不改写当前运行事实。
+- [Hermes Cron user guide](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/cron.md) and [internals](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/developer-guide/cron-internals.md): reuse ideas for fresh Sessions, task lifecycle, preflight, and separate execution/delivery results; do not copy provider fallback, script/cloud topology, or every recovery mechanism.
+- [DSH Schedule](../../../packages/schedule/schedule/README.md) and [task UI](../../../packages/client/ui-schedule/README.md): existing clock rules and original-Session delivery lack fresh execution Sessions, pause, and Run now; they do not prove completion of this design.
+- [Agent Loop creation](../../../packages/core/agent-loop/README.md), [architecture](../../architecture.md), and [defensive rules](../../defensive-patterns.md): reuse public Agent/Session APIs, durable messages, and exact teardown; idle never proves one message complete.
+- [storage-domain](../../../packages/storage/storage-domain/README.md): durable single-record writes without cross-table transactions determine task/reservation atomicity.
+- [Desktop lifecycle](../../../apps/desktop/README.md) and [account service](../../../packages/account/account-sub2api/README.md): window-close versus quit, fixed routing, and Host credentials. Implementation updates conflicting old documentation; this design does not rewrite current runtime facts.
 
-需用户审阅的设计取值：固定创建时模型而非追随全局默认；周期恢复补最近一次，但手动暂停期间不补；同任务不重叠、建议两项全局并发；审批等待计入默认 30 分钟运行时限；运行中先停止才能删除且删除保留历史；先仅在应用内交付，不接入 IM/邮件。可调整这些取值而不改变用户已确认的原生组装、运行期调度和每轮新会话方向。
+Reviewable choices: fix the creation-time model rather than follow global defaults; catch up latest recurrence after recovery but never paused time; no same-task overlap and a suggested global capacity of two; approval waits count toward 30-minute timeout; stop before deleting active tasks and retain history; initially deliver in-app without IM/email. These values may change without altering the confirmed direction of native composition, runtime-only scheduling, and fresh Sessions per execution.

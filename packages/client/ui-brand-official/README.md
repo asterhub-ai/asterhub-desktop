@@ -1,5 +1,5 @@
 ---
-description: "Official AsterHub brand occupants for the sidebar, active only in official builds; for users and maintainers choosing or replacing brand presentation."
+description: "AsterHub sidebar and conversation identity for every desktop build profile; guidance for maintainers replacing brand presentation."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package gives an `official` client build the AsterHub mark and name in the sidebar. Other build profiles keep the shell's fish mark and local-build label, while the conversation hero always uses the animated fish. Choose it for deployments branded as AsterHub; deployments with another identity should provide a replacement brand package. It has no runtime state and does not affect model requests.
+This package places the AsterHub mark and name in the sidebar and conversation hero for every client build profile. Choose it for AsterHub desktop builds; another product identity requires a replacement brand package. The registrations keep no runtime state and do not affect model requests.
 
 ## Table of Contents
 

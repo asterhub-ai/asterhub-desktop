@@ -92,6 +92,8 @@
     "@deepseek-ai/dsh-plugin-manager": "workspace:*",
     "@deepseek-ai/dsh-client-ui-plugin-manager": "workspace:*",
     "@deepseek-ai/dsh-office-to-pdf": "workspace:*",
-    "@deepseek-ai/dsh-account-sub2api": "workspace:*"
+    "@deepseek-ai/dsh-account-sub2api": "workspace:*",
+    "@deepseek-ai/dsh-asterhub-automation": "workspace:*",
+    "@deepseek-ai/dsh-schedule": "workspace:*"
   }
 }

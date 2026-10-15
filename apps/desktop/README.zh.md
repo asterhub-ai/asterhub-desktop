@@ -164,6 +164,8 @@ Desktop 在 Host 启动后、打开工作区前检查模型 API Key 引用是否
 
 ## 打包
 
+桌面运行时固定使用 Electron 44.7.0 和 node-addon-require-builtin 0.1.9。打包使用 electron-builder 与 app-builder-lib 26.17.0。
+
 <a id="release-versions"></a>
 
 ### 发布版本

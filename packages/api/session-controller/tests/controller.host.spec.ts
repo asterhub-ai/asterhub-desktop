@@ -16,6 +16,28 @@ const defaults = {
 }
 
 describe('SessionController facade', () => {
+  it('keeps inspection metadata and events on the same observed cut', async () => {
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SessionStore)
+      await ctx.plugin(AgentRegistry)
+      const sessionId = SessionId('observed-cut')
+      ctx.sessions.create(sessionId, { meta: { cwd: '/workspace' } })
+      const controller = createSessionTestController(ctx, defaults)
+      const observation = await ctx.sessionQuery.observeSession(sessionId, { projectionMode: 'none' })
+      const header: SessionHeader = { ...observation.header, cwd: '/observed' }
+      vi.spyOn(ctx.sessionQuery, 'observeSession').mockResolvedValueOnce({ ...observation, header })
+
+      await expect(controller.inspect(sessionId)).resolves.toEqual({
+        meta: header,
+        inheritedEventCount: observation.inheritedEventCount,
+        events: observation.events,
+      })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('does not require the Tools service', () => {
     expect(SessionController.inject).not.toContain('tools')
   })

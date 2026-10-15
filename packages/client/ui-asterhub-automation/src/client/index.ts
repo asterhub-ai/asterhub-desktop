@@ -8,6 +8,7 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
@@ -18,7 +19,7 @@ const PANEL_ID = 'asterhub-automation' as MainPanelId
 import type {
   AutomationTask, AutomationTaskId, AutomationRun, AutomationRunId,
   AutomationDraft, AutomationChoices, AutomationPreview,
-  AutomationOperation, AutomationPreparedOperation, AutomationMutationResult, AutomationRunsPage,
+  AutomationOperation, AutomationMutationResult, AutomationRunsPage,
 } from '@deepseek-ai/dsh-asterhub-automation/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import automationRemote from '@deepseek-ai/dsh-asterhub-automation/remote'
@@ -67,7 +68,7 @@ async function prepareOperation(
   ctx: ClientContext,
   operation: AutomationOperation,
 ): Promise<{ ok: true; prepared: PendingOperation } | { ok: false; errorCode: string }> {
-  const prepared = await ctx.remote.automation.prepareOperation(operation) as { ok: true; value: AutomationPreparedOperation } | { ok: false; error: { code: string } }
+  const prepared = await ctx.remote.automation.prepareOperation(operation)
   if (!prepared.ok) {
     return { ok: false, errorCode: prepared.error.code }
   }
@@ -115,17 +116,11 @@ function registerUi(ctx: ClientContext): void {
     list: async () => {
       const result = await ctx.remote.automation.list({ limit: 100, status: 'all' })
       if (!result.ok) {
-        // Detect unauthorized vs generic error
-        if ((result.error as any).code === 'unauthorized' || (result.error as any).code === 'not_authenticated') {
-          const err = new Error('unauthorized') as Error & { code: string }
-          err.code = 'unauthorized'
-          throw err
-        }
         throw result.error
       }
       return [...result.value.tasks]
     },
-    subscribeChanged: listener => ctx.remote.$on('automation/changed' as any, listener),
+    subscribeChanged: listener => ctx.remote.$on('automation/changed', listener),
     subscribeReset: listener => ctx.on('connection/reset', listener),
   })
 
@@ -137,7 +132,7 @@ function registerUi(ctx: ClientContext): void {
 
   // Subscribe to settled catalog snapshots for run state notifications
   // NOT on the initial-history notification: wait for ready status
-  ctx.remote.$on('automation/changed' as any, () => {
+  ctx.remote.$on('automation/changed', () => {
     void manager.onRetry()
   })
 
@@ -162,7 +157,7 @@ function registerUi(ctx: ClientContext): void {
       if (current.state === 'succeeded' || current.state === 'failed' || current.state === 'waiting-approval') {
         const kind = current.state === 'succeeded' ? 'runStarted' :
           current.state === 'failed' ? 'error' :
-          'runStarted'
+            'runStarted'
         toast.report({ kind, taskId })
       }
     }
@@ -170,7 +165,7 @@ function registerUi(ctx: ClientContext): void {
   })
 
   // Subscribe to account-changed: reset identity so old-account drafts cannot survive
-  ctx.remote.$on('automation/account-changed' as any, () => {
+  ctx.remote.$on('automation/account-changed', () => {
     // Clear diff cache for run notifications
     lastRunSnapshot = new Map()
     // Clear toast queue
@@ -260,7 +255,7 @@ function registerUi(ctx: ClientContext): void {
   }
 
   // Main panel
-  ctx.get('slots')!.inject('main', () => ctx.get('slots')!.register({
+  ctx.slots.inject('main', () => ctx.slots.register({
     name: 'main',
     key: PANEL_ID,
     locale: NS,
@@ -270,7 +265,7 @@ function registerUi(ctx: ClientContext): void {
   }, AutomationPanel))
 
   // Sidebar entry - order 10 directly below Plugins (order 0)
-  ctx.get('slots')!.inject('sidebar.panellist', () => ctx.get('slots')!.register({
+  ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
     name: 'sidebar.panellist',
     id: PANEL_ID,
     order: 10,

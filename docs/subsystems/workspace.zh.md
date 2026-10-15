@@ -166,6 +166,166 @@ interface SessionActivity {
 
 [`dsh-workspace-controller`](../../packages/api/workspace-controller) 经 `ctx.workspaceRegistry` 向 GUI 客户端提供工作区 CRUD，[`dsh-session-controller`](../../packages/api/session-controller) 执行上文「先建会话再 attach」的流程。[dsh-agent-instructions](../../packages/context/agent-instructions) 尽管名字如此，却**不是**消费方：它在 agent 自己的 cwd 下发现 AGENTS.md 风格的指令文件，从不触碰 `ctx.workspaceRegistry`——两者共用的这个词指的是用户的工作目录，而非本注册表的实体。
 
+## 项目归属与归档准入
+
+[项目存储](../../packages/workspace/project-storage/README.zh.md)独立于侧栏记录解析持久 Session 归属。归档准入携带调用方停止活动工作的请求；持久项目变更通知包含新发布的绑定和 manifest。
+
+```ts type-equiv
+/**
+ * Project binding and manifest snapshot published after a durable mutation.
+ */
+interface ProjectStorageChanged {
+  readonly id: ProjectId
+  readonly binding: ProjectBinding | undefined
+  readonly manifest: PortableProjectManifest | undefined
+}
+```
+
+```ts type-equiv
+/** Archive admission request with caller options for the admit waterfall. */
+interface SessionArchiveAdmitRequest {
+  readonly sessionId: SessionId
+  /** Whether the caller asked providers to stop running work. */
+  readonly stopActivity: boolean
+}
+```
+
+## 原生服务请求与结果类型
+
+以下类型定义原生账号、工作区和任务服务之间的公开输入与结果。
+
+```ts type-equiv
+/** Request to inspect a directory before registration or adoption. */
+interface WorkspaceInspectRequest {
+  readonly path: string
+}
+```
+
+```ts type-equiv
+/** Result of inspecting a directory before creating or adopting a Workspace. */
+type WorkspaceInspectionView =
+  | { readonly kind: 'new'; readonly root: string }
+  | {
+    readonly kind: 'existing'
+    readonly root: string
+    readonly projectId: string
+    readonly title: string
+    readonly sessionCount: number
+    readonly digest: string
+  }
+  | {
+    readonly kind: 'registered'
+    readonly root: string
+    readonly workspaceId: WorkspaceId
+    readonly title: string
+    readonly sessionCount: number
+    readonly digest: string
+  }
+  | {
+    readonly kind: 'legacy'
+    readonly root: string
+    readonly projectId: string
+    readonly title: string
+    readonly sessionCount: number
+    readonly digest: string
+  }
+```
+
+```ts type-equiv
+/** Request to confirm and adopt or create a project workspace. */
+interface WorkspaceOpenProjectRequest {
+  readonly path: string
+  readonly mode: 'new' | 'existing' | 'legacy'
+  readonly expectedId?: string
+  readonly expectedDigest?: string
+}
+```
+
+```ts type-equiv
+/**
+ * Read-only discovery of legacy Session membership for a selected project root.
+ */
+interface LegacySourceProvider {
+  inspect(root: string, signal?: AbortSignal): Promise<LegacyProjectProposal | undefined>
+}
+```
+
+```ts type-equiv
+/**
+ * Copy and verify confirmed legacy history into a destination project before publication.
+ */
+type ProjectLegacyAdopter = (proposal: LegacyProjectProposal, root: string, signal?: AbortSignal) => Promise<PortableProjectManifest>
+```
+
+```ts type-equiv
+/**
+ * Validated project state and confirmation facts required before opening existing data.
+ */
+type ProjectInspection =
+  | { readonly kind: 'new'; readonly root: string }
+  | { readonly kind: 'existing'; readonly root: string; readonly manifest: PortableProjectManifest; readonly digest: string }
+  | { readonly kind: 'registered'; readonly binding: ProjectBinding; readonly manifest: PortableProjectManifest; readonly digest: string }
+  | { readonly kind: 'legacy'; readonly root: string; readonly proposal: LegacyProjectProposal; readonly digest: string }
+```
+
+```ts type-equiv
+/**
+ * Project root and explicit open mode, with inspected identity and digest for confirmation.
+ */
+interface OpenProjectRequest {
+  readonly root: string
+  readonly mode: 'new' | 'existing' | 'legacy'
+  readonly expectedId?: ProjectId
+  readonly expectedDigest?: string
+}
+```
+
+```ts type-equiv
+/**
+ * Machine-local association between a portable project identity and its canonical root.
+ */
+interface ProjectBinding {
+  readonly id: ProjectId
+  readonly root: string
+  readonly revision: ProjectBindingRevision
+}
+```
+
+```ts type-equiv
+/** Stable, portable identity stored in `.aster/project.json`. */
+type ProjectId = Branded<'ProjectId'>
+```
+
+```ts type-equiv
+/**
+ * Authoritative project identity, Session membership, and sidebar ordering persisted beside the project.
+ */
+interface PortableProjectManifest {
+  readonly schemaVersion: 1
+  readonly id: ProjectId
+  readonly title: string
+  readonly createdAt: number
+  readonly sessions: readonly ProjectSessionRecord[]
+  readonly sessionOrder: readonly SessionId[]
+  readonly pinnedSessionIds: readonly SessionId[]
+  readonly archivedSessionIds: readonly SessionId[]
+}
+```
+
+```ts type-equiv
+/**
+ * Resolved project-owned directories for one registered Session.
+ */
+interface ProjectSessionLocation {
+  readonly projectId: ProjectId
+  readonly projectRoot: string
+  readonly relativeCwd: string
+  readonly sessionsRoot: string
+  readonly attachmentsRoot: string
+  readonly bindingRevision: ProjectBindingRevision
+}
+```
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -223,6 +383,127 @@ Host service backing the generated `ctx.remote.directoryPicker` namespace. The s
 ```
 
 Source: [`packages/api/workspace-controller/src/directory-picker.ts`](../../packages/api/workspace-controller/src/directory-picker.ts)
+
+<a id="ctxprojectstorage--projectstorageservice"></a>
+
+### `ctx.projectStorage` — `ProjectStorageService`
+
+Host-facing Cordis service. Register at startup independently of Workspace and Session persistence.
+
+```ts cordis-catalog
+/**
+ * Register read-only legacy discovery for this plugin lifetime.
+ * @param provider - Plugin-owned legacy discovery callback.
+ * @returns Disposer that unregisters this discovery source.
+ */
+registerLegacySource(provider: LegacySourceProvider): () => void | Promise<void>
+
+/**
+ * Register the single legacy adoption implementation for this plugin lifetime.
+ * @param adopter - Plugin-owned callback that copies and verifies confirmed history.
+ * @returns Disposer that unregisters this adopter.
+ */
+registerLegacyAdopter(adopter: ProjectLegacyAdopter): () => void | Promise<void>
+
+/**
+ * Inspect project metadata and registration without publishing a binding.
+ * @param root - Selected project directory.
+ * @param signal - Optional filesystem cancellation.
+ * @returns Validated new, existing, registered, or legacy project state.
+ */
+inspect(root: string, signal?: AbortSignal): Promise<ProjectInspection>
+
+/**
+ * Confirm and publish a project binding after validating its current metadata.
+ * @param request - Root, explicit open mode, and inspected confirmation facts.
+ * @param signal - Optional mutation cancellation.
+ * @returns Durable binding for the canonical project root.
+ */
+open(request: OpenProjectRequest, signal?: AbortSignal): Promise<ProjectBinding>
+
+/**
+ * Read the machine-local project registry.
+ * @returns Snapshot of registered project bindings.
+ */
+list(): readonly ProjectBinding[]
+
+/**
+ * Observe the current availability of one registered project.
+ * @param id - Registered project identity.
+ * @param signal - Optional filesystem cancellation.
+ * @returns Available, missing, or read-only status.
+ */
+status(id: ProjectId, signal?: AbortSignal): Promise<'available' | 'missing' | 'read-only'>
+
+/**
+ * Read the validated manifest for a registered project.
+ * @param id - Registered project identity.
+ * @returns Current portable manifest snapshot.
+ */
+manifest(id: ProjectId): PortableProjectManifest
+
+/**
+ * Persist one Session's membership in its registered project.
+ * @param header - Immutable Session identity and execution directory.
+ * @param signal - Optional mutation cancellation.
+ * @returns Project-owned Session and attachment locations.
+ */
+bindSession(header: SessionHeader, signal?: AbortSignal): Promise<ProjectSessionLocation>
+
+/**
+ * Resolve Session storage from registered project membership.
+ * @param id - Session identity to locate.
+ * @returns Project-owned locations, or undefined when no project owns the Session.
+ */
+locateSession(id: SessionId): ProjectSessionLocation | undefined
+
+/**
+ * Resolve a Session's execution directory through its portable project membership.
+ * @param header - Session whose registered membership is being resolved.
+ * @returns Project-bound execution directory, or undefined when unregistered.
+ */
+executionCwd(header: SessionHeader): string | undefined
+
+/**
+ * Persist the project's complete Session display order.
+ * @param id - Registered project identity.
+ * @param orderedIds - Unique Session identities in the requested order.
+ */
+reorderSessions(id: ProjectId, orderedIds: readonly SessionId[]): Promise<void>
+
+/**
+ * Update portable archive membership without deleting Session data.
+ * @param id - Registered project identity.
+ * @param sessionId - Session owned by that project.
+ * @param archived - Requested archive membership.
+ */
+setSessionArchived(id: ProjectId, sessionId: SessionId, archived: boolean): Promise<void>
+
+/**
+ * Update portable pin membership for one project-owned Session.
+ * @param id - Registered project identity.
+ * @param sessionId - Session owned by that project.
+ * @param pinned - Requested pin membership.
+ */
+setSessionPinned(id: ProjectId, sessionId: SessionId, pinned: boolean): Promise<void>
+
+/**
+ * Persist a validated project display title.
+ * @param id - Registered project identity.
+ * @param title - Nonblank project title within the metadata limit.
+ */
+rename(id: ProjectId, title: string): Promise<void>
+
+/**
+ * Remove a machine-local binding while retaining all project files.
+ * @param id - Registered project identity to forget.
+ */
+unregister(id: ProjectId): Promise<void>
+```
+
+Types: [SessionHeader](persistence.zh.md) · [SessionId](core.zh.md)
+
+Source: [`packages/workspace/project-storage/src/index.ts`](../../packages/workspace/project-storage/src/index.ts)
 
 <a id="ctxterminalcontroller--terminalcontroller"></a>
 
@@ -337,6 +618,22 @@ Host service backing the generated `ctx.remote.workspace` namespace.
  * @returns the Workspace and whether this call created it.
  */
 @Remote('create') create(request: WorkspaceCreateRequest): Promise<WorkspaceCreateValue>
+
+/**
+ * Inspect a directory before creating or adopting a Workspace.
+ * @param request - path to inspect.
+ * @param signal - caller cancellation signal.
+ * @returns the inspection view (new, existing, registered, or legacy).
+ */
+@Remote('inspect') inspect(request: WorkspaceInspectRequest, signal: AbortSignal): Promise<WorkspaceInspectionView>
+
+/**
+ * Confirm and open an existing, legacy, or new project directory.
+ * @param request - confirmed parameters including path, mode, and optional expected ID/digest.
+ * @param signal - caller cancellation signal.
+ * @returns the created or resolved Workspace projection.
+ */
+@Remote('openProject') openProject(request: WorkspaceOpenProjectRequest, signal: AbortSignal): Promise<WorkspaceCreateValue>
 
 /**
  * Initialize or reuse the default Workspace during first-use startup. The
@@ -547,13 +844,14 @@ insertBefore(id: WorkspaceId, beforeId?: WorkspaceId): Promise<readonly Workspac
  * Without `stopActivity` the session must also be inactive: the
  * `workspace/session-activity` waterfall is asked once, and any reported
  * activity rejects with {@link WorkspaceActiveSessionError} before anything
- * is written. With `stopActivity` the archive is written without an
- * activity check, and the `workspace/session-stop` providers are then asked
- * to stop the session's work: the durable archive set is what a provider's
- * `agent/pre-step` gate reads, so every wake the stops induce is already
- * blocked. Archiving drops the session's pin in the same durable write
- * (pinning and archival are mutually exclusive). An already archived id
- * resolves without writing, asking, or stopping.
+ * is written. With `stopActivity` the `workspace/session-archive/admit`
+ * waterfall runs before the durable write: a listener may stop and await
+ * running work (e.g. an automation run) before the archive set is
+ * committed. The default (no listeners) delegates unchanged — the archive
+ * is written and `workspace/session-stop` is dispatched after, as before.
+ * Archiving drops the session's pin in the same durable write (pinning and
+ * archival are mutually exclusive). An already archived id resolves without
+ * writing, asking, or stopping.
  * @param sessionId - The session to archive.
  * @param options - Whether running work is stopped instead of refusing.
  * @returns resolution after durability and, with `stopActivity`, after every stop request was issued.
@@ -605,6 +903,27 @@ Types: [SessionId](core.zh.md)
 
 Source: [`packages/workspace/workspace/src/index.ts`](../../packages/workspace/workspace/src/index.ts)
 
+<a id="project-storage-events"></a>
+
+### `project-storage/*` events
+
+<a id="project-storagechanged--emit"></a>
+
+#### `project-storage/changed` — emit
+
+Publish a project manifest or locator change after durable storage.
+
+```ts cordis-catalog
+/**
+ * Publish a project manifest or locator change after durable storage.
+ * @param change - the affected project binding and manifest projection.
+ * @mode emit
+ */
+'project-storage/changed'(change: ProjectStorageChanged): void
+```
+
+Source: [`packages/workspace/project-storage/src/index.ts`](../../packages/workspace/project-storage/src/index.ts)
+
 <a id="workspace-events"></a>
 
 ### `workspace/*` events
@@ -627,6 +946,30 @@ Ask the composed providers what still runs for a session before it is archived. 
  * @mode waterfall
  */
 'workspace/session-activity'( request: SessionActivityRequest, next: () => Promise<readonly SessionActivity[]>, ): Promise<readonly SessionActivity[]>
+```
+
+Source: [`packages/workspace/workspace/src/index.ts`](../../packages/workspace/workspace/src/index.ts)
+
+<a id="workspacesession-archiveadmit--waterfall"></a>
+
+#### `workspace/session-archive/admit` — waterfall
+
+Admit one archive request before the registry writes the archive set. Called after the session is known and (when `stopActivity` is false) after the activity check passes; a listener may stop and await running work before allowing the write to proceed, or reject to refuse the archive. The default (no listeners) delegates unchanged. A listener that needs to await teardown must NOT hold the registry FIFO — it should release it before awaiting long-running stop operations.
+
+```ts cordis-catalog
+/**
+ * Admit one archive request before the registry writes the archive set.
+ * Called after the session is known and (when `stopActivity` is false)
+ * after the activity check passes; a listener may stop and await running
+ * work before allowing the write to proceed, or reject to refuse the
+ * archive. The default (no listeners) delegates unchanged. A listener
+ * that needs to await teardown must NOT hold the registry FIFO — it
+ * should release it before awaiting long-running stop operations.
+ * @param request - the session about to be archived, with caller options.
+ * @param next - delegate to the remaining providers.
+ * @mode waterfall
+ */
+'workspace/session-archive/admit'( request: SessionArchiveAdmitRequest, next: () => Promise<void>, ): Promise<void>
 ```
 
 Source: [`packages/workspace/workspace/src/index.ts`](../../packages/workspace/workspace/src/index.ts)

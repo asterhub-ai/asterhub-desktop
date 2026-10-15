@@ -12,7 +12,11 @@ import type {
 /** Table type for automation tasks. */
 export type AutomationTaskTable = KvTable<AutomationTaskId, AutomationTask>
 
-/** Opens the automation domain and validates stored records. */
+/**
+ * Opens the automation domain and validates stored records.
+ * @param ctx - Host Cordis context supplying the required services.
+ * @returns Opened schedule store whose domain closes with its owning plugin.
+ */
 export async function openAutomationStore(ctx: Context): Promise<AutomationStore> {
   const domain = await ctx.storageDomain.open(automationDomain)
   const table = domain.table('tasks')
@@ -58,7 +62,12 @@ export class AutomationStore {
     this.index = this.buildIndex()
   }
 
-  /** Static factory for opening a store from validated domain/table. */
+  /**
+   * Static factory for opening a store from validated domain/table.
+   * @param domain - Opened schedule storage domain owned by this store.
+   * @param table - Task table within the schedule domain.
+   * @returns Store with a validated in-memory index over the supplied table.
+   */
   static open(domain: Domain<typeof automationDomain>, table: AutomationTaskTable): AutomationStore {
     return new AutomationStore(domain, table)
   }
@@ -106,40 +115,67 @@ export class AutomationStore {
     return index
   }
 
-  /** Get all tasks. */
+  /**
+   * Get all tasks.
+   * @returns Current task aggregates in storage order.
+   */
   tasks(): readonly AutomationTask[] {
     return [...this.table.entries()].map(([, task]) => task)
   }
-  /** Get a task by id. */
+  /**
+   * Get a task by id.
+   * @param id - Task identity.
+   * @returns Matching task, or undefined when it is absent.
+   */
   get(id: AutomationTaskId): AutomationTask | undefined {
     return this.table.get(id)
   }
 
-  /** Get tasks for an account. */
+  /**
+   * Get tasks for an account.
+   * @param accountId - Account identity used to filter owned records.
+   * @returns Tasks owned by the selected account.
+   */
   getByAccount(accountId: string): AutomationTask[] {
     const ids = this.index.byAccount.get(accountId)
     if (!ids) return []
     return [...ids].map(id => this.table.get(id)).filter((t): t is AutomationTask => t !== undefined)
   }
 
-  /** Get tasks for a workspace. */
+  /**
+   * Get tasks for a workspace.
+   * @param workspaceId - Workspace identity used to filter task records.
+   * @returns Tasks bound to the selected workspace.
+   */
   getByWorkspace(workspaceId: string): AutomationTask[] {
     const ids = this.index.byWorkspace.get(workspaceId)
     if (!ids) return []
     return [...ids].map(id => this.table.get(id)).filter((t): t is AutomationTask => t !== undefined)
   }
 
-  /** Get enabled non-deleted tasks. */
+  /**
+   * Get enabled non-deleted tasks.
+   * @returns Enabled, undeleted tasks eligible for scheduling.
+   */
   getActiveTasks(): AutomationTask[] {
     return [...this.index.activeTasks].map(id => this.table.get(id)).filter((t): t is AutomationTask => t !== undefined)
   }
 
-  /** Get a task's active run. */
+  /**
+   * Get a task's active run.
+   * @param taskId - Task identity whose active attempt is requested.
+   * @returns Active attempt for the task, or undefined when none exists.
+   */
   getActiveRun(taskId: AutomationTaskId): AutomationRun | undefined {
     return this.index.pendingRuns.get(taskId)
   }
 
-  /** Get a receipt by request id. */
+  /**
+   * Get a receipt by request id.
+   * @param accountId - Account identity used to filter owned records.
+   * @param requestId - Idempotent request identity within the account.
+   * @returns Matching account request receipt, or undefined when absent.
+   */
   getReceipt(accountId: string, requestId: string): AutomationReceipt | undefined {
     const tasks = this.getByAccount(accountId)
     for (const task of tasks) {
@@ -149,24 +185,37 @@ export class AutomationStore {
     return undefined
   }
 
-  /** Count tasks for an account. */
+  /**
+   * Count tasks for an account.
+   * @param accountId - Account identity used to filter owned records.
+   * @returns Number of task aggregates owned by the account.
+   */
   countByAccount(accountId: string): number {
     return this.index.byAccount.get(accountId)?.size ?? 0
   }
 
-  /** Check if any task has an active run. */
+  /**
+   * Check if any task has an active run.
+   * @returns Whether any stored attempt is in an active lifecycle state.
+   */
   hasActiveRuns(): boolean {
     return this.index.pendingRuns.size > 0
   }
 
-  /** Put a task (validates and indexes). */
+  /**
+   * Put a task (validates and indexes).
+   * @param task - Complete task aggregate to persist.
+   */
   async put(task: AutomationTask): Promise<void> {
     const validated = validateTaskAggregate(task)
     await this.table.put(task.id, validated)
     this.index = this.buildIndex()
   }
 
-  /** Delete a task. */
+  /**
+   * Delete a task.
+   * @param id - Task identity.
+   */
   async delete(id: AutomationTaskId): Promise<void> {
     await this.table.delete(id)
     this.index = this.buildIndex()
@@ -177,7 +226,10 @@ export class AutomationStore {
     await this.domain.close()
   }
 
-  /** Get the underlying domain for transactions. */
+  /**
+   * Get the underlying domain for transactions.
+   * @returns Owned schedule domain for transactional operations.
+   */
   getDomain(): Domain<typeof automationDomain> {
     return this.domain
   }

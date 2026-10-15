@@ -23,6 +23,8 @@ declare module '@deepseek-ai/dsh-session/types' {
 
 declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionStateMap {
+    /** Whether the first event marks a seeded or restored Session. */
+    subagentSessionStartsWithSeed: boolean
     /** Exact routes authorized for child LLM selection, or null when disabled. */
     subagentModelSelectionPolicy: AllowedModelRoute[] | null
   }
@@ -32,6 +34,15 @@ const modelSelectionPolicySchema: zod.ZodType<AllowedModelRoute[] | null> = zod.
   provider: zod.string().min(1),
   model: zod.string().min(1),
 }).strict()).min(1).nullable()
+
+/** Host-only startup evidence for selecting defaults without reading Session history. */
+export const subagentSessionStartProjectionDefinition = {
+  key: 'subagentSessionStartsWithSeed',
+  stateVersion: 1,
+  stateSchema: zod.boolean(),
+  init: () => false,
+  apply: (seeded, event) => event.seq === 0 ? event.type === 'session/end-seed' : seeded,
+} satisfies ProjectionDefinition<'subagentSessionStartsWithSeed', boolean>
 
 /** Host-only projection of the durable model-selection policy. */
 export const subagentModelSelectionProjectionDefinition = {

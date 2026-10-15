@@ -570,6 +570,7 @@ describe('dsh-workflow-ptc', { timeout: 120_000 }, () => {
           localAgent: undefined,
           result: Promise.resolve({ output: [{ type: 'text', text: 'fine' }], stopReason: 'completed' }),
           cancel: () => { /* settled already */ },
+          // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Tests rejection with a coercion trap.
           dispose: () => Promise.reject({ toString: () => { throw new Error('coercion trap') } }),
         }),
       }

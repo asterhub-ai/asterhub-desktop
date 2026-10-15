@@ -32,4 +32,4 @@
 
 ## 测试
 
-`packages/client/ui-plugin-manager/tests/components.client.spec.tsx` 在组合包页、行页和官方插件页上渲染贡献并核对各自的 subject，钉住投影；`browser-plugin.client.spec.tsx` 钉住声明。`apps/web/tests/plugin-config.e2e.ts` 打开夹具组合包，断言组合包页与行页上的操作、标签和区块、官方插件页上没有它们，并保留组合包页的 golden。
+`apps/web/tests/plugin-config.e2e.ts` 验证 fixture bundle 及其详情页贡献。fixture 浏览器入口声明 `plugins.detail.actions`、`plugins.detail.badge` 和 `plugins.detail.section`；目前没有详情页投影的独立 Client 组件测试。
