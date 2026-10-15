@@ -1103,13 +1103,16 @@ describe('headless recorded-session snapshots', () => {
       if (baseComposition === undefined) throw new Error('headless corpus has no default composition')
       const replaying = mode !== 'record'
       const compositionPatch = join(composition.dir, replaying ? 'cordis.snapshot.yml' : 'cordis.yml')
+      const runtimePatch = join(scenario.dir, 'runtime.cordis.yml')
       const patchSources = [
         join(baseComposition.dir, 'cordis.yml'),
         ...composition === baseComposition && !replaying ? [] : [compositionPatch],
+        ...existsSync(runtimePatch) ? [runtimePatch] : [],
         join(baseComposition.dir, 'model.cordis.yml'),
       ]
       const patchRoot = '.snapshot-patches'
-      const patches = patchSources.map((source, index) => source.endsWith('.snapshot.yml')
+      const materializedPatch = (source: string): boolean => source.endsWith('.snapshot.yml') || source === runtimePatch
+      const patches = patchSources.map((source, index) => materializedPatch(source)
         ? join(patchRoot, `${String(index)}-${basename(source)}`)
         : source)
 
@@ -1166,7 +1169,7 @@ describe('headless recorded-session snapshots', () => {
             if (scenario.manifest.workspace?.parent === 'outside-temp') assertWorkspaceOutsideTemp(cwd)
             await mkdir(join(cwd, patchRoot), { recursive: true })
             patchSources.forEach((source, index) => {
-              if (source.endsWith('.snapshot.yml')) {
+              if (materializedPatch(source)) {
                 materializeProfilePatch(source, cwd, 'headless', join(cwd, patchRoot), index)
               }
             })

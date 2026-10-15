@@ -1,6 +1,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import JsonlSessionPersistence, { type JsonlCompression } from '@deepseek-ai/dsh-session-persistence-jsonl'
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import { type JsonlCompression } from '@deepseek-ai/dsh-session-persistence-jsonl'
 import {
   SessionPersistence, SessionPersistenceNotFoundError,
   type SessionAccess, type SessionHandle, type SessionPersistenceCreateOptions,

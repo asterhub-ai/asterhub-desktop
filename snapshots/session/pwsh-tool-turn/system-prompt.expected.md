@@ -1,4 +1,4 @@
-You are an AI agent powered by AsterHub.
+你是 AsterHub 的 AI 助手。
 
 You are a concise snapshot agent working in {{cwd}}.
 

@@ -46,6 +46,7 @@ Choose this backend when consumers benefit from one artifact per session — nav
 |---|---|---|
 | `root` | required | Root directory for all session files |
 | `compression` | `'zstd'` | Physical encoding: `'zstd'` checksummed frames, or `'none'` newline-delimited UTF-8 text |
+| `listConcurrency` | `3` | Maximum directory, header, and stat reads in flight, shared by every concurrent listing of this backend |
 
 Live-event write batching is not configuration: the batching window is the seam's internal scheduling policy inside each write handle.
 
@@ -76,6 +77,8 @@ Session ids are injectively escaped to one safe path segment before use (no trav
 A session is materialized lazily: `create(header)` writes nothing and returns the owned write handle, and the handle's first `append` writes and `fsync`s the encoded header and first batch through a no-overwrite publish — so a created-but-never-appended session leaves nothing on disk unless its owner calls `handle.flush()`, which publishes one header frame without an event. Each subsequent batch appends lines or one compressed frame and `fsync`s before the append resolves; a caught write or sync failure rolls the file back to its prior length. Committed events are never rewritten. After a crash, the stored log keeps its interrupted final turn — every record in the committed prefix survives, and the resuming reader appends synthetic closers through its write handle. An incomplete final raw line is discarded. A torn final Zstandard frame contributes only its complete decoded JSONL records; a write handle truncates the torn bytes and durably rewrites those recovered records before its first new batch. Checksum, decompression, or structural failure in a complete committed frame rejects as corruption.
 
 The current-generation scanner applies the current codec owner’s structural admission checks before recoverable-tail handling. Retired required PTC tags and `request/header.header.system` refuse the file even after an earlier malformed row; recovery never truncates them as ordinary damaged tail data.
+
+Unloading the backend waits for the consumer unloads it triggers through `sessionPersistence` injection before removing live-event listeners and draining and closing remaining handles. Consumers must register cleanup in that injecting scope; unrelated scopes and explicit Session or handle closure have their own lifetimes. Programmatic mounting uses the package namespace (`import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'`) with `ctx.plugin`; access storage through `ctx.sessionPersistence`.
 
 ### Reading the logs
 
@@ -162,6 +165,7 @@ These limits define when this backend is a poor fit or needs special operational
 - **Compressed files are not directly line-readable** — use the backend to load them, or select `compression: 'none'` before writing a fresh root when external line readers are required.
 - **Nothing deletes session files** — logs accumulate under `root` until removed externally; the seam has no deletion API.
 - **One live writer per session** — the write-handle claim excludes a second writer inside the owning backend instance, and a kernel lock (non-blocking `flock(2)` on `session.lock`; on Windows a named kernel semaphore derived from that path, with no filesystem footprint) excludes every other instance and process; the lock is taken at write-open of an existing artifact and, for a created session, only right before its first materializing write, so an unmaterialized session leaves no filesystem footprint. A crashed holder's lock dies with its process, so its session is writable again immediately, while a live-but-wedged holder blocks writers until its process exits (on POSIX, removing the lock file forfeits that exclusion; release itself never removes it). Advisory `flock` is unreliable on some network filesystems (NFSv3), and the Windows semaphore name is per login session.
+- **Concurrent root disposal is not ordered** — Cordis can remove already-disposing consumers from its registry before the provider can join their cleanup. Dependency ordering here covers consumer unloads triggered by removing this provider.
 - **POSIX materialization requires hard-link support** — first append uses `link()` so same-id races fail instead of overwriting a committed log; Windows uses write-through rename without replacement.
 - **POSIX writes require the matching prebuilt system addon** — [`node-addon-system`](../../../native/system/README.md) supplies asynchronous flock without consumer-side compilation. A missing addon rejects write ownership; Windows retains its semaphore implementation.
 
