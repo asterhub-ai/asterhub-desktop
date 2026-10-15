@@ -3,7 +3,7 @@ import type {
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { LlmAttemptId } from '@deepseek-ai/dsh-llm/brand'
 import type {
-  ConversationContextReader, ConversationLocationData, ConversationMatch,
+  ConversationContextReader, ConversationLocationData, ConversationMatch, ConversationMatchResult,
   ConversationNodeContext, ConversationNodeDefinition, ConversationPreviousContext,
   ConversationLocationDataScope, ConversationPublication, ConversationViewBuilder,
   ConversationStartMatch,
@@ -185,6 +185,9 @@ export class ConversationNodeAssembler implements ConversationViewSnapshotStore 
   private readonly groups = new Map<string, GroupState>()
   private readonly pendingGroupStores = new Set<ConversationGroupStore<unknown>>()
   private readonly activeTargets = new Set<string>()
+  /** Matches of the event in dispatch, kept by index; dispatch is not reentrant and reuses both arrays. */
+  private readonly matchedDefinitions: ConversationNodeDefinition[] = []
+  private readonly matchedResults: ConversationMatchResult[] = []
   private hasMore = false
   private replacePending = true
   private timelineDirty = true
@@ -487,12 +490,34 @@ export class ConversationNodeAssembler implements ConversationViewSnapshotStore 
     ) => ConversationPublication,
   ): ConversationPublication {
     const event = input.event
-    const matchedTargets = new Set<string>()
-    let publication: ConversationPublication = 'none'
+    const definitions = this.matchedDefinitions
+    const results = this.matchedResults
+    definitions.length = 0
+    results.length = 0
     for (const definition of this.eventDefinitions.entries()) {
       const result = definition.match(event)
       if (result === null) continue
-      if (definition.target !== undefined) matchedTargets.add(definition.target)
+      definitions.push(definition)
+      results.push(result)
+    }
+    const claims = new Map<string, string>()
+    for (let index = 0; index < results.length; index++) {
+      if ((results[index] as ConversationMatchResult).exclusive !== true) continue
+      const definition = definitions[index] as ConversationNodeDefinition
+      const target = definition.target
+      if (target === undefined) throw new Error(`conversation Definition "${definition.kind}" claims an event without a target`)
+      const claimant = claims.get(target)
+      if (claimant !== undefined) throw new Error(`conversation Definitions "${claimant}" and "${definition.kind}" both claim target "${target}"`)
+      claims.set(target, definition.kind)
+    }
+    const matchedTargets = new Set<string>()
+    let publication: ConversationPublication = 'none'
+    for (let index = 0; index < results.length; index++) {
+      const definition = definitions[index] as ConversationNodeDefinition
+      const result = results[index] as ConversationMatchResult
+      const target = definition.target
+      if (target !== undefined && result.exclusive !== true && claims.has(target)) continue
+      if (target !== undefined) matchedTargets.add(target)
       publication = maximumPublication(publication, accept(definition, result.id, result.role))
     }
     const fallback = this.eventDefinitions.fallbackEntry()

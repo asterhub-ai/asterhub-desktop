@@ -245,6 +245,8 @@ export function apply(ctx: ClientContext): void {
 
 `match(event)` 是身份提取器，不是 fold：它只能收到当前 `SessionEventLike`，并返回 Definition 内部 id 与生命周期角色。命中后，Assembler 通过 `(kind, id)` 定位 Context；当前最早的 start 初始化 State，不论它是持久事件还是瞬态事件。后续所有 Match，包括其他 start，都调用 `update`。移除瞬态 Match 后，从剩余事件重新选择 start 并重算 State；没有剩余 start 时 State 为 undefined。两个函数都必须返回引擎随后采用的 State；推荐返回新的 immutable value，但函数原地修改后返回同一对象时，采用语义也相同。
 
+匹配结果中的 `exclusive: true` 表示该 Definition 独占其 target 上的这一事件。Assembler 在接受任何匹配前完成全部匹配判定，因此注册顺序不影响结果：同 target 的其他 Definition 不为该事件建立 Context，未匹配事件的 fallback 也不会运行。其他 target 的 Definition 和没有 target 的 Definition 仍会收到事件。同一 target 上存在两个独占声明，或没有 target 的 Definition 声明独占时，分发会抛出错误。业务 Definition 可用此机制展示通用 Definition 也会识别的消息，例如延迟收到的问题回复。
+
 `buildLocationData(context, scope)` 可以把 Definition 拥有的数据发布到引擎拥有的 Turn 或 Step 上。通过 declaration merging 为每个 key 指定精确 value 类型。同一 Location 内的另一个 Node 可以使用受限 slot hook（例如 `useTurnData(key)`）读取该值，无须取得 Session，也无须扫描 `snapshot.chat.nodes`。
 
 `target` 与 `buildViewNode(context)` 必须同时声明一项由 target 拥有的渲染贡献。把 `context.key` 保留为 React 侧身份，根据持久排序证据选择 `anchorSeq`，并且只返回 renderer 可以直接使用的数据。某个 target Node 一旦发布，就要继续返回同一个 key；需要暂时离开可见流时使用 `visibility: 'hidden'`，不要改为返回 `null` 撤回它。

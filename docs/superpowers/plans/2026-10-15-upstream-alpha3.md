@@ -13,7 +13,7 @@ Selectively adopt the desktop reliability fixes and useful features released in 
 - [x] Repair Session restoration and provider teardown; bound Session-list reads.
 - [x] Refresh installed plugin code and report required restarts through the curated installation path.
 - [x] Adopt bounded terminal duplex input and retain final process output.
-- [ ] Repair conversation row ordering, scrolling, and work-details folding.
+- [x] Repair conversation row ordering, scrolling, and work-details folding.
 - [ ] Adapt pi-ai 1.1.0 and preserve original protocol history through conversions.
 - [ ] Mask recognized credentials in displayed user messages, with explicit reveal controls.
 - [ ] Add Desktop shortcuts that adjust interface, code, and terminal font sizes together.
@@ -35,3 +35,4 @@ Implementation and validation results are recorded here as each task completes. 
 - Plugin refresh: file comparison and profile recomposition reload changed plugins, including signed curated updates. Restart reasons have localized Settings messages. Focused package and UI tests passed; two file-symlink cases explicitly skip when Windows denies symlink creation. Host and Client type checks and scoped type-aware lint passed. Codex review found no actionable regressions; its test attempt hit Corepack sandbox permissions, while the recorded local test runs completed separately.
 - Session re-review completed after usage became available and found no actionable defects. Its test attempt encountered Corepack sandbox permissions; the separate focused test and replay results above remain the validation evidence.
 - Terminal duplex: 10 focused test files passed (265 tests, one platform skip). Host build, terminal Client type checks, scoped type-aware lint, and 522 documentation type-equivalence checks passed. Codex review found no actionable issues; its sandbox could not execute the tests. Input frames have raw UTF-8 and encoded-frame bounds, and completed followers retain final output. Desktop interaction remains part of final installer qualification.
+- Conversation layout: Client type checks and scoped lint passed. Package regression failures were repaired and rechecked; the final layout run passed 280 tests. Review found missing question-reply input positions and selectors that missed the flow wrapper. Both were repaired; the reply negative control failed before repair and 87 related tests passed afterwards. Final Codex review found no actionable defects. Real-browser geometry and installer interaction remain pending.

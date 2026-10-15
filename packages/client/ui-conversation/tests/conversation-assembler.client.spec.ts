@@ -172,6 +172,57 @@ function fallbackDefinition(start: () => string): ConversationNodeDefinition<str
 }
 
 describe('ConversationNodeAssembler', () => {
+  it.each([false, true])('resolves exclusive claims before accepting matches, reversed=%s', (reverse) => {
+    const genericStart = vi.fn(() => 'generic')
+    const claimedStart = vi.fn(() => 'claimed')
+    const otherStart = vi.fn(() => 'other')
+    const fallbackStart = vi.fn(() => 'fallback')
+    const generic = { ...fallbackDefinition(genericStart), kind: 'generic' }
+    const claimed: ConversationNodeDefinition<string> = {
+      ...fallbackDefinition(claimedStart), kind: 'claimed',
+      match: event => ({ id: String(event.seq), role: 'start', exclusive: true }),
+    }
+    const other: ConversationNodeDefinition<string> = {
+      ...fallbackDefinition(otherStart), kind: 'other', target: 'other',
+      buildViewNode: context => ({ ...node(context, context.state), target: 'other' }),
+    }
+    const definitions = reverse ? [claimed, generic, other] : [generic, other, claimed]
+    const value = new ConversationNodeAssembler(
+      new TestEventDefinitions(definitions, fallbackDefinition(fallbackStart)),
+      new TestViewDefinitions([testView(), { ...testView(), target: 'other' }]),
+    )
+    value.append(input(at(SessionSeq(1), 'user/message', {})))
+    value.flush()
+    expect(genericStart).not.toHaveBeenCalled()
+    expect(claimedStart).toHaveBeenCalledOnce()
+    expect(otherStart).toHaveBeenCalledOnce()
+    expect(fallbackStart).not.toHaveBeenCalled()
+  })
+
+  it('rejects conflicting claims before accepting any definition', () => {
+    const start = vi.fn(() => 'claimed')
+    const claim: ConversationNodeDefinition<string> = {
+      ...fallbackDefinition(start), kind: 'first',
+      match: event => ({ id: String(event.seq), role: 'start', exclusive: true }),
+    }
+    const value = new ConversationNodeAssembler(
+      new TestEventDefinitions([claim, { ...claim, kind: 'second' }]),
+      new TestViewDefinitions([testView()]),
+    )
+    expect(() => value.append(input(at(SessionSeq(1), 'user/message', {})))).toThrow('both claim target')
+    expect(start).not.toHaveBeenCalled()
+  })
+
+  it('rejects an exclusive claim without a view target', () => {
+    const start = vi.fn(() => 'claimed')
+    const value = new ConversationNodeAssembler(new TestEventDefinitions([{
+      kind: 'unscoped', start, update: context => context.state,
+      match: event => ({ id: String(event.seq), role: 'start', exclusive: true }),
+    }]), new TestViewDefinitions([testView()]))
+    expect(() => value.append(input(at(SessionSeq(1), 'user/message', {})))).toThrow('without a target')
+    expect(start).not.toHaveBeenCalled()
+  })
+
   it('reports boundary changes only when the owning Turn location changes', () => {
     const index = new ConversationLocationIndex()
     const boundaries = [
