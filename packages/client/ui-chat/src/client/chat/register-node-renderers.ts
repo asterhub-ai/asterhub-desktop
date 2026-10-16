@@ -3,6 +3,7 @@ import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { PerformanceUsageMode } from '../../chat-settings.ts'
 import type { ChatPresentationPolicy } from '../presentation-policy.ts'
 import { NS } from '../locale.ts'
+import { DefaultReasoningBody, ReasoningContent } from './ReasoningContent.tsx'
 import { AssistantNodeView } from './AssistantNodeView.tsx'
 import { CommandNodeView, ManualCompactionNodeView } from './CommandNodeView.tsx'
 import {
@@ -27,6 +28,14 @@ export function registerChatNodeRenderers(
   performanceUsage: ObservableSnapshot<PerformanceUsageMode>,
   presentation: ObservableSnapshot<ChatPresentationPolicy>,
 ): void {
+  ctx.effect(() => ctx.slots.registerFactory({
+    name: 'conversation.chat.reasoning.content', scope: 'root', locale: NS,
+  }, ReasoningContent))
+  ctx.slots.inject('conversation.chat.reasoning.body', () => ctx.slots.register({
+    name: 'conversation.chat.reasoning.body',
+    locale: NS,
+    priority: 100,
+  }, DefaultReasoningBody))
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register(
     { name: 'conversation.chat.node', key: 'user', locale: NS }, UserMessageNodeView))
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register(
@@ -41,6 +50,10 @@ export function registerChatNodeRenderers(
     name: 'conversation.chat.node',
     key: 'assistant-step',
     locale: NS,
+    children: {
+      'conversation.chat.reasoning.body': { kind: 'single', scope: 'session' },
+      'conversation.chat.message.images': { kind: 'single', scope: 'session' },
+    },
     inject: () => ({ hooks: { presentation } }),
   }, AssistantNodeView))
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({

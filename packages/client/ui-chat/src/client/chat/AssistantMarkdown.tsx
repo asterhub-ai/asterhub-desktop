@@ -1,5 +1,6 @@
 import { Fragment, memo, useMemo } from 'react'
 import { fileMediaUrl } from '@deepseek-ai/dsh-util-workspace-path'
+import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ReactNode } from 'react'
 import { JsonBlock, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MarkdownFileMentions, MarkdownPathImages } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -26,7 +27,9 @@ export function localPathMediaUrl(base: string, value: string): string | undefin
   return fileMediaUrl(base, path)
 }
 
-export interface AssistantMarkdownProps {
+export interface AssistantMarkdownProps extends
+  Pick<PropsRenderSlots<'conversation.chat.reasoning.body' | 'conversation.chat.message.images'>, 'renderSlot'>,
+  Pick<ChatNodeOwnerProps, 'loadImage'> {
   /** Render only the requested business portion, preserving original block indexes. */
   groupPart?: string | undefined
   /** Stable Hook forwarded to each independently expandable reasoning block. */
@@ -35,8 +38,6 @@ export interface AssistantMarkdownProps {
   streaming: boolean
   /** Frozen partial of an aborted turn: rendered with a stopped marker. */
   interrupted?: boolean | undefined
-  /** Render consecutive image blocks through the attachment slot. */
-  renderMessageImages: ChatNodeOwnerProps['renderMessageImages']
   /** Hide reasoning that belongs to the Turn-level process disclosure. */
   reasoningHidden?: boolean | undefined
   /** Process hiding bound by the node slot to its current viewport. */
@@ -53,8 +54,8 @@ export interface AssistantMarkdownProps {
 
 /** Reasoning block as the Think variant summary row (figma 39:28304). */
 export const AssistantMarkdown = memo(function AssistantMarkdown({
-  blocks, streaming, interrupted, renderMessageImages, groupPart, useDisclosure,
-  reasoningHidden = false, usePresentation, revealProcess, mentions, useGroupAction, t,
+  blocks, streaming, interrupted, loadImage, groupPart, useDisclosure,
+  reasoningHidden = false, usePresentation, revealProcess, mentions, renderSlot, useGroupAction, t,
 }: AssistantMarkdownProps) {
   // Stable per locale revision (t identity changes on switch): a fresh object
   // per render would rebuild MarkdownText's component table every chunk.
@@ -91,6 +92,7 @@ export const AssistantMarkdown = memo(function AssistantMarkdown({
         )
         break
       case 'reasoning':
+        if (block.text.trim() === '') break
         rendered.push(
           <ProcessReasoning
             key={i}
@@ -99,7 +101,7 @@ export const AssistantMarkdown = memo(function AssistantMarkdown({
             useGroupAction={useGroupAction}
           >
             <ReasoningRow text={block.text} running={streaming && i === last} usePresentation={usePresentation}
-              useDisclosure={useDisclosure} t={t} />
+              useDisclosure={useDisclosure} renderSlot={renderSlot} t={t} />
           </ProcessReasoning>,
         )
         break
@@ -119,9 +121,8 @@ export const AssistantMarkdown = memo(function AssistantMarkdown({
         }
         rendered.push(
           <Fragment key={start}>
-            {renderMessageImages({
-              images: group.map(({ attachment }) => ({ attachment })),
-              align: 'start',
+            {renderSlot('conversation.chat.message.images', {
+              images: group.map(({ attachment }) => ({ attachment })), loadImage, align: 'start',
             })}
           </Fragment>,
         )

@@ -93,6 +93,8 @@ Chat registers its process Group Definition through `uiConversation.groups`. Rea
 
 `groupPart` selects reasoning or response in the Assistant renderer without copying Node payloads. A Tool node owns its preparing, dispatched, and result stages under one callId. Each part has a distinct DOM anchor for reading-position restoration; Turn navigation addresses the original Node key and lands on its first visible part. Group sources, member parents, and keys survive display-mode changes and newly loaded prefixes that extend an intact group. The source Node Store remains the only Node-data owner, and a replaced Builder rebinds keyed subscriptions without remounting seats. Mode changes retain size observers and reuse the Turn-state selector.
 
+Reasoning disclosures omit empty and whitespace-only blocks. Their bodies render through the session-scoped `conversation.chat.reasoning.body` Slot, whose default adapter calls the root-scoped `conversation.chat.reasoning.content` Factory; replacing that Factory preserves the surrounding disclosure row.
+
 Live tool deltas share reasoning's frame-batched publication; durable calls and results publish immediately. Repeated named deltas retain the Tool node and its data when the projected call, anchor, location, and visibility are unchanged.
 
 The process group uses a stable `div` layout box, a scroll body, and an uncapped content box that reports growth inside the body. Business styles must adapt spacing within and across groups, including hidden or empty members and the answer-spacing exception. CSS variables do not belong in the Group Definition.

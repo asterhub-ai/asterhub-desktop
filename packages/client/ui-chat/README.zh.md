@@ -93,6 +93,8 @@ Chat 通过 `uiConversation.groups` 注册过程 Group Definition。React 通过
 
 `groupPart` 在 Assistant 渲染器中选择推理或回复，不复制 Node 载荷。同一个 callId 的准备、派发与结果阶段由 Tool 节点自己拥有。每个部分有独立的 DOM 锚点用于恢复阅读位置；轮次导航使用原 Node key，落到它的第一个可见部分。展示模式切换以及为完整旧组补入更早成员时，保留组来源、成员父级及 key。原 Node Store 仍是唯一节点数据所有者，替换 Builder 时重新绑定按键订阅，不重挂载容器。模式变化保留尺寸观察器，并复用整轮状态选择器。
 
+推理折叠行会略过空文本和纯空白内容。正文通过 session 作用域的 `conversation.chat.reasoning.body` Slot 渲染，默认 adapter 调用 root 作用域的 `conversation.chat.reasoning.content` Factory；替换该 Factory 会保留外层折叠行。
+
 实时工具 delta 与推理共用按帧合并的发布节奏；持久调用和结果立即发布。重复具名 delta 在投影调用、锚点、位置及可见性均未变化时保留 Tool 节点及其数据引用。
 
 过程组使用稳定的 `div` 布局盒子、滚动正文及不限高的内容盒子，后者报告正文内部的内容增长。业务样式必须适配组内及组边界间距，处理隐藏或空成员以及回答前的间距特例。CSS 变量不属于 Group Definition。
