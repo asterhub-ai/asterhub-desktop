@@ -33,7 +33,7 @@ export const textEvents = [
 /** Local provider stand-in: replays scripted behaviors per request. */
 export async function mockServer(script: {
   status?: number
-  events?: string[]
+  events?: (string | { event: string; data: string })[]
   body?: string
   delayMs?: number
   /** Keep the SSE response open after its scripted events until the client disconnects. */
@@ -83,7 +83,9 @@ export async function mockServer(script: {
           if (!behavior.holdOpen) response.end()
           return
         }
-        response.write(`data: ${event}\n\n`)
+        response.write(typeof event === 'string'
+          ? `data: ${event}\n\n`
+          : `event: ${event.event}\ndata: ${event.data}\n\n`)
         if (behavior.delayMs === undefined) writeNext()
         else timer = setTimeout(writeNext, behavior.delayMs)
       }
@@ -103,4 +105,13 @@ export async function mockServer(script: {
     responseClosed: responseClosed.promise,
     get closedResponses() { return closedResponses },
   }
+}
+
+/**
+ * Encode one Anthropic Messages payload as a named SSE event.
+ * @param data - payload whose type supplies the event name.
+ * @returns event name and JSON data.
+ */
+export function anthropicFrame(data: Record<string, unknown>): { event: string; data: string } {
+  return { event: String(data['type']), data: JSON.stringify(data) }
 }

@@ -14,7 +14,7 @@ Selectively adopt the desktop reliability fixes and useful features released in 
 - [x] Refresh installed plugin code and report required restarts through the curated installation path.
 - [x] Adopt bounded terminal duplex input and retain final process output.
 - [x] Repair conversation row ordering, scrolling, and work-details folding.
-- [ ] Adapt pi-ai 1.1.0 and preserve original protocol history through conversions.
+- [x] Adapt pi-ai 1.1.0 and preserve original protocol history through conversions.
 - [ ] Mask recognized credentials in displayed user messages, with explicit reveal controls.
 - [ ] Add Desktop shortcuts that adjust interface, code, and terminal font sizes together.
 - [ ] Adopt progressive Office guidance and synchronize bundled resources and smokes.
@@ -36,3 +36,4 @@ Implementation and validation results are recorded here as each task completes. 
 - Session re-review completed after usage became available and found no actionable defects. Its test attempt encountered Corepack sandbox permissions; the separate focused test and replay results above remain the validation evidence.
 - Terminal duplex: 10 focused test files passed (265 tests, one platform skip). Host build, terminal Client type checks, scoped type-aware lint, and 522 documentation type-equivalence checks passed. Codex review found no actionable issues; its sandbox could not execute the tests. Input frames have raw UTF-8 and encoded-frame bounds, and completed followers retain final output. Desktop interaction remains part of final installer qualification.
 - Conversation layout: Client type checks and scoped lint passed. Package regression failures were repaired and rechecked; the final layout run passed 280 tests. Review found missing question-reply input positions and selectors that missed the flow wrapper. Both were repaired; the reply negative control failed before repair and 87 related tests passed afterwards. Final Codex review found no actionable defects. Real-browser geometry and installer interaction remain pending.
+- pi-ai: pinned 1.1.0 and retained the incremental argument patch. Protocol conversion preserves native history; nine cross-protocol round trips passed. Adapter, catalog, stream, serialization, runtime-patch and Windows PTY tests passed after fixture and brand-assertion repairs. Package types, scoped lint, and the authored PowerShell empty-text-history replay passed; POSIX replay remains unverified. Desktop preparation now stages and verifies the selected pi-ai and node-pty patches. Review requested a legacy Azure upgrade guide; the explicit development-only task excludes such guides, so current configuration documentation was updated instead. Final packaged-runtime and live Sub2API qualification remain pending.
