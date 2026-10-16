@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-skill-office",
-  "description": "Bundled Word, PowerPoint, and Excel workflows and structural checks",
+  "description": "Progressively loaded Office authoring and operation skills",
   "version": "0.2.0-rc.3",
   "publishConfig": {
     "access": "public"
