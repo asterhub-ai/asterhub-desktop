@@ -56,7 +56,7 @@ Windows 签名打包按 PE 文件内容扫描第一方运行时和应用生产�
 
 Desktop 携带独立的 Python、Node.js 和 pnpm 分发包。Python 包含 numpy、pandas、python-docx、python-pptx、openpyxl、Pillow、lxml、XlsxWriter 及其完整依赖。`load_workspace_dependencies` 工具首次使用时，将该产物离线安装到 `$DSH_HOME/dsh-runtimes/dsh-primary-runtime`（通常为 `~/.dsh/dsh-runtimes/dsh-primary-runtime`），并返回解释器、pnpm 脚本和库目录的绝对路径，以及记录内置分发包名称与版本的 `pythonDistributions`。版本报告不包含用户自行安装的包。Office 任务默认使用这些库，用户或工作区指令指定其他环境时遵循其要求。pnpm 脚本通过返回的 Node 可执行文件运行。返回的 Node 库目录为随包交付的库预留，不是 pnpm 的全局安装目录。
 
-Desktop 默认注册 `office-docx`、`office-pptx` 和 `office-xlsx`。这些技能使用内置 Python 库创建文件和进行定点编辑，随后重新打开文件，并在交付前运行共享结构检查器。PowerPoint 的创建和编辑使用 python-pptx。技能资源复制到 ASAR 外的 `runtime/office-skills`，让 Python 可以读取检查器。可用的 `render_document` 工具可以补充视觉检查；缺少该工具不妨碍创作或交付。检查范围与限制见 [Office 技能包](../../packages/skill/skill-office/README.zh.md)。
+Desktop 默认注册 Office 路由、三个创作技能，以及独立的渲染、公式重算和 PDF 导出技能。智能体按需加载说明。创作使用内置 Python 库，并重新打开已保存文件检查请求涉及的内容；视觉检查及其他操作加载各自技能。PowerPoint 的创建和编辑使用 python-pptx。Desktop 将全部 Office 资源复制到 ASAR 外的 `runtime/office-skills`。Host 冒烟检查会加载操作技能并验证 Office 到 PDF 的转换。可用的 `render_document` 工具也能提供视觉检查。工作流详情与限制见 [Office 技能包](../../packages/skill/skill-office/README.zh.md)。
 
 该产物随 Desktop 版本发布。`runtime.json` 记录 Desktop 版本、目标平台、顶层解释器和包管理器版本及 Python 分发包版本表，以及所选目标的锁定产物输入与组装格式的摘要。分发包名称按 PEP 503 归一化；名称归一化后重复时，清单会被拒绝。旧 `components` 清单通过归一化继续可读，并保留其原有库版本一致性校验。匹配的安装会被复用；依赖或压缩包变化后，即使 Desktop 版本不变，也会在完整暂存副本完成后替换目录。不含摘要的旧清单会在下次安装时被替换。用户自行添加的 Python 包仅在产物身份一致时保留。目录替换失败时保留之前的安装；解释器仍在运行时，Windows 可能拒绝替换。
 
@@ -312,6 +312,8 @@ pnpm run package:desktop:win:x64:unsigned
 ```
 
 该命令要求设置 `DSH_DESKTOP_APP_ID` 并具备常规构建依赖，包括编译原生模块所需的 Python 和 Visual C++ 构建工具。Python 不在 `PATH` 中时，将 `PYTHON` 设置为其可执行文件路径。命令将安装包写入 `.desktop-build/targets/win-x64/unsigned-artifacts/`，省略自动更新配置，清除签名凭据，且不生成发布完成记录。它不需要 EV 凭据或更新源地址。签名打包和上传命令仍遵循正式发布要求。
+
+如需直接生成不执行运行时冒烟检查的本地未签名测试安装包，运行 `pnpm run package:desktop:win:x64:unsigned --skip-smoke`。该选项要求 `--unsigned`；产物未经过冒烟验收。
 
 未签名便携目录构建运行 `pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned --dir`。该产物使用较小的 `AsterHub.exe` 启动器，并将 Electron 运行时保留为同目录的 `AsterHub.Runtime.exe`，其旁边仍是 `resources/`。启动器会转发命令行参数，并从应用目录启动内置运行时；它只改变用户看到的启动入口，不会缩小安装内容。签名安装器仍使用现有可执行文件布局。
 

@@ -78,7 +78,14 @@ export function apply(ctx) {
   ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/desktop-smoke-office-cli',
     async handler(_request, response) {
       try {
-        const skill = await ctx.skills.get('office-docx')
+        const expectedSkills = ['office', 'office-docx', 'office-export-pdf', 'office-pptx', 'office-recalculate', 'office-render', 'office-xlsx']
+        const catalog = (await ctx.skills.list()).map(skill => skill.name)
+        if (JSON.stringify(catalog) !== JSON.stringify(expectedSkills)) throw new Error('Office skill catalog is incomplete')
+        const operationSkills = await Promise.all(['office-render', 'office-recalculate', 'office-export-pdf'].map(name => ctx.skills.get(name)))
+        if (operationSkills.some(skill => skill === undefined || !skill.content.includes('libreofficeKit'))) {
+          throw new Error('Office operation skills did not supply the bundled runtime paths')
+        }
+        const skill = operationSkills[0]
         const json = skill?.content.match(/\\n(\\{\\n[\\s\\S]+)$/u)?.[1]
         if (json === undefined) throw new Error('Office skill did not supply CLI paths')
         const { libreofficeKit: { node, cli } } = JSON.parse(json)
@@ -214,12 +221,12 @@ export function apply(ctx) {
     const cliResponse = await fetch(new URL('/desktop-smoke-office-cli', ready.url), {
       headers: { cookie }, signal: AbortSignal.timeout(120_000),
     })
-    if (!cliResponse.ok) throw new Error(`desktop runtime: skill CLI failed: ${await cliResponse.text()}`)
+    if (!cliResponse.ok) throw new Error(`desktop runtime: Office skills failed: ${await cliResponse.text()}`)
     const cliResult = await cliResponse.json() as { capabilities: { runtime: { cliPath: string } }; pdf: string }
     if (!cliResult.capabilities.runtime.cliPath.endsWith('cli.js') || Buffer.from(cliResult.pdf, 'base64').subarray(0, 5).toString() !== '%PDF-') {
-      throw new Error('desktop runtime: skill CLI did not return capabilities and a PDF')
+      throw new Error('desktop runtime: Office skill did not return capabilities and a PDF')
     }
-    console.log('desktop runtime: DOCX, XLSX, PPTX to PDF, skill CLI discovery, workspace inspect, and Session creation passed')
+    console.log('desktop runtime: DOCX, XLSX, PPTX to PDF, progressive Office skills, workspace inspect, and Session creation passed')
   } finally {
     clearTimeout(timer)
     await host.stop()
