@@ -53,7 +53,6 @@ export type { RiskConfirmationProps } from './RiskConfirmation.tsx'
 export { ConnectionIndicator } from './ConnectionIndicator.tsx'
 export type { ConnectionIndicatorState } from './ConnectionIndicator.tsx'
 export { FishLogo, FISH_LOGO_PATH, FISH_LOGO_VIEWBOX } from './FishLogo.tsx'
-export { AsterHubMark } from './AsterHubMark.tsx'
 export { BrandWordmark } from './BrandWordmark.tsx'
 export type { BrandWordmarkProps } from './BrandWordmark.tsx'
 export {
@@ -118,7 +117,8 @@ export type {
 export { CodeBlock } from './markdown/CodeBlock.tsx'
 export type { CodeBlockProps } from './markdown/CodeBlock.tsx'
 export { JsonBlock } from './markdown/JsonBlock.tsx'
-export { MarkdownDelegateProvider } from './markdown/MarkdownDelegate.tsx'
+export { MarkdownDelegateProvider, useMarkdownDelegate } from './markdown/MarkdownDelegate.tsx'
+export { AsterHubMark } from './AsterHubMark.tsx'
 export type { MarkdownDelegate, MarkdownDelegateProviderProps, MarkdownExternalLinkHandler } from './markdown/MarkdownDelegate.tsx'
 export { DetailDocument, detailDocumentState, useDetailDocumentLabels } from './DetailDocument.tsx'
 export type { DetailDocumentCopy, DetailDocumentLabels, DetailDocumentRead, DetailDocumentState } from './DetailDocument.tsx'
@@ -139,5 +139,3 @@ export type { QuotePreviewProps, QuotePreviewRemoval } from './QuotePreview.tsx'
 export { formatQuoteText } from './markdown/quote-text.ts'
 
 export type { MarkdownMenuTarget } from './markdown/MarkdownDelegate.tsx'
-
-export { menuPoint, contextMenuTrigger } from './context-menu-trigger.ts'
