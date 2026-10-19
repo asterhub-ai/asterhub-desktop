@@ -1,0 +1,55 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/context/anima-memory/README.md
+/:
+  en: ba9ccf8a887f2361
+  zh: d2f1b604c60a8395
+/deepseek-ai-dsh-anima-memory:
+  en: 3e18fdd99d6c4c32
+  zh: 6821c1cadcaf408a
+/deepseek-ai-dsh-anima-memory/summary:
+  en: 770724d28d443d05
+  zh: 70971fde9141141c
+/deepseek-ai-dsh-anima-memory/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: cfcd9a2baa220307
+/deepseek-ai-dsh-anima-memory/use-this-package:
+  en: b3923e5b644b56e3
+  zh: 06586e9f842de9a3
+/deepseek-ai-dsh-anima-memory/use-this-package/when-to-choose-it:
+  en: a857d6561cd06677
+  zh: 823c496b9ad31aaf
+/deepseek-ai-dsh-anima-memory/use-this-package/configuration:
+  en: a545ae29ae12e8c1
+  zh: 9deafdc8d3ad3cf8
+/deepseek-ai-dsh-anima-memory/understand-the-implementation:
+  en: e7258e67e49b1ac5
+  zh: 0e0822080325a89d
+/deepseek-ai-dsh-anima-memory/further-exploration:
+  en: 1469cbc4efa365b0
+  zh: 058854a14164c155
+/deepseek-ai-dsh-anima-memory/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-anima-memory/model-experience/request-context-and-condition:
+  en: cd8530c72534ee6b
+  zh: cd8530c72534ee6b
+/deepseek-ai-dsh-anima-memory/model-experience/request-context-and-condition/what-the-model-sees:
+  en: 3f573463fbaa94e6
+  zh: cbd14a3293abd708
+/deepseek-ai-dsh-anima-memory/model-experience/request-context-and-condition/what-the-model-sees/stable-recall-framing:
+  en: 1a1967fd2ab67013
+  zh: 1a1967fd2ab67013
+/deepseek-ai-dsh-anima-memory/model-experience/request-context-and-condition/token-effect:
+  en: 4c32cf39c34b0147
+  zh: 7f61187974bc63b0
+/deepseek-ai-dsh-anima-memory/model-experience/request-context-and-condition/kv-cache-effect:
+  en: 6609c718ad968d36
+  zh: 8d0c30b82a972d6d
+/deepseek-ai-dsh-anima-memory/known-limitations-and-deferred-work:
+  en: e1d100a6a033e402
+  zh: ea3946853d953b6b
+/deepseek-ai-dsh-anima-memory/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

@@ -6,6 +6,7 @@ import { readDesktopRuntime, verifyDesktopRuntime } from '../src/runtime-tree.ts
 import { verifyWindowsCode } from './windows-runtime-signature.mjs'
 import { smokePreparedRuntime } from './smoke-prepared-runtime.ts'
 import { resolveDesktopPackageTarget } from './package-target.ts'
+import { verifyNeo4jRuntime } from '@deepseek-ai/dsh-anima-memory/src/neo4j-runtime.ts'
 
 const paths = resolveDesktopTargetBuildPaths()
 const { values } = parseArgs({ options: { unsigned: { type: 'boolean', default: false } }, allowPositionals: false })
@@ -19,5 +20,9 @@ const resources = join(application, windows ? 'resources' : 'Resources')
 const executable = windows ? join(application, 'AsterHub.exe') : join(application, 'MacOS', 'AsterHub')
 const descriptor = await verifyDesktopRuntime(paths.dsh, readDesktopRuntime(paths.dsh).release.version,
   resolveDesktopPackageTarget(target))
+const animaRuntime = join(resources, 'anima-runtime')
+const platform = target === 'win-x64' ? 'win32' : 'darwin'
+const architecture = target === 'mac-arm64' ? 'arm64' : 'x64'
+await verifyNeo4jRuntime(animaRuntime, platform, architecture)
 if (windows && !values.unsigned) await verifyWindowsCode(application)
 await smokePreparedRuntime(join(resources, 'app.asar', 'dsh'), executable, join(resources, 'runtime'), descriptor)

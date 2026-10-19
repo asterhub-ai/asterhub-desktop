@@ -49,6 +49,8 @@ Host 服务通过 `ctx.projectStorage` 暴露；浏览器安全的 `./types` 入
 
 项目 cwd 成员使用经过验证的 portable 相对路径（`.` 或以 `/` 分隔的子路径）。拒绝绝对路径、盘符前缀、反斜线、NUL、空路径段及越界 `..`。Session ID 与历史 header 保持不变。`.aster` 以及其 `sessions`、`attachments`、`attachments/v1` 数据根不能是符号链接，也不能逃出选择的项目目录。`unregister` 只删除 locator 记录，绝不删除项目文件。
 
+Windows 目录的只读属性不能表示子文件写入权限。打开和状态检查使用原生目录访问检查，不使用 POSIX 目录权限位；状态检查还以不修改内容的方式打开 manifest，检查写入权限。Windows 目录 ACL 在实际创建和替换操作时执行，因此目录访问检查仅供参考，不保证后续写入必定成功。这些检查不创建临时探测文件，`inspect` 仍保持只读。
+
 <a id="toc-project-session-persistence"></a>
 ## 项目 Session 持久化
 

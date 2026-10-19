@@ -49,6 +49,8 @@ Registered projects whose `.aster/project.json` is absent (`ENOENT`) remain list
 
 Project cwd membership is a validated portable relative path (`.` or slash-separated child path). Absolute paths, drive prefixes, backslashes, NUL, empty components, and escaping `..` are refused. Session IDs and historical headers remain unchanged. `.aster` and its owned `sessions`, `attachments`, and `attachments/v1` roots must not be symlinks or escape the selected directory. `unregister` removes only the locator record; it never deletes project files.
 
+On Windows, directory read-only attributes do not determine child write permissions. Opening and status checks use the native directory access check instead of POSIX directory mode bits; status also opens the manifest without modifying its contents to check write access. Windows directory ACL enforcement occurs during the actual create and replace operations, so directory access checks are advisory and do not guarantee that a later write succeeds. These checks create no temporary probe files, and `inspect` remains read-only.
+
 <a id="toc-project-session-persistence"></a>
 ## Project Session persistence
 

@@ -28,6 +28,17 @@
     // not declaration path aliases, keep each package/vendor source compiled
     // under its own tsconfig boundary.
     "paths": {
+      "@deepseek-ai/dsh-asterhub-skills": ["./packages/skill/asterhub-skills/src/index.ts"],
+      "@deepseek-ai/anima-protocol": ["./vendor/anima-protocol/src/index.ts"],
+      "@deepseek-ai/anima-protocol/schemas/*": ["./vendor/anima-protocol/src/schemas/*"],
+      "@deepseek-ai/anima-capture": ["./vendor/anima-capture/src/index.ts"],
+      "@deepseek-ai/anima-capture/*": ["./vendor/anima-capture/src/*.ts"],
+      "@deepseek-ai/anima-memory": ["./vendor/anima-memory/src/index.ts"],
+      "@deepseek-ai/anima-memory/bootstrap": ["./vendor/anima-memory/src/neo4j-instance-bootstrap.ts"],
+      "@deepseek-ai/anima-memory/*": ["./vendor/anima-memory/src/*.ts"],
+      "@deepseek-ai/dsh-client-ui-settings-anima/client": ["./packages/client/ui-settings-anima/src/client/index.ts"],
+      "@deepseek-ai/dsh-client-ui-settings-anima": ["./packages/client/ui-settings-anima/src/index.ts"],
+      "@deepseek-ai/dsh-anima-memory": ["./packages/context/anima-memory/src/index.ts"],
       "@deepseek-ai/dsh-client-product-analytics": ["./packages/client/product-analytics/src/index.ts"],
       "@deepseek-ai/dsh-client-product-analytics/types": ["./packages/client/product-analytics/src/events.ts"],
       "@deepseek-ai/dsh-client-product-analytics/client": ["./packages/client/product-analytics/src/client/index.ts"],
@@ -472,6 +483,7 @@
       "@deepseek-ai/dsh-session-format-v1-to-v2": ["./packages/session/session-format-v1-to-v2/src"],
       "@deepseek-ai/dsh-session-format-v2-to-v3": ["./packages/session/session-format-v2-to-v3/src"],
       "@deepseek-ai/dsh-session-format-v3-to-v4": ["./packages/session/session-format-v3-to-v4/src"],
+      "@deepseek-ai/dsh-session-format-v4-to-v5": ["./packages/session/session-format-v4-to-v5/src"],
       "@deepseek-ai/dsh-session-log-deepseek": ["./packages/session/session-log-deepseek/src"],
       "@deepseek-ai/dsh-session-log-deepseek/invariant": ["./packages/session/session-log-deepseek/src/invariant.ts"],
       "@deepseek-ai/dsh-session-log-export": ["./packages/session-query/session-log-export/src"],

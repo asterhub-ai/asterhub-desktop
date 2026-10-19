@@ -1,6 +1,6 @@
+import { v4Catalog } from './helpers/v4-catalog.ts'
 import { describe, expect, it } from 'vitest'
 import { SessionFormatEventCollector, type SessionFormatEvent } from '@deepseek-ai/dsh-session-format'
-import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { releasedV4SessionFormatCodec, restoreReleasedV4Artifact } from '../src/index.ts'
 
 const header = { version: 4, id: 'native-syntax', createdAt: 1, delegationDepth: 0, isSeeded: false }
@@ -16,8 +16,8 @@ describe('native retired syntax admission', () => {
       { type: 'tool/code-dispatch', seq: 1, time: 1, data: {} },
     ]
     for (const event of invalid) {
-      expect(() => sessionFormatCatalog.encodeCurrentEvent(event)).toThrow()
-      const read = sessionFormatCatalog.createRestore(physical, { recovery: 'strict', validation: 'current' })
+      expect(() => v4Catalog().encodeCurrentEvent(event)).toThrow()
+      const read = v4Catalog().createRestore(physical, { recovery: 'strict', validation: 'current' })
       read.decodeRow(turn)
       expect(() => { read.decodeRow(event) }).toThrow()
       const scanner = releasedV4SessionFormatCodec.createDecoder(physical, 'recoverable')
@@ -34,8 +34,8 @@ describe('native retired syntax admission', () => {
       { type: 'tool/code-dispatch-start', seq: 2, time: 1, data: { unknown: true }, ignorable: true },
       { type: 'tool/code-dispatch', seq: 3, time: 1, data: null, ignorable: true },
     ] as SessionFormatEvent[]
-    const read = sessionFormatCatalog.createRestore(physical, { recovery: 'strict', validation: 'current' })
-    for (const event of rows) read.decodeRow(JSON.parse(JSON.stringify(sessionFormatCatalog.encodeCurrentEvent(event))))
+    const read = v4Catalog().createRestore(physical, { recovery: 'strict', validation: 'current' })
+    for (const event of rows) read.decodeRow(JSON.parse(JSON.stringify(v4Catalog().encodeCurrentEvent(event))))
     expect(read.finish().events).toEqual(rows)
   })
 })

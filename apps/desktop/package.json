@@ -49,6 +49,7 @@
     "ws": "^8.21.0"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-anima-memory": "workspace:*",
     "@deepseek-ai/dsh-app-boot": "workspace:*",
     "@deepseek-ai/dsh-atomic-write": "workspace:*",
     "@deepseek-ai/dsh-browser-use-desktop": "workspace:*",

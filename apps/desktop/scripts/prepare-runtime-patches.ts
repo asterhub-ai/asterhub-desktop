@@ -88,7 +88,8 @@ export function prepareRuntimePatches(
   writeFileSync(targetPath, yaml.dump({ ...target, overrides: { ...target.overrides, ...overrides },
     patchedDependencies: Object.fromEntries(selected.map(entry => [entry.spec, entry.path])), allowUnusedPatches: true }))
   return { patches: selected.map(({ bytes: _bytes, ...entry }) => entry),
-    workspaceOnly: Object.entries(policy).filter(([, rule]) => rule.scope === 'workspace-only').map(([spec]) => patchIdentity(spec).name) }
+    workspaceOnly: Object.entries(policy).filter(([, rule]) => rule.scope === 'workspace-only' && rule.retainRuntimePackage !== true)
+      .map(([spec]) => patchIdentity(spec).name) }
 }
 
 /**

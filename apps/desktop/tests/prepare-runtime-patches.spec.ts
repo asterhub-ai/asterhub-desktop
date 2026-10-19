@@ -50,6 +50,18 @@ it('classifies the current workspace and shares only runtime patch bytes', () =>
   expect(readFileSync(join(repository, 'pnpm-lock.yaml'))).toEqual(before)
 })
 
+it('excludes workspace patch bytes while retaining its required runtime package', () => {
+  const { source, project } = fixture()
+  const retained = { scope: 'workspace-only', retainRuntimePackage: true, reason: 'A matching runtime dependency stays installed.' } as const
+  const plan = prepareRuntimePatches(project, source, { 'fixture@1.0.0': retained }, {})
+  writeFileSync(join(project, 'pnpm-lock.yaml'), yaml.dump({
+    patchedDependencies: {}, packages: { 'fixture@1.0.0': { version: '1.0.0' } },
+  }))
+  expect(plan.patches).toEqual([])
+  expect(plan.workspaceOnly).toEqual([])
+  expect(() => { verifyRuntimePatches(project, plan) }).not.toThrow()
+})
+
 it('does not infer version overrides from selected patches', () => {
   const { source, project } = fixture()
   const before = readFileSync(join(source, 'pnpm-workspace.yaml'))

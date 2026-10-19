@@ -1,5 +1,5 @@
+import { v4Catalog } from './helpers/v4-catalog.ts'
 import { describe, expect, it } from 'vitest'
-import { createSessionFormatCatalogWithChildren, sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { SessionFormatEventCollector } from '@deepseek-ai/dsh-session-format'
 import type { SessionFormatArtifact, SessionFormatEvent } from '@deepseek-ai/dsh-session-format'
 import { releasedV4SessionFormatCodec, restoreReleasedV4Artifact } from '../src/index.ts'
@@ -24,17 +24,17 @@ function source() {
   return rows.map((row, seq) => ({ ...row, seq, time: seq + 1 })) as SessionFormatEvent[]
 }
 function migrated() {
-  const restore = createSessionFormatCatalogWithChildren([]).createRestore(header, { recovery: 'strict', validation: 'current' })
+  const restore = v4Catalog([]).createRestore(header, { recovery: 'strict', validation: 'current' })
   for (const row of source()) restore.decodeRow(row)
   return restore.finish()
 }
 
 function reopen(artifact: SessionFormatArtifact) {
-  const header = sessionFormatCatalog.encodeCurrentHeader(artifact.header, artifact.inheritedEventCount)
-  const restore = sessionFormatCatalog.createRestore(header, {
+  const header = v4Catalog().encodeCurrentHeader(artifact.header, artifact.inheritedEventCount)
+  const restore = v4Catalog().createRestore(header, {
     recovery: 'strict', validation: 'current',
   })
-  for (const event of artifact.events) restore.decodeRow(sessionFormatCatalog.encodeCurrentEvent(event))
+  for (const event of artifact.events) restore.decodeRow(v4Catalog().encodeCurrentEvent(event))
   return restore.finish()
 }
 
@@ -77,7 +77,7 @@ describe('canonical V4 integration', () => {
     const artifact = { header: { ...logical, version: 4, isSeeded: false }, inheritedEventCount: 0, events: [marker(3)] }
     expect(restoreReleasedV4Artifact(artifact, new Set([marker(3).type]))).toBe(artifact)
     expect(() => restoreReleasedV4Artifact({ ...artifact, events: [{ type: 'feedback/record', seq: 0, time: 1, ignorable: true, data: {} }, { ...marker(4), seq: 1 }] }, new Set(['feedback/record', marker(4).type]))).toThrow(/wrong Session/)
-    const reader = createSessionFormatCatalogWithChildren([]).createRestore({ ...header, version: 3, isSeeded: false }, { recovery: 'strict', validation: 'current' })
+    const reader = v4Catalog([]).createRestore({ ...header, version: 3, isSeeded: false }, { recovery: 'strict', validation: 'current' })
     reader.decodeRow({ type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } })
     reader.decodeRow({ ...marker(3), seq: 1, time: 2 })
     expect(() => reader.finish()).toThrow(/wrong Session/)

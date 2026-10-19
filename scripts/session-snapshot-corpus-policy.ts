@@ -22,7 +22,8 @@ export interface SnapshotCorpusGenerationSummary {
 }
 
 const RETAINED_BASELINE_VERSION = 3
-const MAX_RETAINED_ROLES = 11
+// One retained V4 role covers the newly adjacent V4-to-V5 migration edge.
+const MAX_RETAINED_ROLES = 12
 const REQUIRED_V0_COVERAGE = new Set([
   'multi-hop',
   'packed-row',

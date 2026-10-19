@@ -1,0 +1,38 @@
+{
+  "name": "@deepseek-ai/anima-memory",
+  "version": "0.2.0-rc.3",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./bootstrap": {
+      "types": "./lib/types/neo4j-instance-bootstrap.d.ts",
+      "default": "./lib/types/neo4j-instance-bootstrap.js"
+    },
+    "./review-candidate-cli": null,
+    "./*": {
+      "types": "./lib/types/*.d.ts",
+      "default": "./lib/types/*.js"
+    }
+  },
+  "files": [
+    "lib/index.js",
+    "lib/types/**/*.js",
+    "lib/types/**/*.d.ts",
+    "lib/types/**/*.d.ts.map"
+  ],
+  "dependencies": {
+    "@deepseek-ai/anima-capture": "workspace:~",
+    "json-canonicalize": "3.0.1",
+    "neo4j-driver": "6.2.0"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.8"
+  }
+}

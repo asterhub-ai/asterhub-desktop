@@ -51,7 +51,7 @@ describe('createLegacyAdopter', () => {
       data: { turn: 1 },
     })
     const logContent = `${headerLine}\n${eventLine}\n`
-    const sourceLogPath = join(sessionDir, 'session.v4.jsonl')
+    const sourceLogPath = join(sessionDir, `session.v${SESSION_FORMAT_VERSION}.jsonl`)
     await writeFile(sourceLogPath, logContent, 'utf8')
     const sourceDigest = createHash('sha256').update(logContent).digest('hex')
 
@@ -75,7 +75,7 @@ describe('createLegacyAdopter', () => {
     expect(manifest.pinnedSessionIds).toEqual([sessionId])
 
     // Verify destination copy
-    const destLogPath = join(destRoot, '.aster', 'sessions', projectKey(legacyCwd), String(sessionId), 'session.v4.jsonl')
+    const destLogPath = join(destRoot, '.aster', 'sessions', projectKey(legacyCwd), String(sessionId), `session.v${SESSION_FORMAT_VERSION}.jsonl`)
     const destBytes = await readFile(destLogPath, 'utf8')
     expect(destBytes).toBe(logContent)
     expect(createHash('sha256').update(destBytes).digest('hex')).toBe(sourceDigest)
@@ -143,7 +143,7 @@ describe('createLegacyAdopter', () => {
       time: 201,
       data: { turn: 1 },
     }
-    await writeFile(join(sessionDir, 'session.v4.jsonl'), `${JSON.stringify(header)}\n${JSON.stringify(event)}\n`)
+    await writeFile(join(sessionDir, `session.v${SESSION_FORMAT_VERSION}.jsonl`), `${JSON.stringify(header)}\n${JSON.stringify(event)}\n`)
 
     const projectId = ProjectId('b2719a2e-650c-49fb-9c98-3c4e0ce61970')
     const proposal: LegacyProjectProposal = {

@@ -439,8 +439,17 @@ async function main(): Promise<void> {
     () => locale.id === 'zh-CN' ? 'zh_CN' : 'en_US', process.platform === 'win32' ? 'win32' : 'darwin')
   const backend = new DesktopBackendController((onFailure) => {
     const hostInspectPort = developmentHostInspectPort(development)
+    const hostEnvironmentForBackend = {
+      ...hostEnvironment,
+      DSH_CLIENT_VERSION: desktopClientVersion(),
+      DSH_SPEECH_MODEL_DIRECTORY: join(app.isPackaged ? join(process.resourcesPath, 'app.asar.unpacked', 'dsh') : resources.dsh,
+        'speech-models', 'sensevoice'),
+      DSH_SPEECH_VAD_MODEL_PATH: join(app.isPackaged ? join(process.resourcesPath, 'app.asar.unpacked', 'dsh') : resources.dsh,
+        'speech-models', 'silero', 'silero_vad.onnx'),
+      ...(app.isPackaged ? { DSH_ANIMA_RUNTIME_ROOT: join(process.resourcesPath, 'anima-runtime') } : {}),
+    }
     const host = new DesktopHostProcess(resources.node, resources.dsh, activeProject,
-      hostInspectPort, { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion(), DSH_SPEECH_MODEL_DIRECTORY: join(app.isPackaged ? join(process.resourcesPath, 'app.asar.unpacked', 'dsh') : resources.dsh, 'speech-models', 'sensevoice'), DSH_SPEECH_VAD_MODEL_PATH: join(app.isPackaged ? join(process.resourcesPath, 'app.asar.unpacked', 'dsh') : resources.dsh, 'speech-models', 'silero', 'silero_vad.onnx') }, onFailure,
+      hostInspectPort, hostEnvironmentForBackend, onFailure,
       primaryRuntime,
       resources, (next) => { platformView.setSession(next) },
       (request, signal) => {

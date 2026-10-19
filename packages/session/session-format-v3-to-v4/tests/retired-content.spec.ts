@@ -1,7 +1,8 @@
+import { v4Catalog } from './helpers/v4-catalog.ts'
 import { describe, expect, it } from 'vitest'
 import { SessionFormatEventCollector } from '@deepseek-ai/dsh-session-format'
 import type { SessionFormatEvent, SessionFormatJsonObject } from '@deepseek-ai/dsh-session-format'
-import { createSessionFormatCatalogWithChildren, historicalSessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
+import { historicalSessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { assertV4RowAdmission, releasedV4SessionFormatCodec, restoreReleasedV4Artifact } from '../src/index.ts'
 
 const header = { version: 4, id: 'retired-content', createdAt: 1, isSeeded: false, delegationDepth: 0 }
@@ -66,7 +67,7 @@ describe('retired tool-result content admission', () => {
     const historical = historicalSessionFormatCatalog.createRestore(physical, { recovery: 'strict', validation: 'current' })
     historical.decodeRow(event)
     expect(historical.finish().events).toEqual([event])
-    const current = createSessionFormatCatalogWithChildren([]).createRestore(physical, { recovery: 'strict', validation: 'current' })
+    const current = v4Catalog([]).createRestore(physical, { recovery: 'strict', validation: 'current' })
     expect(() => { current.decodeRow(event); current.finish() }).toThrow(/released tool-result wrapper/)
     expect(event).toEqual(before)
   })
@@ -103,7 +104,7 @@ describe('retired tool-result content admission', () => {
       expect(event).toEqual(before)
     }
     const opaque = rows.at(-1)!
-    const migrated = createSessionFormatCatalogWithChildren([]).createRestore({ type: 'session', ...header, version: 3 }, {
+    const migrated = v4Catalog([]).createRestore({ type: 'session', ...header, version: 3 }, {
       recovery: 'strict', validation: 'current',
     })
     migrated.decodeRow(opaque)

@@ -1,5 +1,5 @@
 ---
-description: "context 组概览：不定义工具、为每次请求添加持久且模型可见上下文的插件，供浏览本组的用户与维护者阅读。"
+description: "context 组概览：工作区指引、引用、本地 Neo4j 记忆工具及其他请求上下文插件，供用户与维护者浏览。"
 kind: "package-group"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-group"
 
 ## 概述
 
-context 组提供不定义任何工具、为每次请求添加模型可见上下文的插件：工作区指令文件成为指引，`@file` 提及提供路径补全，其他会话可以作为有界快照被引用，模型还能看到当前时间与 agent（智能体）的 tmux 位置。默认只挂载 `agent-instructions`（`dsh-base`）；其余全部需主动启用。上下文是持久的：注入的指令与引用以用户角色消息的形式进入会话历史，因此与其他对话内容一样持久保留、可回放、可压缩。本页概述本组；包级约定由各包 README 负责。
+context 组提供模型可见的工作区指引、文件和会话引用，以及当前时间或 tmux 位置等请求时信息。大多数包只添加上下文而不定义工具；`anima-memory` 还会将 Session 事件捕获到本地 Neo4j 图，并提供项目记忆与反思工具。`agent-instructions` 是 `dsh-base` 唯一默认挂载的包；web-app bundle 会挂载 `anima-memory`，其他包则需主动启用。本页概述本组；包级约定由各包 README 负责。
 
 ## 目录
 
@@ -25,6 +25,7 @@ context 组提供不定义任何工具、为每次请求添加模型可见上下
 | 包 | 职责 | ctx key |
 |---|---|---|
 | [`agent-instructions/`](agent-instructions/README.zh.md) | 将 `AGENTS.md`、`CLAUDE.md` 工作区指令加载到上下文，并在文件编辑后刷新 | — |
+| [`anima-memory/`](anima-memory/README.zh.md) | 按项目隔离的本地 Neo4j 记忆、Session 事件捕获、自动审核与反思，以及四个原生工具 | — |
 | [`session-reference/`](session-reference/README.zh.md) | 引用其他会话：提及一个会话，其有界只读快照即成为上下文 | `ctx.sessionReferenceResolver` |
 | [`file-reference/`](file-reference/README.zh.md) | 发现 `@file` 提及，并提供由宿主支持的 UI 共用的提及语法 | `ctx.fileReferences` |
 | [`file-reference-local/`](file-reference-local/README.zh.md) | `@file` 提及的本地工作区补全提供方 | — |

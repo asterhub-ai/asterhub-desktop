@@ -1,0 +1,40 @@
+{
+  "name": "@deepseek-ai/anima-capture",
+  "version": "0.2.0-rc.3",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./config": {
+      "types": "./lib/types/config.d.ts",
+      "default": "./lib/types/config.js"
+    },
+    "./*": {
+      "types": "./lib/types/*.d.ts",
+      "default": "./lib/types/*.js"
+    }
+  },
+  "files": [
+    "lib/index.js",
+    "lib/types/**/*.js",
+    "lib/types/**/*.d.ts",
+    "lib/types/**/*.d.ts.map"
+  ],
+  "dependencies": {
+    "@deepseek-ai/anima-protocol": "workspace:~",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "json-canonicalize": "3.0.1",
+    "neo4j-driver": "6.2.0",
+    "uuid": "11.1.0"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.8"
+  }
+}

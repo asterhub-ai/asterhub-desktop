@@ -17,6 +17,7 @@ describe('desktop build paths', () => {
       'artifacts',
       'unsignedArtifacts',
       'runtime',
+      'animaRuntime',
       'packageSet',
       'dsh',
       'dshPnpm',
@@ -32,6 +33,7 @@ describe('desktop build paths', () => {
     expect(arm64.artifacts).toContain(join('targets', 'mac-arm64', 'artifacts'))
     expect(x64.dsh).toContain(join('targets', 'mac-x64', 'dsh'))
     expect(windows.runtime).toContain(join('targets', 'win-x64', 'runtime'))
+    expect(windows.animaRuntime).toContain(join('targets', 'win-x64', 'anima-runtime'))
   })
 
   it('shares only the immutable upstream download cache', () => {

@@ -47,6 +47,18 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
  * blocks. A package moves on or off this list with its context behavior.
  */
 const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
+  'packages/client/ui-settings-anima': {
+    kind: 'indirect',
+    reason: 'The page changes the route the Host uses for later local Anima review and reflection calls; the Host owns each model request.',
+  },
+  'packages/session/session-format-v4-to-v5': {
+    kind: 'none',
+    reason: 'The migration retains every V4 message and adds no model-visible content.',
+  },
+  'packages/skill/asterhub-skills': {
+    kind: 'indirect',
+    reason: 'The bundled provider supplies optional development instructions; the selected workflow and task drive each SDK model call.',
+  },
   'packages/bundle/asterhub-desktop-native': { kind: 'indirect', reason: 'The bundle mounts existing clock, automation, and browser providers; those providers own model-visible content.' },
   'packages/client/ui-asterhub-automation': { kind: 'none', reason: 'The panel renders Host task state and submits authenticated commands; the Host owns scheduled model requests.' },
   'packages/client/product-analytics': { kind: 'none', reason: 'Desktop analytics observes selected interactions without contributing model context or Session events.' },

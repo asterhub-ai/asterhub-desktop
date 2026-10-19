@@ -1,5 +1,5 @@
 ---
-description: "The context group map: request-context plugins that add durable, model-visible context without defining tools, for users and maintainers navigating the group."
+description: "The context group map: workspace guidance, references, local Neo4j memory tools, and other request-context plugins for users and maintainers."
 kind: "package-group"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The context group provides plugins that add model-visible context to each request without defining any tool: workspace instruction files become guidance, `@file` mentions offer path completion, other sessions can be referenced as bounded snapshots, and the model can see the current time and the agent's tmux location. Only `agent-instructions` (`dsh-base`) ships mounted by default; the rest are opt-in. Context is durable: injected instructions and references enter session history as user-role messages, so they persist, replay, and compact like other conversation content. This page maps the group; each package README owns the per-package contract.
+The context group provides model-visible workspace guidance, file and session references, and request-time facts such as the current time or tmux location. Most packages add context without defining tools; `anima-memory` also captures Session events into a local Neo4j graph and provides project-memory and reflection tools. `agent-instructions` is the only package mounted by `dsh-base`; the web-app bundle mounts `anima-memory`, and the other packages are opt-in. This page maps the group; each package README owns the per-package contract.
 
 ## Table of Contents
 
@@ -25,6 +25,7 @@ The context group provides plugins that add model-visible context to each reques
 | Package | Role | ctx key |
 |---|---|---|
 | [`agent-instructions/`](agent-instructions/README.md) | Loads `AGENTS.md`/`CLAUDE.md` workspace instructions into context and refreshes them after file edits | — |
+| [`anima-memory/`](anima-memory/README.md) | Project-scoped local Neo4j memory, Session-event capture, automatic review and reflection, and four native tools | — |
 | [`session-reference/`](session-reference/README.md) | References other sessions: mention one and its bounded read-only snapshot becomes context | `ctx.sessionReferenceResolver` |
 | [`file-reference/`](file-reference/README.md) | `@file` mention discovery and the shared mention grammar for host-backed UIs | `ctx.fileReferences` |
 | [`file-reference-local/`](file-reference-local/README.md) | Local-workspace completion provider for `@file` mentions | — |

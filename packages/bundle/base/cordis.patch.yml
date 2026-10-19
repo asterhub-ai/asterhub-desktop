@@ -13,6 +13,9 @@
 # driven); the grouping is for readers.
 
 - insert:
+    - id: asterhub-skills
+      name: '@deepseek-ai/dsh-asterhub-skills'
+
     - id: tool-plugin-manager
       name: '@deepseek-ai/dsh-plugin-manager/tools'
       disabled: true

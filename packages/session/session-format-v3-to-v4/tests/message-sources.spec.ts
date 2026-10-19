@@ -1,7 +1,7 @@
+import { v4Catalog } from './helpers/v4-catalog.ts'
 import { describe, expect, it } from 'vitest'
 import { SessionFormatEventCollector } from '@deepseek-ai/dsh-session-format'
 import type { SessionFormatEvent, SessionFormatJsonObject } from '@deepseek-ai/dsh-session-format'
-import { createSessionFormatCatalogWithChildren, sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { assertV4MessageSources, assertV4SourceRowAdmission } from '../src/message-sources.ts'
 import { releasedV4SessionFormatCodec } from '../src/codec.ts'
 
@@ -11,7 +11,7 @@ function event(source: unknown): SessionFormatEvent {
 }
 
 function restore(source: unknown, version: 3 | 4 = 4) {
-  const reader = createSessionFormatCatalogWithChildren([]).createRestore({ ...header, version }, { recovery: 'strict', validation: 'current' })
+  const reader = v4Catalog([]).createRestore({ ...header, version }, { recovery: 'strict', validation: 'current' })
   reader.decodeRow(JSON.parse(JSON.stringify(event(source))))
   return reader.finish()
 }
@@ -49,7 +49,7 @@ describe('V4 source admission', () => {
       const output = new SessionFormatEventCollector()
       decoder.decodeRow(null, output)
       expect(() => { decoder.decodeRow(row, output) }).toThrow(/producer-owned source kind/)
-      expect(() => sessionFormatCatalog.encodeCurrentEvent(row)).toThrow(/producer-owned source kind/)
+      expect(() => v4Catalog().encodeCurrentEvent(row)).toThrow(/producer-owned source kind/)
     }
   })
 

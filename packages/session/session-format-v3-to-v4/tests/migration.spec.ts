@@ -1,8 +1,9 @@
+import { v4Catalog } from './helpers/v4-catalog.ts'
 import { describe, expect, it } from 'vitest'
 import { restoreReleasedV3Artifact } from '@deepseek-ai/dsh-session-format-v2-to-v3'
 import { SessionFormatEventCollector } from '@deepseek-ai/dsh-session-format'
 import type { SessionFormatEvent, SessionFormatHeader, SessionFormatJsonObject } from '@deepseek-ai/dsh-session-format'
-import { createSessionFormatCatalogWithChildren, historicalSessionFormatCatalog, sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
+import { historicalSessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { releasedV3SessionFormatCodec, createSessionFormatV3ToV4, sessionFormatV3ToV4 } from '../src/index.ts'
 
 const header: SessionFormatHeader = { version: 3, id: 'identity', createdAt: 1, isSeeded: false, delegationDepth: 0 }
@@ -28,7 +29,7 @@ function migrate(events: readonly SessionFormatEvent[], sourceHeader = header, c
 }
 
 function restore(events: readonly SessionFormatEvent[], sourceHeader = header) {
-  const reader = createSessionFormatCatalogWithChildren([]).createRestore({ type: 'session', ...sourceHeader }, { recovery: 'strict', validation: 'current' })
+  const reader = v4Catalog([]).createRestore({ type: 'session', ...sourceHeader }, { recovery: 'strict', validation: 'current' })
   for (const event of events) reader.decodeRow(event)
   return reader.finish()
 }
@@ -57,7 +58,7 @@ describe('V3 to V4 source preservation', () => {
     const ignorable = rows.map(row => row.type === 'developer/message' ? { ...row, ignorable: true } : row)
     expect(restore(ignorable).events).toEqual(ignorable.map(row =>
       row.type === 'developer/message' ? { ...row, type: 'plugin:developer/message' } : row))
-    const native = sessionFormatCatalog.createRestore({ type: 'session', ...header, version: 4 }, {
+    const native = v4Catalog().createRestore({ type: 'session', ...header, version: 4 }, {
       recovery: 'strict', validation: 'current',
     })
     for (const row of rows) native.decodeRow(row)
@@ -178,17 +179,17 @@ describe('V3 to V4 source preservation', () => {
       ? { type: 'session', version, id: header.id, createdAt: 1, delegationDepth: 0, parentSession: 'ancestor', seedLength: 6 }
       : { type: 'session', ...header, version, isSeeded: true, parentSession: 'ancestor' }
     const before = JSON.stringify({ physical, source })
-    const reader = createSessionFormatCatalogWithChildren([]).createRestore(physical, { recovery: 'strict', validation: 'current' })
+    const reader = v4Catalog([]).createRestore(physical, { recovery: 'strict', validation: 'current' })
     for (const row of source) reader.decodeRow(version === 3 ? releasedV3SessionFormatCodec.encodeEvent(row) : row)
     const artifact = reader.finish()
     expect(artifact.header.version).toBe(4)
     expect(artifact.inheritedEventCount).toBe(8)
     expect(artifact.events.filter(event => event.type === 'system/message')).toHaveLength(2)
     expect(artifact.events.at(-1)?.seq).toBe(8)
-    const reopened = sessionFormatCatalog.createRestore(sessionFormatCatalog.encodeCurrentHeader(artifact.header, 8), {
+    const reopened = v4Catalog().createRestore(v4Catalog().encodeCurrentHeader(artifact.header, 8), {
       recovery: 'strict', validation: 'current',
     })
-    for (const event of artifact.events) reopened.decodeRow(sessionFormatCatalog.encodeCurrentEvent(event))
+    for (const event of artifact.events) reopened.decodeRow(v4Catalog().encodeCurrentEvent(event))
     expect(reopened.finish()).toEqual(artifact)
     expect(JSON.stringify({ physical, source })).toBe(before)
   })
@@ -203,13 +204,13 @@ describe('V3 to V4 source preservation', () => {
       inheritedEventCount: decoder.finish(source) }, new Set(rows.map(row => row.type)))
     expect(artifact.inheritedEventCount).toBe(3)
 
-    const reader = createSessionFormatCatalogWithChildren([]).createRestore(physical, { recovery, validation: 'current' })
+    const reader = v4Catalog([]).createRestore(physical, { recovery, validation: 'current' })
     for (const row of rows) reader.decodeRow(row)
     expect(reader.finish()).toEqual({ ...artifact, header: { ...artifact.header, version: 4 } })
   })
 
   it.each(['strict', 'recoverable'] as const)('refuses foreign delivery after the final inherited cut during %s restoration', (recovery) => {
-    const reader = createSessionFormatCatalogWithChildren([]).createRestore({ type: 'session', ...header, isSeeded: true, parentSession: 'ancestor' }, {
+    const reader = v4Catalog([]).createRestore({ type: 'session', ...header, isSeeded: true, parentSession: 'ancestor' }, {
       recovery, validation: 'current',
     })
     for (const row of [fact, seed, { ...delivery(3, 'ancestor'), seq: 2 }, { ...seed, seq: 3 }, { ...delivery(3, 'ancestor'), seq: 4 }]) {

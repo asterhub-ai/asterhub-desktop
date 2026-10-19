@@ -1,0 +1,361 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:anima:schema:raw-event:v1.0",
+  "title": "CanonicalRawEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "nonemptyString": { "type": "string", "minLength": 1 },
+    "identityMethod": { "enum": ["source", "derived", "generated"] },
+    "extensions": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$": {}
+      },
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "event_name": { "$ref": "#/$defs/nonemptyString" },
+        "event_id": { "$ref": "#/$defs/nonemptyString" },
+        "session_id": { "$ref": "#/$defs/nonemptyString" }
+      },
+      "required": ["event_name"]
+    },
+    "fidelity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "completeness": { "enum": ["full", "partial"] },
+        "missing_fields": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?:/(?:[^~/]|~[01])*)+$"
+          }
+        }
+      },
+      "required": ["completeness", "missing_fields"],
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "completeness": { "const": "full" },
+            "missing_fields": { "type": "array", "maxItems": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "properties": {
+            "completeness": { "const": "partial" },
+            "missing_fields": { "type": "array", "minItems": 1 }
+          }
+        }
+      ]
+    },
+    "correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "method": { "enum": ["source", "derived", "missing"] },
+        "target_event_uid": { "$ref": "#/$defs/nonemptyString" },
+        "source_tool_call_id": { "$ref": "#/$defs/nonemptyString" },
+        "reason": { "$ref": "#/$defs/nonemptyString" }
+      },
+      "required": ["method"],
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "method": { "const": "source" },
+            "target_event_uid": {},
+            "source_tool_call_id": {}
+          },
+          "required": ["target_event_uid", "source_tool_call_id"],
+          "not": {
+            "type": "object",
+            "properties": { "reason": {} },
+            "required": ["reason"]
+          }
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": { "const": "derived" },
+            "target_event_uid": {},
+            "reason": {}
+          },
+          "required": ["target_event_uid", "reason"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "method": { "const": "missing" },
+            "reason": {}
+          },
+          "required": ["reason"],
+          "not": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": { "target_event_uid": {} },
+                "required": ["target_event_uid"]
+              },
+              {
+                "type": "object",
+                "properties": { "source_tool_call_id": {} },
+                "required": ["source_tool_call_id"]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "properties": {
+    "schema_id": { "const": "anima.raw-event/v1.0" },
+    "event_uid": { "$ref": "#/$defs/nonemptyString" },
+    "event_identity_method": { "$ref": "#/$defs/identityMethod" },
+    "session_uid": { "$ref": "#/$defs/nonemptyString" },
+    "session_identity_method": { "$ref": "#/$defs/identityMethod" },
+    "project_uid": { "$ref": "#/$defs/nonemptyString" },
+    "project_identity_method": { "$ref": "#/$defs/identityMethod" },
+    "kind": { "enum": ["message", "tool_call", "tool_result", "boundary", "turn_end"] },
+    "runtime_identity": { "$ref": "urn:anima:schema:runtime-identity:v1.0" },
+    "capture_capabilities": { "$ref": "urn:anima:schema:capture-capabilities:v1.0" },
+    "source": { "$ref": "#/$defs/source" },
+    "ingest_sequence": { "type": "integer", "minimum": 0 },
+    "captured_at": { "type": "string", "format": "date-time" },
+    "content_parts": {
+      "type": "array",
+      "items": { "$ref": "urn:anima:schema:content-part:v1.0" }
+    },
+    "fidelity": { "$ref": "#/$defs/fidelity" },
+    "native_payload_json": { "$ref": "#/$defs/nonemptyString" },
+    "source_sequence": { "type": "integer", "minimum": 0 },
+    "source_timestamp": { "type": "string", "format": "date-time" },
+    "role": { "enum": ["user", "assistant", "developer", "system", "unknown"] },
+    "tool_name": { "$ref": "#/$defs/nonemptyString" },
+    "outcome": { "enum": ["success", "error", "cancelled", "unknown"] },
+    "correlation": { "$ref": "#/$defs/correlation" },
+    "boundary_type": { "enum": ["checkpoint", "compact", "shutdown", "validation", "unknown"] },
+    "message_origin": { "enum": ["external_user", "runtime_synthetic"] },
+    "turn_index": { "type": "integer", "minimum": 0 },
+    "turn_end_status": { "enum": ["nonterminal", "final_reply", "cancelled"] },
+    "extensions": { "$ref": "#/$defs/extensions" }
+  },
+  "required": [
+    "schema_id",
+    "event_uid",
+    "event_identity_method",
+    "session_uid",
+    "session_identity_method",
+    "project_uid",
+    "project_identity_method",
+    "kind",
+    "runtime_identity",
+    "capture_capabilities",
+    "source",
+    "ingest_sequence",
+    "captured_at",
+    "content_parts",
+    "fidelity",
+    "native_payload_json"
+  ],
+  "allOf": [
+    {
+      "if": { "type": "object", "properties": { "kind": { "const": "message" } } },
+      "then": {
+        "type": "object",
+        "required": ["role"],
+        "properties": {
+          "role": {},
+          "content_parts": { "type": "array", "minItems": 1 }
+        },
+        "not": {
+          "anyOf": [
+            { "type": "object", "properties": { "tool_name": {} }, "required": ["tool_name"] },
+            { "type": "object", "properties": { "outcome": {} }, "required": ["outcome"] },
+            { "type": "object", "properties": { "correlation": {} }, "required": ["correlation"] },
+            { "type": "object", "properties": { "boundary_type": {} }, "required": ["boundary_type"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": { "type": "object", "properties": { "kind": { "const": "tool_call" } } },
+      "then": {
+        "type": "object",
+        "not": {
+          "anyOf": [
+            { "type": "object", "properties": { "role": {} }, "required": ["role"] },
+            { "type": "object", "properties": { "outcome": {} }, "required": ["outcome"] },
+            { "type": "object", "properties": { "correlation": {} }, "required": ["correlation"] },
+            { "type": "object", "properties": { "boundary_type": {} }, "required": ["boundary_type"] }
+          ]
+        },
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": { "tool_name": {} },
+            "required": ["tool_name"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "fidelity": {
+                "type": "object",
+                "properties": {
+                  "completeness": { "const": "partial" },
+                  "missing_fields": { "type": "array", "contains": { "const": "/tool_name" } }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": { "type": "object", "properties": { "kind": { "const": "tool_result" } } },
+      "then": {
+        "type": "object",
+        "required": ["outcome", "correlation"],
+        "properties": {
+          "outcome": {},
+          "correlation": {}
+        },
+        "not": {
+          "anyOf": [
+            { "type": "object", "properties": { "role": {} }, "required": ["role"] },
+            { "type": "object", "properties": { "boundary_type": {} }, "required": ["boundary_type"] }
+          ]
+        },
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": { "tool_name": {} },
+            "required": ["tool_name"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "fidelity": {
+                "type": "object",
+                "properties": {
+                  "completeness": { "const": "partial" },
+                  "missing_fields": { "type": "array", "contains": { "const": "/tool_name" } }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": { "type": "object", "properties": { "kind": { "const": "boundary" } } },
+      "then": {
+        "type": "object",
+        "required": ["boundary_type"],
+        "properties": { "boundary_type": {} },
+        "not": {
+          "anyOf": [
+            { "type": "object", "properties": { "role": {} }, "required": ["role"] },
+            { "type": "object", "properties": { "tool_name": {} }, "required": ["tool_name"] },
+            { "type": "object", "properties": { "outcome": {} }, "required": ["outcome"] },
+            { "type": "object", "properties": { "correlation": {} }, "required": ["correlation"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["kind"],
+        "properties": { "kind": { "const": "turn_end" } }
+      },
+      "then": {
+        "type": "object",
+        "required": ["turn_index", "turn_end_status"],
+        "properties": {
+          "turn_index": {},
+          "turn_end_status": {},
+          "source": {
+            "type": "object",
+            "properties": { "event_name": { "const": "turn_end" } },
+            "required": ["event_name"]
+          },
+          "content_parts": { "type": "array", "maxItems": 0 },
+          "capture_capabilities": {
+            "type": "object",
+            "properties": { "turn_end_event": { "const": true } },
+            "required": ["turn_end_event"]
+          }
+        },
+        "not": {
+          "anyOf": [
+            { "properties": { "role": {} }, "required": ["role"] },
+            { "properties": { "message_origin": {} }, "required": ["message_origin"] },
+            { "properties": { "tool_name": {} }, "required": ["tool_name"] },
+            { "properties": { "outcome": {} }, "required": ["outcome"] },
+            { "properties": { "correlation": {} }, "required": ["correlation"] },
+            { "properties": { "boundary_type": {} }, "required": ["boundary_type"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["kind"],
+        "properties": { "kind": { "not": { "const": "turn_end" } } }
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            { "properties": { "turn_index": {} }, "required": ["turn_index"] },
+            { "properties": { "turn_end_status": {} }, "required": ["turn_end_status"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["kind"],
+        "properties": {
+          "kind": { "const": "message" },
+          "role": { "const": "user" },
+          "capture_capabilities": {
+            "type": "object",
+            "properties": { "user_message_origin": { "const": true } },
+            "required": ["user_message_origin"]
+          }
+        }
+      },
+      "then": { "required": ["message_origin"] }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["kind"],
+        "properties": { "kind": { "not": { "const": "message" } } }
+      },
+      "then": { "not": { "required": ["message_origin"] } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["kind", "role"],
+        "properties": {
+          "kind": { "const": "message" },
+          "role": { "not": { "const": "user" } }
+        }
+      },
+      "then": { "not": { "required": ["message_origin"] } }
+    }
+  ]
+}

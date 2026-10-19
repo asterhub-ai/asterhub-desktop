@@ -480,6 +480,9 @@ export async function packageTarget(
     buildPaths.packedDsh,
   ], buildEnv, REPOSITORY_ROOT)
   await execute(['run', 'release:pack', '--family', 'vendor', '--out', buildPaths.packedVendor, ...packArguments], buildEnv, REPOSITORY_ROOT)
+  for (const directory of ['vendor/anima-protocol', 'vendor/anima-capture', 'vendor/anima-memory']) {
+    await execute(['--dir', directory, 'pack', '--pack-destination', buildPaths.packedVendor], buildEnv, REPOSITORY_ROOT)
+  }
   rmSync(buildPaths.packedLandlock, { recursive: true, force: true })
   mkdirSync(buildPaths.packedLandlock, { recursive: true })
   await execute(['--dir', 'native/system', 'run', 'build:ts'], buildEnv, REPOSITORY_ROOT)
@@ -495,6 +498,9 @@ export async function packageTarget(
   await execute(['run', 'prepare:packages'], targetEnv)
   await execute(['run', 'prepare:dsh', ...(signPrimaryRuntime || invocation.skipSmoke ? ['--defer-runtime-smoke'] : []),
     ...invocation.skipSmoke ? ['--skip-primary-runtime-smoke'] : []], downloadEnv)
+  await execute([
+    '--filter', '@deepseek-ai/dsh-anima-memory', 'run', 'prepare:desktop-runtime',
+  ], { ...downloadEnv, DSH_ANIMA_RUNTIME_DESTINATION: buildPaths.animaRuntime }, REPOSITORY_ROOT)
   if (signPrimaryRuntime) await execute(['run', 'sign:primary-runtime', '--dsh'], electronBuilderEnv)
   if (invocation.prepareOnly) return
   if (target.platform === 'darwin' && !invocation.directory) {

@@ -199,6 +199,74 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-agent-tool-presentation -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-anima-memory -->
+<a id="deepseek-aidsh-anima-memory"></a>
+
+## `@deepseek-ai/dsh-anima-memory`
+
+- `inject`: `agents` · `sessions` · `tools` · `llm` · `sessionProjections` · `sessionPersistence`
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/context/anima-memory/src/config.ts:36`](../packages/context/anima-memory/src/config.ts)
+
+```ts config-catalog
+/** Local paths and operation-level live policy references. */
+export interface Config {
+  /** Local Neo4j databases, authentication, installation identity, and managed runtime files. */
+  dataRoot: string
+  /** Optional packaged Neo4j and Java runtime directory. */
+  runtimeRoot: string
+  /** Events read per asynchronous Session persistence page. */
+  capturePageSize: number
+  /** Managed database startup deadline in milliseconds. */
+  startupTimeoutMs: number
+  /** Core shutdown budget in milliseconds. */
+  shutdownTimeoutMs: number
+  /** User-facing assistant nickname; does not replace the application identity. */
+  nickname: Volatile<string>
+  /** Communication warmth selected by the user. */
+  tone: Volatile<'direct' | 'balanced' | 'warm'>
+  /** Preferred amount of explanation in conversation. */
+  responseDetail: Volatile<'concise' | 'balanced' | 'detailed'>
+  /** Preferred amount of unsolicited suggestions within the authorized task. */
+  initiative: Volatile<'reserved' | 'balanced' | 'proactive'>
+  /** Preferred frequency of humor. */
+  humor: Volatile<'none' | 'light' | 'playful'>
+  /** Preferred emotional support style. */
+  emotionalSupport: Volatile<'practical' | 'balanced' | 'empathetic'>
+  /** Preferred interpersonal distance. */
+  familiarity: Volatile<'formal' | 'balanced' | 'familiar'>
+  /** Preferred informality of jokes, subject to application safety rules. */
+  jokeStyle: Volatile<'restrained' | 'balanced' | 'casual'>
+  /** Enable graph capture, recall, and tool access. */
+  enabled: Volatile<boolean>
+  /** Recall matching project memories before the first turn step. */
+  automaticRecall: Volatile<boolean>
+  /** Capture Session evidence needed for graph memory and reflections. */
+  captureEpisodes: Volatile<boolean>
+  /** Permit graph memory writes. */
+  allowMemoryWrites: Volatile<boolean>
+  /** Run candidate reviews and project reflection independently of extraction. */
+  reflectionEnabled: Volatile<boolean>
+  /** Maximum recalled results, source claims, and review candidates per operation. */
+  recallLimit: Volatile<number>
+  /** UTF-8 budget for recalled and rendered reflection output. */
+  maxContextBytes: Volatile<number>
+  /** Maximum exact human text span accepted for memory statements. */
+  maxMemoryChars: Volatile<number>
+  /** Empty with model to use the Session request route. */
+  modelProvider: Volatile<string>
+  /** Empty with model to use the Session request route. */
+  model: Volatile<string>
+  /** UTF-8 byte budget for auxiliary model inputs and outputs. */
+  maxInputBytes: Volatile<number>
+  /** Auxiliary model completion token budget. */
+  maxOutputTokens: Volatile<number>
+  /** Auxiliary model request deadline. */
+  timeoutMs: Volatile<number>
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-anima-memory -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-api-gateway -->
 <a id="deepseek-aidsh-api-gateway"></a>
 
@@ -4418,6 +4486,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-api-account-controller` | `deepseekAccount` · `agents` | [`packages/api/account-controller/src/index.ts`](../packages/api/account-controller/src/index.ts) |
 | `@deepseek-ai/dsh-api-remotes` | `typertGateway` | [`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts) |
 | `@deepseek-ai/dsh-asterhub-desktop-native` | — | [`packages/bundle/asterhub-desktop-native/src/index.ts`](../packages/bundle/asterhub-desktop-native/src/index.ts) |
+| `@deepseek-ai/dsh-asterhub-skills` | `skills` | [`packages/skill/asterhub-skills/src/index.ts`](../packages/skill/asterhub-skills/src/index.ts) |
 | `@deepseek-ai/dsh-authorization` | `credentials` | [`packages/credentials/authorization/src/index.ts`](../packages/credentials/authorization/src/index.ts) |
 | `@deepseek-ai/dsh-browser-use` | — | [`packages/browser-use/browser-use/src/index.ts`](../packages/browser-use/browser-use/src/index.ts) |
 | `@deepseek-ai/dsh-client-file-upload` | `agents` · `attachments` · `commands` · `connection` | [`packages/client/file-upload/src/index.ts`](../packages/client/file-upload/src/index.ts) |
@@ -4453,6 +4522,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-client-ui-settings` | — | [`packages/client/ui-settings/src/index.ts`](../packages/client/ui-settings/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-settings-account` | — | [`packages/client/ui-settings-account/src/index.ts`](../packages/client/ui-settings-account/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-settings-agent-loop` | — | [`packages/client/ui-settings-agent-loop/src/index.ts`](../packages/client/ui-settings-agent-loop/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-settings-anima` | — | [`packages/client/ui-settings-anima/src/index.ts`](../packages/client/ui-settings-anima/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-settings-general` | — | [`packages/client/ui-settings-general/src/index.ts`](../packages/client/ui-settings-general/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-settings-plugin-inventory` | — | [`packages/client/ui-settings-plugin-inventory/src/index.ts`](../packages/client/ui-settings-plugin-inventory/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-settings-plugins` | — | [`packages/client/ui-settings-plugins/src/index.ts`](../packages/client/ui-settings-plugins/src/index.ts) |
@@ -4593,6 +4663,7 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 | `@deepseek-ai/dsh-session-format-v1-to-v2` | — | [`packages/session/session-format-v1-to-v2/src/index.ts`](../packages/session/session-format-v1-to-v2/src/index.ts) |
 | `@deepseek-ai/dsh-session-format-v2-to-v3` | — | [`packages/session/session-format-v2-to-v3/src/index.ts`](../packages/session/session-format-v2-to-v3/src/index.ts) |
 | `@deepseek-ai/dsh-session-format-v3-to-v4` | — | [`packages/session/session-format-v3-to-v4/src/index.ts`](../packages/session/session-format-v3-to-v4/src/index.ts) |
+| `@deepseek-ai/dsh-session-format-v4-to-v5` | — | [`packages/session/session-format-v4-to-v5/src/index.ts`](../packages/session/session-format-v4-to-v5/src/index.ts) |
 | `@deepseek-ai/dsh-session-snapshot` | — | [`packages/test-support/session-snapshot/src/index.ts`](../packages/test-support/session-snapshot/src/index.ts) |
 | `@deepseek-ai/dsh-session-telemetry` | — | [`packages/session/session-telemetry/src/index.ts`](../packages/session/session-telemetry/src/index.ts) |
 | `@deepseek-ai/dsh-session-title-llm` | — | [`packages/session/session-title-llm/src/index.ts`](../packages/session/session-title-llm/src/index.ts) |

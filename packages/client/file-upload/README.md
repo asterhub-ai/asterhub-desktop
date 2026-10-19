@@ -61,6 +61,7 @@ The Host plugin provides `ctx.fileUploads`. It owns the authenticated streaming 
 -----
 
 <a id="further-exploration"></a>
+
 The Host resolves `project-storage` as a peer supplied by the application when it looks up attachment ownership.
 
 ## Further Exploration

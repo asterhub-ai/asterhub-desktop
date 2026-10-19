@@ -1,6 +1,6 @@
+import { v4Catalog } from './helpers/v4-catalog.ts'
 import { describe, expect, it } from 'vitest'
 import { Session, SessionId, SessionLogOffset, type SessionEvent, type SessionHeader } from '@deepseek-ai/dsh-session'
-import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import type { SessionFormatEvent } from '@deepseek-ai/dsh-session-format'
 
 type Row = { type: string; data: Record<string, unknown>; surfaceOp?: unknown; sourceEventSeqs?: number[]; ignorable?: true }
@@ -24,14 +24,15 @@ const request = () => row('request/header', { reason: 'initial', header: { confi
 
 /** Exercise physical JSON, catalog relationship admission, Session adoption, and derivation together. */
 function reopen(rows: readonly Row[], inherited = 0, seeded = false) {
-  const restore = sessionFormatCatalog.createRestore({ type: 'session', version: 4, id: 'native-relations', createdAt: 1, delegationDepth: 0, isSeeded: seeded, ...(seeded ? { parentSession: 'parent' } : {}) }, { recovery: 'strict', validation: 'current' })
+  const restore = v4Catalog().createRestore({ type: 'session', version: 4, id: 'native-relations', createdAt: 1, delegationDepth: 0, isSeeded: seeded, ...(seeded ? { parentSession: 'parent' } : {}) }, { recovery: 'strict', validation: 'current' })
   for (const [seq, candidate] of rows.entries()) {
     const event = { ...candidate, seq, time: seq + 1 } as unknown as SessionFormatEvent
-    restore.decodeRow(JSON.parse(JSON.stringify(sessionFormatCatalog.encodeCurrentEvent(event))))
+    restore.decodeRow(JSON.parse(JSON.stringify(v4Catalog().encodeCurrentEvent(event))))
   }
   const artifact = restore.finish()
   expect(artifact.inheritedEventCount).toBe(inherited)
-  const session = Session.fromRestore(SessionId(artifact.header.id), artifact.events as SessionEvent[], artifact.header as unknown as SessionHeader, SessionLogOffset(inherited), 'detached')
+  const sessionHeader = { ...artifact.header, version: 5 } as unknown as SessionHeader
+  const session = Session.fromRestore(SessionId(artifact.header.id), artifact.events as SessionEvent[], sessionHeader, SessionLogOffset(inherited), 'detached')
   return { artifact, messages: session.deriveMessages() }
 }
 

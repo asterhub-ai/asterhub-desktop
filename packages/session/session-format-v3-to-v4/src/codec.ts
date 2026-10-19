@@ -61,6 +61,12 @@ export const releasedV4SessionFormatCodec = Object.freeze({
  */
 export function assertV4RowAdmission(row: unknown, knownEventTypes?: ReadonlySet<string>): void {
   if (isSessionFormatJsonObject(row)) {
+    if (Object.hasOwn(row, 'sourceEventSeqs')) {
+      const sources = row['sourceEventSeqs']
+      if (Array.isArray(sources) && sources.length === 0) {
+        throw new SessionFormatError('format v4 sourceEventSeqs cannot be empty')
+      }
+    }
     if (row['type'] === 'developer/message' && row['ignorable'] === true
       && knownEventTypes?.has('developer/message') !== true) return
     assertV4DeveloperData(row as unknown as SessionFormatEvent)

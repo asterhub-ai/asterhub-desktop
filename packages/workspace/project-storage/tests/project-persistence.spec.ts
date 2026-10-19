@@ -45,7 +45,7 @@ describe('project-routed Session persistence', () => {
 
     const sessionId = SessionId('portable-session')
     const header: SessionHeader = {
-      version: 4, id: sessionId, createdAt: 10, cwd: original, isSeeded: false, delegationDepth: 0,
+      version: SESSION_FORMAT_VERSION, id: sessionId, createdAt: 10, cwd: original, isSeeded: false, delegationDepth: 0,
     }
     const writer = await sourceCtx.sessionPersistence.create(header)
     await writer.append([{ type: 'turn/start', seq: SessionSeq(0), time: 11, data: { turn: 1 } }])

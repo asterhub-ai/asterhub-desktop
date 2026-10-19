@@ -1,8 +1,8 @@
-import { copyFile, mkdir, mkdtemp, readFile, rm, chmod, access, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, chmod, access, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { SessionId, type SessionHeader } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, SessionId, type SessionHeader } from '@deepseek-ai/dsh-session'
 import { ProjectId, createManifest } from '../src/manifest.ts'
 import { ProjectMigrationUnavailableError, createProjectStorage } from '../src/registry.ts'
 import type { LegacyProjectProposal, PortableProjectManifest } from '../src/types.ts'
@@ -20,7 +20,7 @@ afterEach(async () => {
 })
 function header(id: string, cwd: string, parentSession?: string): SessionHeader {
   return {
-    version: 4,
+    version: SESSION_FORMAT_VERSION,
     id: SessionId(id),
     createdAt: 1,
     cwd,
@@ -83,6 +83,29 @@ describe('project locator and local membership', () => {
     expect(storage.manifest(bindingB.id).sessions).toEqual([])
   })
 
+  it.skipIf(process.platform !== 'win32')('opens and mutates projects with Windows read-only directory attributes', async () => {
+    const project = await root(), locator = join(await root(), 'locator.json')
+    const storage = await createProjectStorage(storageOptions(locator))
+    await chmod(project, 0o444)
+    try {
+      const binding = await storage.open({ root: project, mode: 'new' })
+      const owned = join(project, '.aster')
+      await chmod(owned, 0o444)
+      try {
+        const rootEntries = await readdir(project), ownedEntries = await readdir(owned)
+        await expect(storage.status(binding.id)).resolves.toBe('available')
+        expect(await readdir(project)).toEqual(rootEntries)
+        expect(await readdir(owned)).toEqual(ownedEntries)
+        await storage.bindSession(header('windows-directory-attribute', project))
+        expect(storage.manifest(binding.id).sessions).toHaveLength(1)
+      } finally {
+        await chmod(owned, 0o700)
+      }
+    } finally {
+      await chmod(project, 0o700)
+    }
+  })
+
   it('reports missing and read-only roots while retaining validated local metadata', async () => {
     const project = await root(), locator = join(await root(), 'locator.json')
     const storage = await createProjectStorage(storageOptions(locator))
@@ -90,7 +113,7 @@ describe('project locator and local membership', () => {
     const restarted = await createProjectStorage(storageOptions(locator))
     expect(restarted.manifest(binding.id).id).toBe(ProjectId(String(binding.id)))
     await chmod(project, 0o555)
-    await expect(restarted.status(binding.id)).resolves.toBe('read-only')
+    await expect(restarted.status(binding.id)).resolves.toBe(process.platform === 'win32' ? 'available' : 'read-only')
     await chmod(project, 0o700)
     await rm(project, { recursive: true })
     await expect(restarted.status(binding.id)).resolves.toBe('missing')

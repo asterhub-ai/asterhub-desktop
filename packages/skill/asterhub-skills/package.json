@@ -1,0 +1,30 @@
+{
+  "name": "@deepseek-ai/dsh-asterhub-skills",
+  "description": "Bundled AsterHub SDK skills for durable RPC development sessions and independent cross-review",
+  "version": "0.2.0-rc.3",
+  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/asterhub-ai/asterhub-desktop.git",
+    "directory": "packages/skill/asterhub-skills"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.js" },
+    "./package.json": "./package.json"
+  },
+  "files": ["lib/index.js", "assets", "lib/types/**/*.d.ts"],
+  "license": "MIT",
+  "dependencies": { "@deepseek-ai/dsh-skill-filesystem": "workspace:*" },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-skill": "workspace:*"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-skill": "workspace:*",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:~"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "adaptation": "Ported into the built-in AsterHub skill provider. Native SDK and Session APIs replace OMP RPC commands; no license statement is inferred.",
+  "sourceRevision": "71c3a742d77901c9366e245d2a3dd65db04332f3",
+  "skills": [
+    {
+      "source": "rpc开发模式/omp-rpc-dev",
+      "bundled": "asterhub-rpc-dev"
+    },
+    {
+      "source": "rpc开发模式/omp-rpc-cross-review",
+      "bundled": "asterhub-rpc-cross-review"
+    }
+  ],
+  "sourceRepository": "https://github.com/asterhub-ai/asterhub-skills.git"
+}

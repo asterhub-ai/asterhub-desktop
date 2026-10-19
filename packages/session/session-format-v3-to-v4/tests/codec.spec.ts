@@ -1,7 +1,7 @@
+import { v4Catalog } from './helpers/v4-catalog.ts'
 import { describe, expect, it } from 'vitest'
 import { SessionFormatEventCollector } from '@deepseek-ai/dsh-session-format'
 import type { SessionFormatEvent, SessionFormatJsonObject } from '@deepseek-ai/dsh-session-format'
-import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { releasedV2SessionFormatCodec } from '@deepseek-ai/dsh-session-format-v2-to-v3'
 import { assertReleasedV4Header, assertV4RowAdmission, releasedV4SessionFormatCodec, restoreReleasedV4Artifact } from '../src/index.ts'
 
@@ -91,7 +91,7 @@ describe('V4 framing and restoration', () => {
       expect(() => restore([fact, { ...marker, data: { ...data, sessionFormatVersion } }])).toThrow('sessionFormatVersion')
     }
     expect(() => restore([fact, { ...marker, data: null }])).toThrow('data must be an object')
-    const reader = sessionFormatCatalog.createRestore({ type: 'session', ...header }, { recovery: 'strict', validation: 'current' })
+    const reader = v4Catalog().createRestore({ type: 'session', ...header }, { recovery: 'strict', validation: 'current' })
     reader.decodeRow(fact)
     reader.decodeRow({ ...marker, data: { ...data, throughSeq: 1 } })
     expect(() => reader.finish()).toThrow('throughSeq')

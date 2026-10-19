@@ -1,6 +1,6 @@
 /** Boot the materialized target runtime without access to a user's Harness profile. */
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
 import { execFile } from 'node:child_process'
@@ -79,7 +79,7 @@ export function apply(ctx) {
     async handler(_request, response) {
       try {
         const expectedSkills = ['office', 'office-docx', 'office-export-pdf', 'office-pptx', 'office-recalculate', 'office-render', 'office-xlsx']
-        const catalog = (await ctx.skills.list()).map(skill => skill.name)
+        const catalog = (await ctx.skills.list()).filter(skill => skill.provider === 'dsh-office').map(skill => skill.name)
         if (JSON.stringify(catalog) !== JSON.stringify(expectedSkills)) throw new Error('Office skill catalog is incomplete')
         const operationSkills = await Promise.all(['office-render', 'office-recalculate', 'office-export-pdf'].map(name => ctx.skills.get(name)))
         if (operationSkills.some(skill => skill === undefined || !skill.content.includes('libreofficeKit'))) {
@@ -141,6 +141,7 @@ export function apply(ctx) {
     }
     const emptyWorkspaceDir = join(home, 'empty-workspace')
     mkdirSync(emptyWorkspaceDir)
+    if (process.platform === 'win32') chmodSync(emptyWorkspaceDir, 0o444)
     const inspectRpcId = 'desktop-smoke-workspace-inspect'
     const inspectResponse = await fetch(new URL('/api/workspace/inspect', ready.url), {
       method: 'POST',
@@ -192,6 +193,7 @@ export function apply(ctx) {
     const opened = await callSessionSmoke('workspace/openProject', { path: emptyWorkspaceDir, mode: 'new' })
     const workspace = opened.workspace as { workspaceId?: unknown } | undefined
     if (typeof workspace?.workspaceId !== 'string') throw new Error('desktop runtime: opened Workspace has no identity')
+    if (process.platform === 'win32') chmodSync(join(emptyWorkspaceDir, '.aster'), 0o444)
     const created = await callSessionSmoke('session/create', { workspaceId: workspace.workspaceId })
     if (typeof created.sessionId !== 'string') throw new Error('desktop runtime: created Session has no identity')
     if (!existsSync(join(emptyWorkspaceDir, '.aster', 'project.json'))) throw new Error('desktop runtime: created Workspace has no project metadata')
@@ -231,6 +233,11 @@ export function apply(ctx) {
     clearTimeout(timer)
     await host.stop()
     credentialKey.fill(0)
+    if (process.platform === 'win32') {
+      for (const path of [join(home, 'empty-workspace', '.aster'), join(home, 'empty-workspace')]) {
+        if (existsSync(path)) chmodSync(path, 0o700)
+      }
+    }
     rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }
 }

@@ -38,7 +38,8 @@ export class ModelDirectoryResolver extends Service {
   static inject = ['sessions', 'remote', 'remote.session']
 
   private readonly live: LiveState = { directories: new WeakMapWithValues() }
-  private readonly catalog: ModelCatalogDirectory
+  /** Shared Host catalog used by conversation selectors and settings model pickers. */
+  readonly catalog: ModelCatalogDirectory
 
   /**
    * @param ctx - owning root context (the service registers itself as `models`).

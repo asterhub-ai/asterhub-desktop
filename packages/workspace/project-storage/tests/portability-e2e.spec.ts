@@ -3,7 +3,7 @@ import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import { SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionHeader } from '@deepseek-ai/dsh-session/types'
 import ProjectStorage, { ensureProjectGitExclusion, resolveProjectAttachmentScope } from '../src/index.ts'
 import ProjectSessionPersistence from '../src/persistence.ts'
@@ -76,7 +76,7 @@ describe('end-to-end project portability across synthetic machines', () => {
 
     const parentSessionId = SessionId('sess-portable-root')
     const headerA: SessionHeader = {
-      version: 4,
+      version: SESSION_FORMAT_VERSION,
       id: parentSessionId,
       createdAt: 1000,
       cwd: projectA,
@@ -94,7 +94,7 @@ describe('end-to-end project portability across synthetic machines', () => {
     // Create a subagent session with inherited cut
     const subagentSessionId = SessionId('sess-portable-subagent')
     const subagentHeaderA: SessionHeader = {
-      version: 4,
+      version: SESSION_FORMAT_VERSION,
       id: subagentSessionId,
       createdAt: 2000,
       cwd: projectA,

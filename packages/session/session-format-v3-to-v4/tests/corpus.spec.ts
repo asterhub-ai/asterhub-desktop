@@ -1,7 +1,8 @@
+import { v4Catalog } from './helpers/v4-catalog.ts'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { expect, it } from 'vitest'
-import { createSessionFormatCatalogWithChildren, historicalSessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
+import { historicalSessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { isSessionFormatJsonObject, type SessionFormatArtifact, type SessionFormatEvent, type SessionFormatJsonObject, type SessionFormatJsonValue } from '@deepseek-ai/dsh-session-format'
 import { historicalChildCatalogSource } from '../src/index.ts'
 import { mapEventMessages, rewritePluginSource } from '../src/sources.ts'
@@ -29,7 +30,7 @@ function restoreFixture(path: string): SessionFormatArtifact {
 }
 
 function migrate(parent: SessionFormatArtifact, children: SessionFormatArtifact[]) {
-  const restore = createSessionFormatCatalogWithChildren(children.map(historicalChildCatalogSource)).createRestore({ type: 'session', ...parent.header }, {
+  const restore = v4Catalog(children.map(historicalChildCatalogSource)).createRestore({ type: 'session', ...parent.header }, {
     recovery: 'strict', validation: 'current',
   })
   for (const event of parent.events) restore.decodeRow(event)

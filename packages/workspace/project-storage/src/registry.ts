@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { readFileSync, realpathSync } from 'node:fs'
+import { constants, readFileSync, realpathSync } from 'node:fs'
 import type { FileHandle } from 'node:fs/promises'
-import { open as openFile, lstat, mkdir, readFile, realpath, rename, rm, stat } from 'node:fs/promises'
+import { access, open as openFile, lstat, mkdir, readFile, realpath, rename, rm, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { ProjectBindingRevision as makeProjectBindingRevision, ProjectId as makeProjectId, createManifest, decodeManifest, manifestDigest, parseStrictJson, projectSessionRecord } from './manifest.ts'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session/types'
@@ -208,10 +208,17 @@ export class ProjectStorageRegistry implements ProjectStorageHost {
       const project = await lstat(join(root, '.aster'))
       const metadata = await lstat(join(root, ...MANIFEST_PATH))
       if (project.isSymbolicLink() || !project.isDirectory() || metadata.isSymbolicLink() || !metadata.isFile()) return 'missing'
-      const bits = (await stat(root)).mode & project.mode & metadata.mode & 0o222
-      return bits === 0 ? 'read-only' : 'available'
+      if ((metadata.mode & 0o222) === 0) return 'read-only'
+      await assertWritableDirectory(root)
+      await assertWritableDirectory(join(root, '.aster'))
+      if (process.platform === 'win32') {
+        const handle = await openFile(join(root, ...MANIFEST_PATH), 'r+')
+        await handle.close()
+      }
+      return 'available'
     } catch (error: unknown) {
       if (isMissing(error)) return 'missing'
+      if (isWriteDenied(error)) return 'read-only'
       throw error
     }
   }
@@ -570,7 +577,13 @@ async function assertOwnedRoots(root: string, create: boolean): Promise<void> {
 async function assertWritableDirectory(path: string): Promise<void> {
   const info = await stat(path)
   if (!info.isDirectory()) throw new Error(`project storage path is not a directory: ${path}`)
-  if ((info.mode & 0o222) === 0) throw new Error(`project storage path is read-only: ${path}`)
+  if (process.platform !== 'win32') {
+    if ((info.mode & 0o222) === 0) throw Object.assign(new Error(`project storage path is read-only: ${path}`), { code: 'EACCES' })
+    return
+  }
+  // Windows directory READONLY attributes do not govern child creation.
+  // access() is advisory; the actual mkdir/rename operations enforce Windows ACLs.
+  await access(path, constants.W_OK)
 }
 function inside(root: string, target: string): boolean { const rel = relative(root, target); return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel)) }
 async function writeManifest(root: string, manifest: PortableProjectManifest): Promise<void> { await atomicWrite(join(root, ...MANIFEST_PATH), Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`), 0o600) }
@@ -592,6 +605,7 @@ async function atomicWrite(path: string, bytes: Uint8Array, mode: number): Promi
 }
 function baseName(root: string): string { const name = root.split(/[\\/]/).filter(Boolean).at(-1); return name || 'Project' }
 function isObject(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value) }
+function isWriteDenied(error: unknown): boolean { return isNodeError(error, 'EACCES') || isNodeError(error, 'EPERM') || isNodeError(error, 'EROFS') }
 function isMissing(error: unknown): boolean { return isNodeError(error, 'ENOENT') }
 function isExists(error: unknown): boolean { return isNodeError(error, 'EEXIST') }
 function isNodeError(error: unknown, code: string): boolean { return typeof error === 'object' && error !== null && 'code' in error && error.code === code }

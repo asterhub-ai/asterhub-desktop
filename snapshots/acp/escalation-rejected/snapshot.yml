@@ -6,3 +6,7 @@ recording: live
 header:
   class: acp-default
 permission: workspace-write
+platform: posix
+sessionFormat:
+  version: 4
+  coverage: [adjacent-migration]

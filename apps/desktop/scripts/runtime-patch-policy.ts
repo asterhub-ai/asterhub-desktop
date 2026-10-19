@@ -3,7 +3,7 @@
 /** A patch shared with the workspace, excluded from runtime installation, or supplied only to Desktop. */
 export type DesktopRuntimePatch =
   | { scope: 'shared'; reason: string }
-  | { scope: 'workspace-only'; reason: string }
+  | { scope: 'workspace-only'; reason: string; retainRuntimePackage?: true }
   | { scope: 'runtime-only'; path: string; reason: string }
 
 /** Every workspace patch requires an explicit Desktop decision; runtime-only entries may add or replace a patch. */
@@ -15,6 +15,7 @@ export const DESKTOP_RUNTIME_PATCHES: Readonly<Record<string, DesktopRuntimePatc
   '@yao-pkg/pkg@6.21.0': { scope: 'workspace-only', reason: 'The executable packer executes on the build host.' },
   'exceljs@4.4.0': { scope: 'workspace-only', reason: 'The patched parser is embedded in the client bundle and worker.' },
   'node-pty@1.2.0-beta.15': { scope: 'shared', reason: 'Runtime terminals need helper resolution and Windows worker cleanup.' },
+  'node-addon-native-custom-loader@0.1.9': { scope: 'workspace-only', retainRuntimePackage: true, reason: 'The application workspace hoists multiple binary versions, while the isolated Desktop runtime needs only the matching 0.1.9 package.' },
 }
 
 /** Reviewed Desktop dependency constraints, independent of patch selection. */

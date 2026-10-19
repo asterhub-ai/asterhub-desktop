@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:anima:schema:content-part:v1.0",
+  "title": "CanonicalContentPart",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_id": { "const": "anima.content-part/v1.0" },
+    "type": { "enum": ["text", "json", "image", "file", "unknown"] },
+    "part_index": { "type": "integer", "minimum": 0 },
+    "text": { "type": "string", "minLength": 1 },
+    "value_json": { "type": "string", "minLength": 1 },
+    "mime_type": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "source_ref": { "type": "string", "minLength": 1 },
+    "native_type": { "type": "string", "minLength": 1 },
+    "payload_json": { "type": "string", "minLength": 1 },
+    "extensions": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$": {}
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["schema_id", "type", "part_index"],
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "text" },
+        "text": {}
+      },
+      "required": ["text"],
+      "not": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": { "value_json": {} },
+            "required": ["value_json"]
+          },
+          {
+            "type": "object",
+            "properties": { "mime_type": {} },
+            "required": ["mime_type"]
+          },
+          {
+            "type": "object",
+            "properties": { "name": {} },
+            "required": ["name"]
+          },
+          {
+            "type": "object",
+            "properties": { "source_ref": {} },
+            "required": ["source_ref"]
+          },
+          {
+            "type": "object",
+            "properties": { "native_type": {} },
+            "required": ["native_type"]
+          },
+          {
+            "type": "object",
+            "properties": { "payload_json": {} },
+            "required": ["payload_json"]
+          }
+        ]
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "json" },
+        "value_json": {}
+      },
+      "required": ["value_json"],
+      "not": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": { "text": {} },
+            "required": ["text"]
+          },
+          {
+            "type": "object",
+            "properties": { "mime_type": {} },
+            "required": ["mime_type"]
+          },
+          {
+            "type": "object",
+            "properties": { "name": {} },
+            "required": ["name"]
+          },
+          {
+            "type": "object",
+            "properties": { "source_ref": {} },
+            "required": ["source_ref"]
+          },
+          {
+            "type": "object",
+            "properties": { "native_type": {} },
+            "required": ["native_type"]
+          },
+          {
+            "type": "object",
+            "properties": { "payload_json": {} },
+            "required": ["payload_json"]
+          }
+        ]
+      }
+    },
+    {
+      "type": "object",
+      "properties": { "type": { "enum": ["image", "file"] } },
+      "not": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": { "text": {} },
+            "required": ["text"]
+          },
+          {
+            "type": "object",
+            "properties": { "value_json": {} },
+            "required": ["value_json"]
+          },
+          {
+            "type": "object",
+            "properties": { "native_type": {} },
+            "required": ["native_type"]
+          },
+          {
+            "type": "object",
+            "properties": { "payload_json": {} },
+            "required": ["payload_json"]
+          }
+        ]
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "unknown" },
+        "native_type": {},
+        "payload_json": {}
+      },
+      "required": ["native_type", "payload_json"],
+      "not": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": { "text": {} },
+            "required": ["text"]
+          },
+          {
+            "type": "object",
+            "properties": { "value_json": {} },
+            "required": ["value_json"]
+          },
+          {
+            "type": "object",
+            "properties": { "mime_type": {} },
+            "required": ["mime_type"]
+          },
+          {
+            "type": "object",
+            "properties": { "name": {} },
+            "required": ["name"]
+          },
+          {
+            "type": "object",
+            "properties": { "source_ref": {} },
+            "required": ["source_ref"]
+          }
+        ]
+      }
+    }
+  ]
+}

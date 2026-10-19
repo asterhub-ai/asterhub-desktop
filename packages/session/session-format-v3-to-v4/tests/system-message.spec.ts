@@ -1,10 +1,10 @@
+import { v4Catalog } from './helpers/v4-catalog.ts'
 import { describe, expect, it } from 'vitest'
 import { SessionFormatEventCollector, type SessionFormatEvent } from '@deepseek-ai/dsh-session-format'
-import { createSessionFormatCatalogWithChildren, sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { releasedV4SessionFormatCodec } from '../src/codec.ts'
 
 const header = { type: 'session', version: 4, id: 'system-fields', createdAt: 1, delegationDepth: 0, isSeeded: false }
-const migrated = createSessionFormatCatalogWithChildren([]).createRestore({ ...header, version: 3 }, { recovery: 'strict', validation: 'current' })
+const migrated = v4Catalog([]).createRestore({ ...header, version: 3 }, { recovery: 'strict', validation: 'current' })
 for (const event of [
   { type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } },
   { type: 'step/start', seq: 1, time: 1, data: { turn: 1, step: 1 } },
@@ -18,9 +18,9 @@ const message = (content: unknown) => ({ id: 'system', role: 'system', source, c
 const row = (data: unknown): SessionFormatEvent => ({ type: 'system/message', seq: 2, time: 1, surfaceOp: 'append', data }) as SessionFormatEvent
 
 function restored(data: unknown) {
-  const read = sessionFormatCatalog.createRestore(header, { recovery: 'strict', validation: 'current' })
+  const read = v4Catalog().createRestore(header, { recovery: 'strict', validation: 'current' })
   for (const event of [{ type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } }, { type: 'step/start', seq: 1, time: 1, data: { turn: 1, step: 1 } }, row(data)]) {
-    read.decodeRow(JSON.parse(JSON.stringify(sessionFormatCatalog.encodeCurrentEvent(event))))
+    read.decodeRow(JSON.parse(JSON.stringify(v4Catalog().encodeCurrentEvent(event))))
   }
   return read.finish()
 }

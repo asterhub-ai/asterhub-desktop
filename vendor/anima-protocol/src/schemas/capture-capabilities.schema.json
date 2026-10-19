@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:anima:schema:capture-capabilities:v1.0",
+  "title": "CaptureCapabilities",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_id": { "const": "anima.capture-capabilities/v1.0" },
+    "stable_session_id": { "type": "boolean" },
+    "stable_event_id": { "type": "boolean" },
+    "stable_tool_call_id": { "type": "boolean" },
+    "final_assistant_message": { "type": "boolean" },
+    "final_tool_result": { "type": "boolean" },
+    "developer_messages": { "type": "boolean" },
+    "multimodal_content": { "type": "boolean" },
+    "source_sequence": { "type": "boolean" },
+    "source_timestamp": { "type": "boolean" },
+    "compact_event": { "type": "boolean" },
+    "shutdown_event": { "type": "boolean" },
+    "user_message_origin": { "type": "boolean" },
+    "turn_end_event": { "type": "boolean" },
+    "extensions": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$": {}
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_id",
+    "stable_session_id",
+    "stable_event_id",
+    "stable_tool_call_id",
+    "final_assistant_message",
+    "final_tool_result",
+    "developer_messages",
+    "multimodal_content",
+    "source_sequence",
+    "source_timestamp",
+    "compact_event",
+    "shutdown_event",
+    "user_message_origin",
+    "turn_end_event"
+  ]
+}
