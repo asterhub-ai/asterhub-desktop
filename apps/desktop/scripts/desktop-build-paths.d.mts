@@ -1,5 +1,14 @@
 import type { DesktopAutoUpdateTarget } from './desktop-auto-update-environment.mjs'
 
+/** Build output root resolved from `DSH_DESKTOP_BUILD_ROOT` or the repository-local default. */
+export const DESKTOP_BUILD_ROOT: string
+
+/** Resolve a repository-contained Desktop build root. */
+export function resolveDesktopBuildRoot(
+  env?: NodeJS.ProcessEnv,
+  repositoryRoot?: string,
+): string
+
 /** Mutable target directories plus the shared immutable download cache. */
 export interface DesktopTargetBuildPaths {
   readonly root: string

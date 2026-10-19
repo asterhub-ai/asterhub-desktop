@@ -1,9 +1,11 @@
-import { join, sep } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  DESKTOP_BUILD_ROOT,
   desktopTargetBuildPaths,
   desktopTargetPlatform,
   developmentRuntimeDirectory,
+  resolveDesktopBuildRoot,
   resolveDesktopBuildTarget,
 } from '../scripts/desktop-build-paths.mjs'
 
@@ -57,6 +59,22 @@ describe('desktop build paths', () => {
     expect(desktopTargetPlatform('mac-x64')).toEqual({ platform: 'darwin', arch: 'x64' })
     expect(desktopTargetPlatform('win-x64')).toEqual({ platform: 'win32', arch: 'x64' })
     expect(() => desktopTargetPlatform('linux-x64' as 'mac-x64')).toThrow(/unsupported target/u)
+  })
+
+  it('defaults build output inside the repository and rejects external overrides', () => {
+    const repository = resolve(import.meta.dirname, '../../..')
+    expect(resolveDesktopBuildRoot({}, repository))
+      .toBe(resolve(import.meta.dirname, '..', '.desktop-build'))
+    expect(resolveDesktopBuildRoot({ DSH_DESKTOP_BUILD_ROOT: join(repository, '.build') }, repository))
+      .toBe(resolve(repository, '.build'))
+    expect(() => resolveDesktopBuildRoot({ DSH_DESKTOP_BUILD_ROOT: 'C:\\Temp\\AsterHub-build' }, repository))
+      .toThrow(/must stay inside the repository/u)
+    expect(() => resolveDesktopBuildRoot({ DSH_DESKTOP_BUILD_ROOT: '.build' }, repository))
+      .toThrow(/must be absolute/u)
+    expect(() => resolveDesktopBuildRoot({ DSH_DESKTOP_BUILD_ROOT: '' }, repository))
+      .toThrow(/must not be empty/u)
+    expect(desktopTargetBuildPaths('mac-arm64').root).toContain(join('targets', 'mac-arm64'))
+    expect(DESKTOP_BUILD_ROOT).toBe(resolveDesktopBuildRoot())
   })
 
   it('resolves environment overrides and rejects unsupported targets', () => {

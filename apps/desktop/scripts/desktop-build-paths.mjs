@@ -1,9 +1,35 @@
 /** Resolve build-owned Desktop paths without sharing mutable state across release targets. */
 
-import { join, resolve } from 'node:path'
+import { isAbsolute, join, relative, resolve, sep, win32 } from 'node:path'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
-const BUILD_ROOT = join(APP_ROOT, '.desktop-build')
+const REPOSITORY_ROOT = resolve(APP_ROOT, '..', '..')
+
+/** Resolve the Desktop build root inside the repository.
+ * @param {NodeJS.ProcessEnv} env - Environment that may override the root.
+ * @param {string} repositoryRoot - Repository root used to check containment.
+ * @returns {string} Absolute Desktop build root.
+ */
+export function resolveDesktopBuildRoot(env = process.env, repositoryRoot = REPOSITORY_ROOT) {
+  const defaultRoot = join(APP_ROOT, '.desktop-build')
+  const configuredRoot = env.DSH_DESKTOP_BUILD_ROOT
+  const root = resolve(configuredRoot ?? defaultRoot)
+  if (configuredRoot === '') throw new Error('desktop build paths: DSH_DESKTOP_BUILD_ROOT must not be empty')
+  if (configuredRoot !== undefined && !isAbsolute(configuredRoot)) {
+    throw new Error('desktop build paths: DSH_DESKTOP_BUILD_ROOT must be absolute')
+  }
+  const pathApi = isAbsolute(repositoryRoot) && /^[A-Za-z]:[\\/]/u.test(repositoryRoot) ? win32 : undefined
+  const canonicalRepositoryRoot = pathApi?.resolve(repositoryRoot) ?? resolve(repositoryRoot)
+  const canonicalRoot = pathApi?.resolve(root) ?? root
+  const suffix = pathApi?.relative(canonicalRepositoryRoot, canonicalRoot) ?? relative(canonicalRepositoryRoot, canonicalRoot)
+  const separator = pathApi?.sep ?? sep
+  if (suffix === '..' || suffix.startsWith(`..${separator}`) || (pathApi?.isAbsolute(suffix) ?? isAbsolute(suffix))) {
+    throw new Error('desktop build paths: DSH_DESKTOP_BUILD_ROOT must stay inside the repository')
+  }
+  return root
+}
+
+export const DESKTOP_BUILD_ROOT = resolveDesktopBuildRoot()
 const SUPPORTED_TARGETS = new Set(['mac-arm64', 'mac-x64', 'win-x64'])
 
 /**
@@ -42,7 +68,7 @@ function assertSupportedTarget(target) {
  */
 export function desktopTargetBuildPaths(target) {
   assertSupportedTarget(target)
-  const root = join(BUILD_ROOT, 'targets', target)
+  const root = join(DESKTOP_BUILD_ROOT, 'targets', target)
   const packed = join(root, 'packed')
   return {
     root,
@@ -57,7 +83,7 @@ export function desktopTargetBuildPaths(target) {
     packedDsh: join(packed, 'dsh'),
     packedVendor: join(packed, 'vendor'),
     packedLandlock: join(packed, 'landlock'),
-    downloads: join(BUILD_ROOT, 'downloads'),
+    downloads: join(DESKTOP_BUILD_ROOT, 'downloads'),
   }
 }
 
