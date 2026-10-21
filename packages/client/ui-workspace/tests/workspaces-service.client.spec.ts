@@ -194,6 +194,7 @@ class FakeWorkspaces implements IWorkspaces {
   declare readonly openProject: IWorkspaces['openProject']
   declare readonly rename: IWorkspaces['rename']
   declare readonly delete: IWorkspaces['delete']
+  declare readonly deleteSession: IWorkspaces['deleteSession']
   declare readonly insertBefore: IWorkspaces['insertBefore']
   declare readonly insertSessionBefore: IWorkspaces['insertSessionBefore']
   readonly pinCalls: SessionId[] = []

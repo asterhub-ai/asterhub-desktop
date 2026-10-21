@@ -137,9 +137,30 @@ export class TestWorkspaces implements IWorkspaces {
    * Delete a Workspace (recorded; default no-op).
    * @param workspaceId - target workspace.
    */
-  async delete(workspaceId: WorkspaceId): Promise<void> {
-    this.calls.push({ method: 'delete', args: [workspaceId] })
-    await (this.stubs.get('delete')?.(workspaceId) as Promise<void> | undefined)
+  async delete(workspaceId: WorkspaceId, sessionAction?: 'archive' | 'delete'): Promise<void> {
+    this.calls.push({ method: 'delete', args: [workspaceId, sessionAction] })
+    await (this.stubs.get('delete')?.(workspaceId, sessionAction) as Promise<void> | undefined)
+  }
+
+  /**
+   * Delete a session permanently (recorded).
+   * @param sessionId - session to delete.
+   */
+  async deleteSession(sessionId: SessionId): Promise<void> {
+    this.calls.push({ method: 'deleteSession', args: [sessionId] })
+    const stub = this.stubs.get('deleteSession')
+    if (stub !== undefined) {
+      await (stub(sessionId) as Promise<void>)
+      return
+    }
+    await this.update((draft) => {
+      draft.archivedSessionIds = draft.archivedSessionIds.filter(id => id !== sessionId)
+      draft.pinnedSessionIds = draft.pinnedSessionIds.filter(id => id !== sessionId)
+      draft.items = draft.items.map(item => ({
+        ...item,
+        sessionIds: item.sessionIds.filter(id => id !== sessionId),
+      }))
+    })
   }
 
   /**

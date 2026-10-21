@@ -21,7 +21,7 @@ import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import type {
   MenuOpenState, RowToast, RowToastState, SessionArchiveConfirmInjected, SessionArchiveConfirmRequest,
-  SessionRenameDialogInjected, SessionRenameTarget,
+  SessionRenameDialogInjected, SessionRenameTarget, SessionDeleteTarget,
 } from '../src/client/contract/slots.ts'
 import {
   ArchiveSessionMenuItem, ArchiveSessionRowButton, SessionArchiveConfirmDialog,
@@ -30,6 +30,7 @@ import { ForkSessionMenuItem } from '../src/client/session-actions/ForkSession.t
 import { PinSessionMenuItem, PinSessionRowButton } from '../src/client/session-actions/PinSession.tsx'
 import { RenameSessionMenuItem, SessionRenameDialog } from '../src/client/session-actions/RenameSession.tsx'
 import { RowActionToast } from '../src/client/session-actions/RowActionToast.tsx'
+import { DeleteSessionMenuItem, SessionDeleteDialog } from '../src/client/session-actions/DeleteSession.tsx'
 import { createWorkspaceViewStore } from '../src/client/stores.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { ShortcutRegistry } from '../../shortcuts/src/client/registry.ts'
@@ -625,6 +626,51 @@ describe('RowActionToast', () => {
     }
   })
 })
+describe('DeleteSession', () => {
+  it('renders DeleteSessionMenuItem with danger styling and calls requestSessionDelete', () => {
+    const requestSessionDelete = vi.fn()
+    const setMenuOpen = vi.fn()
+    const props = { ...menuRow([true, setMenuOpen]), useShortcuts: hook([]) }
+    render(<DeleteSessionMenuItem {...props} requestSessionDelete={requestSessionDelete} />)
+    const item = screen.getByRole('menuitem', { name: '删除会话' })
+    expect(item).toBeTruthy()
+    fireEvent.click(item)
+    expect(setMenuOpen).toHaveBeenCalledWith(false)
+    expect(requestSessionDelete).toHaveBeenCalledWith(ROW.sessionId, ROW.displayTitle)
+  })
+
+  it('renders SessionDeleteDialog and permanently deletes upon confirmation', async () => {
+    const store = createSnapshotStore<SessionDeleteTarget | null>(null)
+    const deleteSession = vi.fn().mockResolvedValue(undefined)
+    const settleSessionDelete = vi.fn(() => { store.set(null) })
+    render(
+      <SessionDeleteDialog
+        {...overlay}
+        useDeleteRequest={bindSnapshotSelector(store)}
+        settleSessionDelete={settleSessionDelete}
+        deleteSession={deleteSession}
+      />,
+    )
+
+    act(() => { store.set({ sessionId: sid('target'), displayTitle: 'Important Chat' }) })
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toBeTruthy()
+    expect(dialog.textContent).toContain('删除会话')
+    expect(dialog.textContent).toContain('Important Chat')
+
+    // Cancel settles without delete
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    expect(settleSessionDelete).toHaveBeenCalledOnce()
+    expect(deleteSession).not.toHaveBeenCalled()
+
+    // Re-open and confirm
+    act(() => { store.set({ sessionId: sid('target'), displayTitle: 'Important Chat' }) })
+    fireEvent.click(screen.getByRole('button', { name: '删除会话' }))
+    expect(deleteSession).toHaveBeenCalledWith(sid('target'))
+    await waitFor(() => { expect(settleSessionDelete).toHaveBeenCalledTimes(2) })
+  })
+})
+
 
 it('shows effective Session shortcuts while menu clicks keep the row target', () => {
   const shortcuts = new ShortcutRegistry('desktop', 'macos')

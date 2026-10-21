@@ -84,10 +84,16 @@ export interface IWorkspaces {
    */
   rename(workspaceId: WorkspaceId, title: string): Promise<WorkspaceView>
   /**
-   * Delete a Workspace registration without deleting Sessions or files.
+   * Delete a Workspace registration without deleting its directory.
    * @param workspaceId - target Workspace.
+   * @param sessionAction - whether to archive sessions (default) or delete them permanently.
    */
-  delete(workspaceId: WorkspaceId): Promise<void>
+  delete(workspaceId: WorkspaceId, sessionAction?: 'archive' | 'delete'): Promise<void>
+  /**
+   * Delete a Session permanently from the Workspace grouping surfaces and storage.
+   * @param sessionId - Session to delete.
+   */
+  deleteSession(sessionId: SessionId): Promise<void>
   /**
    * Move a Workspace within the Host registry order.
    * @param workspaceId - Workspace to move.
@@ -177,9 +183,14 @@ export class WorkspaceController extends Service implements IWorkspaces {
     return result.value.workspace
   }
 
-  async delete(workspaceId: WorkspaceId): Promise<void> {
-    const result = await this.model.delete(workspaceId)
+  async delete(workspaceId: WorkspaceId, sessionAction?: 'archive' | 'delete'): Promise<void> {
+    const result = await this.model.delete(workspaceId, sessionAction)
     if (!result.ok) throw commandError('delete', result.error)
+  }
+
+  async deleteSession(sessionId: SessionId): Promise<void> {
+    const result = await this.model.deleteSession(sessionId)
+    if (!result.ok) throw commandError('session delete', result.error)
   }
 
   async insertBefore(workspaceId: WorkspaceId, beforeWorkspaceId?: WorkspaceId): Promise<void> {

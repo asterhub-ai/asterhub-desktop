@@ -1174,6 +1174,7 @@ export function WorkspaceBrowser({
   // Delete dialog is separate from the row so a successful removal can
   // unmount that row without tearing down the in-flight confirmation state.
   const [deleteTarget, setDeleteTarget] = useState<{ workspaceId: WorkspaceId; title: string } | null>(null)
+  const [deleteSessionAction, setDeleteSessionAction] = useState<'archive' | 'delete'>('archive')
   const [deleting, setDeleting] = useState(false)
   const [deleteCommittedId, setDeleteCommittedId] = useState<WorkspaceId | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -1183,10 +1184,12 @@ export function WorkspaceBrowser({
     setDeleting(false)
     setDeleteCommittedId(null)
     setDeleteTarget(null)
+    setDeleteSessionAction('archive')
   }, [deleteCommittedId, workspaces])
   const closeDelete = () => {
     if (deleting) return
     setDeleteTarget(null)
+    setDeleteSessionAction('archive')
     setDeleteError(null)
   }
   const confirmDelete = () => {
@@ -1195,7 +1198,7 @@ export function WorkspaceBrowser({
     setDeleting(true)
     setDeleteCommittedId(null)
     setDeleteError(null)
-    deleteWorkspace(deleteTarget.workspaceId).then(() => {
+    deleteWorkspace(deleteTarget.workspaceId, deleteSessionAction).then(() => {
       // Keep the confirmation pending until this component has rendered the
       // committed list projection without the deleted id. Closing earlier
       // exposes one stale React frame to the next Create Workspace gesture.
@@ -1480,6 +1483,42 @@ export function WorkspaceBrowser({
           </>
         )}
       >
+        <div className={css.deleteOptions} role="radiogroup" aria-label={t('delete.workspace')}>
+          <label
+            className={clsx(css.deleteOptionCard, deleteSessionAction === 'archive' && css.deleteOptionCardActive)}
+            onClick={() => { setDeleteSessionAction('archive') }}
+          >
+            <input
+              type="radio"
+              name="workspace-delete-session-action"
+              value="archive"
+              checked={deleteSessionAction === 'archive'}
+              onChange={() => { setDeleteSessionAction('archive') }}
+              className={css.deleteOptionRadio}
+            />
+            <div className={css.deleteOptionText}>
+              <span className={css.deleteOptionTitle}>{t('delete.optionArchive')}</span>
+              <span className={css.deleteOptionDesc}>{t('delete.optionArchiveDesc')}</span>
+            </div>
+          </label>
+          <label
+            className={clsx(css.deleteOptionCard, deleteSessionAction === 'delete' && css.deleteOptionCardActive)}
+            onClick={() => { setDeleteSessionAction('delete') }}
+          >
+            <input
+              type="radio"
+              name="workspace-delete-session-action"
+              value="delete"
+              checked={deleteSessionAction === 'delete'}
+              onChange={() => { setDeleteSessionAction('delete') }}
+              className={css.deleteOptionRadio}
+            />
+            <div className={css.deleteOptionText}>
+              <span className={css.deleteOptionTitle}>{t('delete.optionDelete')}</span>
+              <span className={css.deleteOptionDesc}>{t('delete.optionDeleteDesc')}</span>
+            </div>
+          </label>
+        </div>
         {deleting && <div className={css.deleteStatus} role="status">{t('delete.pending')}</div>}
         {deleteError !== null && <div className={css.renameError} role="alert">{deleteError}</div>}
       </Modal>

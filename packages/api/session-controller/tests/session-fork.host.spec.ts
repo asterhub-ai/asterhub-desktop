@@ -47,8 +47,8 @@ async function composed(workspaces: readonly Workspace[] = []): Promise<Context>
       const agentCtx = ownerCtx
       Object.assign(agent, { id: session.id, session, status: 'idle', ctx: agentCtx })
       await options.setup?.(agentCtx, agent)
-      await ctx.agents.register(agent)
-      return { agent, dispose: () => Promise.resolve() }
+      const unregister = ctx.agents.register(agent)
+      return { agent, dispose: async () => { await unregister() } }
     },
     resume: () => Promise.reject(new Error('fork test sources are live')),
   })
@@ -530,5 +530,32 @@ describe('sessions.fork', () => {
       reasoningEffort: 'high',
     })
     await ctx.fiber.dispose()
+  })
+  it('disposes the owning AgentHandle when a forked Session is deleted', async () => {
+    const ctx = await composed()
+    try {
+      const source = await liveAgent(ctx, 'fork-deletion-source', 1)
+      const create = ctx.agents.create.bind(ctx.agents)
+      const dispose = vi.fn()
+      vi.spyOn(ctx.agents, 'create').mockImplementation(async (options) => {
+        const handle = await create(options)
+        return {
+          agent: handle.agent,
+          dispose: async () => {
+            await handle.dispose()
+            dispose()
+          },
+        }
+      })
+      const response = await remote(ctx).fork({ sessionId: source.id })
+      if (!response.ok) throw response.error
+
+      await ctx.parallel('workspace/session-delete', { sessionId: response.value.sessionId })
+
+      expect(dispose).toHaveBeenCalledOnce()
+      expect(ctx.agents.get(response.value.sessionId)).toBeUndefined()
+    } finally {
+      await ctx.fiber.dispose()
+    }
   })
 })

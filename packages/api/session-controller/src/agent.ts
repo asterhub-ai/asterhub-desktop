@@ -5,10 +5,12 @@ import { mkdir } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type {
-  Agent, AgentOptions, AgentSetup, ModelSelection as AgentModelSelection, ModelSelectionRef,
+  Agent, AgentHandle, AgentOptions, AgentSetup, CreateAgentOptions,
+  ModelSelection as AgentModelSelection, ModelSelectionRef,
 } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
+import type {} from '@deepseek-ai/dsh-workspace'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionId } from '@deepseek-ai/dsh-session'
@@ -176,6 +178,7 @@ export async function inspectApiSession(
 export class ApiSessionAgentController {
   private readonly resumes = new Map<SessionId, Promise<Agent>>()
   private readonly claims = new Map<SessionId, Promise<void>>()
+  private readonly handles = new Map<SessionId, AgentHandle>()
   private readonly selections = new WeakMap<Agent, InstalledSelection>()
   private readonly imageAdmissionChains = new WeakMap<Agent, Promise<void>>()
   private readonly fixedModelSelection: boolean
@@ -186,6 +189,10 @@ export class ApiSessionAgentController {
    */
   constructor(private readonly ctx: Context, fixedModelSelection = false) {
     this.fixedModelSelection = fixedModelSelection
+    ctx.effect(() => ctx.on('workspace/session-delete', ({ sessionId }) => this.disposeSession(sessionId)))
+    ctx.effect(() => ctx.on('agent/disposed', ({ agent }) => {
+      if (this.handles.get(agent.id)?.agent === agent) this.handles.delete(agent.id)
+    }))
     ctx.typert.lookups.configure('agent', async (sessionId: SessionId) => {
       const found = await this.resolveAgent(sessionId)
       if ('error' in found) throw found.error
@@ -219,6 +226,47 @@ export class ApiSessionAgentController {
    */
   async resolveObservedAgent(observation: SessionObservation): Promise<ApiSessionAgentResult> {
     return this.resolve(observation.header.id, observation)
+  }
+
+  /**
+   * Create a fork Agent through this controller's handle ownership.
+   * @param options - complete fork metadata, seed, model, and setup request.
+   * @returns the created Agent.
+   */
+  async createForkAgent(options: CreateAgentOptions): Promise<Agent> {
+    return this.ownHandle(await this.ctx.agents.create(options))
+  }
+
+  /**
+   * Dispose the owning Agent before workspace storage permanently deletes its Session.
+   * @param sessionId - ordinary Session identity requested for deletion.
+   * @returns resolves after the Agent and its Session persistence handles are disposed.
+   */
+  async disposeSession(sessionId: SessionId): Promise<void> {
+    if (this.claims.has(sessionId)) {
+      throw new Error(`Session '${sessionId}' is being created or placed; retry deletion after it settles`)
+    }
+    const pendingResume = this.resumes.get(sessionId)
+    if (pendingResume !== undefined) await pendingResume.catch(() => undefined)
+    if (this.claims.has(sessionId)) {
+      throw new Error(`Session '${sessionId}' is being created or placed; retry deletion after it settles`)
+    }
+    await this.disposeOwnedHandle(sessionId)
+  }
+
+  private async disposeOwnedHandle(sessionId: SessionId): Promise<void> {
+    const handle = this.handles.get(sessionId)
+    if (handle !== undefined) {
+      const live = this.ctx.agents.get(sessionId)
+      if (live !== undefined && live !== handle.agent) {
+        throw new Error(`Agent ownership changed while deleting Session '${sessionId}'`)
+      }
+      await handle.dispose()
+      this.handles.delete(sessionId)
+      return
+    }
+    // Another controller may own an Agent for this Session. The Workspace
+    // registry verifies all owners released it before it deletes storage.
   }
 
   private async resolve(
@@ -463,11 +511,11 @@ export class ApiSessionAgentController {
     if (published !== undefined && hasApiSessionSubagentOwner(this.ctx, published, live)) {
       throw new ApiSessionSubagentOwnership(sessionId)
     }
-    return (await this.ctx.agents.resume({
+    return this.ownHandle(await this.ctx.agents.resume({
       resumeSessionId: sessionId,
       agentOptions: this.agentOptions(),
       setup: composition.setup,
-    })).agent
+    }))
   }
 
   private async inOrder<Value>(sessionId: SessionId, operation: () => Promise<Value>): Promise<Value> {
@@ -517,11 +565,11 @@ export class ApiSessionAgentController {
     if (!reusable) return this.createMinted(request.cwd, composition)
     this.assertPresetApplicable(sessionId, request.agentPreset)
     try {
-      return (await this.ctx.agents.resume({
+      return this.ownHandle(await this.ctx.agents.resume({
         resumeSessionId: sessionId,
         agentOptions: this.agentOptions(),
         setup: this.reuseSetup(composition),
-      })).agent
+      }))
     } catch (error: unknown) {
       if (error instanceof ApiSessionStartedSinceObserved) return this.createMinted(request.cwd, composition)
       if (!(error instanceof Error) || error.name !== 'SessionAlreadyOwnedError') throw error
@@ -578,6 +626,15 @@ export class ApiSessionAgentController {
     throw new ApiSessionPresetConflict(sessionId, requested)
   }
 
+  private ownHandle(handle: AgentHandle): Agent {
+    const existing = this.handles.get(handle.agent.id)
+    if (existing !== undefined && existing !== handle) {
+      throw new Error(`AgentHandle already tracked for Session '${handle.agent.id}'`)
+    }
+    this.handles.set(handle.agent.id, handle)
+    return handle.agent
+  }
+
   private created(agent: Agent): ApiSessionCreated {
     return { agent, agentPreset: this.presetForSession(agent.session) }
   }
@@ -592,7 +649,7 @@ export class ApiSessionAgentController {
     } catch (error: unknown) {
       throw new Error(`failed to ensure project directory "${cwd}": ${String(error)}`, { cause: error })
     }
-    return (await this.ctx.agents.create({
+    return this.ownHandle(await this.ctx.agents.create({
       sessionId,
       agentOptions: this.agentOptions(),
       meta: {
@@ -600,7 +657,7 @@ export class ApiSessionAgentController {
         ...(composition.agentPreset === undefined ? {} : { agentPreset: composition.agentPreset }),
       },
       setup: composition.setup,
-    })).agent
+    }))
   }
 
   private agentOptions(): AgentOptions {

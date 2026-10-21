@@ -115,6 +115,8 @@ export interface ProjectStorage {
   bindSession(header: SessionHeader, signal?: AbortSignal): Promise<ProjectSessionLocation>
   executionCwd(header: SessionHeader): string | undefined
   locateSession(id: SessionId): ProjectSessionLocation | undefined
+  /** Delete a project-owned Session's log files and portable membership without removing the project directory. */
+  deleteSession(id: SessionId): Promise<boolean>
   reorderSessions(id: ProjectId, orderedIds: readonly SessionId[]): Promise<void>
   setSessionArchived(id: ProjectId, sessionId: SessionId, archived: boolean): Promise<void>
   setSessionPinned(id: ProjectId, sessionId: SessionId, pinned: boolean): Promise<void>

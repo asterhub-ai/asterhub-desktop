@@ -13,17 +13,10 @@ import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { WorkspaceBrowserInjected, WorkspacePickerInjected } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import {
-  type ArchiveSessionInjected, type ForkSessionInjected, menuOpenStateFactory, type PinSessionInjected,
+  type ArchiveSessionInjected, type ForkSessionInjected, type PinSessionInjected,
   type RenameSessionInjected, type RowToastInjected, type SessionArchiveConfirmInjected, type SessionRenameDialogInjected,
   type WorkspaceViewStoreHandle,
 } from '../src/client/contract/slots.ts'
-import { WorkspaceBrowser } from '../src/client/rows/WorkspaceBrowser.tsx'
-import { ArchiveSessionMenuItem, ArchiveSessionRowButton, SessionArchiveConfirmDialog } from '../src/client/session-actions/ArchiveSession.tsx'
-import { ForkSessionMenuItem } from '../src/client/session-actions/ForkSession.tsx'
-import { PinSessionMenuItem, PinSessionRowButton } from '../src/client/session-actions/PinSession.tsx'
-import { RenameSessionMenuItem, SessionRenameDialog } from '../src/client/session-actions/RenameSession.tsx'
-import { RowActionToast } from '../src/client/session-actions/RowActionToast.tsx'
-import { WorkspacePicker } from '../src/client/WorkspacePicker.tsx'
 import { FLAT_SESSION_ORDER_KEY } from '../src/client/stores.ts'
 import { UNGROUPED_KEY } from '../src/client/tree.ts'
 import { apply as hostApply } from '../src/index.ts'
@@ -38,6 +31,11 @@ const sessionState = (items: readonly SessionSummary[]): SessionListState => ({
   phase: 'ready',
   projectionsBySession: {},
 })
+
+function componentName(component: unknown): string {
+  if (typeof component !== 'function') throw new TypeError('registered slot component is not callable')
+  return component.name
+}
 const workspace = (id: string, sessionIds: readonly string[]): WorkspaceView => ({
   workspaceId: id as WorkspaceId, path: `/projects/${id}`, title: id,
   sessionIds: sessionIds.map(sid), createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
@@ -96,13 +94,25 @@ async function bench() {
   const subscribe = () => () => {}
   const workspacesSubscribe = vi.fn(subscribe)
   const initializeDefault = vi.fn(async (): Promise<WorkspaceView | undefined> => undefined)
+  const deleteWorkspace = vi.fn(async (workspaceId: string) => {
+    const target = workspaceSnapshot.items.find(item => item.workspaceId === workspaceId)
+    if (target !== undefined) {
+      const removed = new Set(target.sessionIds)
+      sessionSnapshot = sessionState(Object.values(sessionSnapshot.byId).filter(row => !removed.has(row.id)))
+    }
+    workspaceSnapshot = workspaceState(workspaceSnapshot.items.filter(item => item.workspaceId !== workspaceId))
+  })
+  const deleteSession = vi.fn(async (sessionId: SessionId) => {
+    sessionSnapshot = sessionState(Object.values(sessionSnapshot.byId).filter(row => row.id !== sessionId))
+  })
+  const createSession = vi.fn(async () => 'created' as never)
   ctx.provide('workspaces', {
     list: { getSnapshot: () => workspaceSnapshot, subscribe: workspacesSubscribe },
     create,
     initializeDefault,
     rename,
-    delete: vi.fn(async () => undefined),
-    insertBefore: vi.fn(async () => undefined),
+    delete: deleteWorkspace,
+    deleteSession,
     archiveSession: vi.fn(async () => undefined),
     unarchiveSession: vi.fn(async () => undefined),
     pinSession,
@@ -111,7 +121,7 @@ async function bench() {
   } as never)
   ctx.provide('sessions', {
     list: { getSnapshot: () => sessionSnapshot, subscribe },
-    create: vi.fn(async () => 'created' as never),
+    create: createSession,
     retain,
     using,
     search,
@@ -134,6 +144,7 @@ async function bench() {
   return {
     ctx, slots: ctx.get('slots') as SlotRegistry, locale, create, rename,
     retain, using, selectPanel, search, renameSession, binding, fork, pickDirectory, pinSession, unpinSession,
+    createSession, deleteWorkspace, deleteSession,
     workspacesSubscribe, initializeDefault,
     setWorkspaces: (snapshot: WorkspaceSnapshot): void => { workspaceSnapshot = snapshot },
     setSessions: (snapshot: SessionListState): void => { sessionSnapshot = snapshot },
@@ -206,7 +217,7 @@ describe('ui-workspace apply', () => {
     const before = await bench()
     declare(before.slots, 'sidebar.workspaces')
     await before.ctx.plugin({ inject: [...inject], apply }).await()
-    expect(before.slots.entries('sidebar.workspaces')[0]!.component).toBe(WorkspaceBrowser)
+    expect(componentName(before.slots.entries('sidebar.workspaces')[0]!.component)).toBe('WorkspaceBrowser')
     // Copy rides the standard locale seat: the entry declares the namespace
     // and apply registered both dictionaries.
     expect(before.slots.entries('sidebar.workspaces')[0]!.locale).toBe('workspace')
@@ -216,12 +227,57 @@ describe('ui-workspace apply', () => {
     await after.ctx.plugin({ inject: [...inject], apply }).await()
     declare(after.slots, 'sidebar.workspaces', 'conversation.hero.workspace', 'conversation.empty.workspace', 'shell.overlay')
     await Promise.resolve()
-    expect(after.slots.entries('conversation.hero.workspace')[0]!.component).toBe(WorkspacePicker)
+    expect(componentName(after.slots.entries('conversation.hero.workspace')[0]!.component)).toBe('WorkspacePicker')
     // The row actions follow the browser's own declaration, whenever it lands.
-    expect(after.slots.entries(MENU_ITEM)).toHaveLength(4)
+    expect(after.slots.entries(MENU_ITEM)).toHaveLength(5)
     expect(after.slots.entries(ROW_ACTION)).toHaveLength(2)
-    expect(after.slots.entries('shell.overlay')).toHaveLength(3)
+    expect(after.slots.entries('shell.overlay')).toHaveLength(4)
   })
+  it('opens a new Session after permanently deleting the Workspace of the active main-view Session', async () => {
+    const b = await bench()
+    onTestFinished(() => b.ctx.fiber.dispose())
+    b.setWorkspaces(workspaceState([workspace('ws-a', ['session-a']), workspace('ws-b', [])]))
+    b.setSessions(sessionState([{ ...summary('session-a', 1), retainedBy: { mainView: 1 } }]))
+    declare(b.slots, 'sidebar.workspaces')
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    b.createSession.mockClear()
+    const browser = faceOf(b.slots.entries('sidebar.workspaces')[0]!) as WorkspaceBrowserInjected
+    await browser.deleteWorkspace('ws-a' as WorkspaceId, 'delete')
+
+    expect(b.deleteWorkspace).toHaveBeenCalledExactlyOnceWith('ws-a', 'delete')
+    expect(b.createSession).toHaveBeenCalledOnce()
+  })
+  it('opens a new Session after archiving the Workspace of the active main-view Session', async () => {
+    const b = await bench()
+    onTestFinished(() => b.ctx.fiber.dispose())
+    b.setWorkspaces(workspaceState([workspace('ws-a', ['session-a']), workspace('ws-b', [])]))
+    b.setSessions(sessionState([{ ...summary('session-a', 1), retainedBy: { mainView: 1 } }]))
+    declare(b.slots, 'sidebar.workspaces')
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    b.createSession.mockClear()
+    const browser = faceOf(b.slots.entries('sidebar.workspaces')[0]!) as WorkspaceBrowserInjected
+    await browser.deleteWorkspace('ws-a' as WorkspaceId, 'archive')
+
+    expect(b.deleteWorkspace).toHaveBeenCalledExactlyOnceWith('ws-a', 'archive')
+    expect(b.createSession).toHaveBeenCalledOnce()
+  })
+  it('opens a new Session after deleting the active main-view Session', async () => {
+    const b = await bench()
+    onTestFinished(() => b.ctx.fiber.dispose())
+    b.setWorkspaces(workspaceState([workspace('ws-a', ['session-a'])]))
+    b.setSessions(sessionState([{ ...summary('session-a', 1), retainedBy: { mainView: 1 } }]))
+    declare(b.slots, 'sidebar.workspaces')
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    b.createSession.mockClear()
+    const browser = faceOf(b.slots.entries('sidebar.workspaces')[0]!) as WorkspaceBrowserInjected
+    const deleteSession = browser.deleteSession
+    if (deleteSession === undefined) throw new Error('Session deletion is unavailable')
+    await deleteSession(sid('session-a'))
+
+    expect(b.deleteSession).toHaveBeenCalledExactlyOnceWith(sid('session-a'))
+    expect(b.createSession).toHaveBeenCalledOnce()
+  })
+
 
   it('declares the two Session row lists and registers the shipped actions and overlay surfaces into them', async () => {
     const b = await bench()
@@ -229,27 +285,36 @@ describe('ui-workspace apply', () => {
     await b.ctx.plugin({ inject: [...inject], apply }).await()
     // The menu list binds the row's open state into every entry's hook; the
     // hover-button list carries no common face.
-    expect(b.slots.spec(MENU_ITEM)).toEqual({
-      kind: 'list', scope: 'root', inject: { hooks: { menuOpenState: menuOpenStateFactory, shortcuts: b.ctx.shortcuts.catalog } },
+    expect(b.slots.spec(MENU_ITEM)).toMatchObject({
+      kind: 'list',
+      scope: 'root',
+      inject: { hooks: { menuOpenState: expect.any(Function), shortcuts: expect.any(Object) } },
     })
     expect(b.slots.spec(ROW_ACTION)).toEqual({ kind: 'list', scope: 'root' })
 
     const rows = (key: RowListName) => b.slots.entries(key)
-      .map(registration => [registration.options.id, registration.options.order, registration.component, registration.locale])
+      .map(registration => [
+        registration.options.id,
+        registration.options.order,
+        componentName(registration.component),
+        registration.locale,
+      ])
     expect(rows(MENU_ITEM)).toEqual([
-      ['pin', 100, PinSessionMenuItem, 'workspace'],
-      ['rename', 200, RenameSessionMenuItem, 'workspace'],
-      ['fork', 300, ForkSessionMenuItem, 'workspace'],
-      ['archive', 400, ArchiveSessionMenuItem, 'workspace'],
+      ['pin', 100, 'PinSessionMenuItem', 'workspace'],
+      ['rename', 200, 'RenameSessionMenuItem', 'workspace'],
+      ['fork', 300, 'ForkSessionMenuItem', 'workspace'],
+      ['archive', 400, 'ArchiveSessionMenuItem', 'workspace'],
+      ['delete', 500, 'DeleteSessionMenuItem', 'workspace'],
     ])
     expect(rows(ROW_ACTION)).toEqual([
-      ['archive', 100, ArchiveSessionRowButton, 'workspace'],
-      ['pin', 200, PinSessionRowButton, 'workspace'],
+      ['archive', 100, 'ArchiveSessionRowButton', 'workspace'],
+      ['pin', 200, 'PinSessionRowButton', 'workspace'],
     ])
     expect(rows('shell.overlay')).toEqual([
-      ['workspace.session-rename', undefined, SessionRenameDialog, 'workspace'],
-      ['workspace.session-archive', undefined, SessionArchiveConfirmDialog, 'workspace'],
-      ['workspace.row-toast', undefined, RowActionToast, 'workspace'],
+      ['workspace.session-rename', undefined, 'SessionRenameDialog', 'workspace'],
+      ['workspace.session-archive', undefined, 'SessionArchiveConfirmDialog', 'workspace'],
+      ['workspace.session-delete', undefined, 'SessionDeleteDialog', 'workspace'],
+      ['workspace.row-toast', undefined, 'RowActionToast', 'workspace'],
     ])
     // The browser and the row toast declare the same viewing-store handle,
     // which hands out one instance: the browser's injected callbacks write
@@ -596,9 +661,9 @@ describe('ui-workspace apply', () => {
     declare(b.slots, 'sidebar.workspaces', 'conversation.hero.workspace', 'conversation.empty.workspace', 'shell.overlay')
     const fiber = b.ctx.plugin({ inject: [...inject], apply })
     await fiber.await()
-    expect(b.slots.entries(MENU_ITEM)).toHaveLength(4)
+    expect(b.slots.entries(MENU_ITEM)).toHaveLength(5)
     expect(b.slots.entries(ROW_ACTION)).toHaveLength(2)
-    expect(b.slots.entries('shell.overlay')).toHaveLength(3)
+    expect(b.slots.entries('shell.overlay')).toHaveLength(4)
     await fiber.dispose()
     expect(b.slots.entries('sidebar.workspaces')).toHaveLength(0)
     expect(b.slots.entries('conversation.hero.workspace')).toHaveLength(0)

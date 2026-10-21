@@ -167,7 +167,7 @@ export function apply(ctx: Context, config: Config): void {
         name: 'AsterHub',
         contextWindow: applicationRoute.contextWindow ?? 262_144,
         maxTokens: applicationRoute.maxTokens ?? 32_768,
-        input: ['text'],
+        input: ['text', 'image'],
         reasoningEfforts: { off: null, low: 'low', medium: 'medium', high: 'high' },
         compat: { thinkingFormat: 'openai' },
       }],

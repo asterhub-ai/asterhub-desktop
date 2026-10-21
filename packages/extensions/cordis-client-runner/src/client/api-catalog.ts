@@ -412,9 +412,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the renamed Workspace.',
       },
       {
-        signature: 'delete(workspaceId: WorkspaceId): Promise<void>',
-        description: 'Delete a Workspace registration without deleting Sessions or files.',
-        parameters: [{ name: 'workspaceId', description: 'target Workspace.' }],
+        signature: 'delete(workspaceId: WorkspaceId, sessionAction?: \'archive\' | \'delete\'): Promise<void>',
+        description: 'Delete a Workspace registration without deleting its directory.',
+        parameters: [{ name: 'workspaceId', description: 'target Workspace.' }, { name: 'sessionAction', description: 'whether to archive sessions (default) or delete them permanently.' }],
       },
       {
         signature: 'archiveSession(sessionId: SessionId, options?: { readonly stopActivity?: boolean }): Promise<void>',

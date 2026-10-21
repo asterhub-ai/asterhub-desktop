@@ -134,7 +134,7 @@
                 name: AsterHub
                 contextWindow: 262144
                 maxTokens: 32768
-                input: [text]
+                input: [text, image]
                 reasoningEfforts:
                   off:
                   low: low
@@ -475,27 +475,23 @@
         thresholds: [3, 5, 8]
         argumentsPreviewChars: 500
 
-    # The shared base enables the stable model-facing web_search and web_fetch
+    # The shared base enables stable model-facing web_search and web_fetch
     # tools. The Web app disables this host row and composes both tools per agent
-    # preset; products with a stricter network policy override tool-web. DeepSeek
-    # search resolves the same DEEPSEEK_API_KEY
-    # credential the Models page manages for chat, at each search; its Messages
-    # endpoint is configured independently from the model route, so it takes its own
-    # base-URL override. Anonymous fetch accepts only public HTTP(S) destinations,
-    # resolves and validates every destination, and pins every actual connection.
-    # Search is a full auxiliary model request with server-side retrieval, so this
-    # shipped DeepSeek route gets 60s while the provider-neutral tool default
-    # remains 30s.
+    # preset; products with a stricter network policy override tool-web. AsterHub
+    # routes search through its authenticated SearXNG endpoint and reuses the
+    # Sub2API model-key record; the key is stripped before reaching SearXNG.
+    # Anonymous fetch accepts only public HTTP(S) destinations, resolves and
+    # validates every destination, and pins every actual connection.
     - id: web
       name: '@deepseek-ai/dsh-web'
       config:
-        searchProvider: deepseek-official
+        searchProvider: asterhub-searxng
         fetchProvider: http
 
-    - id: web-search-deepseek
-      name: '@deepseek-ai/dsh-web-search-deepseek'
+    - id: web-search-searxng
+      name: '@deepseek-ai/dsh-web-search-searxng'
       config:
-        apiKeyEnv: DEEPSEEK_API_KEY
+        baseURL: https://xapi.fans/asterhub-search
 
     - id: web-fetch-http
       name: '@deepseek-ai/dsh-web-fetch-http'

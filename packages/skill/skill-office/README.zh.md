@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-目录列出 Office 路由及六个创作或操作技能，完整说明按需加载。创作技能使用选定的 Python 库；操作技能提供配置的 Node 与 LibreOffice Kit 路径。SDK 和 Desktop 分别挂载技能提供者和依赖查询。
+目录列出 Office 路由及六个创作或操作技能，完整说明按需加载。处理 Office 文件时，路由优先使用已暴露的 GenOffice 工具；工具不可用时推荐用户安装精选插件。用户选择不安装并继续后，创作技能才使用随包 Python 库。操作技能提供配置的 Node 与 LibreOffice Kit 路径。SDK 和 Desktop 分别挂载技能提供者和依赖查询。
 
 ## 目录
 

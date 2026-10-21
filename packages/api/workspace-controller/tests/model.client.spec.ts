@@ -9,6 +9,8 @@ import type {
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
   WorkspaceDeleteValue,
+  WorkspaceDeleteSessionRequest,
+  WorkspaceDeleteSessionValue,
   WorkspaceFollowFrame,
   WorkspaceInspectRequest,
   WorkspaceInspectionView,
@@ -80,6 +82,8 @@ class FakeWorkspaceRemote implements WorkspaceRemote {
     Promise.resolve(remoteOk({ workspace: { ...workspace(String(request.workspaceId)), title: request.title } }))
   onDelete: (_request: WorkspaceDeleteRequest) => Promise<RemoteResult<WorkspaceDeleteValue>> = () =>
     Promise.resolve(remoteOk({ deleted: true }))
+  onDeleteSession: (_request: WorkspaceDeleteSessionRequest) => Promise<RemoteResult<WorkspaceDeleteSessionValue>> = () =>
+    Promise.resolve(remoteOk({ deleted: true }))
   onInsertBefore: (
     request: WorkspaceInsertBeforeRequest,
   ) => Promise<RemoteResult<WorkspaceOrderValue>> = request =>
@@ -128,6 +132,11 @@ class FakeWorkspaceRemote implements WorkspaceRemote {
   delete(request: WorkspaceDeleteRequest): Promise<RemoteResult<WorkspaceDeleteValue>> {
     this.record('delete', request)
     return this.onDelete(request)
+  }
+
+  deleteSession(request: WorkspaceDeleteSessionRequest): Promise<RemoteResult<WorkspaceDeleteSessionValue>> {
+    this.record('deleteSession', request)
+    return this.onDeleteSession(request)
   }
 
   insertBefore(request: WorkspaceInsertBeforeRequest): Promise<RemoteResult<WorkspaceOrderValue>> {
@@ -346,6 +355,7 @@ describe('ClientWorkspaceModel', () => {
     await expect(model.delete(wid('one'))).resolves.toMatchObject({ ok: false })
     expect(model.getSnapshot().items).toHaveLength(1)
 
+
     remote.onInsertSessionBefore = request => Promise.resolve(remoteOk({
       workspace: workspace('one', [request.sessionId, sid('first')], '2026-02-01T00:00:00.000Z'),
     }))
@@ -384,6 +394,28 @@ describe('ClientWorkspaceModel', () => {
     await expect(model.unarchiveSession(sid('fresh'))).resolves.toMatchObject({ ok: true })
     expect(model.getSnapshot().archivedSessionIds).toEqual([])
     expect(remote.calls).toContainEqual({ method: 'unarchiveSession', request: { sessionId: 'fresh' } })
+  })
+
+  it('permanently deletes an individual session and forwards sessionAction for workspace delete', async () => {
+    const remote = new FakeWorkspaceRemote()
+    const model = modelFor(remote)
+    baseline(model, [workspace('w1', [sid('s1'), sid('s2')])])
+    model.replaceArchived([sid('s3'), sid('s1')])
+    model.replacePinned([sid('s2')])
+
+    await expect(model.deleteSession(sid('s1'))).resolves.toMatchObject({ ok: true })
+    expect(remote.calls).toContainEqual({ method: 'deleteSession', request: { sessionId: 's1' } })
+    expect(model.getSnapshot().items[0]?.sessionIds).toEqual(['s2'])
+    expect(model.getSnapshot().archivedSessionIds).toEqual(['s3'])
+
+    await expect(model.deleteSession(sid('s2'))).resolves.toMatchObject({ ok: true })
+    expect(model.getSnapshot().pinnedSessionIds).toEqual([])
+
+    await expect(model.delete(wid('w1'), 'delete')).resolves.toMatchObject({ ok: true })
+    expect(remote.calls).toContainEqual({
+      method: 'delete',
+      request: { workspaceId: 'w1', sessionAction: 'delete' },
+    })
   })
 
   it('keeps the latest unarchive reply when overlapping requests settle out of order', async () => {

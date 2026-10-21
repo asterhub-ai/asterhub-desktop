@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { constants, readFileSync, realpathSync } from 'node:fs'
 import type { FileHandle } from 'node:fs/promises'
-import { access, open as openFile, lstat, mkdir, readFile, realpath, rename, rm, stat } from 'node:fs/promises'
-import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { access, open as openFile, lstat, mkdir, readFile, realpath, rename, rm, stat, unlink } from 'node:fs/promises'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { ProjectBindingRevision as makeProjectBindingRevision, ProjectId as makeProjectId, createManifest, decodeManifest, manifestDigest, parseStrictJson, projectSessionRecord } from './manifest.ts'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session/types'
+import { sessionDir } from '@deepseek-ai/dsh-session-persistence-jsonl/src/format.ts'
 import { ensureProjectGitExclusion } from './git-exclusion.ts'
 import type {
   LegacyProjectProposal,
@@ -284,6 +285,29 @@ export class ProjectStorageRegistry implements ProjectStorageHost {
     return membership === undefined ? undefined : location(record, membership.relativeCwd)
   }
 
+  async deleteSession(id: SessionId): Promise<boolean> {
+    return this.mutate(async () => {
+      const projectId = this.sessionOwners.get(String(id))
+      if (projectId === undefined) return false
+      const record = this.requireRecord(projectId)
+      const manifest = this.readManifest(record)
+      const membership = manifest.sessions.find(item => item.id === id)
+      if (membership === undefined) throw new Error(`Session ownership cache disagrees with project manifest: ${id}`)
+      const owned = location(record, membership.relativeCwd)
+      const cwd = resolve(owned.projectRoot, ...owned.relativeCwd.split('/'))
+      await removeSessionDirectory(owned.projectRoot, owned.sessionsRoot, sessionDir(owned.sessionsRoot, cwd, id))
+      await this.replaceManifest(record, {
+        ...manifest,
+        sessions: manifest.sessions.filter(item => item.id !== id),
+        sessionOrder: manifest.sessionOrder.filter(item => item !== id),
+        pinnedSessionIds: manifest.pinnedSessionIds.filter(item => item !== id),
+        archivedSessionIds: manifest.archivedSessionIds.filter(item => item !== id),
+      })
+      this.sessionOwners.delete(String(id))
+      return true
+    })
+  }
+
   executionCwd(header: SessionHeader): string | undefined {
     const located = this.locateSession(header.id)
     return located === undefined ? undefined : resolve(located.projectRoot, ...located.relativeCwd.split('/'))
@@ -533,6 +557,33 @@ export async function createProjectStorage(options: ProjectStorageOptions): Prom
   return ProjectStorageRegistry.create(options)
 }
 
+async function removeSessionDirectory(projectRoot: string, sessionsRoot: string, sessionPath: string): Promise<void> {
+  const bucketPath = dirname(sessionPath)
+  for (const directory of [join(projectRoot, '.aster'), sessionsRoot, bucketPath]) {
+    let entry
+    try {
+      entry = await lstat(directory)
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+      throw error
+    }
+    if (entry.isSymbolicLink() || !entry.isDirectory()) {
+      throw new Error(`refusing to delete Session data through a non-directory project path: ${directory}`)
+    }
+  }
+  let entry
+  try {
+    entry = await lstat(sessionPath)
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    throw error
+  }
+  if (entry.isSymbolicLink() || !entry.isDirectory()) {
+    await unlink(sessionPath)
+    return
+  }
+  await rm(sessionPath, { recursive: true })
+}
 function binding(record: LocatorRecord): ProjectBinding { return { id: record.id, root: record.root, revision: record.revision } }
 function location(record: LocatorRecord, relativeCwd: string): ProjectSessionLocation {
   return {

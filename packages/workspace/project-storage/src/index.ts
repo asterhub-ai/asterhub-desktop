@@ -100,6 +100,12 @@ export class ProjectStorageService extends Service implements ProjectStorage {
    */
   executionCwd(header: SessionHeader): string | undefined { return this.requireRegistry().executionCwd(header) }
   /**
+   * Delete one project's Session log files and portable membership.
+   * @param id - Session identity to delete.
+   * @returns `true` when the owned Session was deleted, or `false` when unowned.
+   */
+  deleteSession(id: SessionId): Promise<boolean> { return this.requireRegistry().deleteSession(id) }
+  /**
    * Persist the project's complete Session display order.
    * @param id - Registered project identity.
    * @param orderedIds - Unique Session identities in the requested order.

@@ -1,9 +1,10 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
+import { sessionDir } from '../../../session/session-persistence-jsonl/src/format.ts'
 import Storage from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
@@ -283,6 +284,80 @@ describe('WorkspaceController commands', () => {
     // Unarchive is idempotent: an id that is not archived is not an error.
     await expect(controller.unarchiveSession({ sessionId: session.id }))
       .resolves.toEqual({ archivedSessionIds: [] })
+  })
+
+  it('permanently deletes an individual session log and cleans up references', async () => {
+    const { controller, ctx, root } = await harness()
+    await mountProjectStorage(ctx, root)
+    const created = await controller.create({ path: stageDir(root, 'del-session') })
+    const session = ctx.sessions.create(SessionId('to-purge'), { meta: { cwd: created.workspace.path } })
+    const location = await ctx.projectStorage.bindSession(session.header)
+    const sessionFolder = sessionDir(location.sessionsRoot, created.workspace.path, session.id)
+    mkdirSync(sessionFolder, { recursive: true })
+    writeFileSync(join(sessionFolder, 'session.v5.jsonl.zstd'), 'session log')
+    const workspace = ctx.workspaceRegistry.get(created.workspace.workspaceId)!
+    await workspace.attachSession(session.id)
+    await controller.pinSession({ sessionId: session.id })
+
+    expect(workspace.sessionIds).toContain(session.id)
+    await expect(controller.deleteSession({ sessionId: session.id })).resolves.toEqual({ deleted: true })
+    expect(workspace.sessionIds).not.toContain(session.id)
+    expect(ctx.workspaceRegistry.pinnedSessionIds).not.toContain(session.id)
+    expect(ctx.workspaceRegistry.archivedSessionIds).not.toContain(session.id)
+    expect(existsSync(sessionFolder)).toBe(false)
+    expect(ctx.projectStorage.locateSession(session.id)).toBeUndefined()
+  })
+
+  it('deletes workspace and purges its project-owned session logs when requested', async () => {
+    const { controller, ctx, root } = await harness()
+    await mountProjectStorage(ctx, root)
+    const created = await controller.create({ path: stageDir(root, 'del-ws-purge') })
+    const session = ctx.sessions.create(SessionId('ws-purged-session'), { meta: { cwd: created.workspace.path } })
+    const location = await ctx.projectStorage.bindSession(session.header)
+    const sessionFolder = sessionDir(location.sessionsRoot, created.workspace.path, session.id)
+    mkdirSync(sessionFolder, { recursive: true })
+    writeFileSync(join(sessionFolder, 'session.v5.jsonl.zstd'), 'session log')
+    const workspace = ctx.workspaceRegistry.get(created.workspace.workspaceId)!
+    await workspace.attachSession(session.id)
+
+    await expect(controller.delete({
+      workspaceId: created.workspace.workspaceId,
+      sessionAction: 'delete',
+    })).resolves.toEqual({ deleted: true })
+    expect(ctx.workspaceRegistry.get(created.workspace.workspaceId)).toBeUndefined()
+    expect(ctx.workspaceRegistry.archivedSessionIds).not.toContain(session.id)
+    expect(existsSync(sessionFolder)).toBe(false)
+    expect(ctx.projectStorage.locateSession(session.id)).toBeUndefined()
+    expect(existsSync(created.workspace.path)).toBe(true)
+  })
+
+  it('stops every workspace session before purging any session data', async () => {
+    const { controller, ctx, root } = await harness()
+    await mountProjectStorage(ctx, root)
+    const created = await controller.create({ path: stageDir(root, 'delete-stop-failure') })
+    const workspace = ctx.workspaceRegistry.get(created.workspace.workspaceId)!
+    const ids = [SessionId('first-to-stop'), SessionId('second-to-stop')]
+    const folders: string[] = []
+    for (const id of ids) {
+      const session = ctx.sessions.create(id, { meta: { cwd: created.workspace.path } })
+      const location = await ctx.projectStorage.bindSession(session.header)
+      const folder = sessionDir(location.sessionsRoot, created.workspace.path, id)
+      mkdirSync(folder, { recursive: true })
+      writeFileSync(join(folder, 'session.v5.jsonl.zstd'), id)
+      folders.push(folder)
+      await workspace.attachSession(id)
+    }
+    ctx.effect(() => ctx.on('workspace/session-stop', ({ sessionId }) => {
+      if (sessionId === ids[1]) throw new Error('test stop refused')
+    }))
+
+    await expect(controller.delete({
+      workspaceId: created.workspace.workspaceId,
+      sessionAction: 'delete',
+    })).rejects.toThrow()
+
+    expect(ctx.workspaceRegistry.get(created.workspace.workspaceId)).toBe(workspace)
+    expect(folders.every(folder => existsSync(folder))).toBe(true)
   })
 
   it('pins only known unarchived Sessions and unpins idempotently', async () => {

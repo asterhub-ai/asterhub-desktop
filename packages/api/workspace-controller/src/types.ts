@@ -88,10 +88,21 @@ export interface WorkspaceValue {
 /** Workspace registration deletion. */
 export interface WorkspaceDeleteRequest {
   readonly workspaceId: WorkspaceId
+  readonly sessionAction?: 'archive' | 'delete'
 }
 
 /** Receipt after one Workspace registration is deleted. */
 export interface WorkspaceDeleteValue {
+  readonly deleted: true
+}
+
+/** Session requested for permanent deletion from Workspace grouping surfaces. */
+export interface WorkspaceDeleteSessionRequest {
+  readonly sessionId: SessionId
+}
+
+/** Receipt after one Session is permanently deleted. */
+export interface WorkspaceDeleteSessionValue {
   readonly deleted: true
 }
 

@@ -1,3 +1,4 @@
+import type {} from '@deepseek-ai/dsh-workspace'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -261,5 +262,22 @@ describe('SessionController facade', () => {
     release.resolve(undefined)
     await disposal
     await expect(waiting).resolves.toMatchObject({ done: true })
+  })
+  it('publishes a cold workspace Session deletion to the client removal stream', async () => {
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SessionStore)
+      await ctx.plugin(AgentRegistry)
+      createSessionTestController(ctx, defaults)
+      const removed = vi.fn()
+      ctx.on('api-session/removed', removed)
+      const sessionId = SessionId('cold-workspace-delete')
+
+      ctx.emit('workspace/session-deleted', { sessionId })
+
+      expect(removed).toHaveBeenCalledExactlyOnceWith(sessionId)
+    } finally {
+      await ctx.fiber.dispose()
+    }
   })
 })

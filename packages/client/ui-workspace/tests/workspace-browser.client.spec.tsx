@@ -131,6 +131,8 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     notifyArchivedNotOpenable: vi.fn(),
     renameWorkspace: vi.fn(async () => {}),
     deleteWorkspace: vi.fn(async () => {}),
+    deleteSession: vi.fn(async () => {}),
+    requestSessionDelete: vi.fn(),
     unarchiveSession: vi.fn(async () => {}),
     insertWorkspaceBefore: vi.fn(async () => {}),
     createWorkspace: vi.fn(async () => workspace('created', [])),
@@ -2333,14 +2335,14 @@ describe('WorkspaceBrowser', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '删除工作区' }))
     const dialog = screen.getByRole('dialog', { name: '删除工作区' })
     expect(dialog.textContent).toContain('将把“Alpha”从工作区列表中移除')
-    expect(dialog.textContent).toContain('文件夹与会话记录会保留')
-    expect(dialog.textContent).toContain('其会话将显示在“未分组”下')
+    expect(dialog.textContent).toContain('将该工作区的会话归档隐藏（推荐）')
+    expect(dialog.textContent).toContain('彻底删除该工作区下的全部会话记录')
 
     const confirm = screen.getByRole<HTMLButtonElement>('button', { name: '删除工作区' })
     fireEvent.click(confirm)
     fireEvent.click(confirm)
     expect(deleteWorkspace).toHaveBeenCalledOnce()
-    expect(deleteWorkspace).toHaveBeenCalledWith(wid('alpha'))
+    expect(deleteWorkspace).toHaveBeenCalledWith(wid('alpha'), 'archive')
     expect(confirm.disabled).toBe(true)
     expect(screen.getByRole<HTMLButtonElement>('button', { name: '取消' }).disabled).toBe(true)
     expect(screen.getByRole('status').textContent).toBe('正在删除工作区…')
@@ -2354,6 +2356,25 @@ describe('WorkspaceBrowser', () => {
     expect(screen.getByRole('dialog', { name: '删除工作区' })).toBeTruthy()
     rerender(browser, { useWorkspaces: hook(workspaceState([])) })
     expect(screen.queryByRole('dialog', { name: '删除工作区' })).toBeNull()
+  })
+
+  it('allows user to select permanent session deletion when removing a workspace', async () => {
+    const deleteWorkspace = vi.fn().mockResolvedValue(undefined)
+    mount({
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['session'], 'Alpha')])),
+      deleteWorkspace,
+    })
+    fireEvent.click(screen.getByRole('button', { name: '工作区“Alpha”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除工作区' }))
+    const dialog = screen.getByRole('dialog', { name: '删除工作区' })
+    expect(dialog).toBeTruthy()
+
+    const deleteOption = screen.getByText('彻底删除该工作区下的全部会话记录')
+    fireEvent.click(deleteOption)
+
+    const confirm = screen.getByRole<HTMLButtonElement>('button', { name: '删除工作区' })
+    fireEvent.click(confirm)
+    expect(deleteWorkspace).toHaveBeenCalledWith(wid('alpha'), 'delete')
   })
 
   it('keeps the delete dialog open on failure and allows retry or cancellation', async () => {

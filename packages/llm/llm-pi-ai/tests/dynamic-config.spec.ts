@@ -135,6 +135,9 @@ describe('deployment-locked provider routes', () => {
     expect(ctx.authorization.describe(LlmPiAi.recordKeyFor('openai-codex'))).toBeUndefined()
     expect(await readFile(settingsPath, 'utf8')).toBe(stored)
 
+    const modelInfo = await ctx.llm.resolveModelInfo('sub2api', 'aster')
+    expect(modelInfo.inputModalities).toEqual(['text', 'image'])
+
     const result = await assemble(ctx, { provider: 'sub2api', model: 'aster', messages: [] })
     expect(result.message.content).toEqual([{ type: 'text', text: 'hello' }])
     expect(server.headers[0]?.authorization).toBe('Bearer credential-from-host')

@@ -4,6 +4,8 @@ import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { basename, join, relative } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-workspace'
 import Storage from '@deepseek-ai/dsh-storage'
 import type { StorageBackend } from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
@@ -83,6 +85,17 @@ async function harness(options: HarnessOptions = {}) {
     open,
     stat,
     setSessions: (headers: SessionHeader[]) => { listed = headers },
+  }
+}
+
+async function makeDirectorySymlink(source: string, target: string, skip: (reason: string) => never): Promise<void> {
+  try {
+    await symlink(source, target)
+  } catch (error: unknown) {
+    if (process.platform === 'win32' && error instanceof Error && 'code' in error && error.code === 'EPERM') {
+      skip('Windows account lacks the symlink privilege required by this case')
+    }
+    throw error
   }
 }
 
@@ -206,12 +219,12 @@ describe('WorkspaceRegistry lifecycle and bootstrap', () => {
     expect(storedState(pool)).toEqual({ initialized: true, workspaceIds: [], archivedSessionIds: [], pinnedSessionIds: [] })
   })
 
-  it('bootstraps once from list headers only, in workspace/session createdAt order', async () => {
+  it('bootstraps once from list headers only, in workspace/session createdAt order', async ({ skip }) => {
     const older = await makeDir('older')
     const newer = await makeDir('newer')
     const alias = join(base, 'older-link')
     const plain = join(base, 'plain.txt')
-    await symlink(older, alias)
+    await makeDirectorySymlink(older, alias, skip)
     await writeFile(plain, 'not a directory')
     const missing = join(base, 'missing')
     const result = await harness({
@@ -378,11 +391,11 @@ describe('WorkspaceRegistry create and lookup', () => {
     expect(fullyQualifiedWorkspacePath('work', 'linux')).toBe(false)
   })
 
-  it('creates newest-first and idempotently reuses a canonical path without retitling', async () => {
+  it('creates newest-first and idempotently reuses a canonical path without retitling', async ({ skip }) => {
     const firstDir = await makeDir('first')
     const secondDir = await makeDir('second')
     const alias = join(base, 'first-link')
-    await symlink(firstDir, alias)
+    await makeDirectorySymlink(firstDir, alias, skip)
     const { registry, pool } = await harness()
     const first = await registry.create(firstDir, 'Original')
     const second = await registry.create(secondDir)
@@ -510,7 +523,7 @@ describe('WorkspaceRegistry create and lookup', () => {
     })
   })
 
-  it('deletes only the registration and leaves its directory and session headers untouched', async () => {
+  it('deletes only the registration, archives its sessions, and leaves its directory untouched', async () => {
     const dir = await makeDir('delete-registration')
     const result = await harness({ sessions: [header('kept-session', dir)] })
     const workspace = await result.registry.create(dir)
@@ -520,7 +533,13 @@ describe('WorkspaceRegistry create and lookup', () => {
     await expect(result.registry.delete(workspace.id)).resolves.toBe(false)
     expect(result.registry.get(workspace.id)).toBeUndefined()
     expect(result.registry.list()).toEqual([])
-    expect(storedState(result.pool)).toEqual({ initialized: true, workspaceIds: [], archivedSessionIds: [], pinnedSessionIds: [] })
+    expect(result.registry.archivedSessionIds).toEqual([SessionId('kept-session')])
+    expect(storedState(result.pool)).toEqual({
+      initialized: true,
+      workspaceIds: [],
+      archivedSessionIds: [SessionId('kept-session')],
+      pinnedSessionIds: [],
+    })
     expect(result.pool.media.get('workspace')!.tables.get('workspaces')!.has(workspace.id)).toBe(false)
     await expect(realpath(dir)).resolves.toBe(dir)
     expect(result.list).toHaveBeenCalledTimes(1)
@@ -531,6 +550,66 @@ describe('WorkspaceRegistry create and lookup', () => {
     expect(reregistered.id).not.toBe(workspace.id)
     expect(reregistered.path).toBe(dir)
     expect(reregistered.sessionIds).toEqual([])
+  })
+
+  it('permanently deletes sessions when workspace is deleted with sessionAction delete', async () => {
+    const dir = await makeDir('delete-sessions-action')
+    const result = await harness({ sessions: [header('purged-session', dir)] })
+    const workspace = await result.registry.create(dir)
+    await workspace.attachSession(SessionId('purged-session'))
+
+    const deleted = vi.fn()
+    result.ctx.on('workspace/session-deleted', deleted)
+    await expect(result.registry.delete(workspace.id, { sessionAction: 'delete' })).resolves.toBe(true)
+    expect(deleted).toHaveBeenCalledExactlyOnceWith({ sessionId: SessionId('purged-session') })
+    expect(result.registry.get(workspace.id)).toBeUndefined()
+    expect(result.registry.archivedSessionIds).toEqual([])
+    expect(storedState(result.pool)).toEqual({
+      initialized: true,
+      workspaceIds: [],
+      archivedSessionIds: [],
+      pinnedSessionIds: [],
+    })
+  })
+  it('preserves session storage when a live Agent owner does not release it', async () => {
+    const dir = await makeDir('delete-live-unowned-session')
+    const result = await harness({ sessions: [header('live-session', dir)] })
+    const workspace = await result.registry.create(dir)
+    await workspace.attachSession(SessionId('live-session'))
+    const liveAgent = { id: SessionId('live-session') }
+    result.ctx.provide('agents', { get: (id: SessionId) => id === liveAgent.id ? liveAgent : undefined } as never)
+    result.ctx.on('workspace/session-delete', () => undefined)
+
+    await expect(result.registry.deleteSession(SessionId('live-session'))).rejects.toThrow(
+      "Agent 'live-session' remains live after workspace deletion teardown",
+    )
+    expect(workspace.sessionIds).toEqual([SessionId('live-session')])
+    expect(result.registry.get(workspace.id)).toBe(workspace)
+    expect(result.registry.list()).toContain(workspace)
+  })
+
+
+  it('deleteSession removes an individual session from workspace and registry', async () => {
+    const dir = await makeDir('delete-individual-session')
+    const result = await harness({ sessions: [header('s1', dir), header('s2', dir)] })
+    const workspace = await result.registry.create(dir)
+    await workspace.attachSession(SessionId('s1'))
+    await workspace.attachSession(SessionId('s2'))
+    await result.registry.pinSession(SessionId('s1'))
+
+    expect(workspace.sessionIds).toEqual([SessionId('s1'), SessionId('s2')])
+    expect(result.registry.pinnedSessionIds).toEqual([SessionId('s1')])
+
+    const deleted = vi.fn()
+    result.ctx.on('workspace/session-deleted', deleted)
+    await expect(result.registry.deleteSession(SessionId('s1'))).resolves.toBe(true)
+    expect(workspace.sessionIds).toEqual([SessionId('s2')])
+    expect(result.registry.pinnedSessionIds).toEqual([])
+    expect(result.registry.archivedSessionIds).toEqual([])
+    expect(deleted).toHaveBeenCalledExactlyOnceWith({ sessionId: SessionId('s1') })
+
+    // Idempotent delete on non-existent session
+    await expect(result.registry.deleteSession(SessionId('unknown'))).resolves.toBe(false)
   })
 
   it('rolls registry order and cache back when record deletion fails', async () => {
@@ -1344,12 +1423,12 @@ describe('first-use Workspace preparation', () => {
     expect((await h.registry.initializeDefault(h.resolveDirectory))?.path).toBe(path)
   })
 
-  it('titles the Workspace after the requested directory when that path is a symlink', async () => {
+  it('titles the Workspace after the requested directory when that path is a symlink', async ({ skip }) => {
     const h = await firstUse()
     const target = join(h.directoryRoot, 'elsewhere')
     await mkdir(target)
     await mkdir(join(h.directoryRoot, 'nested'))
-    await symlink(target, join(h.directoryRoot, 'nested', 'Workspace'))
+    await makeDirectorySymlink(target, join(h.directoryRoot, 'nested', 'Workspace'), skip)
     const workspace = await h.registry.initializeDefault(h.resolveDirectory)
     expect(workspace?.path).toBe(await realpath(target))
     // Not 'elsewhere': the title names the directory the caller asked for, so

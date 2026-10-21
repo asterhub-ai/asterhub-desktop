@@ -1,0 +1,52 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/web/web-search-searxng/README.md
+/:
+  en: 9b2d8d1f3a1cadf7
+  zh: 25dc0b6160465439
+/deepseek-ai-dsh-web-search-searxng:
+  en: bbd2343526932028
+  zh: 9c036d33c506b6a9
+/deepseek-ai-dsh-web-search-searxng/summary:
+  en: 7c0bf71c2ebe6113
+  zh: 3a3b4bf9a758adf4
+/deepseek-ai-dsh-web-search-searxng/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 3c58d1be01c785f6
+/deepseek-ai-dsh-web-search-searxng/use-this-package:
+  en: 00773a25e32c9cb6
+  zh: 6ddb38fa3360e6c0
+/deepseek-ai-dsh-web-search-searxng/use-this-package/when-to-choose-it:
+  en: 8b7c00d1dbe8d0cb
+  zh: 02f42d1899332556
+/deepseek-ai-dsh-web-search-searxng/use-this-package/minimal-configuration:
+  en: 1d5c68cc17691472
+  zh: a4a17550893737bf
+/deepseek-ai-dsh-web-search-searxng/understand-the-implementation:
+  en: cf49bacbfb676c1b
+  zh: d04e3de14c5d4766
+/deepseek-ai-dsh-web-search-searxng/further-exploration:
+  en: 2a8b93225399daac
+  zh: 867c521686a091f7
+/deepseek-ai-dsh-web-search-searxng/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-web-search-searxng/model-experience/search-results:
+  en: b0a2901ec83f8a89
+  zh: ca79357c6191e253
+/deepseek-ai-dsh-web-search-searxng/model-experience/search-results/what-the-model-sees:
+  en: 4496cd9f64bae111
+  zh: 50e7a80dea061def
+/deepseek-ai-dsh-web-search-searxng/model-experience/search-results/token-effect:
+  en: 03eb5ca0f2ec9ba5
+  zh: 4f80436aae92635a
+/deepseek-ai-dsh-web-search-searxng/model-experience/search-results/kv-cache-effect:
+  en: c4e15122caa1c2e7
+  zh: f683e0ca95cb1d9e
+/deepseek-ai-dsh-web-search-searxng/known-limitations-and-deferred-work:
+  en: 2c243e82faaff0b7
+  zh: cdad0cd467a4e9cc
+/deepseek-ai-dsh-web-search-searxng/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

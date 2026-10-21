@@ -56,6 +56,8 @@ On Windows, directory read-only attributes do not determine child write permissi
 
 `ProjectSessionPersistence` is exported from `/persistence` and mounts after `ProjectStorageService`. It routes Session reads and writes by manifest ownership to `.aster/sessions`, preserving stored headers and generations. It rejects writes when the project is missing or read-only, and refuses a moved-root rebind while routed handles remain open. `list()` returns Sessions from available registered projects; grouped profiles keep their explicitly configured backend.
 
+`ProjectStorage.deleteSession(id)` removes the Session's JSONL directory and its manifest membership, order, pin, and archive entries. It rejects symlinked project-data directories and does not remove the project directory or shared project-level attachments.
+
 Each project mounts a JSONL provider in an isolated `sessionPersistence` store. The router retrieves that provider with an explicit store lookup, so callers injecting the router cannot resolve the router itself as its own backend.
 
 <a id="toc-attachment-scope"></a>
@@ -90,6 +92,8 @@ This package stores Session records and resolves attachment ownership; Session a
 
 - **Legacy history requires an adopter** — legacy sources can propose project history, but opening it fails until the composition registers the migration implementation.
 - **Moved projects cannot rebind while handles are open** — close routed Session handles before reopening a project at its new root.
+
+No runtime invariant companion is published because ProjectStorageService and ProjectSessionPersistence enforce project ownership and routed writes through their existing registries; this package adds no separate mutable relation.
 
 <a id="toc-dev-note"></a>
 ### Dev Note

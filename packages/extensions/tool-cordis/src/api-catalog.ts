@@ -2111,6 +2111,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'Project-bound execution directory, or undefined when unregistered.',
       },
       {
+        signature: 'deleteSession(id: SessionId): Promise<boolean>',
+        description: 'Delete one project\'s Session log files and portable membership.',
+        parameters: [{ name: 'id', description: 'Session identity to delete.' }],
+        returns: '`true` when the owned Session was deleted, or `false` when unowned.',
+      },
+      {
         signature: 'reorderSessions(id: ProjectId, orderedIds: readonly SessionId[]): Promise<void>',
         description: 'Persist the project\'s complete Session display order.',
         parameters: [{ name: 'id', description: 'Registered project identity.' }, { name: 'orderedIds', description: 'Unique Session identities in the requested order.' }],
@@ -3998,6 +4004,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the complete resulting archive set.',
       },
       {
+        signature: '@Remote(\'deleteSession\') deleteSession(request: WorkspaceDeleteSessionRequest): Promise<WorkspaceDeleteSessionValue>',
+        description: 'Permanently delete one known Session from Workspace grouping surfaces and storage.',
+        parameters: [{ name: 'request', description: 'Session identity to delete.' }],
+        returns: 'deletion confirmation.',
+      },
+      {
         signature: '@Remote(\'pinSession\') pinSession(request: WorkspacePinSessionRequest): Promise<WorkspacePinValue>',
         description: 'Surface one known unarchived Session ahead of unpinned Sessions.',
         parameters: [{ name: 'request', description: 'Session identity to pin.' }],
@@ -4085,10 +4097,16 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'a fresh ordered array of workspace entities.',
       },
       {
-        signature: 'delete(id: WorkspaceId): Promise<boolean>',
+        signature: 'delete(id: WorkspaceId, options?: { readonly sessionAction?: \'archive\' | \'delete\' }): Promise<boolean>',
         description: 'Delete one workspace registration while retaining its directory and every session log. The durable order is updated before the table deletion; a failed table write restores the prior order and keeps the entity published. Unknown ids are an idempotent no-op for domain callers.',
-        parameters: [{ name: 'id', description: 'Workspace registration to remove.' }],
+        parameters: [{ name: 'id', description: 'Workspace registration to remove.' }, { name: 'options', description: 'How to handle Sessions belonging to the workspace.' }],
         returns: '`true` when a record was deleted, `false` when it was unknown.',
+      },
+      {
+        signature: 'deleteSession(sessionId: SessionId): Promise<boolean>',
+        description: 'Delete one session permanently from the workspace registry and storage. Stops active work, removes workspace/archive/pin references, and deletes project-owned Session logs without removing the project directory.',
+        parameters: [{ name: 'sessionId', description: 'Session to delete.' }],
+        returns: 'true if the session was known and deleted, false otherwise.',
       },
       {
         signature: 'insertBefore(id: WorkspaceId, beforeId?: WorkspaceId): Promise<readonly WorkspaceId[]>',
@@ -4272,8 +4290,8 @@ export const EVENT_API: readonly EventApiEntry[] = [
     name: 'api-session/removed',
     mode: 'emit',
     signature: '\'api-session/removed\'(sessionId: SessionId): void',
-    summary: 'A Session left the live Host registry.',
-    description: 'A Session left the live Host registry.',
+    summary: 'A Session left the live Host registry or its project-owned storage was deleted.',
+    description: 'A Session left the live Host registry or its project-owned storage was deleted.',
     parameters: [{ name: 'sessionId', description: 'removed Session identity.' }],
   },
   {
@@ -4819,6 +4837,22 @@ export const EVENT_API: readonly EventApiEntry[] = [
     summary: 'Admit one archive request before the registry writes the archive set.',
     description: 'Admit one archive request before the registry writes the archive set. Called after the session is known and (when `stopActivity` is false) after the activity check passes; a listener may stop and await running work before allowing the write to proceed, or reject to refuse the archive. The default (no listeners) delegates unchanged. A listener that needs to await teardown must NOT hold the registry FIFO — it should release it before awaiting long-running stop operations.',
     parameters: [{ name: 'request', description: 'the session about to be archived, with caller options.' }, { name: 'next', description: 'delegate to the remaining providers.' }],
+  },
+  {
+    name: 'workspace/session-delete',
+    mode: 'parallel',
+    signature: '\'workspace/session-delete\'(request: { readonly sessionId: SessionId }): Promise<void> | void',
+    summary: 'Release live Agent and Session resources before permanent storage deletion.',
+    description: 'Release live Agent and Session resources before permanent storage deletion. A listener failure or a retained live Session rejects deletion.',
+    parameters: [{ name: 'request', description: 'the session whose storage is about to be deleted.' }],
+  },
+  {
+    name: 'workspace/session-deleted',
+    mode: 'emit',
+    signature: '\'workspace/session-deleted\'(request: { readonly sessionId: SessionId }): void',
+    summary: 'Announce that one Session\'s project-owned storage and registry references were removed successfully.',
+    description: 'Announce that one Session\'s project-owned storage and registry references were removed successfully.',
+    parameters: [{ name: 'request', description: 'the Session whose storage is no longer available.' }],
   },
   {
     name: 'workspace/session-stop',
@@ -8790,7 +8824,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WorkspaceDeleteRequest',
-    declaration: 'export interface WorkspaceDeleteRequest {\n    readonly workspaceId: WorkspaceId;\n}',
+    declaration: 'export interface WorkspaceDeleteRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly sessionAction?: \'archive\' | \'delete\';\n}',
+  },
+  {
+    name: 'WorkspaceDeleteSessionRequest',
+    declaration: 'export interface WorkspaceDeleteSessionRequest {\n    readonly sessionId: SessionId;\n}',
+  },
+  {
+    name: 'WorkspaceDeleteSessionValue',
+    declaration: 'export interface WorkspaceDeleteSessionValue {\n    readonly deleted: true;\n}',
   },
   {
     name: 'WorkspaceDeleteValue',

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
-import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { agentPresetProjectionDefinition } from '@deepseek-ai/dsh-agent-preset-registry'
 import SessionStore, { SESSION_FORMAT_VERSION, SessionLogOffset, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionHeader } from '@deepseek-ai/dsh-session'
@@ -283,6 +283,42 @@ describe('ApiSession Agent lookup and recovery', () => {
     expect(() => agents.presetForObservation(observed)).toThrow(
       'Agent activation requires a projected Session observation',
     )
+  })
+
+  it('disposes the owning AgentHandle before permanent workspace Session deletion', async () => {
+    const { ctx, agents } = await harness()
+    const cwd = mkdtempSync(join(tmpdir(), 'dsh-agent-delete-'))
+    tempDirs.push(cwd)
+    const dispose = vi.fn(async () => {})
+    vi.spyOn(ctx.agents, 'create').mockImplementation(async (options) => {
+      const session = ctx.sessions.create(options.sessionId, {
+        meta: header(options.sessionId, cwd),
+      })
+      return {
+        agent: { id: options.sessionId, session, status: 'idle', ctx } as Agent,
+        dispose,
+      } satisfies AgentHandle
+    })
+    const created = await agents.createSession({ cwd, reusable: () => false })
+
+    await ctx.parallel('workspace/session-delete', { sessionId: created.agent.id })
+
+    expect(dispose).toHaveBeenCalledOnce()
+  })
+  it('forgets a disposed AgentHandle before a later resume claims the Session', async () => {
+    const { ctx, agents } = await harness()
+    const meta = header('disposed-before-resume')
+    const first = agent(ctx, meta)
+    const dispose = vi.fn(async () => { ctx.emit('agent/disposed', { agent: first }) })
+    vi.spyOn(ctx.agents, 'create').mockResolvedValue({ agent: first, dispose })
+    const created = await agents.createSession({ cwd: '/workspace', reusable: () => false })
+    const resumed = unpublishedAgent(ctx, meta)
+    vi.spyOn(ctx.agents, 'resume').mockResolvedValue({ agent: resumed, dispose: vi.fn(async () => {}) })
+
+    await dispose()
+
+    const result = await agents.resolveAgent(created.agent.id)
+    expect('agent' in result && result.agent === resumed).toBe(true)
   })
 })
 

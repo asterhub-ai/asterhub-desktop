@@ -19,6 +19,8 @@ import type {
   WorkspaceCreateRequest,
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
+  WorkspaceDeleteSessionRequest,
+  WorkspaceDeleteSessionValue,
   WorkspaceInspectRequest,
   WorkspaceInspectionView,
   WorkspaceOpenProjectRequest,
@@ -208,13 +210,29 @@ export class WorkspaceCommands {
    */
   delete(request: WorkspaceDeleteRequest): Promise<WorkspaceDeleteValue> {
     return this.enqueue(async () => {
-      if (!await this.ctx.workspaceRegistry.delete(WorkspaceId(request.workspaceId))) {
+      if (!await this.ctx.workspaceRegistry.delete(
+        WorkspaceId(request.workspaceId),
+        request.sessionAction === undefined ? {} : { sessionAction: request.sessionAction },
+      )) {
         throw workspaceNotFound(request.workspaceId)
       }
       return { deleted: true }
     })
   }
 
+  /**
+   * Delete one Session permanently from the workspace registry and storage.
+   * @param request - Session identity to delete.
+   * @returns deletion confirmation.
+   */
+  deleteSession(request: WorkspaceDeleteSessionRequest): Promise<WorkspaceDeleteSessionValue> {
+    return this.enqueue(async () => {
+      if (!await this.ctx.workspaceRegistry.deleteSession(request.sessionId)) {
+        throw new RemoteError('session/not-found', `Session not found: ${request.sessionId}`, { sessionId: request.sessionId })
+      }
+      return { deleted: true }
+    })
+  }
   /**
    * Move one Workspace within the durable registry order.
    * @param request - moved Workspace and optional anchor.

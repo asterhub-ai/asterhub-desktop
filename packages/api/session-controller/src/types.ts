@@ -596,7 +596,7 @@ declare module '@deepseek-ai/cordis' {
      */
     'api-session/added'(summary: SessionSummary): void
     /**
-     * A Session left the live Host registry.
+     * A Session left the live Host registry or its project-owned storage was deleted.
      * @mode emit
      * @param sessionId - removed Session identity.
      */

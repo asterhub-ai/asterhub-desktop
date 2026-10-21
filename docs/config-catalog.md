@@ -392,7 +392,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-workspace-controller`
 
 - `inject`: `typert` · `workspaceRegistry`
-- `source`: [`packages/api/workspace-controller/src/index.ts:37`](../packages/api/workspace-controller/src/index.ts)
+- `source`: [`packages/api/workspace-controller/src/index.ts:39`](../packages/api/workspace-controller/src/index.ts)
 
 ```ts config-catalog
 /** First-use directory policy for the Host account. */
@@ -2414,7 +2414,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-project-storage`
 
-- `source`: [`packages/workspace/project-storage/src/types.ts:128`](../packages/workspace/project-storage/src/types.ts)
+- `source`: [`packages/workspace/project-storage/src/types.ts:130`](../packages/workspace/project-storage/src/types.ts)
 
 ```ts config-catalog
 /**
@@ -4414,6 +4414,23 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-web-search-perplexity -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-web-search-searxng -->
+<a id="deepseek-aidsh-web-search-searxng"></a>
+
+## `@deepseek-ai/dsh-web-search-searxng`
+
+- `inject`: `web` · `credentials`
+- `source`: [`packages/web/web-search-searxng/src/index.ts:20`](../packages/web/web-search-searxng/src/index.ts)
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** Trusted HTTPS base URL; `/search` is appended for each query. */
+  readonly baseURL: string
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-web-search-searxng -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-webhook-github -->
 <a id="deepseek-aidsh-webhook-github"></a>

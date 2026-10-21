@@ -56,6 +56,8 @@ Windows 目录的只读属性不能表示子文件写入权限。打开和状态
 
 `ProjectSessionPersistence` 从 `/persistence` 导出，并在 `ProjectStorageService` 后挂载。它按 manifest 成员关系将 Session 读写路由到 `.aster/sessions`，保留已存 header 与 generation。项目缺失或只读时拒绝写入；项目移动后，只要仍有路由句柄打开，就拒绝重新绑定。`list()` 返回已注册且可用项目的 Session；grouped profile 继续使用显式配置的后端。
 
+`ProjectStorage.deleteSession(id)` 会移除该 Session 的 JSONL 目录，以及 manifest 中的成员、顺序、置顶和归档记录。若项目数据目录包含符号链接则拒绝删除；不会删除项目目录或项目级共享附件。
+
 每个项目在隔离的 `sessionPersistence` store 中挂载 JSONL provider。路由器通过显式 store 查询取得该 provider，因此注入路由器的调用方不会将路由器自身解析为它的后端。
 
 <a id="toc-attachment-scope"></a>
@@ -90,6 +92,8 @@ Windows 目录的只读属性不能表示子文件写入权限。打开和状态
 
 - **旧历史需要 adopter** — legacy source 可以提出项目历史，但 composition 必须注册迁移实现后才能打开。
 - **打开中的句柄会阻止项目重新绑定** — 关闭已路由的 Session 句柄后，再通过新根目录打开项目。
+
+不发布运行时 invariant companion，因为 ProjectStorageService 与 ProjectSessionPersistence 通过现有注册表约束项目归属和路由写入；本包不增加独立的可变关系。
 
 <a id="toc-dev-note"></a>
 ### 开发备注

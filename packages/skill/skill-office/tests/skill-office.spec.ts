@@ -27,8 +27,13 @@ describe('bundled Office skills', () => {
       const route = (await ctx.skills.get('office'))!
       expect(Math.ceil(route.description.length / 4)).toBeLessThanOrEqual(50)
       expect(Math.ceil(route.content.length / 4)).toBeLessThanOrEqual(200)
+      expect(route.content).toContain('use exposed GenOffice tools first')
+      expect(route.content).toContain('recommend the curated GenOffice plugin in Plugins')
+      expect(route.content).toContain('If the user proceeds, follow the format-specific fallback')
       for (const [name, previousTokens] of [['office-docx', 1688], ['office-pptx', 1879], ['office-xlsx', 2330]] as const) {
         const skill = (await ctx.skills.get(name))!
+        expect(skill.content).toContain('Use GenOffice tools when the Office router confirms they are available')
+        expect(skill.content).toContain('If they are absent, recommend that the user install the curated GenOffice plugin')
         expect(Math.ceil(skill.content.length / 4)).toBeLessThanOrEqual(Math.floor(previousTokens * 0.65))
         expect(skill.content).not.toMatch(/read_image|transparent|DPI/)
         expect(skill.content).not.toContain('dsoffice')

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The catalog lists the Office router and six authoring or operation skills. Full instructions load on demand. Authoring skills use the selected Python libraries; operation skills supply the configured Node and LibreOffice Kit paths. SDK and Desktop mount the skill provider and dependency query separately.
+The catalog lists the Office router and six authoring or operation skills. Full instructions load on demand. For Office files, the router uses exposed GenOffice tools first and recommends the curated plugin when they are unavailable; bundled Python libraries are the fallback if the user proceeds without it. Operation skills supply the configured Node and LibreOffice Kit paths. SDK and Desktop mount the skill provider and dependency query separately.
 
 ## Table of Contents
 

@@ -588,6 +588,57 @@
   color: var(--dsw-alias-label-secondary);
 }
 
+.deleteOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.deleteOptionCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--dsw-radius-md);
+  border: 1px solid var(--dsw-alias-border-l1);
+  cursor: pointer;
+  user-select: none;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.deleteOptionCard:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.deleteOptionCardActive {
+  border-color: var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.deleteOptionRadio {
+  margin-top: 3px;
+  accent-color: var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+}
+
+.deleteOptionText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.deleteOptionTitle {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.deleteOptionDesc {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--dsw-alias-label-secondary);
+}
+
 /* The stop-and-archive dialog's list of work that will be stopped. */
 .archiveActivity {
   margin: 0 0 8px;

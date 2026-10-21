@@ -29,7 +29,7 @@ For the AsterHub authenticated route, `/models` is the sole selectable catalog. 
 
 Mount this plugin when a composition routes model requests through pi-ai's provider catalogs or through gateways that pi-ai's installed catalog does not describe. The `providers` dictionary is the whole configuration surface: each key is the provider route name a request selects with `GenerateOptions.provider`.
 
-The adapter accepts the LLM service's [request-only user inputs](../llm/README.md#use-this-package) alongside durable history. User identity and attribution do not enter pi-ai content; assistant replay metadata and tool-call correlation remain attached to durable messages.
+The adapter accepts the LLM service's [request-only user inputs](../llm/README.md#use-this-package) alongside durable history. User identity and attribution do not enter pi-ai content; assistant replay metadata and tool-call correlation remain attached to durable messages. The Desktop application's locked Sub2API route declares text and image input for discovered account models whose listing omits modality metadata.
 
 Explicit exhausted-quota or insufficient-balance details take precedence over HTTP 401/403 when classifying gateway failures. Authentication, rate limiting, timeout, transport, and server failures retain distinct stable codes; an unrecognized error remains unclassified rather than implying exhausted credits.
 

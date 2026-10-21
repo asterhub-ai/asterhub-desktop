@@ -465,6 +465,13 @@ locateSession(id: SessionId): ProjectSessionLocation | undefined
 executionCwd(header: SessionHeader): string | undefined
 
 /**
+ * Delete one project's Session log files and portable membership.
+ * @param id - Session identity to delete.
+ * @returns `true` when the owned Session was deleted, or `false` when unowned.
+ */
+deleteSession(id: SessionId): Promise<boolean>
+
+/**
  * Persist the project's complete Session display order.
  * @param id - Registered project identity.
  * @param orderedIds - Unique Session identities in the requested order.
@@ -666,6 +673,13 @@ Host service backing the generated `ctx.remote.workspace` namespace.
 @Remote('unarchiveSession') unarchiveSession(request: WorkspaceUnarchiveSessionRequest): Promise<WorkspaceArchiveValue>
 
 /**
+ * Permanently delete one known Session from Workspace grouping surfaces and storage.
+ * @param request - Session identity to delete.
+ * @returns deletion confirmation.
+ */
+@Remote('deleteSession') deleteSession(request: WorkspaceDeleteSessionRequest): Promise<WorkspaceDeleteSessionValue>
+
+/**
  * Surface one known unarchived Session ahead of unpinned Sessions.
  * @param request - Session identity to pin.
  * @returns the complete resulting pin set, most recently pinned first.
@@ -803,9 +817,19 @@ list(): Workspace[]
  * failed table write restores the prior order and keeps the entity
  * published. Unknown ids are an idempotent no-op for domain callers.
  * @param id - Workspace registration to remove.
+ * @param options - How to handle Sessions belonging to the workspace.
  * @returns `true` when a record was deleted, `false` when it was unknown.
  */
-delete(id: WorkspaceId): Promise<boolean>
+delete(id: WorkspaceId, options?: { readonly sessionAction?: 'archive' | 'delete' }): Promise<boolean>
+
+/**
+ * Delete one session permanently from the workspace registry and storage.
+ * Stops active work, removes workspace/archive/pin references, and deletes
+ * project-owned Session logs without removing the project directory.
+ * @param sessionId - Session to delete.
+ * @returns true if the session was known and deleted, false otherwise.
+ */
+deleteSession(sessionId: SessionId): Promise<boolean>
 
 /**
  * Move one workspace within the durable display order, DOM-insertBefore-like.
@@ -949,6 +973,46 @@ Admit one archive request before the registry writes the archive set. Called aft
  */
 'workspace/session-archive/admit'( request: SessionArchiveAdmitRequest, next: () => Promise<void>, ): Promise<void>
 ```
+
+Source: [`packages/workspace/workspace/src/index.ts`](../../packages/workspace/workspace/src/index.ts)
+
+<a id="workspacesession-delete--parallel"></a>
+
+#### `workspace/session-delete` — parallel
+
+Release live Agent and Session resources before permanent storage deletion. A listener failure or a retained live Session rejects deletion.
+
+```ts cordis-catalog
+/**
+ * Release live Agent and Session resources before permanent storage deletion.
+ * A listener failure or a retained live Session rejects deletion.
+ * @param request - the session whose storage is about to be deleted.
+ * @mode parallel
+ */
+'workspace/session-delete'(request: { readonly sessionId: SessionId }): Promise<void> | void
+```
+
+Types: [SessionId](core.zh.md)
+
+Source: [`packages/workspace/workspace/src/index.ts`](../../packages/workspace/workspace/src/index.ts)
+
+<a id="workspacesession-deleted--emit"></a>
+
+#### `workspace/session-deleted` — emit
+
+Announce that one Session's project-owned storage and registry references were removed successfully.
+
+```ts cordis-catalog
+/**
+ * Announce that one Session's project-owned storage and registry references
+ * were removed successfully.
+ * @param request - the Session whose storage is no longer available.
+ * @mode emit
+ */
+'workspace/session-deleted'(request: { readonly sessionId: SessionId }): void
+```
+
+Types: [SessionId](core.zh.md)
 
 Source: [`packages/workspace/workspace/src/index.ts`](../../packages/workspace/workspace/src/index.ts)
 

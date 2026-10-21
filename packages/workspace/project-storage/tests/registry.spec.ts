@@ -6,6 +6,7 @@ import { SESSION_FORMAT_VERSION, SessionId, type SessionHeader } from '@deepseek
 import { ProjectId, createManifest } from '../src/manifest.ts'
 import { ProjectMigrationUnavailableError, createProjectStorage } from '../src/registry.ts'
 import type { LegacyProjectProposal, PortableProjectManifest } from '../src/types.ts'
+import { sessionDir } from '@deepseek-ai/dsh-session-persistence-jsonl/src/format.ts'
 
 const roots: string[] = []
 async function root(): Promise<string> {
@@ -81,6 +82,31 @@ describe('project locator and local membership', () => {
     await expect(storage.bindSession(header(sessionId, b))).rejects.toThrow(/owner|duplicate/i)
     await expect(storage.bindSession(header('session-b', outside))).rejects.toThrow(/inside/i)
     expect(storage.manifest(bindingB.id).sessions).toEqual([])
+  })
+
+  it('deletes one Session log directory and removes only that portable membership', async () => {
+    const project = await root(), locator = join(await root(), 'locator.json')
+    const storage = await createProjectStorage(storageOptions(locator))
+    const binding = await storage.open({ root: project, mode: 'new' })
+    const removedId = SessionId('delete-me')
+    const retainedId = SessionId('keep-me')
+    await storage.bindSession(header(removedId, project))
+    await storage.bindSession(header(retainedId, project))
+    const removed = storage.locateSession(removedId)!
+    const retained = storage.locateSession(retainedId)!
+    const removedDir = sessionDir(removed.sessionsRoot, project, removedId)
+    const retainedDir = sessionDir(retained.sessionsRoot, project, retainedId)
+    await mkdir(removedDir, { recursive: true })
+    await mkdir(retainedDir, { recursive: true })
+    await writeFile(join(removedDir, 'session.v5.jsonl.zstd'), 'removed')
+    await writeFile(join(retainedDir, 'session.v5.jsonl.zstd'), 'retained')
+
+    await expect(storage.deleteSession(removedId)).resolves.toBe(true)
+
+    await expect(access(removedDir)).rejects.toThrow()
+    await expect(readFile(join(retainedDir, 'session.v5.jsonl.zstd'), 'utf8')).resolves.toBe('retained')
+    expect(storage.locateSession(removedId)).toBeUndefined()
+    expect(storage.manifest(binding.id).sessions.map(row => row.id)).toEqual([retainedId])
   })
 
   it.skipIf(process.platform !== 'win32')('opens and mutates projects with Windows read-only directory attributes', async () => {

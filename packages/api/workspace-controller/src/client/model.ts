@@ -4,6 +4,7 @@ import { notifySubscribers } from '@deepseek-ai/dsh-client-store'
 import type {} from '@deepseek-ai/dsh-api-workspace-controller/remote'
 import { isRemoteFailure } from '@deepseek-ai/dsh-api-gateway/client'
 import type { RemoteFailure, RemoteResult, TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
@@ -14,6 +15,8 @@ import type {
   WorkspaceInspectionView,
   WorkspaceOpenProjectRequest,
   WorkspaceDeleteValue,
+  WorkspaceDeleteSessionRequest,
+  WorkspaceDeleteSessionValue,
   WorkspaceInsertSessionBeforeRequest,
   WorkspaceOrderValue,
   WorkspacePinSessionRequest,
@@ -24,6 +27,15 @@ import type {
   WorkspaceId,
   WorkspaceView,
 } from '../types.ts'
+
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface TypertRemoteNamespace$776f726b7370616365 {
+    deleteSession: (request: WorkspaceDeleteSessionRequest) => Promise<RemoteResult<WorkspaceDeleteSessionValue>>
+  }
+  interface TypertRemoteMap {
+    'workspace/deleteSession': (request: WorkspaceDeleteSessionRequest) => Promise<RemoteResult<WorkspaceDeleteSessionValue>>
+  }
+}
 
 /** Complete generated `ctx.remote.workspace` namespace. */
 export type WorkspaceRemote = TypertClientRemote['workspace']
@@ -152,11 +164,30 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
   /**
    * Delete a Workspace and remove it from the local projection immediately.
    * @param workspaceId - target Workspace.
+   * @param sessionAction - Whether to archive or permanently delete the Workspace's Sessions.
    * @returns generated Remote result.
    */
-  async delete(workspaceId: WorkspaceId): Promise<RemoteResult<WorkspaceDeleteValue>> {
-    const result = await this.remote.delete({ workspaceId })
+  async delete(workspaceId: WorkspaceId, sessionAction?: 'archive' | 'delete'): Promise<RemoteResult<WorkspaceDeleteValue>> {
+    const result = await this.remote.delete({
+      workspaceId,
+      ...sessionAction === undefined ? {} : { sessionAction },
+    })
     if (result.ok) this.remove(workspaceId, true)
+    return result
+  }
+
+  /**
+   * Delete one Session permanently from Workspace grouping surfaces.
+   * @param sessionId - Session to delete.
+   * @returns generated Remote result.
+   */
+  async deleteSession(
+    sessionId: WorkspaceDeleteSessionRequest['sessionId'],
+  ): Promise<RemoteResult<WorkspaceDeleteSessionValue>> {
+    const result = await this.remote.deleteSession({ sessionId })
+    if (result.ok) {
+      this.removeSession(sessionId)
+    }
     return result
   }
 
@@ -434,6 +465,27 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
     }
     this.items = items
     this.invalidate(immediate)
+  }
+
+  private removeSession(sessionId: SessionId): void {
+    let changed = false
+    const nextItems = this.items.map((item) => {
+      if (!item.sessionIds.includes(sessionId)) return item
+      changed = true
+      return { ...item, sessionIds: item.sessionIds.filter(id => id !== sessionId) }
+    })
+    if (changed) this.items = nextItems
+    const nextArchived = this.archivedSessionIds.filter(id => id !== sessionId)
+    if (nextArchived.length !== this.archivedSessionIds.length) {
+      this.archivedSessionIds = nextArchived
+      changed = true
+    }
+    const nextPinned = this.pinnedSessionIds.filter(id => id !== sessionId)
+    if (nextPinned.length !== this.pinnedSessionIds.length) {
+      this.pinnedSessionIds = nextPinned
+      changed = true
+    }
+    if (changed) this.invalidate(true)
   }
 
   private installViews(views: readonly WorkspaceView[]): void {
