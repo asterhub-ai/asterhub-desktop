@@ -58,6 +58,7 @@ import {
   type PreparedJsonlMigration,
 } from './generation.ts'
 
+export { sessionDir } from './format.ts'
 export type { JsonlCompression } from './format.ts'
 
 /**

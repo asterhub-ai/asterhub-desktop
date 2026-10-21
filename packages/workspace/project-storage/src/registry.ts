@@ -5,7 +5,7 @@ import { access, open as openFile, lstat, mkdir, readFile, realpath, rename, rm,
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { ProjectBindingRevision as makeProjectBindingRevision, ProjectId as makeProjectId, createManifest, decodeManifest, manifestDigest, parseStrictJson, projectSessionRecord } from './manifest.ts'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session/types'
-import { sessionDir } from '@deepseek-ai/dsh-session-persistence-jsonl/src/format.ts'
+import { sessionDir } from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { ensureProjectGitExclusion } from './git-exclusion.ts'
 import type {
   LegacyProjectProposal,

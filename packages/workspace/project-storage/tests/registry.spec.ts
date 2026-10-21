@@ -6,7 +6,7 @@ import { SESSION_FORMAT_VERSION, SessionId, type SessionHeader } from '@deepseek
 import { ProjectId, createManifest } from '../src/manifest.ts'
 import { ProjectMigrationUnavailableError, createProjectStorage } from '../src/registry.ts'
 import type { LegacyProjectProposal, PortableProjectManifest } from '../src/types.ts'
-import { sessionDir } from '@deepseek-ai/dsh-session-persistence-jsonl/src/format.ts'
+import { sessionDir } from '@deepseek-ai/dsh-session-persistence-jsonl'
 
 const roots: string[] = []
 async function root(): Promise<string> {
