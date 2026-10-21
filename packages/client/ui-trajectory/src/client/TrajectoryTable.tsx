@@ -747,6 +747,11 @@ function requestErrorMessage(
   t: TrajectoryTranslate,
 ): string | undefined {
   if (request.errorCode === 'AUTH') return t('details.failure.auth')
+  if (request.errorCode === 'QUOTA' || request.errorCode === 'ACCOUNT_QUOTA') return t('details.failure.quota')
+  if (request.errorCode === 'RATE_LIMIT') return t('details.failure.rateLimit')
+  if (request.errorCode === 'TIMEOUT') return t('details.failure.timeout')
+  if (request.errorCode === 'TRANSPORT') return t('details.failure.network')
+  if (request.errorCode === 'SERVER') return t('details.failure.server')
   if (request.error === COMPACTION_INTERRUPTED_ERROR) return t('layout.compactionInterrupted')
   return request.error
 }

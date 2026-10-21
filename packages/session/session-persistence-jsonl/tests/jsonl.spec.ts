@@ -62,6 +62,13 @@ const readFailure = vi.hoisted(() => ({
   error: undefined as Error | undefined,
 }))
 
+const openAppendFailure = vi.hoisted(() => ({
+  path: undefined as string | undefined,
+  error: undefined as Error | undefined,
+  calls: 0,
+  maxFailures: 0,
+}))
+
 const pausedRead = vi.hoisted(() => ({
   path: undefined as string | undefined,
   active: false,
@@ -126,6 +133,17 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       }
       return actual.readdir(...args)
     }) as typeof actual.readdir,
+    open: (async (...args: Parameters<typeof actual.open>) => {
+      const path = typeof args[0] === 'string' ? args[0] : undefined
+      const flags = args[1]
+      if (flags === 'a' && path === openAppendFailure.path && openAppendFailure.error !== undefined) {
+        openAppendFailure.calls += 1
+        if (openAppendFailure.calls <= openAppendFailure.maxFailures) {
+          throw openAppendFailure.error
+        }
+      }
+      return actual.open(...args)
+    }) as typeof actual.open,
   }
 })
 
@@ -328,6 +346,10 @@ afterEach(async () => {
   statFailure.error = undefined
   readdirFailure.path = undefined
   readdirFailure.error = undefined
+  openAppendFailure.path = undefined
+  openAppendFailure.error = undefined
+  openAppendFailure.calls = 0
+  openAppendFailure.maxFailures = 0
   vi.restoreAllMocks()
   const results = await Promise.allSettled(contexts.map(ctx => ctx.fiber.dispose()))
   for (const d of directories) await rm(d, { recursive: true, force: true })
@@ -1760,6 +1782,100 @@ describe('JsonlSessionPersistence: durability and crash semantics', () => {
     }
   })
 
+  it('safely recovers and retries without duplicate or lost events when open for append encounters transient EBUSY', async () => {
+    if (process.platform !== 'win32') return
+    const m = meta('ebusy-append-open')
+    await writeLog(ctx.sessionPersistence, m, oneTurnLog())
+    const path = rawLogPath(root, undefined, m.id)
+    const handle = await ctx.sessionPersistence.open(m.id, 'write')
+
+    try {
+      openAppendFailure.path = path
+      openAppendFailure.error = Object.assign(new Error(`EBUSY: resource locked or busy, open '${path}'`), {
+        code: 'EBUSY',
+        syscall: 'open',
+      })
+      openAppendFailure.calls = 0
+      openAppendFailure.maxFailures = 2
+
+      const turn2: SessionEvent[] = [
+        { type: 'turn/start', seq: SessionSeq(6), time: 9, data: { turn: 2 } },
+        { type: 'turn/end', seq: SessionSeq(7), time: 10, data: { turn: 2, reason: { kind: 'completed' } } },
+      ]
+
+      // Transparent automatic bounded recovery on transient open sharing failure:
+      // live append succeeds without throwing and without duplicate/lost events.
+      await handle.append(turn2)
+      expect(openAppendFailure.calls).toBe(3)
+
+      const result = await handle.read()
+      expect(result.events.map(e => e.seq)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
+    } finally {
+      await handle.close()
+    }
+  })
+
+  it('fails loudly when open for append sharing errors exhaust retry bounds', async () => {
+    if (process.platform !== 'win32') return
+    const m = meta('ebusy-append-open-exhausted')
+    await writeLog(ctx.sessionPersistence, m, oneTurnLog())
+    const path = rawLogPath(root, undefined, m.id)
+    const handle = await ctx.sessionPersistence.open(m.id, 'write')
+
+    try {
+      openAppendFailure.path = path
+      openAppendFailure.error = Object.assign(new Error(`EBUSY: resource locked or busy, open '${path}'`), {
+        code: 'EBUSY',
+        syscall: 'open',
+      })
+      openAppendFailure.calls = 0
+      openAppendFailure.maxFailures = 20
+
+      const turn2: SessionEvent[] = [
+        { type: 'turn/start', seq: SessionSeq(6), time: 9, data: { turn: 2 } },
+        { type: 'turn/end', seq: SessionSeq(7), time: 10, data: { turn: 2, reason: { kind: 'completed' } } },
+      ]
+
+      await expect(handle.append(turn2)).rejects.toMatchObject({ code: 'EBUSY' })
+      expect(openAppendFailure.calls).toBe(9) // 1 initial + 8 retries
+
+      // Clear the simulated failure; handle state remains valid and retrying succeeds exact-once
+      openAppendFailure.maxFailures = 0
+      await handle.append(turn2)
+      const result = await handle.read()
+      expect(result.events.map(e => e.seq)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
+    } finally {
+      await handle.close()
+    }
+  })
+
+  it('does not retry open for append on non-sharing permanent errors or POSIX permission failures', async () => {
+    const m = meta('enoent-append-open-no-retry')
+    await writeLog(ctx.sessionPersistence, m, oneTurnLog())
+    const path = rawLogPath(root, undefined, m.id)
+    const handle = await ctx.sessionPersistence.open(m.id, 'write')
+
+    try {
+      openAppendFailure.path = path
+      openAppendFailure.error = Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
+        code: 'ENOENT',
+        syscall: 'open',
+      })
+      openAppendFailure.calls = 0
+      openAppendFailure.maxFailures = 5
+
+      const turn2: SessionEvent[] = [
+        { type: 'turn/start', seq: SessionSeq(6), time: 9, data: { turn: 2 } },
+        { type: 'turn/end', seq: SessionSeq(7), time: 10, data: { turn: 2, reason: { kind: 'completed' } } },
+      ]
+
+      await expect(handle.append(turn2)).rejects.toMatchObject({ code: 'ENOENT' })
+      expect(openAppendFailure.calls).toBe(1)
+    } finally {
+      await handle.close()
+    }
+  })
+
   it('reports both the append failure and a failed rollback', async () => {
     const m = meta('rollback-failure')
     await writeLog(ctx.sessionPersistence, m, oneTurnLog())
@@ -2815,6 +2931,33 @@ describe('JsonlSessionPersistence listing concurrency', () => {
     expect(JsonlSessionPersistence.Config({ root: listingRoot, listConcurrency: 1 }).listConcurrency).toBe(1)
     expect(() => JsonlSessionPersistence.Config({ root: listingRoot, listConcurrency: 0 })).toThrow()
     expect(() => JsonlSessionPersistence.Config({ root: listingRoot, listConcurrency: 1.5 })).toThrow()
+    expect(JsonlSessionPersistence.Config({ root: listingRoot }).appendOpenRetryInitialMs).toBe(20)
+    expect(JsonlSessionPersistence.Config({ root: listingRoot }).appendOpenRetryMaxMs).toBe(200)
+    expect(JsonlSessionPersistence.Config({ root: listingRoot }).appendOpenRetryLimit).toBe(8)
+    expect(JsonlSessionPersistence.resolveAppendOpenRetrySpec({ root: listingRoot })).toEqual({
+      initialMs: 20,
+      maxMs: 200,
+      limit: 8,
+    })
+    expect(JsonlSessionPersistence.resolveAppendOpenRetrySpec({
+      root: listingRoot,
+      appendOpenRetryInitialMs: 50,
+      appendOpenRetryMaxMs: 500,
+      appendOpenRetryLimit: 3,
+    })).toEqual({
+      initialMs: 50,
+      maxMs: 500,
+      limit: 3,
+    })
+    expect(() => JsonlSessionPersistence.resolveAppendOpenRetrySpec({
+      root: listingRoot, appendOpenRetryInitialMs: 0,
+    })).toThrow(/appendOpenRetryInitialMs/)
+    expect(() => JsonlSessionPersistence.resolveAppendOpenRetrySpec({
+      root: listingRoot, appendOpenRetryInitialMs: 100, appendOpenRetryMaxMs: 50,
+    })).toThrow(/appendOpenRetryMaxMs/)
+    expect(() => JsonlSessionPersistence.resolveAppendOpenRetrySpec({
+      root: listingRoot, appendOpenRetryLimit: -1,
+    })).toThrow(/appendOpenRetryLimit/)
   })
 
   it('bounds directory and stat reads across concurrent listings of one backend', async () => {

@@ -58,7 +58,7 @@ export interface QuotaSnapshot {
 export interface UsagePeriodSnapshot {
   readonly requests: number
   readonly tokens: number
-  /** Compute credits, converted from actual upstream cost at 10 points per unit. */
+  /** Compute credits, converted from actual upstream cost multiplied by 100 and rounded to two decimals. */
   readonly credits: number
 }
 
@@ -75,6 +75,14 @@ export interface AccountPaymentMethod {
   readonly label: string
   readonly minAmount?: number
   readonly maxAmount?: number
+  /** Validated ISO currency code used to round the discounted payment amount. */
+  readonly currency?: string
+  /** Verified checkout pricing; absent when the upstream response cannot support a preview. */
+  readonly pricing?: {
+    readonly multiplier: number
+    readonly bonusMode: 'bonus' | 'discount'
+    readonly bonusTiers: readonly { readonly minAmount: number; readonly bonusPercent: number }[]
+  }
 }
 
 /** One created top-up order: open `checkoutUrl` in a browser to pay. */

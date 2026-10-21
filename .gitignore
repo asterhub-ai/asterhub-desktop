@@ -33,6 +33,7 @@ mise.toml
 dist-exe/
 /dist/
 apps/desktop/.desktop-build/
+/.asterhub-dev/
 temp/
 apps/desktop/temp/
 python/sdk-runtime/src/deepseek_harness_runtime/runtime/
@@ -40,9 +41,11 @@ python/**/__pycache__/
 python/**/.pytest_cache/
 packages/**/__pycache__/
 apps/web/dist/
+/.local-workspace/
+/otlp-captures.json
 .artifacts/
-.dsh-build/
-.playwright-mcp/
+/.dsh-build/
+/.playwright-mcp/
 .orig
 .worktrees/
 worktrees/

@@ -12,7 +12,32 @@ function literal(value: string): string {
   return `[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(value).toString('base64')}'))`
 }
 
-it.skipIf(process.platform !== 'win32')('queries and invokes a registered Windows handler through the system Shell', async ({ task, signal: testSignal, onTestFailed }) => {
+/** Probe whether HKCU user file associations merge into HKCR and are visible to the Windows Shell. */
+const shellAssociationsUsable = await (async () => {
+  if (process.platform !== 'win32') return false
+  const probeExt = `.dshprobe${randomUUID().replaceAll('-', '')}`
+  try {
+    const probeScript = `
+$root = [Microsoft.Win32.Registry]::CurrentUser
+$key = $root.CreateSubKey('Software\\Classes\\${probeExt}')
+$key.SetValue('', 'probe'); $key.Dispose()
+$merged = [Microsoft.Win32.Registry]::ClassesRoot.OpenSubKey('${probeExt}')
+$ok = $merged -ne $null
+if ($merged) { $merged.Dispose() }
+$root.DeleteSubKeyTree('Software\\Classes\\${probeExt}', $false)
+$ok
+`
+    const { stdout } = await runNativeCommand('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-EncodedCommand',
+      Buffer.from(probeScript, 'utf16le').toString('base64'),
+    ], new AbortController().signal, 'hidden')
+    return stdout.trim().toLowerCase() === 'true'
+  } catch {
+    return false
+  }
+})()
+
+it.skipIf(!shellAssociationsUsable)('queries and invokes a registered Windows handler through the system Shell', async ({ task, signal: testSignal, onTestFailed }) => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-windows-association-'))
   const suffix = randomUUID().replaceAll('-', '')
   const extension = `.dsh${suffix}`

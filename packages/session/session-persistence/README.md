@@ -159,6 +159,6 @@ These limits define where the seam's guarantees stop. They are current package c
 <details>
 <summary>Working context for maintainers — click to expand</summary>
 
-None.
+Only isolated tests may assign `SessionPersistence.openInterceptor`; it intercepts JSONL backend `open()` calls to inject a source-generation race. Application compositions must leave it unset.
 
 </details>

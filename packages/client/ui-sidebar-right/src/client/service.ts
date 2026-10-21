@@ -64,6 +64,73 @@ interface Adoption {
   readonly unsubscribe: () => void
 }
 
+/** Settles one caller waiting for a Session's store adoption. */
+type AdoptionWaiter = (error?: Error) => void
+
+/**
+ * Tracks which Sessions have an adopted store and settles callers that wait for
+ * one. The renderer adopts a store only after it commits the Session's View, so
+ * this gate turns that commit into an awaitable signal without owning the store.
+ */
+class SessionAdoptionSignal {
+  private readonly adopted = new Set<SessionId>()
+  private readonly waiting = new Map<SessionId, Set<AdoptionWaiter>>()
+  private closed = false
+
+  /** Record that a Session's store is adopted and settle its waiters. */
+  adopt(sessionId: SessionId): void {
+    this.adopted.add(sessionId)
+    const waiters = this.waiting.get(sessionId)
+    if (waiters === undefined) return
+    this.waiting.delete(sessionId)
+    for (const settle of waiters) settle()
+  }
+
+  /** Record that a Session's current adoption was released. */
+  release(sessionId: SessionId): void {
+    this.adopted.delete(sessionId)
+  }
+
+  /**
+   * Wait for one Session's store adoption.
+   * @param sessionId - Session whose store must exist.
+   * @param signal - operation lifetime; abort rejects and removes the listener.
+   * @returns a promise settled by adoption, abort, or disposal.
+   */
+  whenAdopted(sessionId: SessionId, signal: AbortSignal): Promise<void> {
+    if (signal.aborted) return Promise.reject(new Error('Sidebar Session adoption was cancelled'))
+    if (this.closed) return Promise.reject(new Error('Sidebar Session adoption was closed'))
+    if (this.adopted.has(sessionId)) return Promise.resolve()
+    return new Promise<void>((resolve, reject) => {
+      const waiters = this.waiting.get(sessionId) ?? new Set<AdoptionWaiter>()
+      this.waiting.set(sessionId, waiters)
+      const settle = (error?: Error): void => {
+        waiters.delete(settle)
+        if (waiters.size === 0) this.waiting.delete(sessionId)
+        signal.removeEventListener('abort', abort)
+        if (error === undefined) resolve()
+        else reject(error)
+      }
+      const abort = (): void => { settle(new Error('Sidebar Session adoption was cancelled')) }
+      waiters.add(settle)
+      signal.addEventListener('abort', abort, { once: true })
+      // The abort may have landed between the check above and this registration.
+      if (signal.aborted) abort()
+    })
+  }
+
+  /** Reject every pending wait; the plugin is unloading. */
+  dispose(): void {
+    this.closed = true
+    const pending = [...this.waiting.values()]
+    this.waiting.clear()
+    this.adopted.clear()
+    for (const waiters of pending) {
+      for (const settle of waiters) settle(new Error('Sidebar Session adoption was closed'))
+    }
+  }
+}
+
 /** The room rule's verdict for a docked pane, as a seat's docking kit last measured it: whether two working halves would fit. */
 type RoomRule = (paneId: PaneId) => boolean
 
@@ -77,6 +144,8 @@ interface SidebarRightSessions {
   readonly onScreen: ObservableSnapshot<SessionId | undefined>
   /** Open tab metadata across saved and adopted Sessions. */
   readonly openTabs: SidebarTabInventory['source']
+  /** Adoption state and callers waiting for a Session's store. */
+  readonly adoption: SessionAdoptionSignal
 }
 
 /**
@@ -85,9 +154,15 @@ interface SidebarRightSessions {
  * @param tabs - registered tab types.
  * @param pin - resource retention for an occurrence's lifetime.
  * @param host - the viewport rule and focus continuity the commands use.
+ * @param retainSessionView - keeps a Session's View alive for background tab work; omission leaves the face unwired.
  * @returns the controller; store adoption and scope removal; naming the on-screen Session; and recording a seat's room rule.
  */
-export function createSidebarRightController(tabs: SidebarRightTabRegistry, pin: PinResource, host: SidebarRightHost): {
+export function createSidebarRightController(
+  tabs: SidebarRightTabRegistry,
+  pin: PinResource,
+  host: SidebarRightHost,
+  retainSessionView?: (sessionId: SessionId, signal: AbortSignal) => Promise<() => void>,
+): {
   controller: SidebarRightController
   adopt: (sessionId: SessionId, store: SidebarRightSurfaceStore) => () => void
   forget: (sessionId: SessionId) => void
@@ -98,7 +173,10 @@ export function createSidebarRightController(tabs: SidebarRightTabRegistry, pin:
   const rooms = new Map<SessionId, RoomRule>()
   const onScreen = createSnapshotStore<SessionId | undefined>(undefined)
   const inventory = new SidebarTabInventory()
-  const controller = new SidebarRightController(tabs, pin, host, { adopted, rooms, onScreen, openTabs: inventory.source })
+  const adoption = new SessionAdoptionSignal()
+  const controller = new SidebarRightController(
+    tabs, pin, host, { adopted, rooms, onScreen, openTabs: inventory.source, adoption }, retainSessionView,
+  )
   return {
     controller,
     forget: (sessionId) => {
@@ -114,12 +192,16 @@ export function createSidebarRightController(tabs: SidebarRightTabRegistry, pin:
         inventory.update(sessionId, Object.values(surface?.layout.tabs ?? {}))
         if (surface !== undefined) controller.tabDomain.sync(sessionId, surface.layout)
       }
-      const adoption: Adoption = { store, unsubscribe: store.subscribe(sync) }
-      adopted.set(sessionId, adoption)
+      const record: Adoption = { store, unsubscribe: store.subscribe(sync) }
+      adopted.set(sessionId, record)
       sync()
+      adoption.adopt(sessionId)
       return () => {
-        adoption.unsubscribe()
-        if (adopted.get(sessionId) === adoption) adopted.delete(sessionId)
+        record.unsubscribe()
+        if (adopted.get(sessionId) === record) {
+          adopted.delete(sessionId)
+          adoption.release(sessionId)
+        }
       }
     },
   }
@@ -220,6 +302,33 @@ export interface ISidebarRight {
    */
   close(tabId: TabId): void
   /**
+   * Wait for one Session's Sidebar store to be adopted by the slot runtime.
+   *
+   * The store is minted and adopted only when the renderer commits that
+   * Session's View, which `retainSessionView` has asked it to mount but cannot
+   * await. A command that writes through a background Session's store waits
+   * here between retaining the View and opening the tab.
+   * @param sessionId - Session whose store must be adopted.
+   * @param signal - operation lifetime; abort rejects and removes the listener.
+   * @returns a promise that resolves once that Session's store is adopted.
+   * @throws when the operation aborts or the plugin shuts down first.
+   */
+  whenSessionAdopted(sessionId: SessionId, signal: AbortSignal): Promise<void>
+  /**
+   * Keep one Session's Sidebar View alive without selecting it, so a caller can
+   * open or close that Session's tabs while it is in the background.
+   *
+   * An absent View is created exactly as selection creates it, published to the
+   * root renderer, and held against pruning; selection and the on-screen Session
+   * do not change. The promise settles after the View's initial Session open, so
+   * the View is owned and the renderer has been asked to mount it.
+   * @param sessionId - Session whose View must survive the operation.
+   * @param signal - operation lifetime; abort releases the hold.
+   * @returns an idempotent release; safe to call after abort or plugin disposal.
+   * @throws when this composition has no Session View retention wired.
+   */
+  retainSessionView(sessionId: SessionId, signal: AbortSignal): Promise<() => void>
+  /**
    * The active tab of the active pane.
    * @returns the record, or `undefined` with no Session on screen.
    */
@@ -266,6 +375,7 @@ export class SidebarRightController implements ISidebarRight {
   readonly mounted: ObservableSnapshot<SessionId | undefined>
   private readonly adopted: ReadonlyMap<SessionId, Adoption>
   private readonly rooms: ReadonlyMap<SessionId, RoomRule>
+  private readonly adoption: SessionAdoptionSignal
   private readonly closeHandlers = new Map<string, SidebarRightCloseHandler>()
 
   /**
@@ -291,15 +401,18 @@ export class SidebarRightController implements ISidebarRight {
    * @param pin - `ctx.resources.pin`, which the Tab domain holds addresses with.
    * @param host - the viewport rule and focus continuity the commands use.
    * @param sessions - plugin-owned adopted stores, room rules, on-screen Session, and open tab metadata.
+   * @param retainView - keeps a Session's View alive for background tab work; omission leaves the face unwired.
    */
   constructor(
     private readonly tabs: SidebarRightTabRegistry,
     pin: PinResource,
     private readonly host: SidebarRightHost,
     sessions: SidebarRightSessions,
+    private readonly retainView?: (sessionId: SessionId, signal: AbortSignal) => Promise<() => void>,
   ) {
     this.adopted = sessions.adopted
     this.rooms = sessions.rooms
+    this.adoption = sessions.adoption
     this.mounted = sessions.onScreen
     this.openTabs = sessions.openTabs
     this.tabDomain = new TabDomain(this, pin)
@@ -374,6 +487,33 @@ export class SidebarRightController implements ISidebarRight {
     const tab = surface.layout.tabs[tabId]
     if (tab === undefined || !canCloseTab(surface, tabId)) return
     this.removeAfterCleanup(sessionId, tab, () => { actions.closeTab(sessionId, tabId) })
+  }
+
+  /**
+   * Wait for one Session's Sidebar store adoption.
+   * @param sessionId - Session whose store must be adopted.
+   * @param signal - operation lifetime; abort rejects and removes the listener.
+   * @returns a promise that resolves once that Session's store is adopted.
+   * @throws when the operation aborts or the plugin shuts down first.
+   */
+  whenSessionAdopted(sessionId: SessionId, signal: AbortSignal): Promise<void> {
+    return this.adoption.whenAdopted(sessionId, signal)
+  }
+
+  /**
+   * Keep one Session's Sidebar View alive without selecting it.
+   * @param sessionId - Session whose View must survive the operation.
+   * @param signal - operation lifetime; abort releases the hold.
+   * @returns an idempotent release; safe to call after abort or plugin disposal.
+   */
+  async retainSessionView(sessionId: SessionId, signal: AbortSignal): Promise<() => void> {
+    if (this.retainView === undefined) throw new Error('sidebarRight: Session view retention is not wired')
+    return this.retainView(sessionId, signal)
+  }
+
+  /** Reject pending adoption waits; the plugin is shutting down. */
+  dispose(): void {
+    this.adoption.dispose()
   }
 
   private removeAfterCleanup(sessionId: SessionId, tab: TabRecord, commit: () => void): void {

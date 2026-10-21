@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
+import type * as DesktopBuildCommitModule from '../scripts/desktop-build-commit.mjs'
 
 const state = vi.hoisted(() => ({ root: '', directory: '' }))
 vi.mock('../scripts/desktop-package-environment.mjs', () => ({
@@ -26,6 +27,10 @@ vi.mock('../scripts/packaging-run.mjs', async (importOriginal) => {
     return run
   } }
 })
+vi.mock('../scripts/desktop-build-commit.mjs', async importOriginal => ({
+  ...await importOriginal<typeof DesktopBuildCommitModule>(),
+  readDesktopBuildCommit: () => ({ commit: '0123456789abcdef0123456789abcdef01234567', dirty: false }),
+}))
 
 it.each(['win32', 'darwin'] as const)('records and prints redacted parent failures on %s', async (platform) => {
   state.root = await mkdtemp(join(tmpdir(), 'package-errors-'))

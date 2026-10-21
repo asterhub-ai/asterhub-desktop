@@ -25,6 +25,8 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
+Host 设置所有者还存储 `defaultModels`（零条或一条精确路由）和 `delegateComplexTasks`（默认 `false`）。开启 `modelSelectionSettings: true` 或 `globalModelDefaults: true` 的实例在每次委派前读取已保存默认模型，并在创建子级前通过实时 LLM 运行时校验。清空默认模型后保留实例默认值或继承行为。`globalModelDefaults` 不公开逐次路由选择字段，也不注册模型发现工具。可续接实例在已记录的提示词章节中包含开启的复杂任务拆解与结果验收偏好。
+
 每个委派目标挂载一个实例，且每个实例的 `toolName` 必须不同。工具与其提供方同时存在、同时消失，因此同级加载顺序与提供方重新加载都不会让工具悬空。
 
 ### 最小配置

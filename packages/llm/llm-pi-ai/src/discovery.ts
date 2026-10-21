@@ -23,7 +23,7 @@
  */
 
 import { INVALID_CREDENTIAL_CODE, LlmError, normalizeApiKey } from '@deepseek-ai/dsh-llm'
-import type { LlmDiscoveredModel, LlmModelDiscoveryOperation } from '@deepseek-ai/dsh-llm'
+import type { LlmDiscoveredModel, LlmModelDiscoveryOperation, ModelModality } from '@deepseek-ai/dsh-llm'
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
 import { catalogModels } from './catalog.ts'
 
@@ -68,6 +68,13 @@ interface ListingTopProvider {
   max_completion_tokens?: unknown
 }
 
+/** OpenRouter-compatible modality metadata nested under `architecture`. */
+interface ListingArchitecture {
+  input_modalities?: unknown
+  inputModalities?: unknown
+  modality?: unknown
+}
+
 /** One entry of a supported `GET /models` reply. */
 interface ListingEntry {
   id?: unknown
@@ -83,8 +90,22 @@ interface ListingEntry {
   max_tokens?: unknown
   max_output_tokens?: unknown
   maxTokens?: unknown
+  input_modalities?: unknown
+  inputModalities?: unknown
+  architecture?: ListingArchitecture | null
   limit?: ListingLimit | null
   top_provider?: ListingTopProvider | null
+}
+
+/** Supported input types disclosed by a model listing, or `undefined` when absent. */
+function inputModalities(...candidates: readonly unknown[]): readonly ModelModality[] | undefined {
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      const modalities = [...new Set(candidate.filter((value): value is ModelModality => value === 'text' || value === 'image'))]
+      if (modalities.length > 0) return modalities
+    }
+  }
+  return undefined
 }
 
 /** A positive integer field of a listing entry, or `undefined` when absent or unusable. */
@@ -219,11 +240,23 @@ function readListing(body: unknown): LlmDiscoveredModel[] {
       entry?.limit?.output,
       entry?.top_provider?.max_completion_tokens,
     )
+    const modalities = inputModalities(
+      entry?.inputModalities,
+      entry?.input_modalities,
+      entry?.architecture?.inputModalities,
+      entry?.architecture?.input_modalities,
+    )
+    const architectureText = entry?.architecture?.modality
+    const architectureModalities = typeof architectureText === 'string'
+      ? inputModalities(architectureText.split('->')[0]?.split(/[+\s]/u))
+      : undefined
+    const disclosedModalities = modalities ?? architectureModalities
     models.push({
       id,
       name,
       ...contextWindow === undefined ? {} : { contextWindow },
       ...maxTokens === undefined ? {} : { maxTokens },
+      ...(disclosedModalities === undefined ? {} : { inputModalities: disclosedModalities }),
     })
   }
   return models

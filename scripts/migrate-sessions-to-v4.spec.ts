@@ -7,9 +7,9 @@ import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { execa } from 'execa'
 import type { SessionFormatJsonObject } from '@deepseek-ai/dsh-session-format'
-import { encodeSegment, generationLogFilename, type JsonlCompression } from '../packages/session/session-persistence-jsonl/src/format.ts'
+import type { JsonlCompression } from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { compressZstdFrame, decompressZstdFrame, scanZstdFrames } from '../packages/session/session-persistence-jsonl/src/zstd.ts'
-import { runMigrationJobs } from './migrate-sessions-to-v4.ts'
+import { encodeSegment, generationLogFilename, runMigrationJobs } from './migrate-sessions-to-v4.ts'
 import { removeFixtureSafely } from './test-fixture-cleanup.ts'
 
 const repository = resolve(import.meta.dirname, '..')
@@ -171,8 +171,9 @@ describe('one-time V4 migration command', () => {
     expect(first.stdout).toContain('converted=2, already-V4=1, failed=0, skipped=1')
     expect(first.stdout).toContain('START session.v3.jsonl')
     expect(first.stdout).toContain('V3 -> V4: session.v4.jsonl')
-    const checkoutCommit = /^Git HEAD: ([0-9a-f]{40})$/mu.exec(first.stdout)?.[1]
-    expect(checkoutCommit).toBeDefined()
+    const matchCommit = /^Git HEAD: ([0-9a-f]{40}|unrecorded \(no git repository\))$/mu.exec(first.stdout)?.[1]
+    expect(matchCommit).toBeDefined()
+    const checkoutCommit = matchCommit === 'unrecorded (no git repository)' ? null : matchCommit
     expect(first.summary).toMatchObject({
       schemaVersion: 1,
       targetVersion: 4,
@@ -331,22 +332,26 @@ describe('one-time V4 migration command', () => {
       type: 'subagent/descriptor', data: { version: 3, mode: 'continuable', provider: 'spawn', label: 'fixture child' },
     }], { origin: 'subagent', parentSession: 'a-parent', createdAt: 2, delegationDepth: 1 })
     const entrypoint = join(temporaryRoot(), 'retry-once.mjs')
-    const backendUrl = pathToFileURL(join(repository, 'packages/session/session-persistence-jsonl/src/index.ts')).href
+    const persistenceUrl = pathToFileURL(join(repository, 'packages/session/session-persistence/src/index.ts')).href
     const generationUrl = pathToFileURL(join(repository, 'packages/session/session-persistence-jsonl/src/generation.ts')).href
     await writeFile(entrypoint, `
-      const { default: Backend } = await import(${JSON.stringify(backendUrl)});
+      const { SessionPersistence } = await import(${JSON.stringify(persistenceUrl)});
       const { JsonlGenerationSourceChangedError } = await import(${JSON.stringify(generationUrl)});
-      const open = Backend.prototype.open;
+      const previousInterceptor = SessionPersistence.openInterceptor;
       let changed = false;
-      Backend.prototype.open = async function(id, access, options) {
+      SessionPersistence.openInterceptor = async function(instance, id, access, options, next) {
         if (id === 'a-parent' && access === 'write' && !changed) {
           changed = true;
           throw new JsonlGenerationSourceChangedError(${JSON.stringify(child.path)});
         }
-        return open.call(this, id, access, options);
+        return next();
       };
-      process.argv[1] = ${JSON.stringify(script)};
-      await import(${JSON.stringify(pathToFileURL(script).href)});
+      try {
+        process.argv[1] = ${JSON.stringify(script)};
+        await import(${JSON.stringify(pathToFileURL(script).href)});
+      } finally {
+        SessionPersistence.openInterceptor = previousInterceptor;
+      }
     `)
     const result = await runAt(entrypoint, '--sessions-dir', root, '--jobs', '2')
     expect(result.status, result.stdout + result.stderr).toBe(0)
@@ -362,6 +367,16 @@ describe('one-time V4 migration command', () => {
     const target = await readFile(join(parent.directory, 'session.v4.jsonl'), 'utf8')
     expect(target).toContain('"type":"subagent/catalog"')
     for (const source of [parent, child]) expect(await readFile(source.path)).toEqual(source.bytes)
+
+    const migratedBytes = await Promise.all([parent, child].map(session =>
+      readFile(join(session.directory, 'session.v4.jsonl'))),
+    )
+    const rerun = await run('--sessions-dir', root)
+    expect(rerun.status, rerun.stdout + rerun.stderr).toBe(0)
+    expect(rerun.summary).toMatchObject({ totals: { converted: 0, alreadyV4: 2, failed: 0, skipped: 0 } })
+    for (const [index, session] of [parent, child].entries()) {
+      expect(await readFile(join(session.directory, 'session.v4.jsonl'))).toEqual(migratedBytes[index])
+    }
   })
 
   it('opens an existing V4 torn tail without repairing its bytes', async () => {

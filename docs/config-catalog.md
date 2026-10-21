@@ -15,7 +15,7 @@ Each package entry labels its data with three identifiers: `inject` lists the se
 ## `@deepseek-ai/dsh-account-sub2api`
 
 - `inject`: `credentials`
-- `source`: [`packages/account/account-sub2api/src/index.ts:417`](../packages/account/account-sub2api/src/index.ts)
+- `source`: [`packages/account/account-sub2api/src/index.ts:442`](../packages/account/account-sub2api/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config: where the control plane lives and which group keys bind to. */
@@ -2748,7 +2748,7 @@ export type SessionLogCompressionLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 
 ## `@deepseek-ai/dsh-session-persistence-jsonl`
 
-- `source`: [`packages/session/session-persistence-jsonl/src/index.ts:94`](../packages/session/session-persistence-jsonl/src/index.ts)
+- `source`: [`packages/session/session-persistence-jsonl/src/index.ts:152`](../packages/session/session-persistence-jsonl/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config for the JSONL backend's root, physical encoding, and listing concurrency. */
@@ -2769,6 +2769,21 @@ export interface Config {
    * fingerprints). Defaults to 3.
    */
   listConcurrency?: number
+  /**
+   * Initial delay in milliseconds before retrying a transient Windows sharing error
+   * when opening an append handle. Defaults to 20 ms.
+   */
+  appendOpenRetryInitialMs?: number
+  /**
+   * Maximum backoff delay cap in milliseconds when retrying a transient Windows sharing
+   * error when opening an append handle. Defaults to 200 ms.
+   */
+  appendOpenRetryMaxMs?: number
+  /**
+   * Maximum number of retry attempts before surfacing an open error when opening an
+   * append handle under transient Windows sharing interference. Defaults to 8 attempts.
+   */
+  appendOpenRetryLimit?: number
 }
 
 /** Physical encoding selected for JSONL session artifacts. */
@@ -4003,6 +4018,8 @@ export interface Config {
    * Agent options applied to every child; omitted fields use child-loop defaults.
    */
   agentOptions?: AgentOptions
+  /** Apply the Host-owned default child model without exposing per-call model selection. */
+  globalModelDefaults?: boolean
   /**
    * Per-child persona that shadows `deployment:persona-prefix`. Requires the
    * provider's `persona` capability; omission preserves the deployment persona.

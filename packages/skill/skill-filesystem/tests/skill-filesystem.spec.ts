@@ -436,10 +436,17 @@ describe('FileSystemSkillProvider', () => {
     await writeSkill(external, 'linked-dir', 'Linked directory')
     await writeFlatSkill(external, 'linked-flat', 'Linked flat')
     await mkdir(join(home, '.dsh/skills'), { recursive: true })
-    await symlink(join(external, 'linked-dir'), join(home, '.dsh/skills/linked-dir'))
-    await symlink(join(external, 'linked-flat.md'), join(home, '.dsh/skills/linked-flat.md'))
-    await symlink(join(external, 'missing'), join(home, '.dsh/skills/broken-link'))
-    await symlink('/dev/null', join(home, '.dsh/skills/device-link'))
+    try {
+      await symlink(join(external, 'linked-dir'), join(home, '.dsh/skills/linked-dir'), process.platform === 'win32' ? 'junction' : 'dir')
+      await symlink(join(external, 'linked-flat.md'), join(home, '.dsh/skills/linked-flat.md'), process.platform === 'win32' ? 'file' : undefined)
+      await symlink(join(external, 'missing'), join(home, '.dsh/skills/broken-link'), process.platform === 'win32' ? 'file' : undefined)
+      if (process.platform !== 'win32') {
+        await symlink('/dev/null', join(home, '.dsh/skills/device-link'))
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EPERM' && process.platform === 'win32') return
+      throw error
+    }
 
     const ctx = new Context()
     await ctx.plugin(SkillRegistry)
@@ -466,7 +473,12 @@ describe('FileSystemSkillProvider', () => {
       }
       await writeFile(join(external, 'replacement.md'), '---\nname: linked-flat\ndescription: Replacement\n---\n\nReplacement body.\n')
       await rm(join(home, '.dsh/skills/linked-flat.md'))
-      await symlink(join(external, 'replacement.md'), join(home, '.dsh/skills/linked-flat.md'))
+      try {
+        await symlink(join(external, 'replacement.md'), join(home, '.dsh/skills/linked-flat.md'), process.platform === 'win32' ? 'file' : undefined)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EPERM' && process.platform === 'win32') return
+        throw error
+      }
       expect((await ctx.skills.get('linked-flat'))?.content).toBe('Replacement body.')
     } finally {
       await fiber.dispose()
@@ -833,7 +845,12 @@ describe('FileSystemSkillProvider', () => {
     const root = join(home, '.dsh/skills')
     await writeSkill(external, 'linked-skill', 'First linked description')
     await mkdir(root, { recursive: true })
-    await symlink(join(external, 'linked-skill'), join(root, 'linked-skill'))
+    try {
+      await symlink(join(external, 'linked-skill'), join(root, 'linked-skill'), process.platform === 'win32' ? 'junction' : 'dir')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EPERM' && process.platform === 'win32') return
+      throw error
+    }
     const ctx = new Context()
     await ctx.plugin(SkillRegistry)
     const fiber = await ctx.plugin(SkillFileSystem, {
@@ -927,6 +944,51 @@ describe('FileSystemSkillProvider', () => {
         delete process.env.DSH_BUNDLED_SKILL_DIR
       } else {
         process.env.DSH_BUNDLED_SKILL_DIR = previousBundledSkillDir
+      }
+    }
+  })
+
+  it('discovers and loads custom skills installed into isolated DSH_HOME/skills', async () => {
+    const previousDshHome = process.env.DSH_HOME
+    const previousAgentsHome = process.env.DSH_AGENTS_HOME
+    const isolatedHome = await tempDir('isolated-dsh-home')
+    const isolatedAgentsHome = await tempDir('isolated-agents-home')
+    try {
+      process.env.DSH_HOME = isolatedHome
+      process.env.DSH_AGENTS_HOME = isolatedAgentsHome
+      const targetRoot = join(isolatedHome, 'skills')
+      await writeSkill(
+        targetRoot,
+        'synthetic-dispatch',
+        'Submit and monitor computational jobs across the Nomad cluster',
+        'Run batch jobs on the nomad cluster.\n\n```sh\nnomad job run spec.nomad\n```\n',
+      )
+
+      const ctx = new Context()
+      await ctx.plugin(SkillRegistry)
+      await ctx.plugin(SkillFileSystem, { watch: false })
+
+      const catalog = await ctx.skills.list()
+      const candidate = catalog.find(s => s.name === 'synthetic-dispatch')
+      expect(candidate).toBeDefined()
+      expect(candidate?.source).toBe('user-dsh')
+      expect(candidate?.description).toBe('Submit and monitor computational jobs across the Nomad cluster')
+
+      const loaded = await ctx.skills.get('synthetic-dispatch')
+      expect(loaded).toBeDefined()
+      expect(loaded?.name).toBe('synthetic-dispatch')
+      expect(loaded?.provider).toBe('filesystem')
+      expect(loaded?.content).toContain('Run batch jobs on the nomad cluster.')
+    } finally {
+      if (previousDshHome === undefined) {
+        delete process.env.DSH_HOME
+      } else {
+        process.env.DSH_HOME = previousDshHome
+      }
+      if (previousAgentsHome === undefined) {
+        delete process.env.DSH_AGENTS_HOME
+      } else {
+        process.env.DSH_AGENTS_HOME = previousAgentsHome
       }
     }
   })

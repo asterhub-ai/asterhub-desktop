@@ -12,7 +12,11 @@ import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
 
 afterEach(() => { vi.unstubAllEnvs() })
 
-it.each(['desktop', 'web'])('limits collection and its shutdown to the Desktop launch: %s', async (profile) => {
+it.each([
+  { profile: 'desktop', configuredCollector: true, expectedMount: true },
+  { profile: 'web', configuredCollector: true, expectedMount: false },
+  { profile: 'desktop', configuredCollector: false, expectedMount: false },
+])('limits collection and shutdown to Desktop with an explicit collector: %j', async ({ profile, configuredCollector, expectedMount }) => {
   const received = Promise.withResolvers<undefined>()
   const server = createServer((req) => { req.resume(); req.once('end', () => { received.resolve(undefined) }) })
   server.listen(0, '127.0.0.1')
@@ -21,7 +25,7 @@ it.each(['desktop', 'web'])('limits collection and its shutdown to the Desktop l
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('missing collector address')
   vi.stubEnv('DSH_CLIENT_VERSION', 'test-version')
-  vi.stubEnv('DSH_PRODUCT_ANALYTICS_OTLP_URL', `http://127.0.0.1:${address.port}/logs`)
+  vi.stubEnv('DSH_PRODUCT_ANALYTICS_OTLP_URL', configuredCollector ? `http://127.0.0.1:${address.port}/logs` : '')
   const ctx = new Context()
   onTestFinished(() => ctx.fiber.dispose())
   ctx.provide('profileContext', {
@@ -41,10 +45,11 @@ it.each(['desktop', 'web'])('limits collection and its shutdown to the Desktop l
   await ctx.loader.root.update(entries)
   await ctx.loader.await()
   const entry = ctx.loader.resolve('desktop-product-telemetry')
-  expect(entry.disabled).toBe(profile !== 'desktop')
-  if (profile !== 'desktop') {
+  expect(entry.disabled).toBe(!expectedMount)
+  if (!expectedMount) {
     expect(ctx.get('productTelemetry')).toBeUndefined()
     expect(ctx.get('productAnalytics')).toBeUndefined()
+    expect(identity).not.toHaveBeenCalled()
     return
   }
   expect(rows[0]!.config).toMatchObject({

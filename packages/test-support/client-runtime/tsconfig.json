@@ -58,6 +58,9 @@
       "path": "../../client/ui-renderer"
     },
     {
+      "path": "../../experimental/client-ui-voice-input"
+    },
+    {
       "path": "../../client/ui-session"
     },
     {

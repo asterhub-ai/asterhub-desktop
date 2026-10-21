@@ -1231,11 +1231,12 @@ describe('scope-aware search guidance', () => {
   it.each([[], ['glob'], ['grep'], ['glob', 'grep']].map(allow => ({ allow })))('renders only visible search guidance: $allow', async ({ allow }) => {
     const { ctx } = await setup()
     const { key, scope } = await guidanceScope(ctx)
+    const identity = (await ctx.systemPrompt.assemble()).sections.find(s => s.name === 'harness:identity')?.text ?? ''
     scope.ctx.tools.restrict({ allow })
     try {
       const assembly = await ctx.systemPrompt.assemble({ scope: key })
       expect(assembly.tools.map(tool => tool.name)).toEqual([...allow].sort())
-      expect(renderPrompt(assembly)).toBe(withPersona(...allow.map(name => name === 'glob'
+      expect(renderPrompt(assembly)).toBe(withPersona(identity, ...allow.map(name => name === 'glob'
         ? originalSearchGuidance.glob
         : originalSearchGuidance.grep.replace(' Use read on a matched file when you need surrounding context.', ''))))
     } finally {
@@ -1251,12 +1252,13 @@ describe('scope-aware search guidance', () => {
       execute: () => Promise.resolve(''),
     })
     const { key, scope } = await guidanceScope(ctx)
+    const identity = (await ctx.systemPrompt.assemble()).sections.find(s => s.name === 'harness:identity')?.text ?? ''
     try {
       expect(renderPrompt(await ctx.systemPrompt.assemble({ scope: key })))
-        .toBe(withPersona(originalSearchGuidance.glob, originalSearchGuidance.grep))
+        .toBe(withPersona(identity, originalSearchGuidance.glob, originalSearchGuidance.grep))
       scope.ctx.tools.restrict({ deny: ['read'] })
       expect(renderPrompt(await ctx.systemPrompt.assemble({ scope: key })))
-        .toBe(withPersona(originalSearchGuidance.glob, originalSearchGuidance.grep.split(' Use read')[0]!))
+        .toBe(withPersona(identity, originalSearchGuidance.glob, originalSearchGuidance.grep.split(' Use read')[0]!))
     } finally {
       await scope.dispose()
     }
@@ -1264,6 +1266,6 @@ describe('scope-aware search guidance', () => {
 })
 
 /** Preserve the default persona and exact section separators in the oracle. */
-function withPersona(...sections: string[]): string {
-  return ['You are an AI agent powered by AsterHub.', ...sections].join('\n\n')
+function withPersona(identity: string, ...sections: string[]): string {
+  return [identity, ...sections].filter(Boolean).join('\n\n')
 }

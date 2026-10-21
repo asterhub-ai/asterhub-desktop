@@ -19,7 +19,7 @@ function renderSection(locale: typeof en = en, overrides: Partial<AnimaFormState
   const state: AnimaFormState = {
     ...settled,
     fields: {
-      nickname: field('Anima'), tone: field('balanced'), responseDetail: field('balanced'), initiative: field('balanced'),
+      nickname: field('小琦'), tone: field('balanced'), responseDetail: field('balanced'), initiative: field('balanced'),
       humor: field('light'), emotionalSupport: field('balanced'), familiarity: field('balanced'), jokeStyle: field('restrained'),
       reflectionEnabled: field('true'), modelProvider: field(''), model: field(''),
     },

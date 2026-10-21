@@ -1,6 +1,6 @@
 import { v4Catalog } from './helpers/v4-catalog.ts'
 import { describe, expect, it } from 'vitest'
-import { Session, SessionId, SessionLogOffset, type SessionEvent, type SessionHeader } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, Session, SessionId, SessionLogOffset, type SessionEvent, type SessionHeader } from '@deepseek-ai/dsh-session'
 import type { SessionFormatEvent } from '@deepseek-ai/dsh-session-format'
 
 type Row = { type: string; data: Record<string, unknown>; surfaceOp?: unknown; sourceEventSeqs?: number[]; ignorable?: true }
@@ -31,8 +31,15 @@ function reopen(rows: readonly Row[], inherited = 0, seeded = false) {
   }
   const artifact = restore.finish()
   expect(artifact.inheritedEventCount).toBe(inherited)
-  const sessionHeader = { ...artifact.header, version: 5 } as unknown as SessionHeader
-  const session = Session.fromRestore(SessionId(artifact.header.id), artifact.events as SessionEvent[], sessionHeader, SessionLogOffset(inherited), 'detached')
+  const sessionHeader: SessionHeader = {
+    version: SESSION_FORMAT_VERSION,
+    id: SessionId(artifact.header.id),
+    createdAt: artifact.header.createdAt,
+    isSeeded: artifact.header.isSeeded,
+    delegationDepth: artifact.header.delegationDepth,
+    ...(artifact.header.parentSession === undefined ? {} : { parentSession: SessionId(artifact.header.parentSession) }),
+  }
+  const session = Session.fromRestore(sessionHeader.id, artifact.events as SessionEvent[], sessionHeader, SessionLogOffset(inherited), 'detached')
   return { artifact, messages: session.deriveMessages() }
 }
 

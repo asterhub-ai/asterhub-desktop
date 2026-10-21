@@ -14,6 +14,8 @@ import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import { LOCALE_SETTINGS_NAMESPACE, LocaleSettingsSchema } from '@deepseek-ai/dsh-client-locale/src/locale-settings.ts'
 import { inject } from '../src/client/index.ts'
 import type { CurrentVersionRowInjected } from '../src/client/CurrentVersionRow.tsx'
+import type { DeveloperToolsRowInjected } from '../src/client/DeveloperToolsRow.tsx'
+import type { DesktopUpdateBridge } from '../src/types.ts'
 import { CloseLabel, HeaderContent, TriggerContent } from '../src/client/chrome.tsx'
 import { GeneralSection } from '../src/client/GeneralSection.tsx'
 
@@ -96,15 +98,12 @@ describe('ui-settings-general apply', () => {
     // The shared developer-tool control belongs to General; onboarding remains feature-owned.
     expect(c.ctx.slots.entries('settings.general.item').filter(row => row.locale === NS).map(row => row.options.id)).toEqual(['developer-tools', 'current-version'])
     const developerRow = c.ctx.slots.entries('settings.general.item').find(row => row.locale === NS && row.options.id === 'developer-tools')!
-    const injected = developerRow.inject?.()
+    const injected = (developerRow.inject as unknown as () => DeveloperToolsRowInjected)?.()
     if (injected === undefined) throw new Error('developer-tools row missing inject')
-    const hooks = injected['hooks']
-    expect(hooks).toBe(c.ctx.configForms.developerTools.enabled)
+    expect(injected.hooks.developerTools).toBe(c.ctx.configForms.developerTools.enabled)
     expect(c.ctx.configForms.developerTools.enabled.getSnapshot()).toBe(false)
     const setEnabled = vi.spyOn(c.ctx.configForms.developerTools, 'setEnabled').mockResolvedValue(undefined)
-    const setter = injected['setEnabled']
-    if (typeof setter !== 'function') throw new Error('developer-tools setEnabled not a function')
-    await Reflect.apply(setter, undefined, [true])
+    await injected.setEnabled(true)
     expect(setEnabled).toHaveBeenCalledExactlyOnceWith(true)
     // The settings.action slot is declared but this plugin registers no built-in action.
     expect(c.ctx.slots.entries('settings.action').filter(row => row.locale === NS)).toEqual([])
@@ -207,8 +206,16 @@ describe('ui-settings-general apply', () => {
   })
 
   it('registers the current-version row and binds the optional Desktop operation from its preload carrier', async ({ mock, start }) => {
-    const check = vi.fn().mockResolvedValue(undefined)
-    const mockDesktop = { protocolVersion: 1, updates: { check, status: vi.fn(), open: vi.fn(), subscribe: vi.fn() } }
+    const check = vi.fn<DesktopUpdateBridge['check']>().mockResolvedValue(undefined)
+    const mockDesktop = {
+      protocolVersion: 1,
+      updates: {
+        check,
+        status: vi.fn<DesktopUpdateBridge['status']>().mockResolvedValue({ phase: 'idle' }),
+        open: vi.fn<DesktopUpdateBridge['open']>().mockResolvedValue(undefined),
+        subscribe: vi.fn<DesktopUpdateBridge['subscribe']>().mockReturnValue(() => {}),
+      } satisfies DesktopUpdateBridge,
+    }
     const g = globalThis as typeof globalThis & { dshDesktop?: typeof mockDesktop }
     const originalDshDesktop = g.dshDesktop
     g.dshDesktop = mockDesktop

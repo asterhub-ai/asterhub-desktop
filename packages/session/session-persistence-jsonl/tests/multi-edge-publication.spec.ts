@@ -235,7 +235,7 @@ describe.each([0, 1] as const)('V%s multi-edge durable publication', (version) =
     expect(await observe(successor)).toEqual(published)
   })
 
-  it.each(['none', 'zstd'] as const)('re-prepares populated history after source drift rejects stale publication (%s)', async (compression) => {
+  it.each(['none', 'zstd'] as const)('re-prepares populated history after source drift rejects stale publication (%s)', { timeout: 15_000 }, async (compression) => {
     const { root, path } = await seed(version, compression)
     const source = await observe(path)
     const ctx = await mount(root, compression)

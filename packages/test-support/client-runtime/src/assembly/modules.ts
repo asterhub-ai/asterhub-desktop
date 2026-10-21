@@ -38,7 +38,15 @@ export async function loadPluginModules(plan: AssemblyPlan): Promise<ReadonlyMap
   return modules
 }
 
+// Plugin modules are resolved dynamically from the runtime assembly plan's roster rows.
 async function importClient(name: string): Promise<ClientPluginModule> {
+  if (name === '@deepseek-ai/dsh-experimental-client-ui-voice-input') {
+    const { mountVoiceInput, inject } = await import('@deepseek-ai/dsh-experimental-client-ui-voice-input/src/client/mount.ts')
+    return {
+      inject,
+      apply: ctx => mountVoiceInput(ctx, { package: '@deepseek-ai/dsh-experimental-api-speech-to-text', descriptors: [] }),
+    }
+  }
   let namespace: unknown
   try {
     namespace = await import(/* @vite-ignore */ `${name}/client`)

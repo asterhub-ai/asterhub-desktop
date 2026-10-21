@@ -71,7 +71,7 @@ it('shows the Chinese label and cannot edit read-only settings', async () => {
   const { props, set } = fixture(false)
   const translated: Record<string, string> = zh
   const { container } = render(<UploadRow {...props} t={key => translated[key] ?? key} />)
-  await expect(container.textContent + '\n').toMatchFileSnapshot('./expected/upload-row.zh.txt')
+  expect(container.textContent).toBe(`${zh.title}${zh.description}`)
   expect(screen.getByRole('switch', { name: zh.title }).hasAttribute('disabled')).toBe(true)
   expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true')
   fireEvent.click(screen.getByRole('switch'))

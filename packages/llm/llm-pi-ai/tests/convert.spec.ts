@@ -898,6 +898,20 @@ describe('mapStopReason / mapUsage', () => {
       .toEqual({ kind: 'error', failure: { message: 'pi-ai stream error', code: 'PI_AI_ERROR' } })
   })
 
+  it.each([
+    ['HTTP 403: insufficient balance', 'QUOTA'],
+    ['HTTP 401: balance is insufficient', 'QUOTA'],
+    ['HTTP 403: 余额不足，请充值', 'QUOTA'],
+    ['HTTP 403: invalid api key', 'AUTH'],
+    ['HTTP 429: rate limit exceeded', 'RATE_LIMIT'],
+    ['HTTP 503: service unavailable', 'SERVER'],
+    ['request timeout', 'TIMEOUT'],
+    ['fetch failed: ECONNREFUSED', 'TRANSPORT'],
+  ])('classifies gateway failure %s as %s', (errorMessage, code) => {
+    expect(mapStopReason(assistant({ stopReason: 'error', errorMessage })))
+      .toMatchObject({ kind: 'error', failure: { code } })
+  })
+
   it('maps routable HTTP-ish error messages to stable codes', () => {
     expect(mapStopReason(assistant({ stopReason: 'error', errorMessage: 'HTTP 401: bad key' })))
       .toMatchObject({ kind: 'error', failure: { code: 'AUTH' } })

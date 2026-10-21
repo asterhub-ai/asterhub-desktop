@@ -2,7 +2,9 @@
 import { randomUUID } from 'node:crypto'
 import { app, session, BrowserWindow, type NativeImage, type Session, type WebContents } from 'electron'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { brandString } from '@deepseek-ai/dsh-brand'
 const MAX_DESKTOP_BROWSER_SCREENSHOT_BYTES = 32 * 1024 * 1024
+const DESKTOP_BROWSER_RENDERER_COMMAND_TIMEOUT_MS = 15_000
 import type {
   DesktopBrowserRequestMessage,
   DesktopBrowserResult,
@@ -38,7 +40,7 @@ interface GuestLease {
   readonly owner: WebContents
   readonly partition: string
   readonly sessionId?: SessionId | undefined
-  readonly tabId?: string | undefined
+  readonly tabId?: TabId | undefined
   readonly lease: DesktopBrowserLeaseId
   attached: boolean
   guest?: WebContents | undefined
@@ -64,6 +66,7 @@ export class DesktopBrowserGuests {
     owner: WebContents
     resolve: (reply: RendererReply) => void
     reject: (error: Error) => void
+    timeout: ReturnType<typeof setTimeout>
   }>()
 
   /** @param hostUrl - current authenticated DSH Host, which guests cannot request. */
@@ -89,7 +92,7 @@ export class DesktopBrowserGuests {
     }
     const lease = randomUUID() as DesktopBrowserLeaseId
     const validSessionId = typeof sessionId === 'string' && sessionId.length > 0 ? (sessionId as SessionId) : undefined
-    const validTabId = typeof tabId === 'string' && tabId.length > 0 ? tabId : undefined
+    const validTabId = typeof tabId === 'string' && tabId.length > 0 ? (tabId as TabId) : undefined
 
     const windowFactory = this.createWindow ?? (options =>
       new BrowserWindow(options))
@@ -271,6 +274,7 @@ export class DesktopBrowserGuests {
         if (pending.owner === owner) {
           this.pendingRendererCommands.delete(id)
           pending.reject(new Error('Window was destroyed'))
+          clearTimeout(pending.timeout)
         }
       }
     }
@@ -293,7 +297,7 @@ export class DesktopBrowserGuests {
       guest,
       lease,
       target: {
-        tabId: (leaseRecord.tabId ?? '') as DesktopBrowserTabId,
+        tabId: brandString<DesktopBrowserTabId>(leaseRecord.tabId ?? ''),
         generation: leaseRecord.generation,
       },
       get viewport() {
@@ -522,7 +526,7 @@ export class DesktopBrowserGuests {
       if (
         lease.owner === owner &&
         lease.sessionId === sessionId &&
-        lease.tabId === target.tabId &&
+        lease.tabId === brandString<TabId>(target.tabId) &&
         lease.generation === target.generation &&
         lease.guest !== undefined &&
         !lease.guest.isDestroyed()
@@ -544,13 +548,14 @@ export class DesktopBrowserGuests {
         if (
           lease.owner === owner &&
           lease.sessionId === sessionId &&
+          lease.tabId !== undefined &&
           lease.tabId === reported.tabId &&
           lease.guest !== undefined &&
           !lease.guest.isDestroyed()
         ) {
           results.push({
             target: {
-              tabId: reported.tabId as unknown as DesktopBrowserTabId,
+              tabId: brandString<DesktopBrowserTabId>(lease.tabId),
               generation: lease.generation,
             },
             url: lease.guest.getURL(),
@@ -570,7 +575,7 @@ export class DesktopBrowserGuests {
       if (
         lease.owner === owner &&
         lease.sessionId === sessionId &&
-        lease.tabId === target.tabId &&
+        lease.tabId === brandString<TabId>(target.tabId) &&
         lease.generation === target.generation &&
         lease.guest !== undefined &&
         !lease.guest.isDestroyed()
@@ -640,22 +645,48 @@ export class DesktopBrowserGuests {
       }
       return new Promise<DesktopBrowserTabCommandResult>((resolve, reject) => {
         const onAbort = () => {
+          const pending = this.pendingRendererCommands.get(commandId)
+          if (pending === undefined) return
           this.pendingRendererCommands.delete(commandId)
+          clearTimeout(pending.timeout)
           reject(new Error('Browser operation was cancelled'))
         }
-        signal.addEventListener('abort', onAbort, { once: true })
+        const timeout = setTimeout(() => {
+          if (!this.pendingRendererCommands.delete(commandId)) return
+          signal.removeEventListener('abort', onAbort)
+          reject(new Error('Timed out waiting for browser renderer'))
+        }, DESKTOP_BROWSER_RENDERER_COMMAND_TIMEOUT_MS)
         this.pendingRendererCommands.set(commandId, {
           owner,
+          timeout,
           resolve: (reply) => {
+            clearTimeout(timeout)
             signal.removeEventListener('abort', onAbort)
             resolve(reply.result)
           },
           reject: (error) => {
+            clearTimeout(timeout)
             signal.removeEventListener('abort', onAbort)
             reject(error)
           },
         })
-        owner.send(DESKTOP_IPC.browserAutomation, command)
+        if (signal.aborted) {
+          const pending = this.pendingRendererCommands.get(commandId)
+          if (pending !== undefined) {
+            this.pendingRendererCommands.delete(commandId)
+            pending.reject(new Error('Browser operation was cancelled'))
+          }
+          return
+        }
+        signal.addEventListener('abort', onAbort, { once: true })
+        try {
+          owner.send(DESKTOP_IPC.browserAutomation, command)
+        } catch (error) {
+          const pending = this.pendingRendererCommands.get(commandId)
+          if (pending === undefined) return
+          this.pendingRendererCommands.delete(commandId)
+          pending.reject(error instanceof Error ? error : new Error('Failed to send browser command to renderer'))
+        }
       })
     }
 
@@ -700,14 +731,13 @@ export class DesktopBrowserGuests {
           return { status: 'error', code: 'failed', message: 'Invalid renderer tab result' }
         }
         case 'tabs.close': {
-          const guest = this.resolveGuest(owner, request.caller.sessionId, request.operation.target)
-          if (guest === undefined) {
+          const lease = this.resolveLease(owner, request.caller.sessionId, request.operation.target)
+          if (!lease || lease.tabId === undefined) {
             return { status: 'error', code: 'stale-target', message: 'Browser target is invalid or expired' }
           }
-          const tabId = request.operation.target.tabId as unknown as TabId
           const result = await sendRendererCommand({
             kind: 'tabs.close',
-            tabId,
+            tabId: lease.tabId,
           })
           if (result.status === 'error') {
             return { status: 'error', code: 'failed', message: result.message }

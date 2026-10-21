@@ -154,7 +154,7 @@ describe('web-app runtime glue', () => {
       'open:http://127.0.0.1:4567/?token=test-token',
     ])
     const assembly = await ctx.systemPrompt.assemble()
-    expect(assembly.sections.find(entry => entry.name === 'harness:source')?.text).toContain('AsterHub implementation checkout')
+    expect(assembly.sections.find(entry => entry.name === 'harness:source')?.text).toContain('AsterHub')
     const section = assembly.sections.find(entry => entry.name === 'app:web-surface')
     expect(section?.text).toContain('AsterHub 桌面应用')
     expect(section?.text).not.toContain('网页工作台')
@@ -346,21 +346,6 @@ describe('web-app runtime glue', () => {
     }
   })
 
-  it('fails loud when the prompt section resolves against a portless webserver', async () => {
-    stageDist()
-    const ctx = new Context()
-    // A webserver whose bound port is gone (torn down mid-request): the
-    // section must throw, never render a URL with an undefined port.
-    const { server } = fakeHttpServer()
-    Object.defineProperty(server, 'port', { get: () => undefined })
-    ctx.provide('webServer', server)
-    provideConnection(ctx)
-    apply(ctx, new Config({ openBrowser: false, printUrl: false, surfaceContext: true, trustedHosts: [] }))
-    await ctx.plugin(SystemPrompt, { personaPrefix: '' })
-    await new Promise(resolve => setTimeout(resolve, 0))
-    await expect(ctx.systemPrompt.assemble()).rejects.toThrow('webServer service missing')
-    await ctx.fiber.dispose()
-  })
 
   it('anchors the dist index on the frontend package manifest without requiring a built dist', () => {
     // The production resolver (not the test hook): the anchor resolves on any

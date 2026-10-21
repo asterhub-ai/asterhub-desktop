@@ -1013,15 +1013,16 @@ describe('scope-aware filesystem guidance', () => {
   it.each(Array.from({ length: 8 }, (_, mask) => mask))('preserves exact text for visible tools (mask %i)', async (mask) => {
     const { ctx } = await setup()
     const { key, scope } = await guidanceScope(ctx)
+    const identity = (await ctx.systemPrompt.assemble()).sections.find(s => s.name === 'harness:identity')?.text ?? ''
     const names = ['read', 'write', 'edit'] as const
     const allow = names.filter((_, index) => (mask & (1 << index)) !== 0)
-    const baseline = withPersona(...names.map(name => originalGuidance[name]))
+    const baseline = withPersona(identity, ...names.map(name => originalGuidance[name]))
     expect(renderPrompt(await ctx.systemPrompt.assemble())).toBe(baseline)
     const release = scope.ctx.tools.restrict({ allow })
     try {
       const assembly = await ctx.systemPrompt.assemble({ scope: key })
       expect(assembly.tools.map(tool => tool.name)).toEqual([...allow].sort())
-      const expected = withPersona(...allow.map(name => name === 'write' && !allow.includes('edit')
+      const expected = withPersona(identity, ...allow.map(name => name === 'write' && !allow.includes('edit')
         ? originalGuidance.write.replace(' and prefer edit for targeted changes', '')
         : originalGuidance[name]))
       expect(renderPrompt(assembly)).toBe(expected)
@@ -1036,17 +1037,18 @@ describe('scope-aware filesystem guidance', () => {
   it('honors deny filters and the existing exemption for own-scope tools', async () => {
     const { ctx } = await setup()
     const { key, scope } = await guidanceScope(ctx)
+    const identity = (await ctx.systemPrompt.assemble()).sections.find(s => s.name === 'harness:identity')?.text ?? ''
     const write = ctx.tools.get('write')!
     scope.ctx.tools.restrict({ deny: ['write', 'edit'] })
     try {
-      expect(renderPrompt(await ctx.systemPrompt.assemble({ scope: key }))).toBe(withPersona(originalGuidance.read))
+      expect(renderPrompt(await ctx.systemPrompt.assemble({ scope: key }))).toBe(withPersona(identity, originalGuidance.read))
       const denied = await call(ctx, 'write', { file_path: '/blocked', content: 'blocked' }, key)
       expect(denied.isError).toBe(true)
       expect(text(denied)).toContain('unknown tool "write"')
       scope.ctx.tools.register(write)
       const assembly = await ctx.systemPrompt.assemble({ scope: key })
       expect(assembly.tools.map(tool => tool.name)).toEqual(['read', 'write'])
-      expect(renderPrompt(assembly)).toBe(withPersona(originalGuidance.read,
+      expect(renderPrompt(assembly)).toBe(withPersona(identity, originalGuidance.read,
         originalGuidance.write.replace(' and prefer edit for targeted changes', '')))
     } finally {
       await scope.dispose()
@@ -1055,8 +1057,8 @@ describe('scope-aware filesystem guidance', () => {
 })
 
 /** Preserve the default persona and exact section separators in the oracle. */
-function withPersona(...sections: string[]): string {
-  return ['You are an AI agent powered by AsterHub.', ...sections].join('\n\n')
+function withPersona(identity: string, ...sections: string[]): string {
+  return [identity, ...sections].filter(Boolean).join('\n\n')
 }
 
 /** Schema assembly only: these cases never execute user code. */

@@ -1,7 +1,7 @@
 /** Create/edit form for automation tasks. */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
-import { Button, Input } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Input, MenuSurface } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type {
@@ -43,22 +43,33 @@ const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as const
 /** Weekday label keys. */
 const WEEKDAY_LABELS = { 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat', 7: 'sun' } as const
 
-/** Common timezones with UTC offsets for display. */
+/** Common IANA zones with their stable display offsets. */
 const COMMON_TIMEZONES = [
-  { id: 'Asia/Shanghai', label: 'Asia/Shanghai', offset: 'UTC+08:00' },
-  { id: 'Asia/Tokyo', label: 'Asia/Tokyo', offset: 'UTC+09:00' },
-  { id: 'Asia/Hong_Kong', label: 'Asia/Hong_Kong', offset: 'UTC+08:00' },
-  { id: 'Asia/Singapore', label: 'Asia/Singapore', offset: 'UTC+08:00' },
-  { id: 'Europe/London', label: 'Europe/London', offset: 'UTC+00:00' },
-  { id: 'Europe/Paris', label: 'Europe/Paris', offset: 'UTC+01:00' },
-  { id: 'Europe/Berlin', label: 'Europe/Berlin', offset: 'UTC+01:00' },
-  { id: 'America/New_York', label: 'America/New_York', offset: 'UTC-05:00' },
-  { id: 'America/Chicago', label: 'America/Chicago', offset: 'UTC-06:00' },
-  { id: 'America/Los_Angeles', label: 'America/Los_Angeles', offset: 'UTC-08:00' },
-  { id: 'Australia/Sydney', label: 'Australia/Sydney', offset: 'UTC+10:00' },
-  { id: 'UTC', label: 'UTC', offset: 'UTC+00:00' },
+  { id: 'Asia/Shanghai', offset: 'UTC+08:00' },
+  { id: 'Asia/Tokyo', offset: 'UTC+09:00' },
+  { id: 'Asia/Hong_Kong', offset: 'UTC+08:00' },
+  { id: 'Asia/Singapore', offset: 'UTC+08:00' },
+  { id: 'Europe/London', offset: 'UTC+00:00' },
+  { id: 'Europe/Paris', offset: 'UTC+01:00' },
+  { id: 'Europe/Berlin', offset: 'UTC+01:00' },
+  { id: 'America/New_York', offset: 'UTC-05:00' },
+  { id: 'America/Chicago', offset: 'UTC-06:00' },
+  { id: 'America/Los_Angeles', offset: 'UTC-08:00' },
+  { id: 'Australia/Sydney', offset: 'UTC+10:00' },
+  { id: 'UTC', offset: 'UTC+00:00' },
 ]
 
+/** Localized display name of an IANA zone; the stored id remains the value. */
+function timeZoneLabel(zone: string, locale: string): string {
+  try {
+    const name = new Intl.DateTimeFormat(locale, { timeZone: zone, timeZoneName: 'shortGeneric' })
+      .formatToParts().find(part => part.type === 'timeZoneName')?.value
+    return name ?? zone
+  } catch {
+    // An unrecognized zone or locale keeps the IANA id as its label.
+    return zone
+  }
+}
 
 /** Form state. */
 interface FormState {
@@ -170,7 +181,8 @@ function toLocalTimeInput(d: Date): string {
 
 /** Format a Date as YYYY-MM-DDTHH:mm in local time for <input type="datetime-local">. */
 function toLocalDateTimeInput(d: Date): string {
-  return `${toLocalDateInput(d)}T${toLocalTimeInput(d)}`
+  // `T` is the fixed HTML value separator, not product copy.
+  return [toLocalDateInput(d), toLocalTimeInput(d)].join('T')
 }
 
 /** Build timing input from form state.
@@ -243,7 +255,7 @@ function buildDraft(state: FormState): AutomationDraft {
 }
 
 /** Validate form state. */
-function validateForm(state: FormState, t: (key: string) => string): Record<string, string> {
+function validateForm(state: FormState, t: PropsLocale<'automation'>['t']): Record<string, string> {
   const errors: Record<string, string> = {}
   if (state.name.trim().length === 0) errors.name = t('validation.name.required')
   if (state.name.length > 120) errors.name = t('validation.name.maxLength')
@@ -313,7 +325,7 @@ export function AutomationForm(props: AutomationFormProps) {
   const [showTimezoneDropdown, setShowTimezoneDropdown] = useState(false)
   const [timezoneFocusedIndex, setTimezoneFocusedIndex] = useState<number>(-1)
   const timezoneSearchRef = useRef<HTMLInputElement>(null)
-  const timezoneDropdownRef = useRef<HTMLUListElement>(null)
+  const timezoneDropdownRef = useRef<HTMLDivElement>(null)
 
   // Filtered timezones for dropdown
   const filteredTimezones = useMemo(() =>
@@ -350,7 +362,7 @@ export function AutomationForm(props: AutomationFormProps) {
 
   // Preview next occurrences when timing changes
   useEffect(() => {
-    if (Object.keys(validateForm(state, t as unknown as (key: string) => string)).length > 0) {
+    if (Object.keys(validateForm(state, t)).length > 0) {
       setPreview(null)
       return
     }
@@ -429,7 +441,7 @@ export function AutomationForm(props: AutomationFormProps) {
   )
 
   const handleSubmit = async (): Promise<void> => {
-    const validationErrors = validateForm(state, t as unknown as (key: string) => string)
+    const validationErrors = validateForm(state, t)
     setErrors(validationErrors)
     if (Object.keys(validationErrors).length > 0) return
 
@@ -731,42 +743,46 @@ export function AutomationForm(props: AutomationFormProps) {
                 ref={timezoneSearchRef}
               />
               {showTimezoneDropdown && (
-                <ul
-                  id="automation-form-timezone-listbox"
+                <MenuSurface
                   className={css.timezoneDropdown}
-                  role="listbox"
-                  aria-label={t('form.timezone')}
                   ref={timezoneDropdownRef}
                   onMouseLeave={() => { setTimezoneFocusedIndex(-1) }}
                 >
-                  {filteredTimezones.map((tz, index) => (
-                    <li
-                      key={tz.id}
-                      id={`tz-option-${tz.id}`}
-                      role="option"
-                      aria-selected={state.timeZone === tz.id}
-                      className={clsx(
-                        css.timezoneOption,
-                        state.timeZone === tz.id && css.timezoneOptionSelected,
-                        index === timezoneFocusedIndex && css.timezoneOptionFocused,
-                      )}
-                      onClick={() => {
-                        update('timeZone', tz.id)
-                        setTimezoneSearch('')
-                        setShowTimezoneDropdown(false)
-                        setTimezoneFocusedIndex(-1)
-                        timezoneSearchRef.current?.focus()
-                      }}
-                      onMouseEnter={() => { setTimezoneFocusedIndex(index) }}
-                    >
-                      <span className={css.timezoneLabel}>{tz.label}</span>
-                      <span className={css.timezoneOffset}>{tz.offset}</span>
-                    </li>
-                  ))}
-                  {filteredTimezones.length === 0 && (
-                    <li className={css.timezoneNoResults}>{t('form.timezone.noResults')}</li>
-                  )}
-                </ul>
+                  <ul
+                    id="automation-form-timezone-listbox"
+                    className={css.timezoneList}
+                    role="listbox"
+                    aria-label={t('form.timezone')}
+                  >
+                    {filteredTimezones.map((tz, index) => (
+                      <li
+                        key={tz.id}
+                        id={`tz-option-${tz.id}`}
+                        role="option"
+                        aria-selected={state.timeZone === tz.id}
+                        className={clsx(
+                          css.timezoneOption,
+                          state.timeZone === tz.id && css.timezoneOptionSelected,
+                          index === timezoneFocusedIndex && css.timezoneOptionFocused,
+                        )}
+                        onClick={() => {
+                          update('timeZone', tz.id)
+                          setTimezoneSearch('')
+                          setShowTimezoneDropdown(false)
+                          setTimezoneFocusedIndex(-1)
+                          timezoneSearchRef.current?.focus()
+                        }}
+                        onMouseEnter={() => { setTimezoneFocusedIndex(index) }}
+                      >
+                        <span className={css.timezoneLabel}>{timeZoneLabel(tz.id, t('time.locale'))}</span>
+                        <span className={css.timezoneOffset}>{tz.offset}</span>
+                      </li>
+                    ))}
+                    {filteredTimezones.length === 0 && (
+                      <li className={css.timezoneNoResults}>{t('form.timezone.noResults')}</li>
+                    )}
+                  </ul>
+                </MenuSurface>
               )}
             </div>
             <input type="hidden" id="automation-form-timezone" value={state.timeZone} />

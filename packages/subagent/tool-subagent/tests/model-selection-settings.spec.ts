@@ -3,10 +3,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import { assembleContextFor } from '@deepseek-ai/dsh-agent'
 import { Session, SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { bindScopeParent, createScope, scopeOf, scopeTarget } from '@deepseek-ai/dsh-scope'
 import { liveConfig } from '../../../settings/settings/tests/live-config.ts'
+import { MockAdapter } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
@@ -78,6 +80,78 @@ async function createAgent(ctx: Context, id: string, options: {
 }
 
 describe('SubagentModelSelectionConfig', () => {
+  it('applies a saved default through the executor without exposing per-call route selection', async () => {
+    const ctx = await boot()
+    try {
+      const registration = ctx.llm.registerAdapter(['alpha'], new MockAdapter([]))
+      const catalog = vi.spyOn(ctx.llm, 'listModels').mockResolvedValue([
+        { provider: 'alpha', id: 'fast-model', name: 'Fast' },
+      ])
+      const agent = await createAgent(ctx, 'global-default-executor')
+      const start = vi.spyOn(ctx.subagents, 'start').mockRejectedValue(new Error('captured child request'))
+      await selectionConfigs.get(ctx)!.update({ defaultModels: [{ provider: 'alpha', model: 'fast-model' }] })
+      expect(selectable(ctx, agent)).toBe(false)
+      await callSubagent(ctx, { description: 'bounded task', prompt: 'do it', run_in_background: false }, { agent })
+      expect(start).toHaveBeenCalledWith('spawn', expect.objectContaining({
+        agentOptions: { provider: 'alpha', model: 'fast-model' },
+      }))
+      start.mockClear()
+      catalog.mockResolvedValue([])
+      const unlisted = await callSubagent(ctx, { description: 'bounded task', prompt: 'do it', run_in_background: false }, { agent })
+      expect(unlisted.isError).toBe(true)
+      expect(text(unlisted)).toContain('not available in the current account catalog')
+      expect(start).not.toHaveBeenCalled()
+      catalog.mockResolvedValue([{ provider: 'alpha', id: 'fast-model', name: 'Fast' }])
+      registration.replace(['beta'])
+      const rejected = await callSubagent(ctx, { description: 'bounded task', prompt: 'do it', run_in_background: false }, { agent })
+      expect(rejected.isError).toBe(true)
+      expect(start).not.toHaveBeenCalled()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('includes delegation guidance only while the persistent preference is enabled', async () => {
+    const ctx = await boot()
+    try {
+      const agent = await createAgent(ctx, 'delegation-guidance')
+      const prompt = async () => (await ctx.systemPrompt.assemble(assembleContextFor(agent))).sections
+        .find(section => section.name === 'tool:subagent')?.text
+      expect(await prompt()).not.toContain('For top-level conversations')
+      await selectionConfigs.get(ctx)!.update({ delegateComplexTasks: true })
+      expect(await prompt()).toContain('For top-level conversations, handle brief simple requests directly.')
+      expect(await prompt()).toContain('integrate, review, and verify their results')
+      await selectionConfigs.get(ctx)!.update({ delegateComplexTasks: false })
+      expect(await prompt()).not.toContain('For top-level conversations')
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('rejects global defaults when their settings owner is missing', () => {
+    const ctx = new Context()
+    expect(() => tool.apply(ctx, { provider: 'spawn', globalModelDefaults: true }))
+      .toThrow('globalModelDefaults requires the Host subagent model settings service')
+  })
+
+  it('keeps child defaults unset until a global model is explicitly saved', async () => {
+    const ctx = await boot(false)
+    try {
+      expect(ctx.subagentModelSelection.defaultModel()).toBeNull()
+      expect(ctx.subagentModelSelection.delegatesComplexTasks()).toBe(false)
+      await selectionConfigs.get(ctx)!.update({
+        defaultModels: [{ provider: 'alpha', model: 'fast-model' }],
+        delegateComplexTasks: true,
+      })
+      expect(ctx.subagentModelSelection.defaultModel()).toEqual({ provider: 'alpha', model: 'fast-model' })
+      expect(ctx.subagentModelSelection.delegatesComplexTasks()).toBe(true)
+      await selectionConfigs.get(ctx)!.update({ defaultModels: [] })
+      expect(ctx.subagentModelSelection.defaultModel()).toBeNull()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('uses the composed default without a settings provider', async () => {
     const ctx = new Context()
     await ctx.plugin(SubagentModelSelectionConfig, { enabled: true, allowedModels: ALLOWED_MODELS })

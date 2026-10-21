@@ -2,8 +2,8 @@
  * The Subagent settings page, browser half: the delegation limits over the
  * `subagent` namespace and the models agents may choose over the
  * `subagent-model-selection` namespace, on one page with one save. The page
- * registers into the Plugins page's `plugins.item` slot while the Host serves
- * either namespace and shows the sections it serves.
+ * registers into Settings and the Plugins page while the Host serves either
+ * namespace and shows the sections it serves.
  */
 
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
@@ -19,6 +19,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { SubagentCard } from './SubagentCard.tsx'
+import { SubagentSettingsSection } from './SubagentSettingsSection.tsx'
 import { subagentCardFace } from './subagent-card-controller.ts'
 import { SubagentLimitsCardController } from './subagent-limits-card-controller.ts'
 import {
@@ -91,4 +92,12 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: () => subagentCardFace(limitsFace, modelsFace),
   }, SubagentCard))), 'ui-settings-subagent: page')
+  ctx.effect(() => ctx.configForms.whileServed([SUBAGENT_NS, SUBAGENT_MODEL_SELECTION_NS], () => ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
+    id: 'subagent',
+    order: 25,
+    label: () => t('subagentTitle'),
+    locale: NS,
+    inject: () => subagentCardFace(limitsFace, modelsFace),
+  }, SubagentSettingsSection))), 'ui-settings-subagent: settings page')
 }

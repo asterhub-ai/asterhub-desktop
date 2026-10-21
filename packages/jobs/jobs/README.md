@@ -33,6 +33,8 @@ A producer registers work with a kind and a one-line label; the registry returns
 
 A producer streams output by naming pull sources on its spec — non-consuming offset readers the registry pumps at its own cadence — or by pushing chunks through the `JobHandle` its starter receives; both land in the job's bounded ring, where `stdout` and `stderr` chunks reach the model and `log` chunks reach observers only. Observers read retained chunks at absolute byte offsets and are signaled on advancement; the settlement that ends the job also ends the stream, and `updateProgress` publishes a live progress line into every projection until then. Observation is invisible to the model: `readAt` consumes nothing and never touches notice state.
 
+The exported `JobRegisteredData`, `JobSettledData`, and `JobExecutionId` define the contract for restoring persisted Session history (`job/registered` and `job/settled`). Released registrations may omit `executionId`; released settlements may carry `producerReported` without `terminationConfirmed`. Current runtime job producers do not emit these Session log events; preserving the historical fields keeps recorded fixtures readable without implying new producer lifecycle behavior.
+
 ### The ownership boundary
 
 A job belongs to the agent session that started it: another agent cannot read or stop it. Ids such as `bash-1` are predictable, so this fence is authorization, not secrecy. A job started without an owner is open to any caller and lasts until the service is disposed.
@@ -77,9 +79,9 @@ This section explains the design decisions behind the contract and points at the
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Plugin entry: the abstract `JobRegistry` service and its contract |
-| [`src/types.ts`](src/types.ts) | Shared vocabulary: `JobSpec`, `JobHandle`, `JobHooks`, `JobOutcome`, `JobEvent`, and the read results |
+| [`src/types.ts`](src/types.ts) | Shared vocabulary: `JobSpec`, `JobHandle`, `JobHooks`, `JobOutcome`, `JobEvent`, the read results, and historical Session restoration contracts (`JobRegisteredData`, `JobSettledData`, `JobToolCall`) |
 | [`src/view.ts`](src/view.ts) | Client-safe leaf: `JobView`, `JobChunk`, `JobStatus`, and the merge-extensible `JobKindMap` |
-| [`src/brand.ts`](src/brand.ts) | `JobId` branded identifier, importable without the agent dependency |
+| [`src/brand.ts`](src/brand.ts) | `JobId` and `JobExecutionId` branded identifiers, importable without the agent dependency |
 | [`src/archive-admission.ts`](src/archive-admission.ts) | The `job` family of the Workspace registry's archive admission, installed by the seam's constructor for every implementation |
 | [`src/invariant.ts`](src/invariant.ts) | Invariant companion: checks the announced event protocol per job (registered first, one settlement, removal last) and each announced projection against the registry's own read |
 

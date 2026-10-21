@@ -3212,10 +3212,22 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Singleton settings owner read when delegation tools are composed for a Session.',
     methods: [
       {
+        signature: 'defaultModel(): AllowedModelRoute | null',
+        description: 'Read the default child route without exposing provider configuration.',
+        parameters: [],
+        returns: 'A detached exact route, or null to preserve tool-instance defaults.',
+      },
+      {
+        signature: 'delegatesComplexTasks(): boolean',
+        description: 'Read whether complex tasks should be delegated by the top-level assistant.',
+        parameters: [],
+        returns: 'The current persistent decomposition preference.',
+      },
+      {
         signature: 'current(): SubagentModelSelectionSettings',
         description: 'Read a detached selection preference for the next eligible Session composition.',
         parameters: [],
-        returns: 'the enabled state and exact allowed routes.',
+        returns: 'The enabled state and exact allowed routes.',
       },
     ],
   },
@@ -4858,7 +4870,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AccountPaymentMethod',
-    declaration: 'export interface AccountPaymentMethod {\n    readonly id: string;\n    readonly label: string;\n    readonly minAmount?: number;\n    readonly maxAmount?: number;\n}',
+    declaration: 'export interface AccountPaymentMethod {\n    readonly id: string;\n    readonly label: string;\n    readonly minAmount?: number;\n    readonly maxAmount?: number;\n    readonly currency?: string;\n    readonly pricing?: {\n        readonly multiplier: number;\n        readonly bonusMode: \'bonus\' | \'discount\';\n        readonly bonusTiers: readonly {\n            readonly minAmount: number;\n            readonly bonusPercent: number;\n        }[];\n    };\n}',
   },
   {
     name: 'AccountProfile',
@@ -4959,6 +4971,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AgentStatus',
     declaration: 'export type AgentStatus = \'idle\' | \'running\';',
+  },
+  {
+    name: 'AllowedModelRoute',
+    declaration: 'export interface AllowedModelRoute {\n    readonly provider: string;\n    readonly model: string;\n}',
   },
   {
     name: 'ApiKeyRecord',

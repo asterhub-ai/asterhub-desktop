@@ -52,7 +52,7 @@ The web-app bundle mounts Anima with this row:
 | `capturePageSize` | `128` | Maximum Session events read per persistence page |
 | `startupTimeoutMs` | `120000` | Managed Neo4j startup budget |
 | `shutdownTimeoutMs` | `30000` | Graph-core shutdown budget |
-| `nickname` | `Anima` | Assistant nickname, 1–40 characters |
+| `nickname` | `小琦` | Editable assistant nickname, 1–40 characters |
 | `tone` | `balanced` | Direct, balanced, or warm communication |
 | `responseDetail` | `balanced` | Concise, balanced, or detailed explanations |
 | `initiative` | `balanced` | Reserved, balanced, or proactive suggestions |

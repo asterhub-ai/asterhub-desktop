@@ -361,6 +361,7 @@ function makeHarness(
   init: HarnessUpdate = {},
   sessionOverrides: Partial<TestSessionSnapshot> = {},
   chatSnapshot?: ChatSnapshot,
+  translate: HarnessStandardProps['t'] = makeTranslate(zh, commonZh),
 ) {
   const {
     chat: initialChat, nodes, partial, runningCalls, turnTimings, turnEnds, turnUsages,
@@ -415,12 +416,13 @@ function makeHarness(
   const transcriptView = createSnapshotStore<TranscriptViewMode>('compact')
   const collapseTiming = createSnapshotStore<CollapseTiming>('completion')
   const performanceUsage = createSnapshotStore<'compact' | 'detailed'>('detailed')
-  const t = makeTranslate(zh, commonZh)
+  const t = translate
   const toolOwners: ToolOwner[] = []
   const usePerformanceUsage = bindSnapshotSelector(performanceUsage)
   let nodeSlotOverride: NodeRenderer | undefined
   let imageSlotOverride: ImageRenderer | undefined
   const renderImages = (name: string, owner: object, options?: { fallback?: React.ReactNode }) => {
+    if (name === 'conversation.chat.reasoning.body') return <span>{(owner as { text: string }).text}</span>
     if ((name !== 'conversation.chat.user.images' && name !== 'conversation.chat.message.images') || !isImageOwner(owner)) {
       throw new Error(`Unexpected Chat image Slot: ${name}`)
     }
@@ -2333,23 +2335,45 @@ describe('ChatView', () => {
     expect(within(cancelledDisclosure).getByRole('status').textContent).toContain('重试已取消')
   })
 
-  it('renders every terminal failure inline with neutral quota copy and no transient notice', () => {
+  it('renders terminal failures with authentication and recharge guidance and no duplicate notice', () => {
     const h = makeHarness({ nodes: [
       user(1, 'try'), turnError(2, 'AUTH'), turnError(3), turnError(4, 'QUOTA'), turnError(5, 'ACCOUNT_QUOTA'),
     ] })
     const view = render(<h.ChatView {...h.props} />)
     const statuses = view.getAllByRole('status')
     expect(statuses.map(status => status.textContent)).toEqual([
-      '本轮运行失败API 密钥无效AUTH',
-      '本轮运行失败plugin exploded',
-      '本轮运行失败当前请求的额度已用尽QUOTA',
-      '本轮运行失败当前请求的额度已用尽ACCOUNT_QUOTA',
+      `${zh['message.turnError']}${zh['message.failure.auth']}`,
+      `${zh['message.turnError']}plugin exploded`,
+      `${zh['message.turnError']}${zh['message.failure.quota']}`,
+      `${zh['message.turnError']}${zh['message.failure.quota']}`,
     ])
     // The transient notice is the frame-wide host's job; the failure row keeps
     // neither a recharge affordance nor a toast of its own.
     expect(view.queryByRole('alert')).toBeNull()
     expect(view.queryByRole('dialog')).toBeNull()
     expect(view.queryByRole('button', { name: '去充值' })).toBeNull()
+  })
+
+  it.each([
+    ['RATE_LIMIT', 'message.failure.rateLimit'],
+    ['TIMEOUT', 'message.failure.timeout'],
+    ['TRANSPORT', 'message.failure.network'],
+    ['SERVER', 'message.failure.server'],
+  ] as const)('explains %s without reporting invalid credentials', (code, messageKey) => {
+    const h = makeHarness({ nodes: [user(1, 'try'), turnError(2, code)] })
+    const view = render(<h.ChatView {...h.props} />)
+    expect(view.getByRole('status').textContent).toBe(`${zh['message.turnError']}${zh[messageKey]}`)
+    expect(view.getByRole('status').textContent).not.toContain(code)
+  })
+
+  it('localizes transport failures without exposing the protocol code', () => {
+    const translate = makeTranslate(en, commonEn)
+    const h = makeHarness({ nodes: [user(1, 'try'), turnError(2, 'TRANSPORT')] }, {}, undefined, translate)
+    const view = render(<h.ChatView {...h.props} />)
+    const status = view.getByRole('status')
+    expect(status.textContent).toBe(`${en['message.turnError']}${en['message.failure.network']}`)
+    expect(status.textContent).not.toContain('TRANSPORT')
+    expect(status.textContent).not.toContain('API key is invalid')
   })
 
   it('renders the max-tokens notice with localized guidance, distinct from turn errors', () => {

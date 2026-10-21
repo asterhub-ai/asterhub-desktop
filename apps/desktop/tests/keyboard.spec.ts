@@ -18,7 +18,7 @@ const overlays = await vi.hoisted(async () => {
   const { EventEmitter } = await import('node:events')
   class Window extends EventEmitter {
     private destroyed = false
-    readonly webContents = { setWindowOpenHandler: vi.fn() }
+    readonly webContents = Object.assign(new EventEmitter(), { setWindowOpenHandler: vi.fn() })
     readonly focus = vi.fn()
     readonly show = vi.fn()
     readonly setBounds = vi.fn()
@@ -57,24 +57,39 @@ const installFixture = installDesktopShortcuts as (
   platform: Parameters<typeof installDesktopShortcuts>[2], updateMenu: () => void,
   overlayInput: (window: WindowFixture) => { readonly revision: number; readonly blocked: boolean },
 ) => KeyboardFixture
-type GuestsFixture = {
-  acquire(owner: ContentsFixture, workspace: unknown): DesktopBrowserReservation
-  release(owner: ContentsFixture, id: unknown): Promise<void>
-  bind(window: WindowFixture, attachInput: (guest: ContentsFixture, name: DesktopBrowserLeaseId) => () => void): void
-}
-
 function desktopDefaults(binding: ShortcutBinding): ShortcutDefinition['defaults'] {
   return { 'desktop:macos': binding, 'desktop:windows': binding, 'desktop:linux': binding }
 }
 
-function browserGuest(reservation: DesktopBrowserReservation) {
-  const frame: FrameFixture = { url: `about:blank#${reservation.lease}`, name: '', parent: null }
+function browserGuest(lease: DesktopBrowserLeaseId) {
+  const frame: FrameFixture = { url: `about:blank#${lease}`, name: '', parent: null }
   const guest = Object.assign(new EventEmitter(), { mainFrame: frame, focusedFrame: frame,
     getURL: () => frame.url, isDestroyed: () => false, isFocused: vi.fn(() => true),
     setWindowOpenHandler: vi.fn(), setIgnoreMenuShortcuts: vi.fn(), send: vi.fn(), close: vi.fn(),
     focus: vi.fn(), sendInputEvent: vi.fn() })
   onTestFinished(() => { guest.emit('destroyed') })
   return { frame, guest }
+}
+
+type BrowserGuest = ReturnType<typeof browserGuest>['guest']
+type GuestsFixture = {
+  acquire(owner: ContentsFixture, workspace: unknown): DesktopBrowserReservation
+  release(owner: ContentsFixture, id: unknown): Promise<void>
+}
+
+/** The offscreen guest window owns its WebContents; destroying it closes and destroys the guest. */
+function guestWindow(guest: BrowserGuest): BrowserWindow {
+  const window = Object.assign(new EventEmitter(), {
+    webContents: guest,
+    isDestroyed: () => false,
+    destroy: () => {
+      guest.close({ waitForBeforeUnload: false })
+      guest.emit('destroyed')
+      window.emit('closed')
+    },
+  })
+  const fixture: object = window
+  return fixture as BrowserWindow
 }
 
 async function fixture(platform: 'macos' | 'windows' | 'linux' = 'macos') {
@@ -198,17 +213,10 @@ it.each([false, true])('blocks approved browser guest input across update overla
     { id: 'page.close', defaults: { 'desktop:macos': { code: 'KeyA', secondCode: 'KeyB', modifiers: [] } } },
     { id: 'sidebar.left.toggle', defaults: desktopDefaults({ code: 'KeyK', modifiers: ['primary'] }) },
   ])
-  const guests = new DesktopBrowserGuests(() => undefined) as GuestsFixture
-  guests.bind(f.window, (guest, name) => f.keyboard.attachGuest(f.window, guest, name))
+  const { guest } = browserGuest('pending' as DesktopBrowserLeaseId)
+  const guests = new DesktopBrowserGuests(() => undefined, () => guestWindow(guest)) as GuestsFixture
   const reservation = guests.acquire(f.contents, 'session:test')
-  const { frame, guest } = browserGuest(reservation)
-  const attach = () => {
-    const event = { preventDefault: vi.fn() }
-    f.contents.emit('will-attach-webview', event, {}, { src: frame.url, partition: reservation.partition })
-    expect(event.preventDefault).not.toHaveBeenCalled()
-    f.contents.emit('did-attach-webview', {}, guest)
-    guest.emit('dom-ready')
-  }
+  const attach = () => { onTestFinished(f.keyboard.attachGuest(f.window, guest, reservation.lease)) }
   if (!attachWhileBlocked) attach()
   const first = open()
   if (attachWhileBlocked) attach()
@@ -711,26 +719,10 @@ it.each(['macos', 'windows', 'linux'] as const)('routes approved %s browser gues
   const f = await fixture(platform)
   const snapshot = await f.call<ShortcutConfigSnapshot>(DESKTOP_IPC.shortcutsGet,
     [{ id: 'browser.new', defaults: desktopDefaults({ code: 'KeyT', modifiers: ['primary'] }) }])
-  const guests = new DesktopBrowserGuests(() => undefined) as GuestsFixture
-  const attach = vi.fn((guest: ContentsFixture, name: DesktopBrowserLeaseId) => f.keyboard.attachGuest(f.window, guest, name))
-  guests.bind(f.window, attach)
+  const { guest } = browserGuest('pending' as DesktopBrowserLeaseId)
+  const guests = new DesktopBrowserGuests(() => undefined, () => guestWindow(guest)) as GuestsFixture
   const reservation = guests.acquire(f.contents, 'session:test')
-  const { frame, guest } = browserGuest(reservation)
-  const rejected = { preventDefault: vi.fn() }
-  f.contents.emit('will-attach-webview', rejected, {}, { src: 'about:blank#unknown', partition: reservation.partition })
-  expect(rejected.preventDefault).toHaveBeenCalledOnce()
-  const invalid = Object.assign(new EventEmitter(), { getURL: () => 'about:blank#unknown', setWindowOpenHandler: vi.fn(), close: vi.fn() })
-  f.contents.emit('did-attach-webview', {}, invalid)
-  invalid.emit('dom-ready')
-  expect(invalid.close).toHaveBeenCalledExactlyOnceWith({ waitForBeforeUnload: false })
-  expect(attach).not.toHaveBeenCalled()
-
-  const approved = { preventDefault: vi.fn() }
-  f.contents.emit('will-attach-webview', approved, {}, { src: frame.url, partition: reservation.partition })
-  expect(approved.preventDefault).not.toHaveBeenCalled()
-  f.contents.emit('did-attach-webview', {}, guest)
-  guest.emit('dom-ready')
-  expect(attach).toHaveBeenCalledExactlyOnceWith(guest, reservation.lease)
+  onTestFinished(f.keyboard.attachGuest(f.window, guest, reservation.lease))
   const input = { modifiers: [], type: 'keyDown', code: 'KeyT', key: 't', meta: platform === 'macos',
     control: platform !== 'macos', alt: false, shift: false, isAutoRepeat: false, isComposing: false }
   const preventDefault = vi.fn()

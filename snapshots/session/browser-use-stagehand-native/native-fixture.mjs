@@ -1,6 +1,7 @@
 /** External browser and model fixtures around the real provider, Worker, and RPC. */
 import { registerHooks, syncBuiltinESMExports } from 'node:module'
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import workerThreads from 'node:worker_threads'
 import ts from 'typescript'
 
@@ -11,26 +12,34 @@ const packageRoot = new URL('../../../packages/experimental/browser-use-stagehan
 const sdkFixture = new URL('tests/fixtures/stagehand.ts', packageRoot).href
 const chromiumFixture = new URL('tests/fixtures/chromium.ts', packageRoot).href
 
+const stagehandSymlink = new URL('node_modules/@browserbasehq/stagehand/dist/index.mjs', packageRoot)
+const actualStagehand = pathToFileURL(realpathSync(fileURLToPath(stagehandSymlink))).href
+
+// Node 22 cannot delegate uncached CommonJS loads through both tsx and sync hooks.
+// Cache the real SDK and its CommonJS dependencies before installing fixture hooks.
+await import(actualStagehand)
+
 /** Install external browser mocks in one real Node isolate. */
 export function installExternalBrowserHooks() {
   const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
       if (specifier === '@puppeteer/browsers') return { url: chromiumFixture, shortCircuit: true }
       if (specifier !== '@browserbasehq/stagehand') return nextResolve(specifier, context)
-      const actual = nextResolve(specifier, context).url
-      const proxy = `export * from ${JSON.stringify(sdkFixture)}; export { StagehandClientCreateConfigSchema } from ${JSON.stringify(actual)};`
+      const proxy = `export * from ${JSON.stringify(sdkFixture)}; export { StagehandClientCreateConfigSchema } from ${JSON.stringify(actualStagehand)};`
       return { url: `data:text/javascript,${encodeURIComponent(proxy)}`, shortCircuit: true }
     },
     // Built profiles use plain Node; only the external fixtures need transpilation.
     load(url, context, nextLoad) {
-      if (url !== sdkFixture && url !== chromiumFixture) return nextLoad(url, context)
-      return {
-        format: 'module',
-        source: ts.transpileModule(readFileSync(new URL(url), 'utf8'), {
-          compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
-        }).outputText,
-        shortCircuit: true,
+      if (url === sdkFixture || url === chromiumFixture) {
+        return {
+          format: 'module',
+          source: ts.transpileModule(readFileSync(new URL(url), 'utf8'), {
+            compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+          }).outputText,
+          shortCircuit: true,
+        }
       }
+      return nextLoad(url, context)
     },
   })
   return () => hooks.deregister()
@@ -42,12 +51,23 @@ export function installExternalBrowserHooks() {
  * @returns {string | URL} The original entry or a fixture-prefixed bootstrap.
  */
 export function wrapStagehandWorkerEntry(filename) {
+  let url = null
+  if (filename instanceof URL) {
+    url = filename
+  } else if (typeof filename === 'string') {
+    try {
+      url = new URL(filename)
+    } catch {
+      url = pathToFileURL(filename)
+    }
+  }
   const sourceWorker = new URL('src/worker.ts', packageRoot).href
   const builtWorker = new URL('lib/worker.js', packageRoot).href
-  const stagehand = filename instanceof URL && (filename.href === builtWorker
-    || filename.protocol === 'data:' && filename.href.includes(encodeURIComponent(sourceWorker)))
+  const stagehand = url !== null && (url.href === builtWorker
+    || url.href === sourceWorker
+    || url.protocol === 'data:' && url.href.includes(encodeURIComponent(sourceWorker)))
   if (!stagehand) return filename
-  const bootstrap = `import { installExternalBrowserHooks } from ${JSON.stringify(import.meta.url)}; installExternalBrowserHooks(); await import(${JSON.stringify(filename.href)});`
+  const bootstrap = `import { installExternalBrowserHooks } from ${JSON.stringify(import.meta.url)}; installExternalBrowserHooks(); await import(${JSON.stringify(url.href)});`
   return new URL(`data:text/javascript,${encodeURIComponent(bootstrap)}`)
 }
 

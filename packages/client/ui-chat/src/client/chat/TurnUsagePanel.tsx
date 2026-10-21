@@ -32,7 +32,7 @@ export function TurnUsagePanel({ usage, t }: TurnUsagePanelProps) {
     ? null
     : formatCacheHitPercent(usage.cacheReadTokens, usage.totalTokens - usage.outputTokens, 1)
   const total = t('message.turnUsage.count', { count: formatTokens(usage.totalTokens, t) })
-  const routes = usage.routes?.map(route => `${route.provider}/${route.model}`).join(', ') ?? ''
+  const routes = usage.routes?.map(route => `${route.provider === 'sub2api' ? t('message.turnUsage.asterhub') : route.provider}/${route.model}`).join(', ') ?? ''
 
   return (
     <span ref={rootRef} className={css.root}>

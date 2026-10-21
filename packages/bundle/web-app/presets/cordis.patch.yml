@@ -98,6 +98,7 @@
                 config:
                   provider: fork
                   toolName: subagent_fork
+                  globalModelDefaults: true
                   backgroundMode: continuable
               - id: tool-subagent-codex
                 name: '@deepseek-ai/dsh-tool-subagent'

@@ -44,6 +44,10 @@ Desktop Web profile 将本服务与 `credentials-local`、账户 Client 插件�
 
 Host 提供状态、登录/退出、额度、支付方式、充值、兑换和用量操作。Remote 响应只包含账户视图所需字段；access token、自动登录密码和模型 key 均保留在 Host credentials。Desktop 凭据文档使用 Electron `safeStorage`，由 OS 加密服务保护。Linux 需要 GNOME libsecret 或 KWallet；应用拒绝不安全的 `basic_text` 后端。结算方式由 `methods` 的键标识；未提供 `available` 字段的方式仍可使用，只有明确标记 `available: false` 的方式会被排除。
 
+支付方式可附带从 `payment/checkout-info` 验证的充值定价：有限正倍率、已校验的奖励阶梯以及奖励或折扣模式。定价缺失或无效时，旧版结算仍可使用，但不提供预览；Host 不推测倍率。支付限额只接受有限正数。币种代码用于支付金额舍入。预览不含支付服务商手续费。
+
+额度余额将上游余额乘以 100，并四舍五入至两位小数。用量积分按上游实际消费额度乘以 100 并四舍五入至两位小数，与额度余额换算保持一致。用量按账户累计、近七日和今日汇总，不表示单个 Session 的费用。
+
 <a id="understand-the-implementation"></a>
 ## 理解实现
 

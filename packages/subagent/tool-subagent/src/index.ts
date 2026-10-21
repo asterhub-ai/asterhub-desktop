@@ -74,6 +74,8 @@ export interface Config {
    * Agent options applied to every child; omitted fields use child-loop defaults.
    */
   agentOptions?: AgentOptions
+  /** Apply the Host-owned default child model without exposing per-call model selection. */
+  globalModelDefaults?: boolean
   /**
    * Per-child persona that shadows `deployment:persona-prefix`. Requires the
    * provider's `persona` capability; omission preserves the deployment persona.
@@ -107,6 +109,7 @@ export const Config: z<Config> = z.object({
   provider: z.string().required(),
   toolName: z.string().default('subagent'),
   modelSelectionSettings: z.boolean().default(false),
+  globalModelDefaults: z.boolean().default(false),
   enableRunInBackground: z.boolean().default(true),
   backgroundMode: z.union(['one-shot', 'continuable'] as const).default('one-shot'),
   // Prevent Schemastery from materializing omitted agentOptions as `{}`.
@@ -318,6 +321,9 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
   if (config.toolFilter !== undefined && config.toolFilter.allow === undefined && config.toolFilter.deny === undefined) {
     throw new Error('tool-subagent: `toolFilter` is configured but names neither `allow` nor `deny` — remove the key or fill the filter')
   }
+  if (config.globalModelDefaults === true && ctx.get('subagentModelSelection') === undefined) {
+    throw new Error('tool-subagent: globalModelDefaults requires the Host subagent model settings service')
+  }
   const backgroundEnabled = config.enableRunInBackground !== false
   const continuable = (config.backgroundMode ?? 'one-shot') === 'continuable'
   const toolName = config.toolName ?? 'subagent'
@@ -359,8 +365,8 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
   if (initialProvider !== undefined) assertSubagentProviderConfiguration(initialProvider)
 
   const install = (runtimeCtx: Context, modelSelectionPolicy: ModelSelectionPolicy | undefined): void => {
-    const modelSelectionEnabled = modelSelectionPolicy !== undefined
-    if (modelSelectionPolicy !== undefined && !runtimeCtx.llm.hasFixedRoute()) {
+    const modelSelectionEnabled = config.globalModelDefaults !== true && modelSelectionPolicy !== undefined
+    if (modelSelectionEnabled && !runtimeCtx.llm.hasFixedRoute()) {
       registerListSubagentModels(runtimeCtx, modelSelectionPolicy)
     }
     // Load order and HMR replacement can change provider availability while
@@ -479,12 +485,24 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
           }
 
           const modelRequest = args as DelegationModelRequest
+          if (config.globalModelDefaults === true && hasDelegationModelRequest(modelRequest)) {
+            throw new Error('subagent model overrides are disabled; the user-selected default model must be used')
+          }
           const parentOptions = parentAgentOptionsForDelegation(parent)
-          const requiresRoutePreflight = hasDelegationModelRequest(modelRequest)
-            || hasConfiguredLlmSelection(config.agentOptions)
-          const configuredChildAgentOptions = requiresRoutePreflight && providerRouteDefaults !== undefined
-            ? { ...providerRouteDefaults, ...config.agentOptions }
+          const globalDefault = config.modelSelectionSettings === true || config.globalModelDefaults === true
+            ? runtimeCtx.get('subagentModelSelection')?.defaultModel() : null
+          if (globalDefault && !subagentProvider.capabilities.agentOptions) {
+            throw new Error(`subagent provider "${subagentProvider.name}" cannot apply the saved default model`)
+          }
+          const childDefaults = globalDefault
+            ? { ...config.agentOptions, ...globalDefault }
             : config.agentOptions
+          if (globalDefault && childDefaults) delete childDefaults.reasoningEffort
+          const requiresRoutePreflight = hasDelegationModelRequest(modelRequest)
+            || hasConfiguredLlmSelection(childDefaults)
+          const configuredChildAgentOptions = requiresRoutePreflight && providerRouteDefaults !== undefined
+            ? { ...providerRouteDefaults, ...childDefaults }
+            : childDefaults
           const requestedChildAgentOptions = requestedAgentOptions(
             parentOptions,
             configuredChildAgentOptions,
@@ -501,6 +519,13 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
             const llm = runtimeCtx.get('llm')
             if (llm === undefined) {
               throw new Error('cannot resolve the selected child LLM route because the `llm` service is unavailable')
+            }
+            if (globalDefault && requestedChildAgentOptions?.provider === globalDefault.provider
+              && requestedChildAgentOptions.model === globalDefault.model) {
+              const available = await llm.listModels(globalDefault.provider)
+              if (!available.some(model => model.id === globalDefault.model)) {
+                throw new Error('the saved default subagent model is not available in the current account catalog; choose an available model in Settings')
+              }
             }
             await preflightChildLlmRoute(
               llm,
@@ -603,7 +628,12 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
         order: runtimeCtx.systemPrompt.getSectionOrder('TOOL_SUBAGENT'),
         text: context => mounted === undefined || runtimeCtx.tools.get(toolName, context.scope) === undefined
           ? ''
-          : `Start independent ${toolName} delegations together in one assistant message and continue useful work while they run.`,
+          : [
+            `Start independent ${toolName} delegations together in one assistant message and continue useful work while they run.`,
+            runtimeCtx.get('subagentModelSelection')?.delegatesComplexTasks()
+              ? 'For top-level conversations, handle brief simple requests directly. For complex tasks, define bounded steps with clear inputs and acceptance criteria, delegate their execution to subagents, then integrate, review, and verify their results. Subagents execute their assigned steps; this preference does not change permissions or approval requirements.'
+              : '',
+          ].filter(Boolean).join('\n'),
       })
     }
   }

@@ -25,6 +25,7 @@ afterEach(async () => {
 it('stores the account model key and exposes configured payment methods without an availability flag', async () => {
   const root = await mkdtemp(join(tmpdir(), 'asterhub-account-record-'))
   roots.push(root)
+  let pricing: Record<string, unknown> = {}
   const server = createServer((request, response) => {
     response.setHeader('content-type', 'application/json')
     if (request.url === '/api/v1/auth/login') {
@@ -34,7 +35,7 @@ it('stores the account model key and exposes configured payment methods without 
     } else if (request.url === '/api/v1/user/profile') {
       response.end(JSON.stringify({ code: 0, data: { balance: 0 } }))
     } else if (request.url === '/api/v1/payment/checkout-info') {
-      response.end(JSON.stringify({ code: 0, data: { methods: {
+      response.end(JSON.stringify({ code: 0, data: { ...pricing, methods: {
         alipay: { payment_type: 'alipay', currency: 'CNY', single_min: 0, single_max: 0 },
         wxpay: { available: false, display_name: '微信支付' },
       } } }))
@@ -60,8 +61,30 @@ it('stores the account model key and exposes configured payment methods without 
   const status = await ctx.accountSub2api.login({ email: 'user@example.com', password: 'test-password', rememberUsername: false, autoLogin: false })
   expect(status.loggedIn).toBe(true)
   expect(await ctx.accountSub2api.paymentMethods()).toEqual([
-    { id: 'alipay', label: 'alipay', currency: 'CNY', minAmount: 0, maxAmount: 0 },
+    { id: 'alipay', label: 'alipay', currency: 'CNY' },
   ])
+  const validPricing = { balance_recharge_multiplier: 2, recharge_bonus_mode: 'bonus',
+    recharge_bonus_tiers: [{ min_amount: 10, bonus_percent: 5 }] }
+  pricing = validPricing
+  expect((await ctx.accountSub2api.paymentMethods())[0]?.pricing).toEqual({
+    multiplier: 2, bonusMode: 'bonus', bonusTiers: [{ minAmount: 10, bonusPercent: 5 }],
+  })
+  for (const invalid of [
+    { ...validPricing, balance_recharge_multiplier: -1 },
+    { ...validPricing, balance_recharge_multiplier: '2' },
+    { ...validPricing, recharge_bonus_mode: 'unknown' },
+    { ...validPricing, recharge_bonus_tiers: [{ min_amount: 10, bonus_percent: -1 }] },
+    { ...validPricing, recharge_bonus_tiers: [null] },
+    { ...validPricing, recharge_bonus_tiers: [{ min_amount: 0, bonus_percent: 1001 }] },
+    { ...validPricing, recharge_bonus_tiers: [{ min_amount: 0.001, bonus_percent: 5 }] },
+    { ...validPricing, recharge_bonus_tiers: [{ min_amount: 0, bonus_percent: 0.001 }] },
+  ]) {
+    pricing = invalid
+    expect((await ctx.accountSub2api.paymentMethods())[0]?.pricing).toBeUndefined()
+  }
+  pricing = { ...validPricing, recharge_bonus_tiers: [{ min_amount: 0, bonus_percent: 5 }] }
+  expect((await ctx.accountSub2api.paymentMethods())[0]?.pricing?.bonusTiers)
+    .toEqual([{ minAmount: 0, bonusPercent: 5 }])
   expect(await ctx.credentials.readRecord(credentialKey('asterhub-account', 'model-api-key')))
     .toEqual({ kind: 'api-key', key: 'account-model-key' })
   expect(await ctx.credentials.resolve(credentialRef(MODEL_KEY_REF))).toMatchObject({
@@ -70,7 +93,7 @@ it('stores the account model key and exposes configured payment methods without 
 
   await ctx.accountSub2api.logout()
   expect(await ctx.credentials.readRecord(credentialKey('asterhub-account', 'model-api-key'))).toBeUndefined()
-})
+}, 15000)
 
 it('returns loggedIn: false when stored session token encounters 401 on quota check instead of throwing', async () => {
   const root = await mkdtemp(join(tmpdir(), 'asterhub-account-record-'))

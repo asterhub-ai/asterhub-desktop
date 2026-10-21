@@ -9,7 +9,7 @@ import { AnimaSettingsForm, type AnimaSettings } from '../src/client/anima-setti
 
 function setup(overrides: Partial<AnimaSettings> = {}, catalogStatus: 'ready' | 'error' = 'ready') {
   const value: AnimaSettings = {
-    nickname: 'Anima', tone: 'balanced', responseDetail: 'balanced', initiative: 'balanced',
+    nickname: '小琦', tone: 'balanced', responseDetail: 'balanced', initiative: 'balanced',
     humor: 'light', emotionalSupport: 'balanced', familiarity: 'balanced', jokeStyle: 'restrained',
     reflectionEnabled: true, modelProvider: '', model: '', ...overrides,
   }
@@ -34,7 +34,7 @@ describe('AnimaSettingsForm', () => {
     face.edit('humor', 'playful')
     expect(face.hooks.animaForm.getSnapshot().dirty).toBe(true)
     face.discard()
-    expect(face.hooks.animaForm.getSnapshot().fields.nickname.text).toBe('Anima')
+    expect(face.hooks.animaForm.getSnapshot().fields.nickname.text).toBe('小琦')
     face.edit('nickname', 'Nova')
     face.save()
     await vi.waitFor(() => { expect(mutate).toHaveBeenCalledOnce() })

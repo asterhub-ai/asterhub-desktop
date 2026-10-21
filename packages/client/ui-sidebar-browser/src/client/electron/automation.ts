@@ -12,6 +12,8 @@ interface BrowserAutomationOptions {
   readonly controllers: ReadonlyMap<SessionId, BrowserInjected>
   readonly sessionControllersChanged: HostObservable<number>
   readonly retainSessionView: (sessionId: SessionId, signal: AbortSignal) => Promise<() => void>
+  /** Resolves once the renderer has adopted that Session's Sidebar store. */
+  readonly whenSessionAdopted: (sessionId: SessionId, signal: AbortSignal) => Promise<void>
   readonly openTab: (sessionId: SessionId, url: string) => void
   readonly closeTab: (sessionId: SessionId, tabId: TabId) => void
 }
@@ -45,16 +47,8 @@ export function createDesktopBrowserAutomationHandler(options: BrowserAutomation
         }
         case 'tabs.open':
           return await openTab(options, sessionId, command.operation.url, command.operation.newTab === true, signal)
-        case 'tabs.close': {
-          const tabId = command.operation.tabId
-          const tab = browserTabs(options.openTabs, sessionId).find(row => row.tabId === tabId)
-          if (tab === undefined) return failure('Browser tab is not open in this Session')
-          options.closeTab(sessionId, tab.tabId)
-          if (browserTabs(options.openTabs, sessionId).some(row => row.tabId === tabId)) {
-            return failure('Sidebar did not close the requested Browser tab')
-          }
-          return { status: 'success', value: { kind: 'closed', tabId: command.operation.tabId, closed: true } }
-        }
+        case 'tabs.close':
+          return await closeTab(options, sessionId, command.operation.tabId, signal)
       }
       const exhaustive: never = command.operation
       throw new Error(`Desktop Browser cannot handle ${String(exhaustive)}`)
@@ -89,6 +83,9 @@ async function openTab(options: BrowserAutomationOptions, sessionId: SessionId, 
 
   const releaseView = await options.retainSessionView(sessionId, signal)
   try {
+    // Retention only asks the renderer to mount the View; the per-Session store
+    // is adopted after that commit, and `openTabIn` is a no-op before it.
+    await options.whenSessionAdopted(sessionId, signal)
     const existing = new Set(browserTabs(options.openTabs, sessionId).map(tab => tab.tabId))
     options.openTab(sessionId, url)
     const created = browserTabs(options.openTabs, sessionId).find(tab => !existing.has(tab.tabId))
@@ -96,6 +93,24 @@ async function openTab(options: BrowserAutomationOptions, sessionId: SessionId, 
     const snapshot = await waitForBrowserState(options, sessionId, created.tabId, signal)
     const state = await waitForObservedPage(snapshot, -1, signal)
     return opened(created.tabId, state.visible)
+  } finally {
+    releaseView()
+  }
+}
+
+async function closeTab(options: BrowserAutomationOptions, sessionId: SessionId, tabId: TabId,
+  signal: AbortSignal): Promise<DesktopBrowserTabCommandResult> {
+  const tab = browserTabs(options.openTabs, sessionId).find(row => row.tabId === tabId)
+  if (tab === undefined) return failure('Browser tab is not open in this Session')
+
+  const releaseView = await options.retainSessionView(sessionId, signal)
+  try {
+    await options.whenSessionAdopted(sessionId, signal)
+    options.closeTab(sessionId, tab.tabId)
+    if (browserTabs(options.openTabs, sessionId).some(row => row.tabId === tabId)) {
+      return failure('Sidebar did not close the requested Browser tab')
+    }
+    return { status: 'success', value: { kind: 'closed', tabId, closed: true } }
   } finally {
     releaseView()
   }

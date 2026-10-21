@@ -56,7 +56,12 @@ function failureMessage(
   if (code === 'ACCOUNT_SIGNED_OUT') return t('message.failure.accountSignedOut')
   if (code === 'ACCOUNT_SIGN_IN_REQUIRED') return t('message.failure.accountSignInRequired')
   if (code === 'QUOTA' || code === 'ACCOUNT_QUOTA') return t('message.failure.quota')
-  return code === 'AUTH' ? t('message.failure.auth') : message
+  if (code === 'AUTH') return t('message.failure.auth')
+  if (code === 'RATE_LIMIT') return t('message.failure.rateLimit')
+  if (code === 'TIMEOUT') return t('message.failure.timeout')
+  if (code === 'TRANSPORT') return t('message.failure.network')
+  if (code === 'SERVER') return t('message.failure.server')
+  return message
 }
 
 function ModelRetryItem({ node, active, t }: {
@@ -139,7 +144,6 @@ function TurnErrorItem({ node, t }: {
         <span className={css.turnErrorTitle}>{node.code === 'ACCOUNT_SIGNED_OUT' ? t('message.accountStopped') : t('message.turnError')}</span>
         <span className={css.turnErrorMessage}>{failureMessage(node.message, node.code, t)}</span>
       </div>
-      {node.code !== undefined && <code className={css.turnErrorCode}>{node.code}</code>}
     </div>
   )
 }

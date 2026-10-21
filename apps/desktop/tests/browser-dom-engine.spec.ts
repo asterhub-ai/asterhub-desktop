@@ -4,7 +4,7 @@ import { brandNumber, brandString } from '@deepseek-ai/dsh-brand'
 import type {
   DesktopBrowserRef,
   DesktopBrowserSnapshotId,
-  DesktopBrowserTarget,
+  DesktopBrowserTabId,
   DesktopBrowserTargetGeneration,
 } from '@deepseek-ai/dsh-browser-use-desktop/types'
 import type { DesktopBrowserLeaseId } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
@@ -21,6 +21,7 @@ const LEASE = brandString<DesktopBrowserLeaseId>('test-lease')
 const SNAPSHOT_A = brandString<DesktopBrowserSnapshotId>('snap-a')
 const SNAPSHOT_B = brandString<DesktopBrowserSnapshotId>('snap-b')
 const GEN = brandNumber<DesktopBrowserTargetGeneration>(1)
+const TAB_1 = brandString<DesktopBrowserTabId>('tab-1')
 
 describe('browser-dom-engine', () => {
   it('builds a structured accessible tree and assigns valid refs', () => {
@@ -68,7 +69,7 @@ describe('browser-dom-engine', () => {
       snapshotId: SNAPSHOT_A,
       lease: LEASE,
       generation: GEN,
-      target: { tabId: brandString('tab-1'), generation: GEN } as unknown as DesktopBrowserTarget,
+      target: { tabId: TAB_1, generation: GEN },
       snapshot,
       formattedText,
       textTruncated,
@@ -99,7 +100,7 @@ describe('browser-dom-engine', () => {
       snapshotId: SNAPSHOT_A,
       lease: LEASE,
       generation: GEN,
-      target: { tabId: brandString('tab-1'), generation: GEN } as unknown as DesktopBrowserTarget,
+      target: { tabId: TAB_1, generation: GEN },
       snapshot,
       formattedText,
       textTruncated,

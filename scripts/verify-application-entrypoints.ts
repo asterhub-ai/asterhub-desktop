@@ -55,8 +55,8 @@ const EXECUTABLE_SOURCE_ALLOWLIST = new Map<string, string>([
  */
 const ROOT_LAUNCHER_POLICIES = new Map<string, LauncherPolicy>([
   ['demo:ptc', { kind: 'dsh-wrapper', wrapper: 'scripts/demo-ptc.mjs' }],
-  ['demo:inspector', { kind: 'dsh-direct' }],
-  ['start:web', { kind: 'dsh-direct' }],
+  ['demo:inspector', { kind: 'dsh-wrapper', wrapper: 'scripts/dsh-source.ts' }],
+  ['start:web', { kind: 'dsh-wrapper', wrapper: 'scripts/dsh-source.ts' }],
   ['dev:web', { kind: 'dsh-wrapper', wrapper: 'scripts/dev-web.ts' }],
 ])
 

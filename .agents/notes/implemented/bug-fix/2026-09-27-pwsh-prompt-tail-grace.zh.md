@@ -12,9 +12,13 @@ Status: implemented
 
 `dsh-terminal-bash` 新增一个经过校验的 `promptTailGraceMs` 配置字段，默认 `0`。当某次 send 已看到提示符标记而其可打印尾部尚未到达时，静默上界变为 `idleSilenceMs + handoffGraceMs + promptTailGraceMs`；其他上界、等待原因与代码路径均不变。该上界所扩展的层级阶梯由[持久 PTY 就绪设计](../feature/2026-07-16-persistent-pty-sessions.zh.md)拥有。零精确复现此前的上界，因此升级不改变任何部署的行为。持久 pwsh 的 Loader 组合用例保持默认值：自托管 lane 上退化的 send 无论有没有该宽限都按普通上界结算，因此在那里设置非零值只会把尾部永不到达时的回退从每次 send 3.3 秒拉长到 8.3 秒，并把真正迟到的尾部报告成一次缓慢的通过，而不是一次点名状态的失败。`validateConfig` 允许该字段取零——这是唯一一个零为文档化取值的数值上界——并拒绝负数与小数。
 
+Windows `spawnTerminal` 现在通过 `useConptyDll: true` 选择 node-pty 自带的 OpenConsole。Windows 10 LTSC 19044 的系统 conhost 会把提示符尾部空格改写为 cursor-forward CSI，因此调整 `promptTailGraceMs` 只会延迟回退，无法恢复缺失的可打印尾部。
+
 ## Alternatives considered
 
 **不加字段，直接提高默认值。** 不采纳：那是把一种固定成本换成另一种，且对所有宿主机生效。尾部永不到达的标记（子进程打印的杂散标记、损坏的 prompt 函数）会在所有地方都多等那么久，而真正重要的时序因部署而异。
+
+**把 cursor-forward CSI 规范化为提示符文本。** 不采纳：合成尾部空格可能把损坏的终端输出变成错误的就绪证据；选择自带控制台宿主才能保留实际提示符尾部。
 
 **让观测变为粘性：一旦看到精确尾部，后续输出不再使其失效。** 不采纳：尾部规则的存在就是为了证明标记之后跟着的是提示符文本而不是命令输出；粘性标志会在命令仍在打印时结算该 send。
 
@@ -26,6 +30,10 @@ Status: implemented
 
 控制台渲染器会停摆的部署通过设置 `promptTailGraceMs` 让这些 send 留在精确路径上；默认路径与此前的上界逐位一致，因此负控——同样的尾部延迟、字段为零——仍然按 `inferred_idle` 结算。该宽限只在看到标记之后生效：提示符缺失时保持普通静默上界，所以 Loader 组合用例所固定的回归（提示符丢失必须失败）仍会被抓住，而尾部永不到达的标记只会晚一个配置区间回退。
 
+每个 Windows 终端现在都依赖 node-pty 自带的 `conpty.dll` 与 `OpenConsole.exe`；资产缺失或解包错误会让分配失败，而不会回退到系统 conhost。升级 node-pty 时必须重新检查该实验性选项和资产布局。
+
 ## Testing
 
 `packages/terminal/terminal-bash/tests/session.spec.ts` 用假定时器固定每一种状态：设置 `promptTailGraceMs` 时，尾部晚于普通上界到达的标记保持挂起，随后按 `stdin_read` 结算；尾部始终不到时在扩展上界处回落到 `inferred_idle`；尾部已到达但被后续输出失效时保持普通上界；字段为零时，同样的延迟投递按 `inferred_idle` 结算。`packages/terminal/terminal-bash/tests/config.spec.ts` 接受零、拒绝负数或小数，并拒绝非零但短于一个 `pollIntervalMs` 的宽限。原生 Windows 上的端到端证据来自 guest 内打过补丁的 `packages/shell/tool-pwsh-persistent/tests/loader-composition.spec.ts` 副本（Windows PowerShell 5.1，2026-09-27）：把每个 session 的提示符尾部扣留四秒且宽限设为 5000 毫秒时用例通过——九次结算、八次 `stdin_read` 加 `exit` 命令的 `session_exit`，耗时 33.4 秒与 37.5 秒；宽限为零时两次 send 以 `inferred_idle` 结算，`promptSeen` 为 true、`promptTextSeen` 为 false、尾部为空且 `idleFor` 为 3312–3316 毫秒。提交的用例以默认值运行，并在失败时打印逐 send 的就绪时间线，因此该状态一旦出现就会被点名，而不是从墙钟时间推断。
+
+回归覆盖还会固定仅 Windows 使用 `useConptyDll: true`，以及 persistent-pwsh 在大输出滚屏后和退出重启后的就绪序列。Loader-composition 用例已在 2026-10-21 的全量单测中通过，执行环境为 Nomad 5800、Node 22.22.2。

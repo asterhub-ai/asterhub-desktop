@@ -11,6 +11,7 @@ interface VerificationRequest {
   readonly expectedId: string
   readonly expectedEventCount: number
   readonly expectedPrefix?: JsonlExpectedPrefix
+  readonly targetVersion?: 4
 }
 
 function parseRequest(value: unknown): VerificationRequest {
@@ -21,6 +22,7 @@ function parseRequest(value: unknown): VerificationRequest {
     || typeof request.expectedId !== 'string'
     || !Number.isSafeInteger(request.expectedEventCount)
     || (request.expectedEventCount as number) < 0
+    || (request.targetVersion !== undefined && request.targetVersion !== 4)
     || request.expectedPrefix !== undefined
       && (!Number.isSafeInteger(request.expectedPrefix.bytes)
         || request.expectedPrefix.bytes < 0
@@ -43,6 +45,7 @@ async function verify(): Promise<void> {
       request.expectedId,
       request.expectedEventCount,
       request.expectedPrefix,
+      request.targetVersion,
     )
     port.postMessage({ ok: true, result })
   } catch (error: unknown) {

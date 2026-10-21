@@ -457,7 +457,7 @@ async function main(): Promise<void> {
           return Promise.resolve({
             status: 'error',
             code: 'unavailable',
-            message: 'Main window is not available',
+            message: locale.messages.browserMainWindowUnavailable,
           })
         }
         return browserGuests.handleBrowserRequest(mainWindow.webContents, request, signal)

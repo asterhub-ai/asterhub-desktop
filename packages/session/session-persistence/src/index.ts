@@ -136,6 +136,19 @@ export abstract class SessionPersistence extends Service {
   /** Process-local instance identity, stable through Context proxies and distinct after service replacement. */
   readonly identity: symbol = Symbol('sessionPersistence')
 
+  /**
+   * Test-only hook consulted by the JSONL backend when opening a session.
+   * Application compositions must leave it unset.
+   * @internal
+   */
+  static openInterceptor?: (
+    instance: SessionPersistence,
+    id: SessionId,
+    access: SessionAccess,
+    options: SessionPersistenceOpenOptions | undefined,
+    next: () => Promise<SessionHandle>,
+  ) => Promise<SessionHandle>
+
   constructor(ctx: Context) {
     super(ctx, 'sessionPersistence')
   }

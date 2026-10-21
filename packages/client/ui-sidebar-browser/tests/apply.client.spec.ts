@@ -14,7 +14,9 @@ import { apply, inject } from '../src/client/index.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { createBrowserStore } from '../src/client/browser/store.ts'
 import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
-import type { DesktopBrowserBridge, DesktopBrowserLeaseId } from '../src/types.ts'
+import type {
+  DesktopBrowserBridge, DesktopBrowserLeaseId, DesktopBrowserTabAutomationHandler, DesktopBrowserTabCommand,
+} from '../src/types.ts'
 
 const contexts: Context[] = []
 
@@ -56,7 +58,8 @@ async function boot(platform: ShortcutPlatform = 'macos', runtime: 'desktop' | '
   const openTabs = createSnapshotStore<readonly { sessionId: string; tabId: TabId }[]>([])
   const target = { sessionId: 'session', paneId: 'pane' }
   const sidebar = { openTabs, commandTarget: vi.fn<() => typeof target | undefined>(() => target),
-    openTabFromTarget: vi.fn() }
+    openTabFromTarget: vi.fn(), retainSessionView: vi.fn(async () => () => {}),
+    whenSessionAdopted: vi.fn(async () => {}) }
   const registry = new ShortcutRegistry(runtime, platform)
   ctx.provide('sidebarRight', sidebar as never)
   ctx.provide('shortcuts', { register: (command: ShortcutCommand) => registry.register(command) } as never)
@@ -165,6 +168,33 @@ describe('ui-sidebar-browser apply', () => {
     const h = await boot('macos', 'web')
     try { expect(h.registry.catalog.getSnapshot()[0]?.binding).toEqual({ code: 'KeyT', modifiers: ['alt', 'meta'] }) }
     finally { await h.fiber.dispose() }
+  })
+
+  it('registers the main-issued automation handler and removes it on disposal', async () => {
+    let captured: DesktopBrowserTabAutomationHandler | undefined
+    const unregister = vi.fn()
+    const bridge: DesktopBrowserBridge = {
+      acquire: vi.fn(async () => ({ lease: 'test-lease' as DesktopBrowserLeaseId, partition: 'test-partition' })),
+      release: vi.fn(async () => {}),
+      onOpenRequested: vi.fn(() => () => {}),
+      onAutomationRequest: vi.fn((handler) => {
+        captured = handler
+        return unregister
+      }),
+    }
+    vi.stubGlobal('dshDesktop', { protocolVersion: 1, browser: bridge })
+    const h = await boot()
+    expect(bridge.onAutomationRequest).toHaveBeenCalledOnce()
+    expect(captured).toBeDefined()
+    const command: DesktopBrowserTabCommand = {
+      requestId: 1, sessionId: 'session' as DesktopBrowserTabCommand['sessionId'],
+      operation: { kind: 'tabs.list', limit: 8 },
+    }
+    await expect(captured!(command, new AbortController().signal)).resolves.toEqual({
+      status: 'success', value: { kind: 'tabs', tabs: [], truncated: false },
+    })
+    await h.fiber.dispose()
+    expect(unregister).toHaveBeenCalledOnce()
   })
 
   it('removes every registration when the plugin is disposed', async () => {

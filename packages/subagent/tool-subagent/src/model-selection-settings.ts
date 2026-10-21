@@ -30,6 +30,10 @@ export interface Config {
   enabled: Volatile<boolean>
   /** Initial route list inherited when the user document does not override it. */
   allowedModels: Volatile<AllowedModelRoute[]>
+  /** Zero or one default child route selected from the authenticated application catalog. Empty inherits existing defaults. */
+  defaultModels: Volatile<AllowedModelRoute[]>
+  /** Prefer decomposition and delegation of complex top-level tasks. */
+  delegateComplexTasks: Volatile<boolean>
 }
 
 /** Singleton settings owner read when delegation tools are composed for a Session. */
@@ -37,15 +41,33 @@ export class SubagentModelSelectionConfig extends Service {
   static Config = z.object({
     enabled: z.boolean().default(false).volatile(),
     allowedModels: z.array(AllowedModelRouteSchema).default([]).volatile(),
+    defaultModels: z.array(AllowedModelRouteSchema).max(1).default([]).volatile(),
+    delegateComplexTasks: z.boolean().default(false).volatile(),
   })
 
   constructor(ctx: Context, private config: Config) {
     super(ctx, 'subagentModelSelection')
   }
 
-  /**
-   * Read a detached selection preference for the next eligible Session composition.
-   * @returns the enabled state and exact allowed routes.
+  /** Read the default child route without exposing provider configuration.
+   * @returns A detached exact route, or null to preserve tool-instance defaults.
+   */
+  defaultModel(): AllowedModelRoute | null {
+    const routes = this.config.defaultModels.get()
+    assertAllowedModelRoutes(routes)
+    if (routes.length > 1) throw new Error('only one default subagent model may be configured')
+    return routes[0] ? { ...routes[0] } : null
+  }
+
+  /** Read whether complex tasks should be delegated by the top-level assistant.
+   * @returns The current persistent decomposition preference.
+   */
+  delegatesComplexTasks(): boolean {
+    return this.config.delegateComplexTasks.get()
+  }
+
+  /** Read a detached selection preference for the next eligible Session composition.
+   * @returns The enabled state and exact allowed routes.
    */
   current(): SubagentModelSelectionSettings {
     const enabled = this.config.enabled.get()

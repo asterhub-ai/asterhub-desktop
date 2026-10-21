@@ -158,24 +158,26 @@ function guestFixture(lease: DesktopBrowserLeaseId): GuestContents {
 function mockWindow(options: Record<string, unknown>, guest: GuestContents): BrowserWindow {
   let destroyed = false
   let size = { width: 800, height: 600 }
-  const win = Object.assign(new EventEmitter(), {
-    webContents: guest,
+  const emitter = new EventEmitter()
+  const guestWebContents = guest as (GuestContents & WebContents)
+  const win: Pick<BrowserWindow, 'webContents' | 'isDestroyed' | 'destroy' | 'close' | 'setSize' | 'getSize'> = Object.assign(emitter, {
+    webContents: guestWebContents,
     options,
     isDestroyed: () => destroyed,
     destroy: vi.fn(() => {
       destroyed = true
       guest.close()
-      queueMicrotask(() => { win.emit('closed') })
+      queueMicrotask(() => { emitter.emit('closed') })
     }),
     close: vi.fn(() => {
       destroyed = true
       guest.close()
-      queueMicrotask(() => { win.emit('closed') })
+      queueMicrotask(() => { emitter.emit('closed') })
     }),
     setSize: vi.fn((w: number, h: number) => { size = { width: w, height: h } }),
     getSize: () => [size.width, size.height],
   })
-  return win as unknown as BrowserWindow
+  return win as BrowserWindow
 }
 
 
@@ -188,8 +190,8 @@ it('intersects correlated renderer tab reports with main-owned Session guests', 
   releases.push(() => registry.release(fixture.owner, reservationA.lease), () => registry.release(fixture.owner, reservationB.lease))
   const targetA = { tabId: TAB_A, generation: brandNumber<DesktopBrowserTargetGeneration>(1) }
   const targetB = { tabId: TAB_B, generation: brandNumber<DesktopBrowserTargetGeneration>(1) }
-  const guestA = registry.resolveGuest(fixture.owner, SESSION_A, targetA) as unknown as GuestContents
-  const guestB = registry.resolveGuest(fixture.owner, SESSION_B, targetB) as unknown as GuestContents
+  const guestA = registry.resolveGuest(fixture.owner, SESSION_A, targetA) as (GuestContents & WebContents)
+  const guestB = registry.resolveGuest(fixture.owner, SESSION_B, targetB) as (GuestContents & WebContents)
   guestA.setPage('https://a.example/', 'A page')
   guestB.setPage('https://b.example/', 'B page')
 
@@ -221,6 +223,50 @@ it('intersects correlated renderer tab reports with main-owned Session guests', 
   } })
 })
 
+it('settles a tabs.list request when the renderer does not reply', async () => {
+  vi.useFakeTimers()
+  try {
+    const registry = new DesktopBrowserGuests(() => undefined)
+    const fixture = ownerFixture()
+    registry.bind(fixture.window, () => () => {})
+    const caller: DesktopBrowserCaller = {
+      sessionId: SESSION_A, ownerGeneration: brandNumber<DesktopBrowserOwnerGeneration>(1),
+    }
+    const request: DesktopBrowserRequestMessage = {
+      type: 'browser/request', requestId: 16, caller, operation: { kind: 'tabs.list' },
+    }
+    const pending = registry.handleBrowserRequest(fixture.owner, request, new AbortController().signal)
+    const result = expect(pending).resolves.toMatchObject({
+      status: 'error', code: 'failed', message: 'Timed out waiting for browser renderer',
+    })
+    await vi.advanceTimersByTimeAsync(15_000)
+    await result
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('cancels an in-flight renderer command and ignores its late reply', async () => {
+  const registry = new DesktopBrowserGuests(() => undefined)
+  const fixture = ownerFixture()
+  registry.bind(fixture.window, () => () => {})
+  const controller = new AbortController()
+  const caller: DesktopBrowserCaller = {
+    sessionId: SESSION_A, ownerGeneration: brandNumber<DesktopBrowserOwnerGeneration>(1),
+  }
+  const request: DesktopBrowserRequestMessage = {
+    type: 'browser/request', requestId: 17, caller, operation: { kind: 'tabs.list' },
+  }
+  const pending = registry.handleBrowserRequest(fixture.owner, request, controller.signal)
+  const command = fixture.send.mock.calls.at(-1)?.[1] as { requestId: number }
+  controller.abort()
+  await expect(pending).resolves.toMatchObject({ status: 'error', code: 'cancelled' })
+  registry.resolveRendererReply(fixture.owner, {
+    requestId: command.requestId,
+    result: { status: 'success', value: { kind: 'tabs', tabs: [], truncated: false } },
+  })
+})
+
 it('keeps shared-workspace guest targets inside their owning Session and tab', () => {
   const registry = new DesktopBrowserGuests(() => undefined)
   const a = ownerFixture()
@@ -232,8 +278,8 @@ it('keeps shared-workspace guest targets inside their owning Session and tab', (
   releases.push(() => registry.release(a.owner, reservationA.lease), () => registry.release(b.owner, reservationB.lease))
   const targetA = { tabId: TAB_A, generation: brandNumber<DesktopBrowserTargetGeneration>(1) }
   const targetB = { tabId: TAB_B, generation: brandNumber<DesktopBrowserTargetGeneration>(1) }
-  const guestA = registry.resolveGuest(a.owner, SESSION_A, targetA) as unknown as GuestContents
-  const guestB = registry.resolveGuest(b.owner, SESSION_B, targetB) as unknown as GuestContents
+  const guestA = registry.resolveGuest(a.owner, SESSION_A, targetA) as (GuestContents & WebContents)
+  const guestB = registry.resolveGuest(b.owner, SESSION_B, targetB) as (GuestContents & WebContents)
   guestA.setPage('https://a.example/', 'A page')
   guestB.setPage('https://b.example/', 'B page')
 
@@ -261,7 +307,7 @@ it('release during startup destroys it and settles pending work', async () => {
   registry.bind(fixture.window, () => () => {})
   const reservation = registry.acquire(fixture.owner, 'cwd:/workspace', SESSION_A, TAB_A)
   const target = { tabId: TAB_A, generation: brandNumber<DesktopBrowserTargetGeneration>(1) }
-  const guest = registry.resolveGuest(fixture.owner, SESSION_A, target) as unknown as GuestContents
+  const guest = registry.resolveGuest(fixture.owner, SESSION_A, target) as (GuestContents & WebContents)
   expect(guest.isDestroyed()).toBe(false)
   await registry.release(fixture.owner, reservation.lease)
   expect(guest.isDestroyed()).toBe(true)

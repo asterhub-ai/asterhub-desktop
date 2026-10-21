@@ -1,12 +1,28 @@
 /** The Node compatibility matrix runs this complete source-entry smoke. */
+import { spawnSync } from 'node:child_process'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import Sandbox from '@deepseek-ai/dsh-sandbox-local'
+import { SandboxUnavailableError, type SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
-import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import PtcWorkflowEngine from '../src/index.ts'
 import { fakeParent, mountPtcRuntime } from './setup.ts'
+/** Probe the sandbox independently so Node-runtime launch failures cannot skip enforcement tests. */
+const sandboxUsable = await (async () => {
+  const probe = new Context()
+  try {
+    await probe.plugin(Sandbox, {})
+    const confined = await probe.sandbox.confine([process.execPath, '-e', 'process.exit(0)'], { mode: 'read-only', workspaceRoot: process.cwd() })
+    const result = spawnSync(confined.argv[0]!, confined.argv.slice(1), { stdio: 'ignore', timeout: 5000 })
+    return result.status === 0
+  } catch (error: unknown) {
+    if (error instanceof SandboxUnavailableError) return false
+    throw error
+  } finally { await probe.fiber.dispose() }
+})()
+
 
 async function setup(mode: SandboxMode) {
   const ctx = new Context()
@@ -22,7 +38,7 @@ async function setup(mode: SandboxMode) {
   return { ctx, parent: fakeParent(ctx), ...files }
 }
 
-it('runs the default workflow config through the source PTC runtime', async () => {
+it.skipIf(!sandboxUsable)('runs the default workflow config through the source PTC runtime', async () => {
   const { ctx, parent } = await setup('read-only')
   const run = ctx.workflowEngine.start({
     script: 'return args.left * args.right',
@@ -36,7 +52,7 @@ it('runs the default workflow config through the source PTC runtime', async () =
   } finally { await run.dispose() }
 })
 
-it.each(['read-only', 'workspace-write'] as const)('enforces the Session file policy %s for direct Node writes', async (mode) => {
+it.skipIf(!sandboxUsable).each(['read-only', 'workspace-write'] as const)('enforces the Session file policy %s for direct Node writes', async (mode) => {
   const { ctx, parent, root, cwd } = await setup(mode)
   const outside = join(root, 'outside.txt')
   const inside = join(cwd, 'inside.txt')

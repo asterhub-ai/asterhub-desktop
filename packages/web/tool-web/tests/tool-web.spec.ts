@@ -963,13 +963,14 @@ describe('scope-aware web guidance', () => {
   it.each([[], ['web_search'], ['web_fetch'], ['web_search', 'web_fetch']].map(allow => ({ allow })))('renders exact guidance for $allow', async ({ allow }) => {
     const { ctx } = await mountTools({ config: { searchMaxQueries: 3 } })
     const { key, scope } = await guidanceScope(ctx)
-    const baseline = withPersona(originalWebGuidance.searchWithFetch, originalWebGuidance.fetch)
+    const identity = (await ctx.systemPrompt.assemble()).sections.find(s => s.name === 'harness:identity')?.text ?? ''
+    const baseline = withPersona(identity, originalWebGuidance.searchWithFetch, originalWebGuidance.fetch)
     expect(renderPrompt(await ctx.systemPrompt.assemble())).toBe(baseline)
     const release = scope.ctx.tools.restrict({ allow })
     try {
       const assembly = await ctx.systemPrompt.assemble({ scope: key })
       expect(assembly.tools.map(tool => tool.name)).toEqual([...allow].sort())
-      expect(renderPrompt(assembly)).toBe(withPersona(...allow.map(name => name === 'web_search'
+      expect(renderPrompt(assembly)).toBe(withPersona(identity, ...allow.map(name => name === 'web_search'
         ? (allow.includes('web_fetch') ? originalWebGuidance.searchWithFetch : originalWebGuidance.searchOnly)
         : (allow.includes('web_search') ? originalWebGuidance.fetch : originalWebGuidance.fetch.replace(' (for example a result from web_search)', '')))))
       expect(renderPrompt(await ctx.systemPrompt.assemble())).toBe(baseline)
@@ -982,6 +983,6 @@ describe('scope-aware web guidance', () => {
 })
 
 /** Preserve the default persona and exact section separators in the oracle. */
-function withPersona(...sections: string[]): string {
-  return ['You are an AI agent powered by AsterHub.', ...sections].join('\n\n')
+function withPersona(identity: string, ...sections: string[]): string {
+  return [identity, ...sections].filter(Boolean).join('\n\n')
 }

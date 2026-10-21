@@ -159,6 +159,6 @@ seam 不添加提示词或 schema。恢复会将已存储的表层事件还原�
 <details>
 <summary>维护者的工作上下文——点击展开</summary>
 
-无。
+`SessionPersistence.openInterceptor` 仅供隔离测试赋值，用于在 JSONL 后端 `open()` 调用中注入源代际竞态。应用组合必须保持未设置。
 
 </details>

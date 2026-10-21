@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-在侧栏打开**插件**，在官方分组里选择**子智能体**，即可设置委派可以多深、多宽，以及 Agent 可以为子智能体选择哪些模型。页面把 Host 的两个命名空间 `subagent` 与 `subagent-model-selection` 收在一次保存之下；Host 服务其中任一命名空间时页面就存在，并只显示被服务的部分。
+打开**设置 → 子智能体**，即可配置委派限制、子智能体默认模型及复杂任务分派偏好。插件页官方分组也可打开同一表单。页面把 Host 的两个命名空间 `subagent` 与 `subagent-model-selection` 收在一次保存之下；Host 服务其中任一命名空间时页面就存在，并只显示被服务的部分。
 
 ## 目录
 
@@ -27,7 +27,9 @@ kind: "package-reference"
 
 **运行限制**把**最大递归深度**和**子智能体并行数量上限**并排放置，窄屏时上下堆叠；每个标签旁的信息按钮展开它的规则——深度是一张两行示例表，容量是计数口径——填了不在范围内的整数会阻止保存并在字段下说明。深度让位于工具自己的上限；容量统计同一主 Agent 下所有层级存活的子智能体，主 Agent 不计入。
 
-**模型选择**把权限开关和精确的适配器路由一起暂存。开启时至少要选一条路由；关闭会保留已选路由以备后用。Host 已存储但没有适配器公布的路由留在**已保存但当前不可用**分组里并且仍可移除；加载失败的提供方会被报告而不隐藏其他提供方，加载失败时提供**重试**。
+**子智能体默认模型**从当前模型目录选定一条路由，作为后续分派中由用户控制的模型。主会话不能覆盖该选择；清空默认模型才会恢复工具既有默认值或继承主会话。执行器会校验已保存的路由，不可用时明确拒绝，不会静默替换。模型列表显示面向账号的提供方名称和模型 ID，不展示内部适配器路由名。
+
+**复杂任务优先分派**保存主会话拆解任务并审查结果的偏好。两项设置都是全局持久设置。
 
 一次**保存**通过各自的命名空间写入两个部分，每次写入都以其草稿读取时的修订号作栅栏。两次写入相互独立：Host 拒绝的部分保留草稿并报告失败，另一部分照常落地；被更新的 Host 修订号超越的模型草稿会以冲突形式报告并要求放弃，而不是覆盖较新的路由。离开页面即丢弃所有草稿。
 
@@ -39,7 +41,7 @@ kind: "package-reference"
 <details>
 <summary>实现细节——点击展开</summary>
 
-宿主半侧是一个空的 `apply`，只为让本包占一条 Loader 行，客户端模块系统据此送出浏览器半侧。浏览器半侧通过 `ctx.configForms.get` 分别绑定两个命名空间：`SubagentLimitsCardController` 用 `ui-primitives` 的共享 `SettingsFormModel` 暂存运行限制，字段规格只接受不低于各自下限的安全整数；`SubagentModelSelectionCardController` 自己维护草稿，因为它的两个字段要作为一次带修订栅栏的 `mutate` 保存，它把已存储的路由与 `remote.session.modelCatalog()` 合并，在 `llm/adapters-updated` 与 `settings/document-updated` 时重读目录，连接重置时丢弃草稿。`subagentCardFace` 把两者合成 `SubagentCard` 在共享 `SettingsForm` 里渲染的一个 face，保存时校验两部分并写入有改动的那些。页面通过 `ctx.configForms.whileServed` 监视两个命名空间，注册进插件页的 `plugins.item` slot。
+宿主半侧是一个空的 `apply`，只为让本包占一条 Loader 行，客户端模块系统据此送出浏览器半侧。浏览器半侧通过 `ctx.configForms.get` 分别绑定两个命名空间：`SubagentLimitsCardController` 用 `ui-primitives` 的共享 `SettingsFormModel` 暂存运行限制，字段规格只接受不低于各自下限的安全整数；`SubagentModelSelectionCardController` 自己维护草稿，因为默认路由和分派偏好要作为一次带修订栅栏的 `mutate` 保存，它把已保存的默认项与 `remote.session.modelCatalog()` 合并，在 `llm/adapters-updated` 与 `settings/document-updated` 时重读目录，连接重置时丢弃草稿。`subagentCardFace` 把两者合成 `SubagentCard` 在共享 `SettingsForm` 里渲染的一个 face，保存时校验两部分并写入有改动的那些。页面通过 `ctx.configForms.whileServed` 监视两个命名空间，注册进 `settings.section` 和插件页的 `plugins.item`。
 
 </details>
 

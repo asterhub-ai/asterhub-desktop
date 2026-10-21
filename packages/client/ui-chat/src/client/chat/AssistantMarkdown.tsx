@@ -52,6 +52,20 @@ export interface AssistantMarkdownProps extends
   t: ChatViewSlotProps['t']
 }
 
+const INTERNAL_REASONING_TAGS = /<\/?(?:thinking|think|analysis|reasoning)\s*>/giu
+
+/** Remove provider-emitted reasoning delimiters from user-visible answer text. */
+function visibleAssistantText(text: string): string {
+  const visible = text
+    .replace(/<(thinking|think|analysis|reasoning)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/giu, '')
+    .replace(INTERNAL_REASONING_TAGS, '')
+  const partial = /<\/?([a-z]*)$/iu.exec(visible)
+  return partial !== null && ['thinking', 'think', 'analysis', 'reasoning']
+    .some(tag => tag.startsWith((partial[1] ?? '').toLowerCase()))
+    ? visible.slice(0, partial.index)
+    : visible
+}
+
 /** Reasoning block as the Think variant summary row (figma 39:28304). */
 export const AssistantMarkdown = memo(function AssistantMarkdown({
   blocks, streaming, interrupted, loadImage, groupPart, useDisclosure,
@@ -83,7 +97,7 @@ export const AssistantMarkdown = memo(function AssistantMarkdown({
         rendered.push(
           <MarkdownText
             key={i}
-            text={block.text}
+            text={visibleAssistantText(block.text)}
             streaming={streaming}
             labels={labels}
             fileMentions={mentions}

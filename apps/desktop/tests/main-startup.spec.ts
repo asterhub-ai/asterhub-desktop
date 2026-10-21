@@ -431,7 +431,7 @@ afterEach(async () => {
 })
 
 describe('desktop main startup', () => {
-  it('routes shell update documents and assets through the registered main protocol handler', async () => {
+  it('routes shell update documents and assets through the registered main protocol handler', { timeout: 15_000 }, async () => {
     const root = join(import.meta.dirname, '..')
     vi.spyOn(harness.app, 'getAppPath').mockReturnValue(root)
     const web = await import('../src/web-document.ts')

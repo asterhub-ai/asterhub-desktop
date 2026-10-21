@@ -271,7 +271,7 @@ export class OffscreenBrowserImpl implements BrowserFrame {
     if (this.disposed || this.canvas === undefined) return
     const canvas = this.canvas
     // DOM lib ArrayBufferLike vs ArrayBuffer BlobPart boundary
-    const blobPart = pngBytes as unknown as BlobPart
+    const blobPart = pngBytes as BlobPart
     const blob = new Blob([blobPart], { type: 'image/png' })
     if (typeof createImageBitmap === 'function') {
       createImageBitmap(blob)

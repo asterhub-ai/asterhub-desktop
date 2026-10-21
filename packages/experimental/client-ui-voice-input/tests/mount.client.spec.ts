@@ -8,7 +8,6 @@ import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { SpeechProviderId } from '@deepseek-ai/dsh-experimental-speech-to-text/types'
 import { RemoteError, type TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import { expect, it, vi } from 'vitest'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { mountVoiceInput, inject } from '../src/client/mount.ts'
 import { apply as hostApply } from '../src/index.ts'
 import { VoiceInput, type VoiceInputInjected } from '../src/client/VoiceInput.tsx'
@@ -19,9 +18,6 @@ const REMOTE: TypertRemoteContribution = {
   descriptors: [],
 }
 
-vi.mock('../src/client/readiness.ts', () => ({ observeReadiness: () => ({
-  state: createSnapshotStore({ catalog: null, connected: true, error: null }), dispose: async () => {},
-}) }))
 
 /** Narrow the erased registry payload before exercising its registered actions. */
 function assertVoiceActions(value: Record<string, unknown>): asserts value is Record<string, unknown> & VoiceInputInjected {
@@ -41,6 +37,13 @@ async function fixture(fail = false) {
     async $mount(contribution: TypertRemoteContribution) {
       expect(contribution).toBe(REMOTE)
       return unmount
+    }
+    $stream() {
+      const closed = Promise.withResolvers<IteratorResult<never, undefined>>()
+      return {
+        [Symbol.asyncIterator]: () => ({ next: () => closed.promise }),
+        dispose: async () => { closed.resolve({ done: true, value: undefined }) },
+      }
     }
   }
   new Remote()

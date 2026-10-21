@@ -4,6 +4,9 @@
  * Register the CLI process's Windows console handler.
  * Koffi queues callbacks from the console thread onto the JavaScript thread.
  * The registration lasts until process exit; unknown events retain native handling.
+ * Normal Ctrl+C delivery is restored so processes created with CREATE_NEW_PROCESS_GROUP
+ * or launched from callers that ignore Ctrl+C continue to receive CTRL_C_EVENT.
+ * @throws If Windows rejects Ctrl+C restoration or handler registration.
  * @returns Completion once the console handler is registered.
  */
 export async function installWindowsCliSignals(): Promise<void> {
@@ -16,8 +19,8 @@ export async function installWindowsCliSignals(): Promise<void> {
     return 0
   }, koffi.pointer(type))
   const install = kernel.func('int __stdcall SetConsoleCtrlHandler(DshCliConsoleHandler *handler, int add)')
-  if (!install(handler, 1)) {
+  if (!install(null, 0) || !install(handler, 1)) {
     koffi.unregister(handler)
-    throw new Error('desktop CLI: cannot register the Windows console handler')
+    throw new Error('desktop CLI: cannot enable the Windows console handler')
   }
 }

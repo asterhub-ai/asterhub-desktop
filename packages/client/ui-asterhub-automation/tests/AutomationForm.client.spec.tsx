@@ -5,6 +5,7 @@ import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import type { AutomationTask, AutomationTaskId, AutomationDraft, AutomationChoices } from '@deepseek-ai/dsh-asterhub-automation/client'
 import { AutomationForm, type AutomationFormProps } from '../src/client/AutomationForm.tsx'
 import { en } from '../src/client/locales.ts'
+import type {} from '../src/client/index.ts'
 
 const t = makeTranslate(en)
 
@@ -72,7 +73,7 @@ function makeFormProps(overrides: Partial<AutomationFormProps> = {}): Automation
     onSaved: vi.fn(),
     t,
     ...overrides,
-  } as unknown as AutomationFormProps
+  }
 }
 
 afterEach(() => { cleanup() })

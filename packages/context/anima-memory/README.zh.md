@@ -52,7 +52,7 @@ web-app bundle 使用以下配置行挂载 Anima：
 | `capturePageSize` | `128` | 每次持久化分页读取的最大 Session 事件数 |
 | `startupTimeoutMs` | `120000` | 受管理 Neo4j 的启动期限 |
 | `shutdownTimeoutMs` | `30000` | 图核心的关闭期限 |
-| `nickname` | `Anima` | 助手昵称，1–40 个字符 |
+| `nickname` | `小琦` | 可编辑的助手昵称，1–40 个字符 |
 | `tone` | `balanced` | 直接、适中或温暖的表达语气 |
 | `responseDetail` | `balanced` | 简洁、适中或详细的解释 |
 | `initiative` | `balanced` | 专注请求、适中或主动建议 |

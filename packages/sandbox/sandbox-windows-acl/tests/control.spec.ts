@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
+import { hasLogonSid } from './token-capability.ts'
 
 let ctx: Context | undefined
 let scratch: string | undefined
@@ -17,7 +18,9 @@ afterEach(async () => {
   scratch = undefined
 })
 
-describe.skipIf(process.platform !== 'win32')('managed Windows ACL control pipe', () => {
+// The ACL runner requires a token logon SID (SE_GROUP_LOGON_ID) to construct
+// the restricted token. Windows service identities (Nomad, LocalSystem) lack a logon SID.
+describe.skipIf(process.platform !== 'win32' || !hasLogonSid())('managed Windows ACL control pipe', () => {
   it.each(['read-only', 'workspace-write'])('runs without a visible console in %s mode', async (mode) => {
     scratch = await mkdtemp(join(tmpdir(), 'dsh-acl-console-'))
     const workspace = join(scratch, 'workspace')

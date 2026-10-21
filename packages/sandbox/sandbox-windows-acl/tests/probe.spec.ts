@@ -19,6 +19,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AclSandbox } from '../src/index.ts'
+import { hasLogonSid } from './token-capability.ts'
 
 const isWin32 = process.platform === 'win32'
 
@@ -31,7 +32,10 @@ function pwshAvailable(): boolean {
   }
 }
 
-describe.skipIf(!isWin32 || !pwshAvailable())('AclSandbox write restriction', () => {
+// AclSandbox.init() requires a logon session SID (SE_GROUP_LOGON_ID) in the process token
+// to construct the WRITE_RESTRICTED token. Service identities (such as Nomad client workers
+// or Session 0 services) lack a logon SID, causing CreateRestrictedToken to fail closed.
+describe.skipIf(!isWin32 || !hasLogonSid() || !pwshAvailable())('AclSandbox write restriction', () => {
   let scratchRoot!: string
   let writableDir!: string
   let isolatedTemp!: string

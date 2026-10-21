@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -15,7 +15,7 @@ afterEach(async () => {
 })
 
 async function tempDir(prefix = 'portability-'): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), prefix))
+  const dir = await realpath(await mkdtemp(join(tmpdir(), prefix)))
   roots.push(dir)
   return dir
 }

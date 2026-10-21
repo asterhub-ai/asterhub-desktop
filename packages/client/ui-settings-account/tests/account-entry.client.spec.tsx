@@ -2,21 +2,26 @@
 /** Account actions remain wired to the Host state through the injected slot face. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
+import { SlotTestRuntime, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { AccountSection, type AccountSectionProps } from '../src/client/AccountSection.tsx'
 import { AccountGate, type AccountGateProps } from '../src/client/AccountGate.tsx'
 import { apply, inject } from '../src/client/index.ts'
 import { ACCOUNT_COMMAND_EVENT } from '../src/client/account-api.ts'
-import { zh } from '../src/client/locales.ts'
+import { en, zh } from '../src/client/locales.ts'
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
-const t = (key: keyof typeof zh) => zh[key]
+const t = makeTranslate(zh)
+const tEn = makeTranslate(en)
 const loggedOut = { loggedIn: false, keyBound: false }
 const loggedIn = {
   loggedIn: true, keyBound: true,
   user: { id: 'test-user', email: 'test@example.invalid' }, balance: 12,
+}
+
+function unusedHook(): never {
+  throw new Error('Account section does not read global slot sources')
 }
 
 function authActions(): Pick<AccountSectionProps, 'authSettings' | 'sendVerifyCode' | 'register'> {
@@ -29,9 +34,16 @@ function authActions(): Pick<AccountSectionProps, 'authSettings' | 'sendVerifyCo
   }
 }
 
-function section(overrides: Record<string, unknown> = {}) {
-  const props = {
+function section(overrides: Partial<AccountSectionProps> = {}) {
+  const props: AccountSectionProps = {
     ...authActions(),
+    usePanelInfo: unusedHook,
+    useSessions: unusedHook,
+    useSessionStatus: unusedHook,
+    useSessionRetainInfo: unusedHook,
+    useWorkspaces: unusedHook,
+    useResource: unusedHook,
+    close: vi.fn(),
     t,
     getStatus: vi.fn().mockResolvedValue({ ok: true, value: loggedOut }),
     login: vi.fn().mockResolvedValue({ ok: true, value: loggedIn }),
@@ -41,7 +53,7 @@ function section(overrides: Record<string, unknown> = {}) {
     topUp: vi.fn(),
     redeem: vi.fn(),
     ...overrides,
-  } as unknown as AccountSectionProps
+  }
   return { props, view: render(<AccountSection {...props} />) }
 }
 
@@ -96,6 +108,41 @@ describe('Account settings entry', () => {
     expect(getStatus).toHaveBeenCalledTimes(3)
   })
 
+  it('previews preset and custom amounts while leaving the submitted amount undiscounted', async () => {
+    section({
+      getStatus: vi.fn().mockResolvedValue({ ok: true, value: loggedIn }),
+      paymentMethods: vi.fn().mockResolvedValue({ ok: true, value: [{
+        id: 'alipay', label: 'Alipay', currency: 'CNY', pricing: {
+          multiplier: 2, bonusMode: 'discount', bonusTiers: [{ minAmount: 10, bonusPercent: 10 }],
+        },
+      }] }),
+    })
+    expect(await screen.findByText(`${zh.estimatedCredits} 2,000`)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '30' }))
+    expect(screen.getByText(`${zh.estimatedCredits} 6,000`)).toBeTruthy()
+    expect(screen.getByText(text => text.includes(`${zh.paymentBase} ¥27.00`))).toBeTruthy()
+    fireEvent.change(screen.getByLabelText(zh.topUpAmountLabel), { target: { value: '15' } })
+    expect(screen.getByText(`${zh.estimatedCredits} 3,000`)).toBeTruthy()
+    fireEvent.change(screen.getByLabelText(zh.topUpAmountLabel), { target: { value: '' } })
+    expect(screen.getByText(zh.previewUnavailable)).toBeTruthy()
+  })
+
+  it('formats checkout amounts and currency for the English locale', async () => {
+    section({
+      t: tEn,
+      getStatus: vi.fn().mockResolvedValue({ ok: true, value: loggedIn }),
+      paymentMethods: vi.fn().mockResolvedValue({ ok: true, value: [{
+        id: 'alipay', label: 'Alipay', currency: 'CNY', pricing: {
+          multiplier: 2, bonusMode: 'discount', bonusTiers: [{ minAmount: 10, bonusPercent: 10 }],
+        },
+      }] }),
+    })
+    expect(await screen.findByText(`${en.estimatedCredits} 2,000`)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '30' }))
+    expect(screen.getByText(`${en.estimatedCredits} 6,000`)).toBeTruthy()
+    expect(screen.getByText(text => text.includes(`${en.paymentBase} CN¥27.00`))).toBeTruthy()
+  })
+
   it('disables top-up when no payment method is available', async () => {
     section({ getStatus: vi.fn().mockResolvedValue({ ok: true, value: loggedIn }) })
     expect(await screen.findByText(zh.noPaymentMethods)).toBeTruthy()
@@ -130,7 +177,7 @@ describe('Application account gate', () => {
     const login = vi.fn().mockResolvedValue({
       ok: true, value: { ...loggedIn, rememberedUsername: 'test@example.invalid', autoLogin: true },
     })
-    const props = {
+    const props: AccountGateProps = {
       ...authActions(),
       t,
       getStatus,
@@ -140,7 +187,7 @@ describe('Application account gate', () => {
       paymentMethods: vi.fn().mockResolvedValue({ ok: true, value: [] }),
       topUp: vi.fn(),
       redeem: vi.fn(),
-    } as unknown as AccountGateProps
+    }
     render(<AccountGate {...props} />)
     expect(screen.getByText('AsterHub')).toBeTruthy()
     await screen.findByLabelText(zh.emailLabel)
@@ -159,12 +206,12 @@ describe('Application account gate', () => {
   it('handles account open and logout commands from the native menu', async () => {
     const getStatus = vi.fn().mockResolvedValue({ ok: true, value: loggedIn })
     const logout = vi.fn().mockResolvedValue({ ok: true, value: undefined })
-    const props = {
+    const props: AccountGateProps = {
       ...authActions(),
       t, getStatus, login: vi.fn(), logout, quota: vi.fn(),
       paymentMethods: vi.fn().mockResolvedValue({ ok: true, value: [] }),
       topUp: vi.fn(), redeem: vi.fn(),
-    } as unknown as AccountGateProps
+    }
     render(<AccountGate {...props} />)
     await waitFor(() =>{  expect(screen.queryByText('AsterHub')).toBeNull() })
     window.dispatchEvent(new CustomEvent(ACCOUNT_COMMAND_EVENT, { detail: 'open' }))

@@ -1,6 +1,6 @@
 import type { PathLike } from 'node:fs'
 import type * as FsPromises from 'node:fs/promises'
-import { lstat, link, mkdir, mkdtemp, readFile, readlink, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { lstat, link, mkdir, mkdtemp, readFile, readlink, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -56,7 +56,7 @@ afterEach(async () => {
 })
 
 async function fixture(): Promise<{ root: string; oldHome: string; newHome: string }> {
-  const root = await mkdtemp(join(tmpdir(), 'asterhub-home-migration-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'asterhub-home-migration-')))
 
   roots.push(root)
   return { root, oldHome: join(root, '.dsh'), newHome: join(root, '.asterhub') }

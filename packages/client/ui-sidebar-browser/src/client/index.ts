@@ -15,9 +15,11 @@ import { createElectronPage } from './electron/pages.ts'
 import type { DesktopBrowserBridge } from '../types.ts'
 import { browserWorkspace } from './electron/workspace.ts'
 import type { BrowserPageFactory } from './browser/BrowserPage.ts'
-import { BROWSER_ID, browserDefinition } from './definition.tsx'
+import { BROWSER_ID, BROWSER_KIND, browserDefinition } from './definition.tsx'
 import { en, zh } from './locales.ts'
 import { createBrowserStore } from './browser/store.ts'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import { createDesktopBrowserAutomationHandler } from './electron/automation.ts'
 
 export type { BrowserBodyProps } from './view/BrowserBody.tsx'
 export type { BrowserControllerState, BrowserInjected, BrowserMountRequest } from './browser/BrowserController.ts'
@@ -74,9 +76,15 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.sidebarRightTabs.register({ ...browserDefinition(t), keepMounted: desktop !== undefined }), 'ui-sidebar-browser.type')
   const installFrames = (scope: Context, factory: (sessionId: BrowserBodyProps['sessionId']) => BrowserPageFactory): void => {
     const controllers = new Map<BrowserBodyProps['sessionId'], BrowserInjected>()
+    const sessionControllersChanged = createSnapshotStore(0)
+    const controllersChanged = (): void => {
+      sessionControllersChanged.set(sessionControllersChanged.getSnapshot() + 1)
+    }
     scope.effect(() => async () => {
       const pending = [...controllers.values()].map(controller => controller.dispose())
+      const changed = controllers.size > 0
       controllers.clear()
+      if (changed) controllersChanged()
       await Promise.all(pending)
     }, 'ui-sidebar-browser.frames')
     scope.effect(() => scope.slots.inject('sidebar.right.pane.tab', () => scope.slots.register({
@@ -90,9 +98,24 @@ export function apply(ctx: Context): void {
         const controller = createBrowserControllers(actions, factory(sessionId), tabId =>
           openTabs.getSnapshot().some(tab => tab.sessionId === sessionId && tab.tabId === tabId))
         controllers.set(sessionId, controller)
+        controllersChanged()
         return controller
       },
     }, BrowserBody)), 'ui-sidebar-browser.body')
+    // Main issues tab commands; the handler runs against this Session's retained
+    // Sidebar View and the same live controller map the bodies register into.
+    const automation = desktop?.onAutomationRequest
+    if (automation !== undefined) {
+      scope.effect(() => automation(createDesktopBrowserAutomationHandler({
+        openTabs,
+        controllers,
+        sessionControllersChanged,
+        retainSessionView: (sessionId, signal) => ctx.sidebarRight.retainSessionView(sessionId, signal),
+        whenSessionAdopted: (sessionId, signal) => ctx.sidebarRight.whenSessionAdopted(sessionId, signal),
+        openTab: (sessionId, url) => { ctx.sidebarRight.openTabIn(sessionId, BROWSER_KIND, { params: { url } }) },
+        closeTab: (sessionId, tabId) => { ctx.sidebarRight.closeIn(sessionId, tabId) },
+      })), 'ui-sidebar-browser.automation')
+    }
   }
   if (desktop === undefined) installFrames(ctx, () => createIframePage)
   else ctx.inject(['workspaces'], (scope) => {

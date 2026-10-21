@@ -1,5 +1,0 @@
-- id: anima
-  name: cordis:anima
-  config:
-    modelProvider: memory-model
-    model: extract-model

@@ -60,7 +60,7 @@ export interface AutomationDetailInjected {
 }
 
 /** Detail props. */
-export type AutomationDetailProps = AutomationDetailInjected
+export type AutomationDetailProps = Omit<AutomationDetailInjected, 'hooks'>
   & PropsLocale<'automation'>
   & Pick<PropsRuntime<'main'>, 'useSessions' | 'useWorkspaces'>
   & {
@@ -73,31 +73,35 @@ export type AutomationDetailProps = AutomationDetailInjected
   }
 
 /** Format run state for display. */
-function runStateLabel(state: AutomationRun['state'], t: (key: string) => string): string {
+function runStateLabel(state: AutomationRun['state'], t: PropsLocale<'automation'>['t']): string {
   return t(`run.state.${state}`)
 }
 
 /** Format run trigger for display. */
-function runTriggerLabel(trigger: AutomationRun['trigger'], t: (key: string) => string): string {
+function runTriggerLabel(trigger: AutomationRun['trigger'], t: PropsLocale<'automation'>['t']): string {
   return t(`run.trigger.${trigger}`)
 }
 
-/** Format duration. */
-function formatDuration(startedAt: string | null, finishedAt: string | null): string {
+/** Format a run duration with locale-owned unit words. */
+function formatDuration(
+  startedAt: string | null,
+  finishedAt: string | null,
+  t: PropsLocale<'automation'>['t'],
+): string {
   if (!startedAt || !finishedAt) return ''
   const start = Date.parse(startedAt)
   const end = Date.parse(finishedAt)
   if (Number.isNaN(start) || Number.isNaN(end)) return ''
   const seconds = Math.floor((end - start) / 1000)
-  if (seconds < 60) return `${seconds}s`
+  if (seconds < 60) return t('duration.seconds', { seconds })
   const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ${seconds % 60}s`
+  if (minutes < 60) return t('duration.minutesSeconds', { minutes, seconds: seconds % 60 })
   const hours = Math.floor(minutes / 60)
-  return `${hours}h ${minutes % 60}m`
+  return t('duration.hoursMinutes', { hours, minutes: minutes % 60 })
 }
 
 /** Format timing for display with full frequency + timezone. */
-function formatTimingFull(task: AutomationTask, t: (key: string) => string): string {
+function formatTimingFull(task: AutomationTask, t: PropsLocale<'automation'>['t']): string {
   const timing = task.definition.timing
   const weekdayNames = { 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat', 7: 'sun' } as const
   switch (timing.kind) {
@@ -125,7 +129,7 @@ function formatTimingFull(task: AutomationTask, t: (key: string) => string): str
 }
 
 /** Recent run state label. */
-function recentRunState(task: AutomationTask, t: (key: string) => string): string {
+function recentRunState(task: AutomationTask, t: PropsLocale<'automation'>['t']): string {
   if (task.activeRunId !== null) {
     const activeRun = task.runs.find(r => r.id === task.activeRunId)
     if (activeRun !== undefined) return runStateLabel(activeRun.state, t)
@@ -355,10 +359,10 @@ export function AutomationDetail(props: AutomationDetailProps) {
             {task.enabled ? t('status.enabled') : t('status.paused')}
             {task.nextOccurrenceAt && ` · ${t('detail.nextRun')}: ${new Date(task.nextOccurrenceAt).toLocaleString()}`}
           </p>
-          <p className={css.detailSubtitle}>{formatTimingFull(task, t as unknown as (key: string) => string)}</p>
+          <p className={css.detailSubtitle}>{formatTimingFull(task, t)}</p>
           <p className={css.detailSubtitle}>{task.definition.instruction}</p>
-          {recentRunState(task, t as unknown as (key: string) => string) && (
-            <p className={css.detailSubtitle}>{t('run.state.running')}: {recentRunState(task, t as unknown as (key: string) => string)}</p>
+          {recentRunState(task, t) && (
+            <p className={css.detailSubtitle}>{t('run.state.running')}: {recentRunState(task, t)}</p>
           )}
         </div>
         {tab === 'config' && (
@@ -409,10 +413,10 @@ export function AutomationDetail(props: AutomationDetailProps) {
                   <li key={run.id} style={{ padding: '12px 0', borderBottom: '1px solid var(--dsw-alias-border-l1)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ font: '500 14px/20px var(--dsw-font-family)' }}>
-                        {runStateLabel(run.state, t as unknown as (key: string) => string)}
+                        {runStateLabel(run.state, t)}
                       </span>
                       <span style={{ font: '400 12px/16px var(--dsw-font-family)', color: 'var(--dsw-alias-label-tertiary)' }}>
-                        {runTriggerLabel(run.trigger, t as unknown as (key: string) => string)}
+                        {runTriggerLabel(run.trigger, t)}
                       </span>
                     </div>
                     <div style={{ font: '400 13px/20px var(--dsw-font-family)', color: 'var(--dsw-alias-label-secondary)', marginTop: '4px' }}>
@@ -426,7 +430,7 @@ export function AutomationDetail(props: AutomationDetailProps) {
                         <div>{t('run.finishedAt')}: {new Date(run.finishedAt).toLocaleString()}</div>
                       )}
                       {run.startedAt && run.finishedAt && (
-                        <div>{t('run.duration')}: {formatDuration(run.startedAt, run.finishedAt)}</div>
+                        <div>{t('run.duration')}: {formatDuration(run.startedAt, run.finishedAt, t)}</div>
                       )}
                       {run.reason && (
                         <div style={{ color: 'var(--dsw-alias-state-error-primary)' }}>

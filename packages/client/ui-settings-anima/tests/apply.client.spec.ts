@@ -53,7 +53,7 @@ describe('ui-settings-anima apply', () => {
     await vi.waitFor(() => { expect(slots.entries('settings.section')).toHaveLength(1) })
     const entry = slots.entries('settings.section')[0]!
     expect(entry.options).toMatchObject({ id: 'anima', order: 30 })
-    expect(resolveSlotLabel(entry.options.label)).toBe('Anima')
+    expect(resolveSlotLabel(entry.options.label)).toBe('记忆系统')
     expect(entry.locale).toBe('settings.anima')
   })
 

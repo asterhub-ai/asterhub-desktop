@@ -112,7 +112,7 @@
 }
 
 .modelName,
-.route {
+.modelMeta {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -124,7 +124,7 @@
   color: var(--dsw-alias-label-primary);
 }
 
-.route {
+.modelMeta {
   margin-top: 2px;
   font-size: 11px;
   color: var(--dsw-alias-label-tertiary);

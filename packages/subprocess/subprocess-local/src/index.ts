@@ -15,7 +15,7 @@ import { delimiter, extname, isAbsolute, resolve } from 'node:path'
 import type { Duplex } from 'node:stream'
 import { Context } from '@deepseek-ai/cordis'
 import type * as NodePty from 'node-pty'
-import type { IPtyForkOptions } from 'node-pty'
+import type { IPtyForkOptions, IWindowsPtyForkOptions } from 'node-pty'
 import { createLazyRequire } from '@deepseek-ai/dsh-lazy-require'
 import { SubprocessRuntime, SubprocessExecutableNotFoundError } from '@deepseek-ai/dsh-subprocess'
 import type {
@@ -251,7 +251,6 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
   }
 
   /** @inheritdoc */
-  // oxlint-disable-next-line typescript/require-await -- Keep the provider promise rejection semantics for cancelled inspection.
   async terminalEnvironment(signal?: AbortSignal): Promise<SubprocessTerminalEnvironment> {
     signal?.throwIfAborted()
     const platform = process.platform === 'win32' ? 'windows' : 'posix'
@@ -259,8 +258,6 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
     return { platform, ...defaultShell === undefined ? {} : { defaultShell } }
   }
 
-  // Local PTY allocation is synchronous, but the provider contract permits remote asynchronous allocation.
-  // oxlint-disable-next-line typescript/require-await -- Preserve promise rejection semantics at the async provider contract.
   async spawnTerminal(spec: SubprocessTerminalSpawnSpec): Promise<SubprocessTerminalHandle> {
     const file = spec.argv[0]
     if (file === undefined || file.length === 0) {
@@ -270,14 +267,15 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
     const inspector = this.terminalInspector ?? createProcessInspector()
     const containmentMode = this.selectContainmentMode('terminal')
     const env = targetEnvironment(spec)
-    const activity = prepareShellActivity(spec, env, this.internals.platform ?? process.platform)
+    const platform = this.internals.platform ?? process.platform
+    const activity = prepareShellActivity(spec, env, platform)
     const launch = activity === undefined ? spec : { ...spec, argv: activity.argv, env: activity.env }
-    const options: IPtyForkOptions = {
+    const options: IPtyForkOptions | IWindowsPtyForkOptions = {
       name: spec.terminalType,
       rows: spec.rows,
-      cols: spec.cols,
-      cwd: spec.cwd,
-      env: { ...activity?.env ?? env, TERM: spec.terminalType },
+      // Windows 10 LTSC 19044's inbox conhost rewrites prompt trailing spaces as CSI;
+      // use node-pty's bundled OpenConsole to preserve the readiness tail.
+      ...(platform === 'win32' ? { useConptyDll: true } : {}),
     }
     let scope: ReturnType<typeof prepareLinuxTerminalScope> | undefined
     let terminal: NodePty.IPty
@@ -309,7 +307,7 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
       terminal,
       inspector,
       spec.graceMs,
-      this.internals.platform ?? process.platform,
+      platform,
       owner,
       scope?.resolveOutcome,
       activity,

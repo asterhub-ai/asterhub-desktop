@@ -26,7 +26,7 @@ export type AutomationPanelProps = PropsRuntime<'main'>
 type StatusFilter = 'all' | 'enabled' | 'paused'
 
 /** Format timing for list row: full frequency + timezone. */
-function formatTiming(task: AutomationTask, t: (key: string) => string): string {
+function formatTiming(task: AutomationTask, t: PropsLocale<'automation'>['t']): string {
   const timing = task.definition.timing
   const weekdayNames = { 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat', 7: 'sun' } as const
   switch (timing.kind) {
@@ -61,7 +61,7 @@ function formatNextOccurrence(task: AutomationTask): string {
 }
 
 /** Recent run state label for row. */
-function recentRunState(task: AutomationTask, t: (key: string) => string): string {
+function recentRunState(task: AutomationTask, t: PropsLocale<'automation'>['t']): string {
   if (task.activeRunId !== null) {
     const activeRun = task.runs.find(r => r.id === task.activeRunId)
     if (activeRun !== undefined) return t(`run.state.${activeRun.state}`)
@@ -266,7 +266,7 @@ export function AutomationPanel(props: AutomationPanelProps) {
                 {rows.map((record) => {
                   const nextRun = formatNextOccurrence(record)
                   const isPaused = !record.enabled || record.deletedAt !== null
-                  const recentState = recentRunState(record, t as unknown as (key: string) => string)
+                  const recentState = recentRunState(record, t)
                   return (
                     <li key={record.id}>
                       <Button
@@ -290,7 +290,7 @@ export function AutomationPanel(props: AutomationPanelProps) {
                           <span className={css.rowTitle}>{record.definition.name}</span>
                           <span className={css.rowSummary} id={`${detailId}-metadata-${record.id}`}>
                             {isPaused && <span className={css.metadata}>{t('status.paused')}</span>}
-                            <span className={css.metadata}>{formatTiming(record, t as unknown as (key: string) => string)}</span>
+                            <span className={css.metadata}>{formatTiming(record, t)}</span>
                             {!isPaused && nextRun && (
                               <span className={css.metadata}>
                                 {t('list.nextPrefix')}
@@ -352,7 +352,7 @@ export function AutomationPanel(props: AutomationPanelProps) {
       {selected !== undefined && !creating && (
         <AutomationDetail
           key={identityKey}
-          {...(detailProps as unknown as AutomationDetailInjected & Pick<PropsRuntime<'main'>, 'useSessions' | 'useWorkspaces'>)}
+          {...detailProps}
           onRetry={onRetry}
           task={selected}
           id={detailId}

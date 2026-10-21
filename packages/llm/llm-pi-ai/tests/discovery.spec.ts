@@ -124,6 +124,12 @@ describe('draft-provider model discovery', () => {
           { id: 'acme-mixed', name: 'Acme Mixed', context_window: 32_768, maxTokens: 2048 },
           { id: 'acme-legacy', max_tokens: 1024 },
           { id: 'acme-small' },
+          { id: 'vision-openrouter', architecture: { input_modalities: ['text', 'image', 'file'] } },
+          { id: 'vision-gateway', input_modalities: ['text', 'image'] },
+          { id: 'audio-only', architecture: { input_modalities: ['audio'] } },
+          { id: 'vision-string', architecture: { modality: 'text+image+file->text' } },
+          { id: 'image-output-only', architecture: { modality: 'text->image' } },
+          { id: 'vision-camel', inputModalities: ['image', 'text', 'image'] },
         ],
       }),
     })
@@ -137,6 +143,12 @@ describe('draft-provider model discovery', () => {
       { id: 'acme-mixed', name: 'Acme Mixed', contextWindow: 32_768, maxTokens: 2048 },
       { id: 'acme-legacy', name: 'acme-legacy', maxTokens: 1024 },
       { id: 'acme-small', name: 'acme-small' },
+      { id: 'vision-openrouter', name: 'vision-openrouter', inputModalities: ['text', 'image'] },
+      { id: 'vision-gateway', name: 'vision-gateway', inputModalities: ['text', 'image'] },
+      { id: 'audio-only', name: 'audio-only' },
+      { id: 'vision-string', name: 'vision-string', inputModalities: ['text', 'image'] },
+      { id: 'image-output-only', name: 'image-output-only', inputModalities: ['text'] },
+      { id: 'vision-camel', name: 'vision-camel', inputModalities: ['image', 'text'] },
     ])
     expect(server.paths).toEqual(['/v1/models'])
     expect(server.headers[0]?.authorization).toBe('Bearer probe-key')
@@ -504,10 +516,10 @@ const RECORDED_LISTINGS = [
     file: 'openrouter-2026-09-02.json',
     api: 'openai-completions',
     models: [
-      { id: 'anthropic/claude-fable-5.1', name: 'Anthropic: Claude Fable 5.1', contextWindow: 1_000_000, maxTokens: 128_000 },
+      { id: 'anthropic/claude-fable-5.1', name: 'Anthropic: Claude Fable 5.1', contextWindow: 1_000_000, maxTokens: 128_000, inputModalities: ['text', 'image'] },
       // The router's own aggregate route reports no completion cap.
-      { id: 'openrouter/auto-beta', name: 'Auto Router (Beta)', contextWindow: 2_000_000 },
-      { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek: DeepSeek V4 Flash 0423', contextWindow: 1_048_576, maxTokens: 384_000 },
+      { id: 'openrouter/auto-beta', name: 'Auto Router (Beta)', contextWindow: 2_000_000, inputModalities: ['text', 'image'] },
+      { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek: DeepSeek V4 Flash 0423', contextWindow: 1_048_576, maxTokens: 384_000, inputModalities: ['text'] },
     ],
   },
   {

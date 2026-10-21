@@ -33,7 +33,7 @@ describe('Anima personality preferences', () => {
     const config = Config({ dataRoot: 'test-data' })
 
     expect(config.enabled.get()).toBe(true)
-    expect(config.nickname.get()).toBe('Anima')
+    expect(config.nickname.get()).toBe('小琦')
     expect(personalityContext(config)).toContain('Use a friendly, professional tone.')
   })
 })

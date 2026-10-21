@@ -56,6 +56,7 @@ describe('Desktop Browser Sidebar coordinator', () => {
       controllers,
       sessionControllersChanged: createSnapshotStore(0),
       retainSessionView: async () => () => {},
+      whenSessionAdopted: async () => {},
       openTab: vi.fn(),
       closeTab: vi.fn(),
     })
@@ -67,5 +68,162 @@ describe('Desktop Browser Sidebar coordinator', () => {
       status: 'success',
       value: { kind: 'tabs', tabs: [{ tabId: TAB_A, active: true }], truncated: false },
     })
+  })
+
+  it('opens a Browser tab in a background Session only after its store is adopted', async () => {
+    const openTabs = createSnapshotStore<readonly SidebarRightOpenTab[]>([])
+    const controllers = new Map<SessionId, BrowserInjected>()
+    const sessionControllersChanged = createSnapshotStore(0)
+    let adopt = (): void => {}
+    const adopted = new Promise<void>((resolve) => { adopt = resolve })
+    const retained = vi.fn(async () => () => {})
+    const whenSessionAdopted = vi.fn(() => adopted)
+    const openTab = vi.fn((sessionId: SessionId, url: string) => {
+      openTabs.set([{ sessionId, tabId: TAB_A, kind: 'browser', contentId: 'sidebar://browser/a' }])
+      controllers.set(sessionId, injected(TAB_A, browserState(url, 'Opened page', false)))
+      sessionControllersChanged.set(sessionControllersChanged.getSnapshot() + 1)
+    })
+    const handler = createDesktopBrowserAutomationHandler({
+      openTabs,
+      controllers,
+      sessionControllersChanged,
+      retainSessionView: retained,
+      whenSessionAdopted,
+      openTab,
+      closeTab: vi.fn(),
+    })
+    const command: DesktopBrowserTabCommand = {
+      requestId: 1,
+      sessionId: SESSION_A,
+      operation: { kind: 'tabs.open', url: 'https://background.example/', newTab: true },
+    }
+
+    const result = handler(command, new AbortController().signal)
+    await vi.waitFor(() => { expect(retained).toHaveBeenCalledOnce() })
+    expect(whenSessionAdopted).toHaveBeenCalledWith(SESSION_A, expect.any(AbortSignal))
+    expect(openTab).not.toHaveBeenCalled()
+
+    adopt()
+    await expect(result).resolves.toEqual({
+      status: 'success',
+      value: { kind: 'tab', tabId: TAB_A, active: false },
+    })
+    expect(openTab).toHaveBeenCalledExactlyOnceWith(SESSION_A, 'https://background.example/')
+  })
+
+  it('closes a Browser tab in a background Session only after its store is adopted', async () => {
+    const openTabs = createSnapshotStore<readonly SidebarRightOpenTab[]>([
+      { sessionId: SESSION_A, tabId: TAB_A, kind: 'browser', contentId: 'sidebar://browser/a' },
+    ])
+    const controllers = new Map<SessionId, BrowserInjected>()
+    let adopt = (): void => {}
+    const adopted = new Promise<void>((resolve) => { adopt = resolve })
+    const release = vi.fn()
+    const retained = vi.fn(async () => release)
+    const whenSessionAdopted = vi.fn(() => adopted)
+    let isAdopted = false
+    const closeTab = vi.fn((sessionId: SessionId, tabId: TabId) => {
+      if (!isAdopted) return
+      openTabs.set(openTabs.getSnapshot().filter(tab => tab.sessionId !== sessionId || tab.tabId !== tabId))
+    })
+    const handler = createDesktopBrowserAutomationHandler({
+      openTabs,
+      controllers,
+      sessionControllersChanged: createSnapshotStore(0),
+      retainSessionView: retained,
+      whenSessionAdopted,
+      openTab: vi.fn(),
+      closeTab,
+    })
+    const command: DesktopBrowserTabCommand = {
+      requestId: 1,
+      sessionId: SESSION_A,
+      operation: { kind: 'tabs.close', tabId: TAB_A },
+    }
+
+    const result = handler(command, new AbortController().signal)
+    await vi.waitFor(() => { expect(retained).toHaveBeenCalledOnce() })
+    expect(whenSessionAdopted).toHaveBeenCalledWith(SESSION_A, expect.any(AbortSignal))
+    expect(closeTab).not.toHaveBeenCalled()
+    expect(release).not.toHaveBeenCalled()
+
+    isAdopted = true
+    adopt()
+    await expect(result).resolves.toEqual({
+      status: 'success',
+      value: { kind: 'closed', tabId: TAB_A, closed: true },
+    })
+    expect(closeTab).toHaveBeenCalledExactlyOnceWith(SESSION_A, TAB_A)
+    expect(release).toHaveBeenCalledOnce()
+  })
+
+  it('cleans up the retained view and reports cancellation when close is aborted during adoption', async () => {
+    const openTabs = createSnapshotStore<readonly SidebarRightOpenTab[]>([
+      { sessionId: SESSION_A, tabId: TAB_A, kind: 'browser', contentId: 'sidebar://browser/a' },
+    ])
+    const controllers = new Map<SessionId, BrowserInjected>()
+    const release = vi.fn()
+    const retained = vi.fn(async () => release)
+    const abortController = new AbortController()
+    const whenSessionAdopted = vi.fn((_sessionId: SessionId, signal: AbortSignal) => new Promise<void>((_, reject) => {
+      signal.addEventListener('abort', () => { reject(new Error('Sidebar Session adoption was cancelled')) })
+    }))
+    const closeTab = vi.fn()
+    const handler = createDesktopBrowserAutomationHandler({
+      openTabs,
+      controllers,
+      sessionControllersChanged: createSnapshotStore(0),
+      retainSessionView: retained,
+      whenSessionAdopted,
+      openTab: vi.fn(),
+      closeTab,
+    })
+    const command: DesktopBrowserTabCommand = {
+      requestId: 1,
+      sessionId: SESSION_A,
+      operation: { kind: 'tabs.close', tabId: TAB_A },
+    }
+
+    const result = handler(command, abortController.signal)
+    await vi.waitFor(() => { expect(retained).toHaveBeenCalledOnce() })
+    expect(whenSessionAdopted).toHaveBeenCalledWith(SESSION_A, expect.any(AbortSignal))
+
+    abortController.abort()
+    await expect(result).resolves.toEqual({
+      status: 'error',
+      message: 'Browser command was cancelled',
+    })
+    expect(closeTab).not.toHaveBeenCalled()
+    expect(release).toHaveBeenCalledOnce()
+  })
+
+  it('rejects closing an unknown tab without retaining a view or waiting for adoption', async () => {
+    const openTabs = createSnapshotStore<readonly SidebarRightOpenTab[]>([])
+    const controllers = new Map<SessionId, BrowserInjected>()
+    const retained = vi.fn(async () => () => {})
+    const whenSessionAdopted = vi.fn(async () => {})
+    const closeTab = vi.fn()
+    const handler = createDesktopBrowserAutomationHandler({
+      openTabs,
+      controllers,
+      sessionControllersChanged: createSnapshotStore(0),
+      retainSessionView: retained,
+      whenSessionAdopted,
+      openTab: vi.fn(),
+      closeTab,
+    })
+    const command: DesktopBrowserTabCommand = {
+      requestId: 1,
+      sessionId: SESSION_A,
+      operation: { kind: 'tabs.close', tabId: TAB_A },
+    }
+
+    await expect(handler(command, new AbortController().signal)).resolves.toEqual({
+      status: 'error',
+      message: 'Browser tab is not open in this Session',
+    })
+    expect(retained).not.toHaveBeenCalled()
+    expect(whenSessionAdopted).not.toHaveBeenCalled()
+    expect(closeTab).not.toHaveBeenCalled()
   })
 })

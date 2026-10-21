@@ -25,6 +25,8 @@ Use this package to give an agent a named tool that delegates work to a configur
 <a id="use-this-package"></a>
 ## Use this package
 
+The Host settings owner also stores `defaultModels` (zero or one exact route) and `delegateComplexTasks` (default `false`). An instance with `modelSelectionSettings: true` or `globalModelDefaults: true` reads the saved default before each delegation and validates it through the live LLM runtime before creating a child. Clearing the default preserves instance defaults or inheritance. `globalModelDefaults` does not expose route-selection fields or register discovery. Continuable instances include the enabled complex-task decomposition and review preference in their logged prompt section.
+
 Mount one instance per delegation target, each with a distinct `toolName`. The tool exists exactly while its provider does, so sibling load order and provider reloads never strand it.
 
 ### Minimal configuration

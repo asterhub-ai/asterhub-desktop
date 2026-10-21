@@ -17,6 +17,14 @@ function unpackPattern(path) {
     character => character === '{' || character === '}' ? '?' : `[${character}]`).replace(/^!/u, '@(!)')
 }
 
+function unpackRelativePath(appDir, file) {
+  // Builder's ASAR unpack filter slices the appDir prefix from every source path
+  // instead of resolving it, so external staged sources need the same suffix.
+  const prefix = appDir.endsWith(sep) ? appDir : appDir + sep
+  const sliced = file.substring(prefix.length)
+  return sliced.startsWith(sep) ? sliced.slice(1) : sliced
+}
+
 /**
  * Install source-relative PE patterns in the configuration consumed by electron-builder.
  * @param {import('app-builder-lib').BeforePackContext} context Active builder configuration and cleanup owner.
@@ -44,7 +52,7 @@ export async function prepareWindowsAsarUnpack(context, sourceRoot) {
   }
   const existing = config.asarUnpack ?? []
   config.asarUnpack = [...(typeof existing === 'string' ? [existing] : existing),
-    ...files.map(file => unpackPattern(relative(appDir, join(copyRoot, file))))]
+    ...files.map(file => unpackPattern(unpackRelativePath(appDir, join(copyRoot, file))))]
   return files
 }
 

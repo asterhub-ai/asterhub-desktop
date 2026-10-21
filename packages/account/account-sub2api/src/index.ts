@@ -99,9 +99,9 @@ function paymentServiceUnavailable(): RemoteError {
   return new RemoteError('gateway/internal', '支付暂不可用，请稍后重试', {})
 }
 
-/** Convert the upstream balance to two-decimal compute credits. */
-function computeCredits(balance: number): number {
-  return Number((balance * 100).toFixed(2))
+/** Convert an upstream amount (balance or actual cost) to two-decimal compute credits. */
+function computeCredits(amount: number): number {
+  return Number((amount * 100).toFixed(2))
 }
 
 /** One sub2api authentication response. */
@@ -313,7 +313,7 @@ class Sub2ApiClient {
     const tokens = Number(body.total_tokens)
     const actualCost = Number(body.total_actual_cost)
     if (![requests, tokens, actualCost].every(Number.isFinite)) throw accountServiceUnavailable()
-    return { requests, tokens, credits: Number((actualCost * 10).toFixed(2)) }
+    return { requests, tokens, credits: computeCredits(actualCost) }
   }
 
   async getDashboardStats(accessToken: string): Promise<Sub2ApiDashboardStats> {
@@ -378,19 +378,44 @@ class Sub2ApiClient {
   }
 
   async getPaymentMethods(accessToken: string): Promise<AccountPaymentMethod[]> {
-    const body = await this.request('payment/checkout-info', {}, accessToken) as Sub2ApiCheckoutInfo
-    return Object.entries(body.methods ?? {})
+    const body = await this.request('payment/checkout-info', {}, accessToken)
+    const positive = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0
+    const multiplier = body.balance_recharge_multiplier
+    const mode = body.recharge_bonus_mode
+    const tiers = body.recharge_bonus_tiers
+    const validTiers = Array.isArray(tiers) && tiers.every((tier: unknown) => {
+      if (!tier || typeof tier !== 'object') return false
+      const nonnegativeDecimal = (value: unknown): value is number => typeof value === 'number'
+        && Number.isFinite(value) && value >= 0 && Math.abs(value * 100 - Math.round(value * 100)) < 1e-8
+      return 'min_amount' in tier && nonnegativeDecimal(tier.min_amount)
+        && 'bonus_percent' in tier && nonnegativeDecimal(tier.bonus_percent) && tier.bonus_percent <= 1000
+    })
+    const pricing: AccountPaymentMethod['pricing'] = positive(multiplier) && (mode === 'bonus' || mode === 'discount') && validTiers
+      ? {
+        multiplier, bonusMode: mode,
+        bonusTiers: tiers.map((tier: { min_amount: number; bonus_percent: number }) => ({
+          minAmount: tier.min_amount, bonusPercent: tier.bonus_percent,
+        })),
+      } : undefined
+    const methods = body.methods
+    if (!methods || typeof methods !== 'object' || Array.isArray(methods)) return []
+    return Object.entries(methods)
+      .filter((entry): entry is [string, NonNullable<Sub2ApiCheckoutInfo['methods']>[string]] => {
+        const method: unknown = entry[1]
+        return !!method && typeof method === 'object' && !Array.isArray(method)
+          && (!('available' in method) || typeof method.available === 'boolean')
+      })
       .filter(([, method]) => method.available !== false)
       .map(([id, method]) => ({
         id,
         label: typeof method.display_name === 'string' && method.display_name.trim()
           ? method.display_name.trim()
           : id,
-        ...(typeof method.currency === 'string' ? { currency: method.currency } : {}),
-        ...(typeof method.single_min === 'number' && Number.isFinite(method.single_min)
-          ? { minAmount: method.single_min } : {}),
-        ...(typeof method.single_max === 'number' && Number.isFinite(method.single_max)
-          ? { maxAmount: method.single_max } : {}),
+        ...(typeof method.currency === 'string' && /^[A-Z]{3}$/u.test(method.currency)
+          ? { currency: method.currency } : {}),
+        ...(pricing ? { pricing } : {}),
+        ...(positive(method.single_min) ? { minAmount: method.single_min } : {}),
+        ...(positive(method.single_max) ? { maxAmount: method.single_max } : {}),
       }))
   }
 
@@ -1046,7 +1071,7 @@ export class AccountSub2apiService extends TypertRemoteService {
       const cumulative: UsagePeriodSnapshot = {
         requests,
         tokens,
-        credits: Number((actualCost * 10).toFixed(2)),
+        credits: computeCredits(actualCost),
       }
       return { cumulative, last7Days, today }
     })

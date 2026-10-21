@@ -3,6 +3,7 @@
 /** Simplified Chinese dictionary and key source of truth. */
 export const zh = {
   productName: 'AsterHub',
+  'number.locale': 'zh-CN',
   nav: '账户',
   usageNav: '用量统计',
   title: '账户',
@@ -40,7 +41,11 @@ export const zh = {
   consumedCredits: '消耗积分',
   refresh: '刷新',
   topUpTitle: '充值',
-  topUpAmountLabel: '金额',
+  topUpAmountLabel: '自定义金额',
+  estimatedCredits: '预计到账积分：',
+  previewUnavailable: '充值预览不可用：缺少有效金额或已验证的充值倍率',
+  paymentBase: '实付基础金额：',
+  feesExcluded: '支付手续费另算，最终金额以支付页面为准',
   paymentMethod: '支付方式',
   paymentAlipay: '支付宝',
   paymentWeChat: '微信支付',
@@ -62,6 +67,7 @@ export type AccountLocaleKey = keyof typeof zh
 /** English dictionary checked against the Chinese key set. */
 export const en = {
   productName: 'AsterHub',
+  'number.locale': 'en',
   nav: 'Account',
   usageNav: 'Usage',
   title: 'Account',
@@ -99,7 +105,11 @@ export const en = {
   consumedCredits: 'Credits used',
   refresh: 'Refresh',
   topUpTitle: 'Top up',
-  topUpAmountLabel: 'Amount',
+  topUpAmountLabel: 'Custom amount',
+  estimatedCredits: 'Estimated credits:',
+  previewUnavailable: 'Preview unavailable: enter a valid amount and verified recharge pricing is required.',
+  paymentBase: 'Payment base:',
+  feesExcluded: 'Payment fees are extra. The checkout page shows the final amount.',
   paymentMethod: 'Payment method',
   paymentAlipay: 'Alipay',
   paymentWeChat: 'WeChat Pay',

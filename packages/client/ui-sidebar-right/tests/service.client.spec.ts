@@ -8,6 +8,7 @@
  * them and nothing else, and against the Tab domain, because an open is not
  * complete until the tab knows how it was navigated to.
  */
+import { getEventListeners } from 'node:events'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -621,6 +622,74 @@ describe('SidebarRightController — a tab\'s own actions', () => {
     expect(held.signal.aborted).toBe(true)
     second()
     third()
+  })
+})
+
+/** A controller with no adopted store yet, so adoption waits can be observed. */
+function adoptionHarness() {
+  const ctx = new Context()
+  const tabs = new SidebarRightTabRegistry(ctx)
+  const { controller, adopt } = createSidebarRightController(tabs, vi.fn(), {
+    autoFullscreen: () => false,
+    openWithFocus: (_sessionId, open) => { open() },
+    closeWithFocus: (_sessionId, _paneId, close) => { close() },
+  })
+  return { controller, adopt }
+}
+
+describe('SidebarRightController — Session store adoption', () => {
+  it('settles whenSessionAdopted only after that Session\'s store is adopted', async () => {
+    const { controller, adopt } = adoptionHarness()
+    const lifetime = new AbortController()
+    let settled = false
+    const waiting = controller.whenSessionAdopted(SESSION, lifetime.signal).then(() => { settled = true })
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    const instance = createSidebarRightStore(() => ({ kind: 'guide', title: 'seed' })).create(SESSION)
+    const release = adopt(SESSION, instance)
+    await waiting
+    expect(settled).toBe(true)
+    // An already adopted Session settles immediately.
+    await expect(controller.whenSessionAdopted(SESSION, lifetime.signal)).resolves.toBeUndefined()
+    // A released adoption makes the next caller wait for the next store.
+    release()
+    settled = false
+    const again = controller.whenSessionAdopted(SESSION, lifetime.signal).then(() => { settled = true })
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    const next = adopt(SESSION, instance)
+    await again
+    expect(settled).toBe(true)
+    next()
+  })
+
+  it('rejects an aborted adoption wait without adopting a store or leaving a listener', async () => {
+    const { controller, adopt } = adoptionHarness()
+    // Already aborted before the wait starts: no listener and no adoption.
+    await expect(controller.whenSessionAdopted(SESSION, AbortSignal.abort()))
+      .rejects.toThrow('Sidebar Session adoption was cancelled')
+    const lifetime = new AbortController()
+    const waiting = controller.whenSessionAdopted(SESSION, lifetime.signal)
+    expect(getEventListeners(lifetime.signal, 'abort')).toHaveLength(1)
+    lifetime.abort()
+    await expect(waiting).rejects.toThrow('Sidebar Session adoption was cancelled')
+    expect(getEventListeners(lifetime.signal, 'abort')).toHaveLength(0)
+    // The aborted wait adopted nothing; a store created afterwards is a new wait.
+    expect(controller.tabsIn(SESSION)).toEqual([])
+    const release = adopt(SESSION, createSidebarRightStore(() => ({ kind: 'guide', title: 'seed' })).create(SESSION))
+    await expect(controller.whenSessionAdopted(SESSION, new AbortController().signal)).resolves.toBeUndefined()
+    release()
+  })
+
+  it('rejects pending adoption waits when the plugin is disposed', async () => {
+    const { controller } = adoptionHarness()
+    const lifetime = new AbortController()
+    const waiting = controller.whenSessionAdopted(SESSION, lifetime.signal)
+    controller.dispose()
+    await expect(waiting).rejects.toThrow('Sidebar Session adoption was closed')
+    expect(getEventListeners(lifetime.signal, 'abort')).toHaveLength(0)
+    await expect(controller.whenSessionAdopted(SESSION, new AbortController().signal))
+      .rejects.toThrow('Sidebar Session adoption was closed')
   })
 })
 

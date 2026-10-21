@@ -17,6 +17,7 @@ import koffi from 'koffi'
 
 import { buildExplicitAccess, grantWrite, lockFilePath, revokeWrite, withPathLock } from '../src/acl.ts'
 import { AclSandbox } from '../src/index.ts'
+import { hasLogonSid } from './token-capability.ts'
 import { createRestrictedToken, makeWellKnownSid } from '../src/token.ts'
 import { allocOverlapped, allocPtrSlot, decodePtr, isInvalidHandle, isNullPtr, win32 } from '../src/ffi.ts'
 import type { NativePtr, Win32Bindings } from '../src/ffi.ts'
@@ -364,7 +365,8 @@ describe.skipIf(!isWin32)('ACL editing', () => {
     }
   })
 
-  it('interleaved sandbox instances: A.init → B.init → A.dispose → B.dispose leaves BOTH standing workspace ACEs (the per-workspace reuse cache)', async () => {
+  // AclSandbox.init() requires a token logon SID (SE_GROUP_LOGON_ID), which is absent in Windows service tokens.
+  it.skipIf(!hasLogonSid())('interleaved sandbox instances: A.init → B.init → A.dispose → B.dispose leaves BOTH standing workspace ACEs (the per-workspace reuse cache)', async () => {
     const api = await win32()
     const dir = scratch()
     const sandboxA = new AclSandbox({ writableDirs: [dir], tempDir: null, writeSid: 'S-1-4-9000-1', mode: 'workspace-write' })
@@ -381,7 +383,8 @@ describe.skipIf(!isWin32)('ACL editing', () => {
     expect(aces.some(ace => ace.sid === 'S-1-4-9000-2')).toBe(true)
   })
 
-  it('dispose revokes the revocable temp ACE and label and keeps the standing workspace pair (self-managed flow)', async () => {
+  // AclSandbox.init() requires a token logon SID (SE_GROUP_LOGON_ID), which is absent in Windows service tokens.
+  it.skipIf(!hasLogonSid())('dispose revokes the revocable temp ACE and label and keeps the standing workspace pair (self-managed flow)', async () => {
     const api = await win32()
     const workspaceDir = scratch()
     const tempDir = scratch()
@@ -494,7 +497,8 @@ describe.skipIf(!isWin32)('ACL editing', () => {
     }
   })
 
-  it('the applied grant mask carries DELETE and FILE_DELETE_CHILD (never WRITE_DAC/WRITE_OWNER)', async () => {
+  // AclSandbox.init() requires a token logon SID (SE_GROUP_LOGON_ID), which is absent in Windows service tokens.
+  it.skipIf(!hasLogonSid())('the applied grant mask carries DELETE and FILE_DELETE_CHILD (never WRITE_DAC/WRITE_OWNER)', async () => {
     const api = await win32()
     const dir = scratch()
     const sandbox = new AclSandbox({ writableDirs: [dir], tempDir: null, writeSid: 'S-1-4-1234-5', mode: 'workspace-write' })

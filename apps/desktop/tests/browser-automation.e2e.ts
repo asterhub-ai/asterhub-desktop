@@ -36,7 +36,10 @@ const electron = vi.hoisted(() => {
       let url = 'about:blank'
       let title = ''
       const loading = false
-      const isolatedWindow = (globalThis as unknown as { document?: Document }).document?.defaultView
+      const doc = 'document' in globalThis && typeof globalThis.document === 'object' && globalThis.document !== null
+        ? (globalThis.document as Document)
+        : undefined
+      const isolatedWindow = doc?.defaultView
       const guest = Object.assign(new EE(), {
         getTitle: () => title,
         isDestroyed: () => this.destroyed,
@@ -63,7 +66,10 @@ const electron = vi.hoisted(() => {
         },
         sendInputEvent: vi.fn(),
         insertText: vi.fn((text: string) => {
-          const active = (globalThis as unknown as { document?: Document }).document?.activeElement as HTMLInputElement | null
+          const currentDoc = 'document' in globalThis && typeof globalThis.document === 'object' && globalThis.document !== null
+            ? (globalThis.document as Document)
+            : undefined
+          const active = currentDoc?.activeElement as HTMLInputElement | null
           if (active && 'value' in active) {
             active.value += text
           }

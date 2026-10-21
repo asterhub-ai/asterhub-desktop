@@ -39,6 +39,7 @@
  * keys under each package's file config, and no package config defines it).
  */
 import { globSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { execa } from 'execa'
@@ -50,6 +51,7 @@ import {
   repositoryClientBuildEnvironment,
 } from './client-build-environment.ts'
 import { pnpmInvocation } from './pnpm-invocation.ts'
+import { resolveDevelopmentHome, sourceDevelopmentHome } from './development-home.mjs'
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url))
 
@@ -415,8 +417,12 @@ if (isMain) {
     // the bundle gets.
     spawnStage(supervisor, 'vite build --watch', 'pnpm', ['--filter', SHELL_PACKAGE, 'run', 'watch'], false)
     // The same launch vector as the root `dsh` script, so the served Host runs
-    // from source exactly as `pnpm dsh web` would.
+    // from source exactly as `pnpm dsh web` would, with the isolated development
+    // Harness home the packaged application never reads.
     if (options.serve) {
+      const home = resolveDevelopmentHome({ defaultHome: sourceDevelopmentHome(repoRoot), env: process.env, userHome: homedir() })
+      process.env.DSH_HOME = home
+      console.error(`dev-web: DSH_HOME=${home}`)
       spawnStage(supervisor, 'dsh web', process.execPath, [
         '--import', 'tsx/esm', 'apps/cli/src/bin.ts', 'web', ...options.appArgs,
       ], false)

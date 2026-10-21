@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { mkdtemp, mkdir, readFile, readdir, rm, symlink } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { createServer, type Socket } from 'node:net'
@@ -15,8 +16,9 @@ const sandboxUsable = await (async () => {
   const probe = new Context()
   try {
     await probe.plugin(Sandbox, {})
-    await probe.sandbox.confine([process.execPath, '--version'], { mode: 'read-only', workspaceRoot: process.cwd() })
-    return true
+    const confined = await probe.sandbox.confine([process.execPath, '-e', 'process.exit(0)'], { mode: 'read-only', workspaceRoot: process.cwd() })
+    const result = spawnSync(confined.argv[0]!, confined.argv.slice(1), { stdio: 'ignore', timeout: 5000 })
+    return result.status === 0
   } catch (error: unknown) {
     if (error instanceof SandboxUnavailableError) return false
     throw error

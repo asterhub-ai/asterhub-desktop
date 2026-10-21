@@ -9,7 +9,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
-import SessionStore, { SessionId, type Session } from '@deepseek-ai/dsh-session'
+import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import { ToolCallId, createToolResultMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
 import UserQuestionService, { USER_QUESTION_CANCELED_CODE } from '@deepseek-ai/dsh-user-questions'
 
@@ -20,28 +20,6 @@ interface LiveAgent extends Agent {
   queuedMessages: UserMessage[]
 }
 
-function stubAgent(id: string, delegationDepth = 0): Agent {
-  const agentId = id as Agent['id']
-  return {
-    id: agentId,
-    session: undefined as unknown as Session,
-    status: 'idle',
-    parent: undefined,
-    roots: () => [],
-    followup: () => {},
-    cancel: () => {},
-    whenIdle: async () => {},
-    queue: { size: 0, enqueue: () => {}, replace: () => {} },
-    inbox: { claimed: false, claimedTurn: null, nextTurn: [], nextStep: [], pending: null },
-    delegationDepth,
-    model: null,
-    attach: () => {},
-    fork: async () => { throw new Error('not implemented') },
-    step: async () => { throw new Error('not implemented') },
-    abort: () => {},
-    inspect: () => { throw new Error('not implemented') },
-  } as unknown as Agent
-}
 
 function liveAgent(ctx: Context, id: string): LiveAgent {
   const queuedTurns: UserMessage[] = []
@@ -56,13 +34,33 @@ function liveAgent(ctx: Context, id: string): LiveAgent {
     },
     reason: 'initial',
   })
-  return Object.assign(stubAgent(id), {
+  const unsupported = (): never => { throw new Error('Unexpected Agent operation in question-cancellation fixture') }
+  return {
+    id: session.id,
+    options: {},
+    ctx,
     session,
+    status: 'idle',
+    inbox: {
+      nextTurn: queuedTurns,
+      nextStep: queuedMessages,
+      clear: unsupported,
+      append: unsupported,
+      prepend: unsupported,
+      replace: unsupported,
+      remove: unsupported,
+      splice: unsupported,
+    },
+    followup: unsupported,
+    send: unsupported,
+    cancel: unsupported,
+    whenIdle: unsupported,
+    runMaintenance: unsupported,
     steer,
     inject,
     queuedTurns,
     queuedMessages,
-  })
+  }
 }
 
 async function makeContext() {

@@ -177,6 +177,7 @@ test('registers into the sidebar', async ({ remote, start }) => {
 这些限制说明本测试台如何被消费。它们是当前包约束，不是任务积压。
 
 - **整体档不运行生成的 Remote 客户端**——`remote.<ns>` 代理转发位置参数，不经过生成的 zod 校验、wire 名映射或 scoped 身份注入；mock handler 直接接收这些参数，生成客户端仍由 built-artifact e2e 车道覆盖。
+- **源码装配对定时任务与语音输入使用共享 mount 源入口和空 Remote 描述符**——避免源码测试导入生成的 Remote；此处验证 UI 装配和生命周期，不验证生成 Remote 校验，后者由构建产物 e2e 覆盖。
 - **代理调用绕过 Gateway 客户端的 `invoke` 与 `invokeStream`**——不做 `$mount` 生命周期检查，流失败不经 `normalizeConnectionStream` 重新标记，一元拒绝由代理自己用 Gateway 客户端导出的 `carrierFailure` 与 `cancelledFailure` 折叠。`ctx.remote.$stream`、`$on`、`$host` 是真 Gateway 客户端的。
 - **未声明的端点按一元调用发出**——代理从 mock 的登记学到每个端点的模式；spec 既没给脚本也没声明（`RemoteTable.streams`、`mock.stream(endpoint)`）的流端点记为 `unary` 漏配，产品代码收到的是折叠结果而不是失败的流。`remoteDefaultResponses` 声明了 roster 启动后才打开的流；无论哪种，`dispose()` 都会让测试失败。
 - **本包的 client 编译程序加了 `node` 环境类型**，好让 roster 读取器使用 `node:fs`；slot 档的源码也在这些类型下编译。

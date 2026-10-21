@@ -423,7 +423,7 @@ async function installRuntimeAssets(
 async function resolveJavaArchive(asset: Neo4jPlatformAsset, signal: AbortSignal, fetcher: typeof fetch): Promise<JavaArchive> {
   const response = await fetcher(asset.javaMetadataUrl, { signal, redirect: 'error' })
   if (!response.ok) throw new Error(`Adoptium Java metadata request failed with HTTP ${response.status}.`)
-  const value = await response.json() as unknown
+  const value: unknown = await response.json()
   if (!Array.isArray(value) || value.length !== 1 || !isRecord(value[0])) throw new Error('Adoptium returned an invalid Java asset manifest.')
   const metadata = value[0]
   const binaries = metadata.binaries
@@ -517,7 +517,7 @@ async function readOrCreateCredentials(dataRoot: string): Promise<CredentialReco
     const info = await lstat(path)
     if (info.isSymbolicLink() || !info.isFile()) throw new Error('Anima Neo4j credential path is not a regular file.')
     if (process.platform !== 'win32' && (info.mode & 0o077) !== 0) throw new Error('Anima Neo4j credentials are not owner-only.')
-    const record = JSON.parse(await readFile(path, 'utf8')) as unknown
+    const record: unknown = JSON.parse(await readFile(path, 'utf8'))
     if (!isCredentialRecord(record)) throw new Error('Anima Neo4j credential file is invalid.')
     return record
   } catch (error) {

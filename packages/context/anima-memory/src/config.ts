@@ -95,7 +95,7 @@ export const Config = z.object({
   capturePageSize: z.number().step(1).min(1).max(4096).default(128),
   startupTimeoutMs: z.number().step(1).min(1000).max(300000).default(120000),
   shutdownTimeoutMs: z.number().step(1).min(1000).max(300000).default(30000),
-  nickname: z.string().min(1).max(40).default('Anima').volatile(),
+  nickname: z.string().min(1).max(40).default('小琦').volatile(),
   tone: z.union(['direct', 'balanced', 'warm']).default('balanced').volatile(),
   responseDetail: z.union(['concise', 'balanced', 'detailed']).default('balanced').volatile(),
   initiative: z.union(['reserved', 'balanced', 'proactive']).default('balanced').volatile(),

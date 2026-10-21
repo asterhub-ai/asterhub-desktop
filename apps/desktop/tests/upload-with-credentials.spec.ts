@@ -24,6 +24,8 @@ async function check(mode: 'valid' | 'plaintext' | 'blank' | 'missing' | 'upload
     entry = join(scripts, 'upload-with-credentials.ps1')
     await copyFile(launcher, entry)
     await symlink(fileURLToPath(new URL('../../../node_modules', import.meta.url)), join(root, 'node_modules'), 'junction')
+    await writeFile(join(root, 'package.json'), JSON.stringify({ type: 'module' }))
+    await writeFile(join(root, 'apps/desktop/package.json'), JSON.stringify({ type: 'module' }))
     // Replace only the child uploader: this fixture must never contact real release storage.
     await writeFile(join(scripts, 'upload-target.ts'), `
       import assert from 'node:assert/strict'
@@ -142,4 +144,5 @@ describe.skipIf(process.platform !== 'win32')('Windows upload credentials', () =
     expect(result.output).not.toContain('fixture-secret')
     expect(result.output).not.toContain('private service details')
   })
+
 })

@@ -136,10 +136,17 @@ describe('LlmRuntime', () => {
       'account balance depleted',
       'usage-limit-exceeded',
       'out of credits',
+      'balance is insufficient',
+      'credits not enough',
+      '余额不足，请充值',
+      '积分已用完',
+      '额度已耗尽',
       'OpenAI API error (429): You exceeded your current quota, please check your plan and billing details.',
     ]) expect(isQuotaExceededError(detail)).toBe(true)
     expect(isQuotaExceededError('HTTP 429: rate limit reached')).toBe(false)
     expect(isQuotaExceededError('quota resets in one minute')).toBe(false)
+    expect(isQuotaExceededError('HTTP 403: invalid api key')).toBe(false)
+    expect(isQuotaExceededError('network timeout')).toBe(false)
   })
 
   it('errorChain renders the full cause chain of a wrapped transport failure', () => {
@@ -528,7 +535,6 @@ describe('LlmRuntime', () => {
           [Symbol.asyncIterator](): AsyncIterator<StreamChunk> {
             return {
               // Third-party adapters can reject with arbitrary values.
-              // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Tests a non-Error provider rejection.
               next: () => Promise.reject('plain provider failure'),
             }
           },

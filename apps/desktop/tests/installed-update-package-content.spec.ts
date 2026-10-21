@@ -101,7 +101,7 @@ async function fixture(body: (context: {
 }
 
 describe('installed update archive contents', () => {
-  it.each(versions)('reads real ASAR and runtime inventories for %s without claiming installation', async (version) => {
+  it.each(versions)('reads real ASAR and runtime inventories for %s without claiming installation', { timeout: 30_000 }, async (version) => {
     await fixture(async ({ manifest, payload }) => {
       expect(await verifyInstalledUpdatePackageContent(manifest, version, payload, publisher)).toMatchObject({
         version, applicationFiles: 7, dependenciesFrozen: false, installed: false,

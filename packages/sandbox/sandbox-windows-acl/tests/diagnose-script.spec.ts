@@ -79,8 +79,10 @@ function pwsh(command: string): string {
 }
 
 function runPowerShell(args: readonly string[], env?: NodeJS.ProcessEnv): ScriptRun {
+  const invocation = args.map(value => `'${value.replaceAll("'", "''")}'`).join(' ')
+  const command = `[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); $OutputEncoding = [System.Text.UTF8Encoding]::new(); & pwsh /NoLogo /NonInteractive /NoProfile ${invocation}; exit $LASTEXITCODE`
   try {
-    const stdout = execFileSync('pwsh', ['/NoLogo', '/NonInteractive', '/NoProfile', ...args], {
+    const stdout = execFileSync('pwsh', ['/NoLogo', '/NonInteractive', '/NoProfile', '-Command', command], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout,
@@ -100,7 +102,10 @@ function runScript(args: readonly string[], env?: NodeJS.ProcessEnv): ScriptRun 
 }
 
 function icacls(path: string, ...args: readonly string[]): string {
-  return execFileSync('icacls', [path, ...args], { encoding: 'utf8', timeout, windowsHide: true })
+  const invocation = [path, ...args].map(quote).join(' ')
+  const command = `$codePage = [Globalization.CultureInfo]::CurrentCulture.TextInfo.ANSICodePage; [Console]::OutputEncoding = [Text.Encoding]::GetEncoding($codePage); $output = & icacls ${invocation} | Out-String; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($output))`
+  const encoded = execFileSync('pwsh', ['/NoLogo', '/NonInteractive', '/NoProfile', '-Command', command], { encoding: 'ascii', timeout, windowsHide: true })
+  return Buffer.from(encoded.trim(), 'base64').toString('utf8')
 }
 
 function quote(value: string): string {

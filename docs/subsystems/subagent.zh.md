@@ -482,9 +482,18 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 Singleton settings owner read when delegation tools are composed for a Session.
 
 ```ts cordis-catalog
-/**
- * Read a detached selection preference for the next eligible Session composition.
- * @returns the enabled state and exact allowed routes.
+/** Read the default child route without exposing provider configuration.
+ * @returns A detached exact route, or null to preserve tool-instance defaults.
+ */
+defaultModel(): AllowedModelRoute | null
+
+/** Read whether complex tasks should be delegated by the top-level assistant.
+ * @returns The current persistent decomposition preference.
+ */
+delegatesComplexTasks(): boolean
+
+/** Read a detached selection preference for the next eligible Session composition.
+ * @returns The enabled state and exact allowed routes.
  */
 current(): SubagentModelSelectionSettings
 ```

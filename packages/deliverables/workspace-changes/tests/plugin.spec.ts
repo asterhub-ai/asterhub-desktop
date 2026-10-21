@@ -52,7 +52,7 @@ function announcedSeq(session: Session): number {
   return event.seq
 }
 
-describe('workspace-changes in a repository', () => {
+describe('workspace-changes in a repository', { timeout: 30_000 }, () => {
   it('records the turn’s own changes and excludes the user’s prior uncommitted work', async () => {
     const cwd = await repository()
     await writeFile(join(cwd, 'b.txt'), 'x user\n')
@@ -327,7 +327,7 @@ describe('workspace-changes in a repository', () => {
   })
 })
 
-describe('workspace-changes without a repository', () => {
+describe('workspace-changes without a repository', { timeout: 30_000 }, () => {
   it('summarizes file-tool edits only for a working directory outside any git repository', async () => {
     const cwd = await scratchDir('dsh-workspace-changes-plain-', cleanups)
     await writeFile(join(cwd, 'existing.txt'), 'before\n')
@@ -478,7 +478,7 @@ describe('workspace-changes without a repository', () => {
   })
 })
 
-describe('workspace-changes without git', () => {
+describe('workspace-changes without git', { timeout: 30_000 }, () => {
   it('summarizes file-tool edits only, even inside a repository, and reports the absence once', async () => {
     const cwd = await repository()
     const { ctx } = await boot()

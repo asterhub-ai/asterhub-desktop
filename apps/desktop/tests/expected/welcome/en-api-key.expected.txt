@@ -1,7 +1,7 @@
 AsterHub
 AsterHub
 Add an API key to get started
-Configure official DeepSeek models to start using Harness
+Sign in to start using models
 Enter API key [password]
 Save and continue [disabled]
 Set up later

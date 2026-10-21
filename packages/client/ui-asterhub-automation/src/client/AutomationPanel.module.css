@@ -2,6 +2,8 @@
   display: flex;
   height: 100%;
   background: var(--dsw-alias-bg-surface);
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 .listPane {
@@ -58,7 +60,7 @@
   padding: 12px 16px;
   margin-bottom: 14px;
   border: 1px solid var(--dsw-alias-state-warning-primary, var(--dsw-alias-state-business-primary));
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-sm);
   background: var(--dsw-alias-state-warning-bg-subtle, var(--dsw-alias-bg-layer-2));
   font: 400 13px/20px var(--dsw-font-family);
   color: var(--dsw-alias-label-primary);
@@ -80,7 +82,7 @@
   height: 28px;
   padding: 0 10px;
   border: none;
-  border-radius: 14px;
+  border-radius: var(--dsw-radius-panel);
   background: transparent;
   font: 400 14px/20px var(--dsw-font-family);
   color: var(--dsw-alias-label-secondary);
@@ -102,8 +104,8 @@
   align-items: center;
   height: 40px;
   margin-bottom: 14px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 10px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-bg-layer-2);
   transition: border-color 0.15s ease;
 }
@@ -152,7 +154,7 @@
   height: 28px;
   padding: 0;
   border: none;
-  border-radius: 14px;
+  border-radius: var(--dsw-radius-panel);
   background: transparent;
   color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
@@ -187,7 +189,7 @@
   width: 100%;
   padding: 12px 16px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-sm);
   background: transparent;
   text-align: left;
   cursor: pointer;
@@ -199,7 +201,7 @@
 }
 
 .row:focus-visible {
-  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: -2px;
 }
 
@@ -303,7 +305,7 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--dsw-alias-border-l1);
+  border-left: 0.5px solid var(--dsw-alias-border-l1);
   background: var(--dsw-alias-bg-layer-1);
 }
 
@@ -317,7 +319,7 @@
   justify-content: space-between;
   height: 44px;
   padding: 0 16px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
 }
 
 .detailTabs {
@@ -384,7 +386,7 @@
   flex-direction: column;
   gap: 4px;
   padding: 12px 0;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
 }
 
 .detailRowLabel {
@@ -403,7 +405,7 @@
   display: flex;
   gap: 8px;
   padding: 16px;
-  border-top: 1px solid var(--dsw-alias-border-l1);
+  border-top: 0.5px solid var(--dsw-alias-border-l1);
 }
 
 .actionButton {
@@ -428,7 +430,7 @@
 .confirmContent {
   max-width: 400px;
   padding: 24px;
-  border-radius: 12px;
+  border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-bg-layer-1);
 }
 
@@ -465,7 +467,7 @@
   .detail {
     width: 100%;
     border-left: none;
-    border-top: 1px solid var(--dsw-alias-border-l1);
+    border-top: 0.5px solid var(--dsw-alias-border-l1);
   }
   
   .hasDetails .listPane {
@@ -499,6 +501,8 @@
   flex-direction: column;
   height: 100%;
   background: var(--dsw-alias-bg-surface);
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 .formHeader {
@@ -506,7 +510,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
 }
 
 .formTitle {
@@ -546,8 +550,8 @@
 .formTextarea {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 8px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
   background: var(--dsw-alias-bg-layer-2);
   font: 400 14px/20px var(--dsw-font-family);
   color: var(--dsw-alias-label-primary);
@@ -564,8 +568,8 @@
   width: 100%;
   height: 36px;
   padding: 0 12px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 8px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
   background: var(--dsw-alias-bg-layer-2);
   font: 400 14px/20px var(--dsw-font-family);
   color: var(--dsw-alias-label-primary);
@@ -600,9 +604,8 @@
   margin: 4px 0 0;
   padding: 4px;
   list-style: none;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 8px;
-  background: var(--dsw-alias-bg-layer-2);
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
   z-index: 10;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
@@ -612,7 +615,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-xs);
   cursor: pointer;
   font: 400 13px/18px var(--dsw-font-family);
   color: var(--dsw-alias-label-primary);
@@ -658,8 +661,8 @@
   justify-content: center;
   height: 28px;
   padding: 0 10px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 14px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-panel);
   background: transparent;
   font: 400 13px/18px var(--dsw-font-family);
   color: var(--dsw-alias-label-secondary);
@@ -687,8 +690,8 @@
   justify-content: center;
   width: 36px;
   height: 28px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 14px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-panel);
   background: transparent;
   font: 400 12px/16px var(--dsw-font-family);
   color: var(--dsw-alias-label-secondary);
@@ -708,8 +711,8 @@
 .formPreview {
   margin-top: 16px;
   padding: 12px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 8px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
   background: var(--dsw-alias-bg-layer-2);
 }
 
@@ -735,7 +738,7 @@
   display: flex;
   gap: 8px;
   padding: 16px;
-  border-top: 1px solid var(--dsw-alias-border-l1);
+  border-top: 0.5px solid var(--dsw-alias-border-l1);
 }
 
 .formActions > button {
@@ -747,8 +750,8 @@
   flex-direction: column;
   gap: 8px;
   padding: 12px 16px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 8px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
   background: var(--dsw-alias-bg-surface);
 }
 
@@ -802,4 +805,10 @@
 .toolRowActions {
   display: flex;
   gap: 8px;
+}
+
+.timezoneList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }

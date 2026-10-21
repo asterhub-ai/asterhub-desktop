@@ -15,7 +15,7 @@
   gap: 11px;
   padding: 18px 22px;
   border: 1px solid rgb(93 105 143 / 9%);
-  border-radius: 16px;
+  border-radius: var(--dsw-radius-lg);
   background: rgb(255 255 255 / 72%);
   box-shadow: 0 12px 36px rgb(31 41 69 / 6%);
   backdrop-filter: blur(12px);

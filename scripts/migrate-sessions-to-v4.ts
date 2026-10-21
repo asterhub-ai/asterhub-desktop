@@ -8,11 +8,10 @@ import { availableParallelism, homedir, tmpdir } from 'node:os'
 import { basename, join, relative, resolve } from 'node:path'
 import { inspect, parseArgs } from 'node:util'
 import { Context } from '@deepseek-ai/cordis'
-import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import { parseSessionFormatLogFilename, sessionFormatLogFilename } from '@deepseek-ai/dsh-session-format'
 import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
-import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
-import { encodeSegment, generationLogFilename, parseGenerationLogFilename, type JsonlCompression } from '../packages/session/session-persistence-jsonl/src/format.ts'
-import { JsonlGenerationSourceChangedError } from '../packages/session/session-persistence-jsonl/src/generation.ts'
+import { applyV4MigrationPersistence, type JsonlCompression } from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { classifyMigrationFailure, type MigrationFailureDiagnostic } from './migration-failure-summary.ts'
 
 const usage = `Usage: pnpm run migrate:sessions-to-v4 [--sessions-dir PATH] [--jobs N]
@@ -80,6 +79,29 @@ function summarizeFailures(failures: readonly Failure[]): FailureGroup[] {
   return [...groups].sort(([left], [right]) => left.localeCompare(right)).map(([, group]) => ({
     ...group, items: group.items.sort((left, right) => left.inputPath.localeCompare(right.inputPath)),
   }))
+}
+
+/** Canonical path segment encoder matching session persistence directory layout. */
+export function encodeSegment(raw: string): string {
+  if (raw.length === 0) throw new Error('cannot encode an empty path segment')
+  if (raw === '.') return '~002E'
+  if (raw === '..') return '~002E~002E'
+  return raw.replace(/[^A-Za-z0-9._-]/gu, (char) => {
+    const code = char.charCodeAt(0)
+    return `~${code.toString(16).toUpperCase().padStart(4, '0')}`
+  })
+}
+
+/** Canonical generation filename for one physical session encoding. */
+export function generationLogFilename(version: number, compression: JsonlCompression): string {
+  return `${sessionFormatLogFilename(version)}${compression === 'zstd' ? '.zstd' : ''}`
+}
+
+/** Parse one canonical generation filename for the selected physical encoding. */
+export function parseGenerationLogFilename(filename: string, compression: JsonlCompression): number | undefined {
+  const suffix = compression === 'zstd' ? '.zstd' : ''
+  if (!filename.endsWith(suffix)) return undefined
+  return parseSessionFormatLogFilename(filename.slice(0, filename.length - suffix.length))
 }
 
 async function inspectDirectory(directory: string): Promise<Candidate> {
@@ -196,18 +218,26 @@ async function migrate(root: string, jobs: number): Promise<number> {
     write(`Root: ${root}`)
     write(`Session jobs: ${jobs}`)
     write(`Node: ${process.version}; platform: ${process.platform}/${process.arch}`)
-    checkoutCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: resolve(import.meta.dirname, '..'), encoding: 'utf8' }).trim()
-    write(`Git HEAD: ${checkoutCommit}`)
+    const envCommit = process.env['DSH_CLIENT_COMMIT_HASH']
+    if (typeof envCommit === 'string' && /^[0-9a-f]{40}$/i.test(envCommit)) {
+      checkoutCommit = envCommit
+    } else {
+      try {
+        checkoutCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: resolve(import.meta.dirname, '..'), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+      } catch {
+        checkoutCommit = null
+      }
+    }
+    write(`Git HEAD: ${checkoutCommit ?? 'unrecorded (no git repository)'}`)
     write(`Full log: ${logPath}`)
-    assert.equal(SESSION_FORMAT_VERSION, 4, 'this one-time command requires a V4 Session writer')
-    assert.equal(sessionFormatCatalog.currentVersion, 4, 'this one-time command requires a V4 format catalog')
+    assert(sessionFormatCatalog.currentVersion >= 4, 'this one-time command requires at least a V4 format catalog')
     const candidates = await discover(root)
     inputCount = candidates.length
     write(`Discovered ${candidates.length} Session directories or invalid layout entries.`)
     const compression = candidates.find(candidate => candidate.source !== undefined)?.source?.compression ?? 'zstd'
     const ctx = new Context()
     try {
-      await ctx.plugin(JsonlSessionPersistence, { root, compression })
+      await applyV4MigrationPersistence(ctx, { root, compression })
       let completed = 0
       await runMigrationJobs(candidates.length, jobs, async (index, retry) => {
         const candidate = candidates[index]
@@ -235,7 +265,7 @@ async function migrate(root: string, jobs: number): Promise<number> {
           recordOutcome(source.version, source.version === 4 ? 'alreadyV4' : 'converted')
           finish(`${source.version === 4 ? 'already V4 (opened successfully)' : `V${source.version} -> V4: ${generationLogFilename(4, source.compression)}`} (${((performance.now() - started) / 1000).toFixed(2)}s)`)
         } catch (error: unknown) {
-          if (!retry && error instanceof JsonlGenerationSourceChangedError) {
+          if (!retry && error instanceof Error && error.name === 'JsonlGenerationSourceChangedError') {
             write(`${label} DEFERRED: ${error.message}; retry once after initial jobs finish`)
             appendFileSync(log, `${inspect(error, { depth: null, colors: false })}\n`)
             return true

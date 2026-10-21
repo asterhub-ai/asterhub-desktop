@@ -1072,6 +1072,12 @@ describe('AsterHub account model catalog', () => {
       resolveApiKey: async () => 'account-key', auth: memoryAuth() })
   }
 
+  it('advertises discovered image modalities for dynamic account models', async () => {
+    const adapter = managed(async () => [{ id: 'gpt-luna', name: 'GPT-Luna', inputModalities: ['text', 'image'] }])
+    expect((await adapter.listModels('sub2api'))[0]?.inputModalities).toEqual(['text', 'image'])
+    await expect(adapter.resolveModel('sub2api', 'gpt-luna')).resolves.toMatchObject({ inputModalities: ['text', 'image'] })
+  })
+
   it('advertises only account models and refuses the retired aster alias before dispatch', async () => {
     const adapter = managed(async () => [{ id: 'gpt-6.1-sol', name: 'GPT' }, { id: 'kimi-k3-oc' }])
     expect((await adapter.listModels('sub2api')).map(model => model.id))

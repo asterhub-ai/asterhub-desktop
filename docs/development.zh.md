@@ -170,7 +170,7 @@ pnpm run start:desktop   # launch built Desktop artifacts
 pnpm run dev:desktop     # build, then launch Desktop
 ```
 
-Web 命令后面的参数会传给 `dsh web`，例如 `pnpm run dev:web --no-open --port 3081`；`dev:web` 还接受 `--skip-build` 复用现有产物树，以及 `--no-serve` 只运行重建 watcher、配合别处启动的服务器。两个 Web 命令使用正常的 Harness home，而 Desktop 命令使用 [Desktop README](../apps/desktop/README.zh.md) 描述的隔离开发 home。根目录 `Makefile` 以 `make web`、`make dev-web`、`make desktop`、`make dev-desktop` 和 `make build` 命名同一套命令；`ARGS='--no-open'` 用于转发参数。
+Web 命令后面的参数会传给 `dsh web`，例如 `pnpm run dev:web --no-open --port 3081`；`dev:web` 还接受 `--skip-build` 复用现有产物树，以及 `--no-serve` 只运行重建 watcher、配合别处启动的服务器。源命令（`pnpm dsh`、两个 Web 命令以及演示）使用仓库根目录下的 `.asterhub-dev` 开发 home，并拒绝已安装的产品 home；Desktop 命令则使用 [Desktop README](../apps/desktop/README.zh.md) 描述的隔离开发 home。非空 `DSH_HOME` 可以替换任一开发 home，且任何开发启动都不会写入产品 home；此前开发运行已经记录在那里的内容会保留，直到你自行移走（`mv ~/.asterhub/sessions ~/.asterhub/sessions-dev-backup`；Windows 上为 `Rename-Item "$env:USERPROFILE\.asterhub\sessions" "$env:USERPROFILE\.asterhub\sessions-dev-backup"`）。根目录 `Makefile` 以 `make web`、`make dev-web`、`make desktop`、`make dev-desktop` 和 `make build` 命名同一套命令；`ARGS='--no-open'` 用于转发参数。
 
 ### TODO 标记
 

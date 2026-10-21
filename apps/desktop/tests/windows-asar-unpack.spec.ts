@@ -133,6 +133,9 @@ it.each([false, true])('unpacks PE files through builder source patterns (extern
   const archive = await readAsar(join(input.resources, 'app.asar'))
   expect(archive.getFile(join('dsh', 'node_modules', 'foo', 'companion.json')).unpacked).not.toBe(true)
   expect(archive.getFile(join('dsh', 'node_modules', 'foo', '$xarchy.binary')).unpacked).toBe(true)
+  // A literal ${arch} filename must survive builder macro expansion and stay unpacked.
+  expect(archive.getFile(join('dsh', 'node_modules', 'foo', '${arch}.binary'), false).unpacked).toBe(true)
+  expect(await readFile(join(input.resources, 'app.asar.unpacked', 'dsh', 'node_modules', 'foo', '${arch}.binary'))).toHaveLength(128)
   expect(files).toEqual(input.names.map(name => join('node_modules', 'foo', name)).sort())
   const first = input.config.files[0]!
   const nested = input.config.files[1]!

@@ -12,6 +12,7 @@
     "src/client/AccountSection.tsx",
     "src/client/UsageSection.tsx",
     "src/client/account-api.ts",
+    "src/client/recharge-preview.ts",
     "src/client/locales.ts",
     "src/client/css-modules.d.ts"
   ],

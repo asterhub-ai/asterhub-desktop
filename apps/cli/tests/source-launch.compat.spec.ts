@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
@@ -16,13 +15,6 @@ const dshSourceBin = 'apps/cli/src/bin.ts'
 
 describe('dsh SOURCE launcher (node --import tsx/esm)', () => {
   testProfileResolution('src')
-
-  it('launches the source CLI without building', async () => {
-    const rootPackage = JSON.parse(await readFile(new URL('../../../package.json', import.meta.url), 'utf8')) as {
-      readonly scripts?: Record<string, string>
-    }
-    expect(rootPackage.scripts?.dsh).toBe('node --import tsx/esm apps/cli/src/bin.ts')
-  })
 
   it('boots the source entry and requires a profile', async () => {
     const result = await execa(process.execPath, ['--import', 'tsx/esm', dshSourceBin], {

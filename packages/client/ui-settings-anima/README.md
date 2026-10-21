@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Open **Settings → Anima** to edit your assistant’s nickname, communication tone, explanation detail, initiative, humor, emotional response, familiarity, and joke style. Choose an extraction and reflection model from the current AsterHub account, or explicitly follow the conversation model. Reflection is the only feature switch; capture, recall, and memory writes default to enabled. Technical limits are not shown. Changes take effect after saving.
+Open **Settings → Memory system** to edit your assistant’s nickname, communication tone, explanation detail, initiative, humor, emotional response, familiarity, and joke style. Choose an extraction and reflection model from the current AsterHub account, or explicitly follow the conversation model. Reflection is the only feature switch; capture, recall, and memory writes default to enabled. Technical limits are not shown. Changes take effect after saving.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ Open **Settings → Anima** to edit your assistant’s nickname, communication t
 <a id="use-this-package"></a>
 ## Use this package
 
-The Anima section appears while the Host serves its `anima` configuration namespace. Edit personality choices and select **Save**; **Discard changes** drops staged edits. The model dropdown uses the shared account catalog and writes its exact provider/model pair together. It has no free-text provider, URL, or credential fields. An unavailable saved model is shown explicitly and must be replaced before saving. Catalog failures retain edits and offer **Retry**. The **Use the current conversation model** option inherits the logged Session route without leaving an empty control.
+The Memory system section appears while the Host serves its `anima` configuration namespace. Edit personality choices and select **Save**; **Discard changes** drops staged edits. The model dropdown uses the shared account catalog and writes its exact provider/model pair together. It has no free-text provider, URL, or credential fields. An unavailable saved model is shown explicitly and must be replaced before saving. Catalog failures retain edits and offer **Retry**. The **Use the current conversation model** option inherits the logged Session route without leaving an empty control.
 
 -----
 

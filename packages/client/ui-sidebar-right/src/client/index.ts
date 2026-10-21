@@ -128,6 +128,7 @@ export function apply(ctx: ClientContext): void {
       openWithFocus: (sessionId, open) => { openWithPaneFocus(document, sessionId, open) },
       closeWithFocus: (sessionId, paneId, close) => { closeWithPaneFocus(document, sessionId, paneId, close) },
     },
+    (sessionId, signal) => views.retain(sessionId, signal),
   )
   // The Session on screen: the selected one while the Conversation fills the
   // main column. Both sources notify before React renders their change, so the
@@ -155,6 +156,7 @@ export function apply(ctx: ClientContext): void {
   // Unloading aborts every tab occurrence, which releases every pin.
   ctx.effect(() => () => {
     controller.tabDomain.dispose()
+    controller.dispose()
     void disposeService()
     void disposeRegistry()
   }, 'ui-sidebar-right: service faces')

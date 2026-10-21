@@ -87,6 +87,37 @@ it('retires only unselected Views without retained bodies and rejects released r
   expect(views.source.getSnapshot()).toEqual([])
 })
 
+it('retains a non-selected View across selection changes until abort or release', async () => {
+  const r = await runtime()
+  const views = new SidebarSessionViews(r.sessions)
+  owners.push(views)
+  views.select(A)
+  expect(views.source.getSnapshot().map(view => [view.sessionId, view.selected])).toEqual([[A, true]])
+
+  const lifetime = new AbortController()
+  const release = await views.retain(B, lifetime.signal)
+  expect(views.source.getSnapshot().map(view => [view.sessionId, view.selected])).toEqual([[A, true], [B, false]])
+  views.select(B)
+  expect(views.source.getSnapshot().map(view => [view.sessionId, view.selected])).toEqual([[B, true]])
+  views.select(A)
+  expect(views.source.getSnapshot().map(view => [view.sessionId, view.selected])).toEqual([[A, true], [B, false]])
+  views.select(undefined)
+  expect(views.source.getSnapshot().map(view => [view.sessionId, view.selected])).toEqual([[B, false]])
+
+  release()
+  release()
+  expect(views.source.getSnapshot()).toEqual([])
+
+  const aborted = new AbortController()
+  const abortRelease = await views.retain(B, aborted.signal)
+  expect(views.source.getSnapshot().map(view => view.sessionId)).toEqual([B])
+  aborted.abort()
+  expect(views.source.getSnapshot()).toEqual([])
+  abortRelease()
+  views.dispose()
+  abortRelease()
+})
+
 it('reports opening failure and releases Views even when committed roots are still present', async () => {
   const r = await runtime()
   const reference = r.sessions.retain(A, { source: 'sidebarView' })

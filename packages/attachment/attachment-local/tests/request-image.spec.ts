@@ -333,71 +333,45 @@ describe('local request-image cache', () => {
     run.mockRestore()
   })
 
-  it('aborts the underlying request transform after its only waiter cancels', async () => {
+  it.each([new Error('cancel request'), 'cancelled'])('replaces a cancelled request without poisoning its next transform (%s)', async (reason) => {
     const attachments = await store()
     const attachment = await attachments.saveImage({
       data: await image(2048, 1024), mediaType: 'image/png', name: 'cancelled.png',
     })
-    let readSignal: AbortSignal | undefined
-    const read = vi.spyOn(attachments, 'readImage').mockImplementation((_ref, signal) => {
-      readSignal = signal
-      return new Promise((_resolve, reject) => {
-        signal?.addEventListener('abort', () => {
-          reject(new Error('request transform aborted', { cause: signal.reason }))
-        }, { once: true })
-      })
-    })
-    const controller = new AbortController()
-    const request = attachments.readImageRequest(
-      attachment,
-      { width: 1130, height: 565, maxBytes: 1024 * 1024 },
-      controller.signal,
-    )
-    await vi.waitFor(() => {
-      expect(read).toHaveBeenCalledTimes(1)
-    })
-
-    const reason = new Error('cancel only transform waiter')
-    controller.abort(reason)
-
-    await expect(request).rejects.toBe(reason)
-    expect(readSignal?.reason).toBe(reason)
-  })
-
-  it('normalizes a non-Error cancellation and replaces an aborted shared transform', async () => {
-    const attachments = await store()
-    const attachment = await attachments.saveImage({
-      data: await image(2048, 1024), mediaType: 'image/png', name: 'replace.png',
-    })
-    const actualRead = attachments.readImage.bind(attachments)
-    let calls = 0
-    vi.spyOn(attachments, 'readImage').mockImplementation((ref, signal) => {
-      calls += 1
-      if (calls === 1) {
-        return new Promise((_resolve, reject) => {
-          signal?.addEventListener('abort', () => {
-            reject(new Error('request transform aborted', { cause: signal.reason }))
-          }, { once: true })
-        })
+    const entered = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    const settled = Promise.withResolvers<undefined>()
+    const run = vi.spyOn(CompressionLimiter.prototype, 'run').mockImplementationOnce(async <T>(task: () => Promise<T>): Promise<T> => {
+      entered.resolve(undefined)
+      await release.promise
+      try {
+        return await task()
+      } finally {
+        settled.resolve(undefined)
       }
-      return actualRead(ref, signal)
     })
     const controller = new AbortController()
     const policy = { width: 1130, height: 565, maxBytes: 1024 * 1024 }
-    const cancelled = attachments.readImageRequest(attachment, policy, controller.signal)
-    await vi.waitFor(() => {
-      expect(calls).toBe(1)
-    })
-
-    controller.abort('cancelled')
-    const replacement = attachments.readImageRequest(attachment, policy)
-
-    await expect(cancelled).rejects.toMatchObject({
-      message: 'Attachment request cancelled with a non-Error reason.',
-      cause: 'cancelled',
-    })
-    await expect(replacement).resolves.toMatchObject({ width: 1130, height: 565 })
-    expect(calls).toBe(2)
+    const request = attachments.readImageRequest(attachment, policy, controller.signal)
+    try {
+      await entered.promise
+      controller.abort(reason)
+      if (reason instanceof Error) {
+        await expect(request).rejects.toBe(reason)
+      } else {
+        await expect(request).rejects.toMatchObject({ cause: reason })
+      }
+      release.resolve(undefined)
+      await settled.promise
+      const replacement = await attachments.readImageRequest(attachment, policy)
+      const metadata = await sharp(replacement.data).metadata()
+      expect(metadata).toMatchObject({ width: 1130, height: 565 })
+      expect(replacement.bytes).toBeLessThanOrEqual(policy.maxBytes)
+    } finally {
+      release.resolve(undefined)
+      await settled.promise
+      run.mockRestore()
+    }
   })
 
 })

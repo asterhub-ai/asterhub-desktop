@@ -5,6 +5,7 @@ import type { AccountSectionActions } from './account-api.ts'
 import { ACCOUNT_STATE_CHANGED_EVENT } from './account-api.ts'
 import type { AccountLocaleKey } from './locales.ts'
 import css from './AccountSection.module.css'
+import { formatAmount, formatCurrency, rechargePreview } from './recharge-preview.ts'
 
 /** Callbacks and localized copy supplied by the owning account slot. */
 export interface AccountPanelProps {
@@ -377,6 +378,8 @@ export function AccountPanel({
   if (status === undefined) return null
   const balanceText = status.balance === undefined ? t('balanceLoading') : status.balance.toFixed(2)
 
+  const selectedMethod = paymentMethods.find(method => method.id === paymentType)
+  const preview = rechargePreview(Number(amount), selectedMethod)
   return (
     <div className={rootClass}>
       {fullPage && <p className={css.productName}>{t('productName')}</p>}
@@ -402,6 +405,12 @@ export function AccountPanel({
           </select>
         </label>
         <div className={css.row}>
+          {[10, 30, 50, 100].map(value => (
+            <button key={value} type="button" className={css.action} aria-pressed={Number(amount) === value}
+              disabled={busy} onClick={() => { setAmount(String(value)) }}>{value}</button>
+          ))}
+        </div>
+        <div className={css.row}>
           <label className={css.fieldLabel}>
             <span>{t('topUpAmountLabel')}</span>
             <input className={css.input} type="number" min="1" step="1" value={amount}
@@ -412,6 +421,14 @@ export function AccountPanel({
             {t('topUpButton')}
           </button>
         </div>
+        <p className={css.muted} aria-live="polite">
+          {preview
+            ? `${t('estimatedCredits')} ${formatAmount(preview.credits, t('number.locale'))}`
+            : t('previewUnavailable')}
+        </p>
+        {preview?.discounted && <p className={css.muted}>
+          {t('paymentBase')} {formatCurrency(preview.payBase, selectedMethod?.currency, t('number.locale'))} · {t('feesExcluded')}
+        </p>}
         <div className={css.row}>
           <label className={css.fieldLabel}>
             <span>{t('redeemTitle')}</span>

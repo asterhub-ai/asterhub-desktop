@@ -965,7 +965,15 @@ describe('TrajectoryTable', () => {
     expect(recovered.style.getPropertyValue('--request-boundary-offset')).toBe('16px')
   })
 
-  it('localizes a sanitized AUTH request failure from its stable code', () => {
+  it.each([
+    ['AUTH', 'Account authentication failed. Sign in again; contact support if it persists.'],
+    ['QUOTA', 'Your credits are used up. Please top up to continue.'],
+    ['ACCOUNT_QUOTA', 'Your credits are used up. Please top up to continue.'],
+    ['RATE_LIMIT', 'Too many requests. Please try again shortly.'],
+    ['TIMEOUT', 'The model service timed out. Please try again shortly.'],
+    ['TRANSPORT', 'The model service could not be reached or the connection was interrupted. Check your network and try again.'],
+    ['SERVER', 'The model service is temporarily unavailable. Please try again shortly.'],
+  ])('localizes a sanitized %s request failure from its stable code', (code, message) => {
     const turns: readonly TrajectoryTurnModel[] = [{
       turn: 1,
       groups: [{
@@ -991,14 +999,14 @@ describe('TrajectoryTable', () => {
           number: 1,
           status: 'error',
           error: '',
-          errorCode: 'AUTH',
+          errorCode: code,
         }]}
         {...FOLD_PROPS}
       />,
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Request #1' }))
-    expect(screen.getByText('API key is invalid')).toBeTruthy()
+    expect(screen.getByText(message)).toBeTruthy()
   })
 
   it('shows the custom role tooltip only from the responsive icon', () => {

@@ -1,4 +1,4 @@
-import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, chmod, access, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, chmod, access, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -9,7 +9,7 @@ import type { LegacyProjectProposal, PortableProjectManifest } from '../src/type
 
 const roots: string[] = []
 async function root(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), 'project-storage-'))
+  const path = await realpath(await mkdtemp(join(tmpdir(), 'project-storage-')))
   roots.push(path)
   return path
 }

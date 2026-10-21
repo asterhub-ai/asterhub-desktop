@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
 import { AclWriteGrant, tempWriteSid, workspaceWriteSid } from '../src/index.ts'
+import { hasLogonSid } from './token-capability.ts'
 
 const isWin32 = process.platform === 'win32'
 const runnerEntry = fileURLToPath(new URL('../src/runner.ts', import.meta.url))
@@ -74,7 +75,8 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     if (publicProbeDir !== undefined) rmSync(publicProbeDir, { recursive: true, force: true })
   })
 
-  it('workspace-write: the confined child writes granted directories only', () => {
+  // The runner requires a token logon SID (SE_GROUP_LOGON_ID), which is absent in Windows service tokens.
+  it.skipIf(!hasLogonSid())('workspace-write: the confined child writes granted directories only', () => {
     const probe = [
       "$ErrorActionPreference='SilentlyContinue';",
       // The private-temp capability lets PowerShell complete its startup
@@ -107,7 +109,8 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     expect(existsSync(join(writableDir, 'child-wrote.txt'))).toBe(true)
   }, 30_000)
 
-  it('read-only: no write-SID grants — workspace/temp writes denied, reads and $null redirection fine, CIM unavailable', () => {
+  // The runner requires a token logon SID (SE_GROUP_LOGON_ID), which is absent in Windows service tokens.
+  it.skipIf(!hasLogonSid())('read-only: no write-SID grants — workspace/temp writes denied, reads and $null redirection fine, CIM unavailable', () => {
     const probe = [
       "$ErrorActionPreference='SilentlyContinue';",
       '\'LANGMODE: \' + $ExecutionContext.SessionState.LanguageMode;',
@@ -139,7 +142,8 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     expect(existsSync(join(writableDir, 'readonly-child-wrote.txt'))).toBe(false)
   }, 30_000)
 
-  it('workspace-write: Remove-Item and Rename-Item succeed in the granted workspace (DELETE + FILE_DELETE_CHILD)', () => {
+  // The runner requires a token logon SID (SE_GROUP_LOGON_ID), which is absent in Windows service tokens.
+  it.skipIf(!hasLogonSid())('workspace-write: Remove-Item and Rename-Item succeed in the granted workspace (DELETE + FILE_DELETE_CHILD)', () => {
     // Deleting a file and renaming a directory both hit the second access
     // check on the workspace itself: the grant must carry DELETE (on the
     // object) and FILE_DELETE_CHILD (on its parent).
@@ -164,7 +168,8 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     expect(existsSync(renamedDir)).toBe(true)
   }, 30_000)
 
-  it('paired SIDs: the runner trusts caller-owned private-temp grants and materializes nothing itself', () => {
+  // The runner requires a token logon SID (SE_GROUP_LOGON_ID), which is absent in Windows service tokens.
+  it.skipIf(!hasLogonSid())('paired SIDs: the runner trusts caller-owned private-temp grants and materializes nothing itself', () => {
     const seamWorkspace = join(scratchRoot, 'seam-workspace')
     mkdirSync(seamWorkspace)
     const writeSid = workspaceWriteSid(seamWorkspace)
@@ -175,6 +180,8 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     grant.add(privateTemp)
     try {
       const probe = [
+        // The report includes Unicode paths; runRunner decodes its bytes as UTF-8.
+        '[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;',
         "$ErrorActionPreference='SilentlyContinue';",
         `try{Set-Content -Path '${seamWorkspace}\\server-granted.txt' -Value ok -ErrorAction Stop;'WORKSPACE-WRITE: OK'}catch{'WORKSPACE-WRITE: DENIED'};`,
         `try{Set-Content -Path '${privateTemp}\\server-granted.txt' -Value ok -ErrorAction Stop;'PRIVATE-TEMP-WRITE: OK'}catch{'PRIVATE-TEMP-WRITE: DENIED'};`,
@@ -202,7 +209,8 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     }
   }, 30_000)
 
-  it('temp capabilities isolate sibling sessions that share one workspace SID', () => {
+  // The runner requires a token logon SID (SE_GROUP_LOGON_ID), which is absent in Windows service tokens.
+  it.skipIf(!hasLogonSid())('temp capabilities isolate sibling sessions that share one workspace SID', () => {
     const writeSid = workspaceWriteSid(writableDir)
     const tempA = join(isolatedTemp, 'session-a')
     const tempB = join(isolatedTemp, 'session-b')
@@ -258,7 +266,8 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     }
   }, 30_000)
 
-  it('agentless workspace-write creates a fresh private temp per call and removes it on exit', () => {
+  // The runner requires a token logon SID (SE_GROUP_LOGON_ID), which is absent in Windows service tokens.
+  it.skipIf(!hasLogonSid())('agentless workspace-write creates a fresh private temp per call and removes it on exit', () => {
     const captureA = join(writableDir, 'agentless-temp-a.txt')
     const captureB = join(writableDir, 'agentless-temp-b.txt')
     for (const capture of [captureA, captureB]) {
@@ -293,7 +302,8 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     expect(existsSync(marker)).toBe(false)
   }, 15_000)
 
-  it('confined children spawn grandchildren with inherited stdio; piped capture stays denied (named-pipe default SD template)', () => {
+  // The runner requires a token logon SID (SE_GROUP_LOGON_ID), which is absent in Windows service tokens.
+  it.skipIf(!hasLogonSid())('confined children spawn grandchildren with inherited stdio; piped capture stays denied (named-pipe default SD template)', () => {
     // Two-layer pin of the grandchild-spawn boundary:
     //  - the token default DACL carries a restricting-SID ACE (set in init),
     //    so ANONYMOUS pipe creation (CreatePipe — the token-default-DACL
@@ -326,7 +336,8 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     }
   }, 30_000)
 
-  it('mode-downgrade leak regression: a STANDING workspace grant is inert under read-only and effective again on re-upgrade', () => {
+  // The runner requires a token logon SID (SE_GROUP_LOGON_ID), which is absent in Windows service tokens.
+  it.skipIf(!hasLogonSid())('mode-downgrade leak regression: a STANDING workspace grant is inert under read-only and effective again on re-upgrade', () => {
     // The reported defect: a session that materialized its grant in
     // workspace-write keeps the ACE standing for the server lifetime. After
     // switching to read-only, the restricted token's read-only list must carry NO
@@ -371,7 +382,8 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     }
   }, 30_000)
 
-  it('ambient-writable escape regression: a C:\\Users\\Public subdirectory is denied under BOTH modes (INTERACTIVE absent from both lists)', (ctx) => {
+  // The runner requires a token logon SID (SE_GROUP_LOGON_ID), which is absent in Windows service tokens.
+  it.skipIf(!hasLogonSid())('ambient-writable escape regression: a C:\\Users\\Public subdirectory is denied under BOTH modes (INTERACTIVE absent from both lists)', (ctx) => {
     // The Public tree grants write to INTERACTIVE; the D1-D6 matrix pinned
     // that removing INTERACTIVE from the restricting lists closes the escape.
     // The committed suites never probed it — this pins the ambient boundary
@@ -395,7 +407,8 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     }
   }, 30_000)
 
-  it('delete-escape regression: deletes outside the granted roots are denied in BOTH modes, through every delete authority', () => {
+  // The runner requires a token logon SID (SE_GROUP_LOGON_ID), which is absent in Windows service tokens.
+  it.skipIf(!hasLogonSid())('delete-escape regression: deletes outside the granted roots are denied in BOTH modes, through every delete authority', () => {
     // Windows authorizes a delete from the object's own DELETE right OR the
     // parent directory's FILE_DELETE_CHILD, and the write-restricted
     // intersection only covers the first — so `cmd /c del` used to delete
@@ -441,7 +454,8 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     }
   }, 60_000)
 
-  it('cross-root delete regression: one session cannot delete inside ANOTHER granted root', () => {
+  // The runner requires a token logon SID (SE_GROUP_LOGON_ID), which is absent in Windows service tokens.
+  it.skipIf(!hasLogonSid())('cross-root delete regression: one session cannot delete inside ANOTHER granted root', () => {
     // Both roots carry the Low label, so the integrity check alone would not
     // stop this: Windows also authorizes a delete from the parent directory's
     // FILE_DELETE_CHILD right, which the capability intersection never reaches.
@@ -505,7 +519,8 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     }
   }, 60_000)
 
-  it('NUL writes stay ambient under the Low token in BOTH modes', () => {
+  // The runner requires a token logon SID (SE_GROUP_LOGON_ID), which is absent in Windows service tokens.
+  it.skipIf(!hasLogonSid())('NUL writes stay ambient under the Low token in BOTH modes', () => {
     // The device DACL grants Everyone write and carries no higher label, so
     // the documented `> NUL` redirection must survive the lowered token. The
     // redirection stays inside cmd's own command line: PowerShell's `>nul`
@@ -569,7 +584,8 @@ TryOpen 'DIRECTORY' '${child}'
     }
   }, 60_000)
 
-  it('revoking one of two grants on a directory leaves the shared Low label usable', () => {
+  // The runner requires a token logon SID (SE_GROUP_LOGON_ID), which is absent in Windows service tokens.
+  it.skipIf(!hasLogonSid())('revoking one of two grants on a directory leaves the shared Low label usable', () => {
     // Two capabilities may target one directory; the revoke of the first must
     // not strip the label the second one's child still writes through.
     const shared = join(scratchRoot, 'shared-root')
@@ -596,7 +612,8 @@ TryOpen 'DIRECTORY' '${child}'
     }
   }, 60_000)
 
-  it('the Low mandatory label closes the Everyone-Modify ambient boundary under BOTH modes', () => {
+  // The runner requires a token logon SID (SE_GROUP_LOGON_ID), which is absent in Windows service tokens.
+  it.skipIf(!hasLogonSid())('the Low mandatory label closes the Everyone-Modify ambient boundary under BOTH modes', () => {
     // Everyone is a required keep-alive restricting SID: without it early DLL
     // initialization and CNG fail. A normal DACL that grants Everyone Modify
     // therefore also clears the WRITE_RESTRICTED pass-2 check. The Low label
@@ -614,7 +631,8 @@ TryOpen 'DIRECTORY' '${child}'
     }
   }, 30_000)
 
-  it('partial boundary: a workspace hard link lets the grant reach an external file object', () => {
+  // The runner requires a token logon SID (SE_GROUP_LOGON_ID), which is absent in Windows service tokens.
+  it.skipIf(!hasLogonSid())('partial boundary: a workspace hard link lets the grant reach an external file object', () => {
     // NTFS ACLs belong to the file object, not one pathname. Propagating the
     // workspace write-SID ACE through an existing hard-link alias therefore
     // grants the external alias too. pnpm workspaces commonly contain hard

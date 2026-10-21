@@ -674,20 +674,22 @@ describe('workspace context instruction discovery', () => {
     }
   })
 
-  it('labels the default DSH home as ~/.dsh when HOME points at the configured default', async () => {
+  it('labels the default AsterHub home as ~/.asterhub when HOME points at the configured default', async () => {
     const root = await tempRepo()
     const home = await tempRepo()
     try {
-      await write(join(home, '.dsh/AGENTS.md'), 'global default rule')
+      await write(join(home, '.asterhub/AGENTS.md'), 'global default rule')
 
       // A set DSH_HOME would override the homedir default and relabel the home.
       vi.stubEnv('DSH_HOME', '')
+      vi.stubEnv('HOME', home)
+      vi.stubEnv('USERPROFILE', home)
       vi.resetModules()
       vi.doMock('node:os', () => ({ homedir: () => home }))
       const isolated = await import('@deepseek-ai/dsh-agent-instructions')
       const files = await isolated.discoverBaselineInstructionFiles({ cwd: root })
 
-      expect(files.map(file => file.displayPath)).toEqual(['~/.dsh/AGENTS.md'])
+      expect(files.map(file => file.displayPath)).toEqual(['~/.asterhub/AGENTS.md'])
     } finally {
       vi.unstubAllEnvs()
       vi.doUnmock('node:os')
@@ -697,19 +699,23 @@ describe('workspace context instruction discovery', () => {
     }
   })
 
-  it('expands a configured ~/.dsh home to the operating-system home directory', async () => {
+  it('expands a configured ~/.asterhub home to the operating-system home directory', async () => {
     const root = await tempRepo()
     const home = await tempRepo()
     try {
-      await write(join(home, '.dsh/AGENTS.md'), 'global tilde rule')
+      await write(join(home, '.asterhub/AGENTS.md'), 'global tilde rule')
 
+      vi.stubEnv('DSH_HOME', '')
+      vi.stubEnv('HOME', home)
+      vi.stubEnv('USERPROFILE', home)
       vi.resetModules()
       vi.doMock('node:os', () => ({ homedir: () => home }))
       const isolated = await import('@deepseek-ai/dsh-agent-instructions')
-      const files = await isolated.discoverBaselineInstructionFiles({ cwd: root, dshHome: '~/.dsh' })
+      const files = await isolated.discoverBaselineInstructionFiles({ cwd: root, dshHome: '~/.asterhub' })
 
-      expect(files).toEqual([{ absolutePath: join(home, '.dsh/AGENTS.md'), displayPath: '~/.dsh/AGENTS.md' }])
+      expect(files).toEqual([{ absolutePath: join(home, '.asterhub/AGENTS.md'), displayPath: '~/.asterhub/AGENTS.md' }])
     } finally {
+      vi.unstubAllEnvs()
       vi.doUnmock('node:os')
       vi.resetModules()
       await rm(root, { recursive: true, force: true })

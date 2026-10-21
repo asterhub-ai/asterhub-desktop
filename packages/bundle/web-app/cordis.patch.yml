@@ -44,6 +44,23 @@
 - id: session-persistence-jsonl
   disabled: true
 - insert:
+    - id: desktop-product-telemetry
+      name: '@deepseek-ai/dsh-host-product-telemetry-otel'
+      disabled: !!js "ctx.get('profileContext')?.name !== 'desktop' || !process.env.DSH_PRODUCT_ANALYTICS_OTLP_URL"
+      config:
+        endpoint: !!js process.env.DSH_PRODUCT_ANALYTICS_OTLP_URL
+        serviceName: asterhub-desktop
+        serviceVersion: !!js process.env.DSH_CLIENT_VERSION
+        compression: gzip
+        scheduledDelayMillis: 30000
+        timeoutMillis: 15000
+        exportTimeoutMillis: 20000
+        shutdownTimeoutMillis: 2000
+    - id: product-analytics
+      name: '@deepseek-ai/dsh-client-product-analytics'
+      disabled: !!js "ctx.get('profileContext')?.name !== 'desktop' || !process.env.DSH_PRODUCT_ANALYTICS_OTLP_URL"
+      config:
+        appVersion: !!js process.env.DSH_CLIENT_VERSION
     - id: anima
       name: '@deepseek-ai/dsh-anima-memory'
       config:

@@ -4,7 +4,7 @@
 - button "刷新"
 - button "添加插件"
 - heading "官方" [level=3]
-- text: "8"
+- text: "7"
 - list:
   - listitem:
     - button "查看 智能体团队": 智能体团队
@@ -18,10 +18,6 @@
     - button "查看 自动化任务": 自动化任务
     - text: 实验性 按设定的时间或周期，在会话中自动执行任务。
     - switch "启用 自动化任务"
-  - listitem:
-    - button "查看 语音输入": 语音输入
-    - text: 实验性 在本机使用 SenseVoice 转写录音，首次使用需安装依赖。
-    - switch "启用 语音输入"
   - listitem:
     - button "查看 终端": 终端
     - text: 限制每条命令最多能跑多久、最多输出多少内容。

@@ -570,7 +570,6 @@ describe('dsh-workflow-ptc', { timeout: 120_000 }, () => {
           localAgent: undefined,
           result: Promise.resolve({ output: [{ type: 'text', text: 'fine' }], stopReason: 'completed' }),
           cancel: () => { /* settled already */ },
-          // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Tests rejection with a coercion trap.
           dispose: () => Promise.reject({ toString: () => { throw new Error('coercion trap') } }),
         }),
       }
@@ -896,7 +895,7 @@ describe('dsh-workflow-ptc', { timeout: 120_000 }, () => {
   describe('process failure and pending child cleanup', () => {
     it('waits for a late provider publication to release its file after cancellation', async () => {
       const ctx = new Context()
-      const { root } = await mountPtcRuntime(ctx, 'read-only')
+      const { root } = await mountPtcRuntime(ctx)
       await ctx.plugin(SubagentRuntime)
       const requested = Promise.withResolvers<SubagentStartRequest>()
       const release = Promise.withResolvers<undefined>()

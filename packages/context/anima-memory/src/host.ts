@@ -96,10 +96,7 @@ export class AnimaHost {
     try {
       const { database_id: databaseId } = await bootstrapNeo4jInstance(database.connection)
       const installationUid = await installationIdentity(this.config.dataRoot)
-      const usersRoot = join(this.config.dataRoot, 'owners')
-      const directory = join(usersRoot, installationUid)
-      await mkdir(directory, { recursive: true, mode: 0o700 })
-      const ownership = { users_root: usersRoot, directory_id: installationUid, directory, principal_uid: installationUid }
+      const ownership = await prepareOwnershipScope(this.config.dataRoot, installationUid)
       const loadConfig = () => Promise.resolve({ kind: 'ready' as const, config: database.connection })
       const store = new Neo4jStore({
         loadConfig, expectedDatabaseId: databaseId,
@@ -510,6 +507,20 @@ function awaitWithSignal<T>(promise: Promise<T>, signal: AbortSignal): Promise<T
       (error: unknown) => { finish(); reject(error instanceof Error ? error : new Error(String(error))) },
     )
   })
+}
+
+/**
+ * Create this installation's ownership directories, including the `data` directory
+ * required before any project registration or ownership listing.
+ * @param dataRoot - Local Anima data directory.
+ * @param installationUid - This installation's directory identity.
+ * @returns the ownership scope accepted by the original ownership store.
+ */
+export async function prepareOwnershipScope(dataRoot: string, installationUid: string): Promise<ProjectOwnershipScope> {
+  const usersRoot = join(dataRoot, 'owners')
+  const directory = join(usersRoot, installationUid)
+  await mkdir(join(directory, 'data'), { recursive: true, mode: 0o700 })
+  return { users_root: usersRoot, directory_id: installationUid, directory, principal_uid: installationUid }
 }
 
 async function installationIdentity(dataRoot: string): Promise<string> {

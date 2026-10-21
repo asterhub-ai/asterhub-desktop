@@ -22,7 +22,7 @@
 .header button {
   padding: 7px 14px;
   border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-sm);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -43,7 +43,7 @@
 .card {
   padding: 16px;
   border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
-  border-radius: 10px;
+  border-radius: var(--dsw-radius-md);
 }
 
 .card h3 {

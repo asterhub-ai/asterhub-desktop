@@ -12,7 +12,7 @@ export type AnimaSettingsLocaleKey =
 
 /** English Anima settings copy. */
 export const en: Record<AnimaSettingsLocaleKey, string> = {
-  nav: 'Anima', title: 'Anima', intro: 'Give your assistant a name and choose how you like to communicate.',
+  nav: 'Memory system', title: 'Memory system', intro: 'Give your assistant a name and choose how you like to communicate.',
   privacy: 'Memory stays on this device. Memory processing and conversation may send relevant content to your selected AsterHub model.',
   nickname: 'Nickname', nicknameHint: 'What would you like to call your assistant? Use 1–40 characters.', invalidNickname: 'Enter a nickname of 1–40 characters.',
   personalityHeading: 'Personality', personalityHint: 'These preferences apply to future turns after saving.',
@@ -29,7 +29,7 @@ export const en: Record<AnimaSettingsLocaleKey, string> = {
 
 /** Simplified Chinese Anima settings copy. */
 export const zh: Record<AnimaSettingsLocaleKey, string> = {
-  nav: 'Anima', title: 'Anima', intro: '为助手取个昵称，调整你喜欢的交流方式。',
+  nav: '记忆系统', title: '记忆系统', intro: '为助手取个昵称，调整你喜欢的交流方式。',
   privacy: '记忆保存在本机。记忆处理和对话时，相关内容可能发送给你选择的 AsterHub 模型。',
   nickname: '人格昵称', nicknameHint: '你希望怎么称呼助手？支持 1–40 个字符。', invalidNickname: '请输入 1–40 个字符的昵称',
   personalityHeading: '人格偏好', personalityHint: '保存后，从后续对话轮次开始生效。',

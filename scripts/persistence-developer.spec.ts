@@ -1,7 +1,7 @@
 /** Developer field classification matches native admission and metadata preservation. */
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { Session, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, Session, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
 import type { SessionFormatEvent } from '@deepseek-ai/dsh-session-format'
 import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
@@ -48,7 +48,7 @@ describe('developer field compatibility', () => {
     nodes[blockIndex] = { ...block, properties: [...block.properties, { name: 'traceId', type: stringIndex, optional: true }] }
     const schema = canonicalizeSchema(nodes, 0)
     expect(classifyPersistenceChange(before, { ...before, schema, digest: schemaDigest(schema) })).toMatchObject([{ kind: 'optional-property-added', requiresVersionBump: false }])
-    const header = { version: 4, id: 'optional-developer-field', createdAt: 1, isSeeded: false, delegationDepth: 0 }
+    const header = { version: SESSION_FORMAT_VERSION, id: 'optional-developer-field', createdAt: 1, isSeeded: false, delegationDepth: 0 }
     const message = { id: 'developer', role: 'developer', source: { kind: 'tool-registry', extra: true },
       content: [{ type: 'tool-addition', toolName: 'search', traceId: 'retained' }], extra: true }
     const events: SessionFormatEvent[] = [
@@ -61,8 +61,15 @@ describe('developer field compatibility', () => {
     for (const event of events) reader.decodeRow(sessionFormatCatalog.encodeCurrentEvent(event))
     const artifact = reader.finish()
     expect(artifact.events).toEqual(events)
-    const restored = Session.fromRestore(SessionId(header.id), artifact.events as SessionEvent[],
-      artifact.header as unknown as SessionHeader, SessionLogOffset(0), 'detached')
+    const sessionHeader: SessionHeader = {
+      version: SESSION_FORMAT_VERSION,
+      id: SessionId(header.id),
+      createdAt: header.createdAt,
+      isSeeded: header.isSeeded,
+      delegationDepth: header.delegationDepth,
+    }
+    const restored = Session.fromRestore(sessionHeader.id, artifact.events as SessionEvent[],
+      sessionHeader, SessionLogOffset(0), 'detached')
     expect(restored.deriveMessages()).toEqual([message])
   })
 })

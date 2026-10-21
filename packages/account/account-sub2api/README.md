@@ -44,6 +44,10 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 The Host exposes status, login/logout, quota, payment-method, top-up, redemption and usage operations. The Remote responses contain only fields used by account views; access tokens, saved auto-login passwords and model keys stay in Host credentials. Desktop's credential document uses Electron `safeStorage`, backed by the OS encryption service. Linux requires GNOME libsecret or KWallet; the app refuses the insecure `basic_text` backend. Checkout methods are identified by keys in `methods`; entries without an `available` field remain usable, while an explicit `available: false` is excluded.
 
+Payment methods optionally carry verified recharge pricing from `payment/checkout-info`: a finite positive multiplier, validated bonus tiers and a bonus or discount mode. Invalid or missing pricing leaves legacy checkout usable without a preview; the Host does not infer a multiplier. Method limits accept only finite positive numbers. Currency codes are retained for payment rounding. The preview excludes payment-provider fees.
+
+Quota balance multiplies the upstream balance by 100 and rounds to two decimal places. Reported usage credits convert actual upstream cost multiplied by 100 and rounded to two decimal places, matching quota balance. Usage values are account-level aggregates for cumulative, last-seven-day, and current-day periods; they are not per-Session charges.
+
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
@@ -56,6 +60,7 @@ The service serializes key provisioning so concurrent logins do not create dupli
 - [Pi-ai adapter](../../llm/llm-pi-ai/README.md) — model route credential resolution.
 - [Client account entry](../../client/ui-settings-account/README.md) — sign-in and account views.
 
+<a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
 
 Account operations depend on the configured Sub2API control plane and enabled payment methods.

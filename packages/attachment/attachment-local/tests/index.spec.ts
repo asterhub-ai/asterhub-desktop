@@ -3,7 +3,7 @@ import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import ProjectStorage from '@deepseek-ai/dsh-project-storage'
 import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -109,7 +109,7 @@ describe('local attachment service', () => {
     }
   })
   it('stores scoped originals under the owning project and rejects missing scope', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'dsh-project-attachment-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'dsh-project-attachment-')))
     const project = join(root, 'project'), dshHome = join(root, 'home')
     await mkdir(project)
     const ctx = new Context()

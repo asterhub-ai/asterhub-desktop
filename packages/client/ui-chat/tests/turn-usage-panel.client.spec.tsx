@@ -21,7 +21,7 @@ describe('TurnUsagePanel', () => {
       outputTokens: 5_800,
       reasoningTokens: 42,
       totalTokens: 15_800,
-      routes: [{ provider: 'deepseek', model: 'deepseek-chat' }],
+      routes: [{ provider: 'sub2api', model: 'gpt-luna' }],
     }
     const view = render(<TurnUsagePanel usage={usage} t={t} />)
 
@@ -41,7 +41,7 @@ describe('TurnUsagePanel', () => {
     expect(dialog.firstChild?.textContent).toBe('Turn usage15,800 tok')
     const details = dialog.querySelector('[data-turn-usage-details]') as HTMLElement
     expect(details).toBeTruthy()
-    expect(details.textContent).toContain('Provider / modeldeepseek/deepseek-chat')
+    expect(details.textContent).toContain('Provider / modelAsterHub/gpt-luna')
     expect(details.textContent).toContain('Cache hit49.4%')
     expect(details.textContent).toContain('Uncached input5,060 tok')
     expect(details.textContent).toContain('Cached input4,940 tok')

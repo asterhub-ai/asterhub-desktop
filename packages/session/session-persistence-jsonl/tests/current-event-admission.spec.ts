@@ -46,10 +46,10 @@ describe('current event admission at EOF', () => {
     return path
   }
 
-  it.each([{ surfaceOp: 'append' }, { sourceEventSeqs: [] }])('refuses unknown required metadata %j without truncating a provider append', async (metadata) => {
-    const event = { type: 'future/required', seq: 0, time: 1, data: {}, ...metadata }
-    const bytes = Buffer.from([header, event].map(row => JSON.stringify(row)).join('\n') + '\n')
-    expect(scanLog(bytes)).toMatchObject({ events: [event], committedBytes: bytes.length })
+  it.each([{ surfaceOp: 'append' }, { sourceEventSeqs: [0] }])('refuses unknown required metadata %j without truncating a provider append', async (metadata) => {
+    const event = { type: 'future/required', seq: 1, time: 2, data: {}, ...metadata }
+    const bytes = Buffer.from(prefix + JSON.stringify(event) + '\n')
+    expect(scanLog(bytes)).toMatchObject({ events: [start, event], committedBytes: bytes.length })
     const path = await store(bytes)
     const sourceStat = await stat(path)
     for (const access of ['read', 'write'] as const) {
@@ -57,7 +57,7 @@ describe('current event admission at EOF', () => {
         const handle = await ctx.sessionPersistence.open(id, access)
         try {
           if (access === 'read') await handle.read()
-          else await handle.append([{ type: 'turn/start', seq: SessionSeq(1), time: 2, data: { turn: 1 } }])
+          else await handle.append([{ type: 'turn/end', seq: SessionSeq(2), time: 3, data: { turn: 1, reason: { kind: 'completed' } } }])
         } finally {
           await handle.close()
         }

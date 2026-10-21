@@ -1,6 +1,6 @@
 /** Unknown producer attribution survives the native codec and detached Session reader. */
 import { describe, expect, it } from 'vitest'
-import { Session, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, Session, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
 import { SessionFormatEventCollector } from '@deepseek-ai/dsh-session-format'
 import type { SessionFormatEvent } from '@deepseek-ai/dsh-session-format'
@@ -31,8 +31,15 @@ describe('uninstalled producer attribution', () => {
     const restored = restoreReleasedV4Artifact(artifact, new Set(input.map(event => event.type)))
     expect(restored.events).toEqual(input)
     // The format reader validates stored JSON; adoption validates the current Session fields.
+    const sessionHeader: SessionHeader = {
+      version: SESSION_FORMAT_VERSION,
+      id: SessionId(header.id),
+      createdAt: header.createdAt,
+      isSeeded: header.isSeeded,
+      delegationDepth: header.delegationDepth,
+    }
     const session = Session.fromRestore(
-      SessionId(header.id), restored.events as readonly SessionEvent[], { ...restored.header, version: 5 } as unknown as SessionHeader,
+      sessionHeader.id, restored.events as readonly SessionEvent[], sessionHeader,
       SessionLogOffset(restored.inheritedEventCount), 'detached',
     )
     expect(session.deriveMessages()).toEqual([message])

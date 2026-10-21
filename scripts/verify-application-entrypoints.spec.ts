@@ -109,8 +109,7 @@ describe('application entrypoints', () => {
     write(root, 'package.json', JSON.stringify({ scripts: { 'start:web': 'node packages/example/app/src/bin.ts web' } }))
 
     expect(applicationEntrypointViolations(root)).toEqual([
-      'package.json scripts.start:web: application launcher script must launch apps/cli/src/bin.ts',
-      'package.json scripts.start:web: application launcher script must not launch a package entry directly',
+      'package.json scripts.start:web: classified wrapper must be scripts/dsh-source.ts',
     ])
   })
 

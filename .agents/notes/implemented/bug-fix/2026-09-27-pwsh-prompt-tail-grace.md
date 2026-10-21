@@ -12,9 +12,13 @@ Windows sessions on the self-hosted lane settled one or two of seven sends on th
 
 `dsh-terminal-bash` gains a validated `promptTailGraceMs` configuration field, default `0`. While a send has seen the prompt marker and its printable tail has not arrived, the silence bound becomes `idleSilenceMs + handoffGraceMs + promptTailGraceMs`; every other bound, wait reason, and code path is unchanged. The [persistent PTY readiness design](../feature/2026-07-16-persistent-pty-sessions.md) owns the tier ladder this bound extends. Zero reproduces the previous bound exactly, so an upgrade changes no deployment's behaviour. The persistent pwsh Loader-composition case keeps the default: the self-hosted lane's degraded sends settle at the plain bound with the tolerance present or absent, so a nonzero value there would only lengthen a never-arriving-tail fallback from 3.3 s to 8.3 s per send while reporting a genuinely late tail as a slow pass instead of a named failure. `validateConfig` accepts zero for this field — the one numeric bound whose zero is a documented value — and rejects negative or fractional values.
 
+Windows `spawnTerminal` now selects node-pty's bundled OpenConsole with `useConptyDll: true`. Windows 10 LTSC 19044's inbox conhost rewrites a prompt's trailing space as cursor-forward CSI, so changing `promptTailGraceMs` would delay fallback without restoring the missing printable tail.
+
 ## Alternatives considered
 
 **Raise the default instead of adding a field.** Rejected: it trades one fixed cost for another on every host. A marker whose tail never arrives (a stray marker from a child, a broken prompt function) would then fall back that much later everywhere, while the timing that matters differs per deployment.
+
+**Normalize cursor-forward CSI as prompt text.** Rejected: synthesizing a trailing space could turn corrupted terminal output into false readiness evidence; selecting the bundled console host preserves the actual prompt tail.
 
 **Make the observation sticky: once the exact tail was seen, let later output stand.** Rejected: the tail rule exists to prove the marker was followed by the prompt text rather than by a command's output, and a sticky flag would settle a send while that command is still printing.
 
@@ -26,6 +30,10 @@ Windows sessions on the self-hosted lane settled one or two of seven sends on th
 
 A deployment whose console renderer stalls keeps those sends on the exact path by setting `promptTailGraceMs`; the default path is bit-for-bit the previous bound, so the negative control — the same delayed tail with the field at zero — still settles `inferred_idle`. The tolerance applies only after a marker was seen: a missing prompt keeps the plain silence bound, so the regression the Loader-composition case pins (a lost prompt must fail) is still caught, and a marker whose tail never arrives falls back one configured interval later.
 
+Every Windows terminal now depends on node-pty's bundled `conpty.dll` and `OpenConsole.exe`; missing or unpacked assets fail allocation rather than falling back to inbox conhost. Recheck the experimental option and asset layout when upgrading node-pty.
+
 ## Testing
 
 `packages/terminal/terminal-bash/tests/session.spec.ts` pins every state with fake timers: with `promptTailGraceMs` set, a marker whose tail arrives after the plain bound stays pending and then settles `stdin_read`; a marker whose tail never arrives falls back to `inferred_idle` at the extended bound; a tail that arrived and was invalidated by later output keeps the plain bound; and with the field at zero the same delayed delivery settles `inferred_idle`. `packages/terminal/terminal-bash/tests/config.spec.ts` accepts zero and rejects negative or fractional values, and rejects a nonzero tolerance shorter than one `pollIntervalMs`. The end-to-end evidence on native Windows came from a guest-patched copy of `packages/shell/tool-pwsh-persistent/tests/loader-composition.spec.ts` (Windows PowerShell 5.1, 2026-09-27): with every session's prompt tail withheld for four seconds and the tolerance at 5000 ms the case passed — nine settles, eight `stdin_read` and the `exit` command's `session_exit`, in 33.4 s and 37.5 s — and with the tolerance at zero two sends settled `inferred_idle` with `promptSeen` true, `promptTextSeen` false, an empty tail and `idleFor` 3312-3316 ms. The committed case runs with the default and prints a per-send readiness timeline on failure, so that state is named when it occurs rather than inferred from wall time.
+
+The regression coverage also pins `useConptyDll: true` only on Windows and the persistent-pwsh post-scroll and post-exit readiness sequence. The Loader-composition test passed on Nomad 5800 with Node 22.22.2 in the 2026-10-21 full unit run.
