@@ -54,6 +54,7 @@ python python/sdk/examples/permission.py \
 
 The command changes the Session's policy while the printed launch setting remains `workspace-write`. The later query uses the Session's current policy. Bare `/permission` is ordinary text, and unknown presets produce a command error. See [Query and response](../README.md#query-and-response) for result and state semantics.
 
+<a id="review-a-plan"></a>
 ## Add plugins
 
 Use the runtime wheel's `dsh` command against the same explicit home for persistent profile changes:

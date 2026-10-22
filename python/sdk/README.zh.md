@@ -8,24 +8,6 @@
 python -m pip install deepseek-harness-sdk
 ```
 
-## 可选 Office 操作
-
-显式下载 Office 运行时后，即可调用本地 API，无需 agent、Session、模型请求、API key 或 Harness home：
-
-```py
-from deepseek_harness_runtime import download_office
-from deepseek_harness.office import convert, recalculate, render_images
-
-download_office()
-pdf = convert("report.docx", "report.pdf")
-workbook = recalculate("forecast.xlsx", "calculated.xlsx")
-preview = render_images("report.docx", "report-preview", pages=[1])
-```
-
-输出文件或图片目录必须不存在。调用方拥有成功输出；Kit 删除失败输出。`OfficeOptions` 提供操作限制和字体偏好。结果包含类型化路径、缺失字体和图片元数据。`OfficeError` 保留 CLI 失败代码；无效结果抛出 `SdkProtocolError`。重算不验证业务逻辑或 Excel 兼容性。Ctrl+C 会等待 CLI 清理；再次中断会强制终止，可能留下未完成输出。Windows 要求绝对 `SystemRoot` 路径，并通过共享控制台传递 Ctrl+C。
-
-创作环境可通过 `deepseek_harness_runtime.download_primary_runtime()` 独立选择。缓存选择、资源启用与下载行为见[运行时参考](../sdk-runtime/README.zh.md)。SDK 启动和 Office 操作都不会自动获取缺失资源。
-
 ## 启动运行时
 
 Python SDK 没有独立的应用入口。它以 `--profile sdk` 启动内置的 `dsh` CLI（命令行界面）；所选 profile 负责 JSON-RPC 服务器、agent（智能体）组合、凭据、持久化、工具和关闭流程。
@@ -53,37 +35,19 @@ print(result.final_response)
 <a id="query-and-response"></a>
 ## 查询与接收
 
-调用 `session.query(text)` 发送文本，再迭代 `session.receive_response()` 观察结果。`query()` 发送后即返回 `None`，不等待运行时路由或执行。完整 SDK 接管裸 `/compact` 和带非空 preset 的 `/permission <preset>`，包括绑定到其定义的 Desktop 别名。裸 `/permission` 或 `/权限`、`/plan`、`/model` 及其余输入仍是普通提示词。此 API 只接受文本字符串。`delivery="queue"` 是默认值；`delivery="steer"` 将普通提示词交给下一个 step。命令执行时机仍由命令决定。
+调用 `session.query(text)` 发送文本，再迭代 `session.receive_response()` 观察结果。`query()` 发送后即返回 `None`，不等待运行时路由或执行。完整 SDK 接管裸 `/compact`、带非空 preset 的 `/permission <preset>` 和 `/plan [off|message]`，包括绑定到其定义的 Desktop 别名。裸 `/permission` 或 `/权限`、`/model` 及其余输入仍是普通提示词。此 API 只接受文本字符串。`delivery="queue"` 是默认值；`delivery="steer"` 将普通提示词交给下一个 step。命令执行时机仍由命令决定。
 
 `receive_response()` 按发送顺序领取下一次 query。它先等待路由响应，再逐个产出 `Notification`，最后产出一个终态值：普通提示词从收件箱回执到 idle 区间的 `RunResult`，或命令处理结束后的 `CommandExecution`。通知可以在开始接收前积累。不同接收器可以并行观察各自的 query，也可以在一个接收器等待期间发送另一个 `query()`。关闭未完成的迭代器只释放它自己的本地观察资源，不取消或回滚运行时操作。终态值产出前会释放资源。
 
 `CommandExecution` 包含 `command_id` 和以 `kind` 区分的 `result`。成功结果可以包含 `text` 和 `source_event_seq`；错误结果包含 `text`。处理器错误返回 `kind="error"`；路由、协议和传输失败在接收时抛出。发送失败从 `query()` 抛出。`request_timeout_seconds` 限制路由响应的等待时间，不限制后续提示词活动；已经到达的响应在期限过后仍可接收。
 
-完整 `sdk` profile 提供这两个命令；默认 `sdk-minimal` profile 不提供命令执行能力。`/compact` 可能发起辅助模型请求，完成时不要求普通轮次或 idle 通知；空历史可以不生成摘要而成功返回。`run()` 对 slash 文本保留普通提示词语义。底层阻塞式 `HarnessClient.session_command(session_id, line)` 严格接受 `/compact` 或 `/permission <preset>`，并拒绝裸 `/permission`。另见[压缩示例](examples/README.zh.md#compact-a-full-sdk-session)。
+完整 `sdk` profile 提供这些命令；默认 `sdk-minimal` profile 不提供命令执行能力。`/compact` 可能发起辅助模型请求，完成时不要求普通轮次或 idle 通知；空历史可以不生成摘要而成功返回。`run()` 对 slash 文本保留普通提示词语义。底层阻塞式 `HarnessClient.session_command(session_id, line)` 严格接受 `/compact`、`/permission <preset>` 或 `/plan [off|message]`，并拒绝裸 `/permission`。另见[压缩示例](examples/README.zh.md#compact-a-full-sdk-session)。
 
 `/permission <preset>` 委托给原生权限 handler。未知 preset 返回 `CommandExecution.result.kind="error"`，不改变权限状态。成功的变更属于该 Session：后续 query 和恢复保留该状态，其他 Session 保留各自状态，新 Session 使用配置的默认值。`DeepSeekHarnessConfig` 仍是启动输入，不是共享的实时状态镜像；命令不重写它或已保存的用户默认值。运行中改变审批策略可能注入通知并触发额外模型 step。另见[权限示例](examples/README.zh.md#change-session-permissions)。
 
+`/plan` 进入计划模式，`/plan off` 退出，`/plan <message>` 进入后通过原生 steer 提交去除首尾空白的正文。返回的 `CommandExecution` 只表示命令完成，不表示规划或审查结束。需要普通活动结果时，可以先用 `/plan` 进入，再单独提交普通 query。组合输入则应在发送前订阅，并在保持问答处理器运行的同时使用 `session/wait`，见[计划示例](examples/README.zh.md#review-a-plan)。计划模式改变指导并渐进披露 `exit_plan_mode`，不修改权限设置。默认指导禁止编辑文件，包括计划文档；实际执行仍由沙箱控制。
+
 <a id="client-approvals"></a>
-## 客户端审批
-
-此底层示例接收一次审批并拒绝。完整运行应使用专门处理请求的线程或循环：`next_request()` 会阻塞，请求处理器必须与 `session/wait` 或高层 `run()` 并行运行。仅在处理器就绪时，在 `HarnessClient.initialize()` 或 `DeepSeekHarnessConfig` 设置 `approval_requests=True`；省略时保留运行时应答链。决定只作用于单次操作；无效响应和断连会拒绝放行，取消后丢弃迟到响应。构造决定时，可用 `ApprovalRequestResult` 校验响应值。
-
-```py
-from deepseek_harness import ApprovalRequestParams, HarnessClient, HarnessConfig
-
-with HarnessClient(HarnessConfig(dsh_home="/absolute/path/to/dsh-home")) as client:
-    client.initialize(cwd="/absolute/path/to/workspace", provider="deepseek-official",
-                      model="deepseek-v4-flash", approval_requests=True)
-    client.session_prompt("main", [{"type": "text", "text": "Run the operation requiring approval."}])
-    request = client.next_request()
-    if request.method == "approval/request":
-        question = ApprovalRequestParams.model_validate(request.payload)
-        print(question.toolName, question.reason)
-        client.respond(request.id, {"outcome": "rejected"})
-    else:
-        client.respond_error(request.id, code=-32601, message="Unsupported client request")
-```
-
 ## 自定义插件
 
 持久自定义属于 `dsh` profile。使用运行时 wheel 包提供的 `dsh` 命令初始化随附的 SDK profile，并安装外部 bundle：
@@ -112,12 +76,6 @@ with DeepSeekHarness(
 `provider` 选择指定 Cordis 组合所注册的提供方路由；`model` 是该适配器解析出的模型 ID。`reasoning_effort` 是该确切路由可选的非空适配器自有标识符；省略时保留模型自身的默认值。`max_tokens` 是一个可选的正整数，用于限制根 agent 及其进程内后代在每次请求中输出的 token 数量；省略该参数时，由提供方的默认行为决定输出上限。缺少适配器、模型不可用或推理强度不受支持时，初始化会在提示词运行前拒绝。压缩（compaction）摘要继续使用压缩插件单独配置的上限。内置默认组合注册 `deepseek-official`。自定义组合可以挂载 `llm-pi-ai`，在其中配置各提供方专属的凭据和端点，并选择 pi-ai 已安装 catalog 中存在的任意提供方／模型组合。
 
 随附的 `sdk-minimal` profile 是独立显式配置树，而不是 `dsh-base` 上的 overlay。使用 `profile="sdk-minimal"` 选择它；普通 `model` 参数是唯一运行时模型选择，也适用于不在适配器建议目录中的模型 ID。它提供按平台选择的持久 shell、`read_image`、`working_directory`、本地执行、JSONL 会话和自动压缩。文本文件工具、设置、托管凭据、遥测、Web 工具与完整默认工具清单仍由独立的完整 `sdk` 与 `web` profile 提供。SDK 提示词文本不会执行 `/compact`。
-
-## 原生用户问答
-
-向 `DeepSeekHarnessConfig`、`DeepSeekHarness` 或 `HarnessConfig` 传入 `on_user_question`，即可通过原生 SDK 协议回答内建的 `ask_user_question` 工具。回调接收 `UserQuestionRequest`（包含 `request_id`、`session_id` 和原始 `questions`）以及表示取消的 `threading.Event`。返回 `UserQuestionAnswer`，或形如 `{"answers": [{"id": "question-id", "selected": ["option label"], "custom": "optional free text"}]}` 的 JSON 对象。每个原问题 id 必须恰好出现一次。应用自行提供 UI 或模拟用户策略；SDK 不选择答案。
-
-回调在独立线程执行，读取线程仍可处理取消和其他请求。回调可以并发执行，也可以再次调用客户端请求。取消 Event 置位时应释放回调拥有的工作。客户端关闭会通知所有待决回调，并给其工作线程总计 0.5 秒的 join 窗口；忽略取消的回调可能继续执行，但晚到答案不会发送到运行时或后续新进程。回调异常转为协议错误；未提供回调时保留原生回答方，或报告 `NO_PROVIDER`。
 
 ## 结果与通知
 

@@ -54,6 +54,7 @@ python python/sdk/examples/permission.py \
 
 命令会修改 Session 的策略，而打印出的启动设置仍为 `workspace-write`。后续 query 使用 Session 的当前策略。裸 `/permission` 是普通文本，未知 preset 返回命令错误。结果和状态语义见[查询与接收](../README.zh.md#query-and-response)。
 
+<a id="review-a-plan"></a>
 ## 添加插件
 
 对同一个显式 home 使用运行时 wheel 包提供的 `dsh` 命令，以进行持久 profile 变更：
