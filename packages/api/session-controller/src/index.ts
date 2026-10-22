@@ -1,7 +1,7 @@
 /** Session Remote owner: cold reads, explicit Agent commands, and live control state. */
 
 import { hostname } from 'node:os'
-import { resolve } from 'node:path'
+import { relative, resolve } from 'node:path'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-fs'
 import { Context } from '@deepseek-ai/cordis'
@@ -549,7 +549,11 @@ export class SessionController extends TypertRemoteService {
     const hostPath = resolve(path)
     const { fs } = this.ctx
     const mapped = fs.processPathFromHostPath(hostPath)
-    if (mapped === undefined || fs.processPath(await fs.resolve(mapped, { signal })) !== hostPath) {
+    if (mapped === undefined) {
+      throw new RemoteError('gateway/bad-request', 'Path has no verified Host path', {})
+    }
+    const processPath = fs.processPath(await fs.resolve(mapped, { signal }))
+    if (relative(hostPath, processPath) !== '') {
       throw new RemoteError('gateway/bad-request', 'Path has no verified Host path', {})
     }
     signal.throwIfAborted()

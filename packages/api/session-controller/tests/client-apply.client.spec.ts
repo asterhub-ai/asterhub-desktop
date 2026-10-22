@@ -9,7 +9,7 @@ import { createClientTest, type TestClient, webApp } from '@deepseek-ai/dsh-clie
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { isTypertOwnedValue } from '@deepseek-ai/dsh-typert-protocol'
-import { afterEach, describe, expect, vi, type MockInstance } from 'vitest'
+import { afterEach, describe, expect, vi } from 'vitest'
 import { ClientSessions } from '../src/client/sessions/service.ts'
 import type { SessionListValue } from '../src/types.ts'
 
@@ -18,7 +18,6 @@ const ROSTER = webApp.closure([SELF])
 const it = createClientTest({ roster: ROSTER })
 const EVENTS = '$events'
 const CONTROL = 'session/control'
-const BASELINE = { type: 'baseline', value: { projections: {} } }
 /** The first client boot pays the cold module transform of the cone. */
 const COLD_BOOT_TIMEOUT_MS = 60_000
 
@@ -39,49 +38,69 @@ async function emit(mock: RemoteMock, event: string, ...args: unknown[]): Promis
   await mock.streams.drained(EVENTS)
 }
 
-function baselines(accept: MockInstance): number {
-  return accept.mock.calls.filter(([frame]) => (frame as { type: string }).type === 'baseline').length
-}
-
 describe('Session Controller Client apply', () => {
   it('routes Remote events from the $events stream into the object layer and runs handleConnected once per generation', async ({ mock, start }) => {
-    const connected = vi.spyOn(ClientSessions.prototype, 'handleConnected')
-    const error = vi.spyOn(ClientSessions.prototype, 'handleSessionError')
     const { client, sessions } = await bench(start)
     // The first generation's `connection/reset` already ran it; apply itself saw no Host yet.
-    await vi.waitFor(() => { expect(connected).toHaveBeenCalledOnce() })
+    await vi.waitFor(() => {
+      expect(client.connection.generation.getSnapshot()?.id).toBe(1)
+      expect(sessions.list.getSnapshot().phase).toBe('ready')
+      expect(mock.remote.session.list).toHaveBeenCalledOnce()
+    })
 
     await emit(mock, 'api-session/added', { agentAvailable: true, sessionId: sid('session-1'), updatedAt: 1, running: false, blank: true })
     await vi.waitFor(() => {
       expect(sessions.list.getSnapshot().byId[sid('session-1')]).toMatchObject({ running: false, updatedAt: 1 })
     })
 
+    // Materialize the object layer so the Agent-failure event has a Session to land on.
+    using reference = sessions.retainAgentScope(sid('session-1'))
     await emit(mock, 'api-session/status', sid('session-1'), true)
     await emit(mock, 'api-session/activity', sid('session-1'), 9)
     await emit(mock, 'api-session/error', sid('session-1'), 'agent failed')
     await vi.waitFor(() => {
       expect(sessions.list.getSnapshot().byId[sid('session-1')]).toMatchObject({ running: true, updatedAt: 9 })
+      expect(reference.binding.session.getSnapshot()).toMatchObject({ running: true, lastAgentError: 'agent failed' })
     })
-    expect(error).toHaveBeenCalledWith(sid('session-1'), 'agent failed')
 
     await emit(mock, 'api-session/removed', sid('session-1'))
-    await vi.waitFor(() => { expect(sessions.list.getSnapshot().byId[sid('session-1')]).toBeUndefined() })
+    await vi.waitFor(() => {
+      expect(sessions.list.getSnapshot().byId[sid('session-1')]).toBeUndefined()
+      expect(reference.binding.session.getSnapshot().removed).toBe(true)
+    })
 
     client.connection.reconnect()
     await mock.streams.opened(EVENTS, 2)
-    await vi.waitFor(() => { expect(connected).toHaveBeenCalledTimes(2) })
+    // The new generation reloads the catalog once and reopens the control stream once.
+    await vi.waitFor(() => {
+      expect(client.connection.generation.getSnapshot()?.id).toBe(2)
+      expect(mock.remote.session.list).toHaveBeenCalledTimes(2)
+      expect(mock.log.streams(CONTROL)).toHaveLength(2)
+    })
+    await client.flush()
+    expect(mock.remote.session.list).toHaveBeenCalledTimes(2)
   }, COLD_BOOT_TIMEOUT_MS)
 
-  it('runs handleConnected at apply when the Host is already connected, as a reload of the row does', async ({ start }) => {
-    const connected = vi.spyOn(ClientSessions.prototype, 'handleConnected')
-    const { client } = await bench(start)
-    await vi.waitFor(() => { expect(connected).toHaveBeenCalledOnce() })
+  it('runs handleConnected at apply when the Host is already connected, as a reload of the row does', async ({ mock, start }) => {
+    const { client, sessions } = await bench(start)
+    await vi.waitFor(() => {
+      expect(client.connection.generation.getSnapshot()?.id).toBe(1)
+      expect(sessions.list.getSnapshot().phase).toBe('ready')
+      expect(mock.remote.session.list).toHaveBeenCalledOnce()
+      expect(mock.log.streams(CONTROL)).toHaveLength(1)
+    })
+
     await client.reload(SELF)
-    expect(connected).toHaveBeenCalledTimes(2)
+    const reloadedSessions = client.ctx.sessions as ClientSessions
+
+    await vi.waitFor(() => {
+      expect(mock.remote.session.list).toHaveBeenCalledTimes(2)
+      expect(mock.log.streams(CONTROL)).toHaveLength(2)
+      expect(reloadedSessions.list.getSnapshot().phase).toBe('ready')
+    })
   })
 
   it('keeps immediate control projections when the ready notification follows their baseline', async ({ mock, start }) => {
-    const connected = vi.spyOn(ClientSessions.prototype, 'handleConnected')
     const sessionId = sid('immediate-baseline')
     mock.remote.session.list.mockResolvedValue(ok({ items: [{
       sessionId, updatedAt: 1, running: false, blank: false, agentAvailable: true,
@@ -93,43 +112,67 @@ describe('Session Controller Client apply', () => {
     const { client, sessions } = await bench(start)
     await vi.waitFor(() => {
       expect(sessions.list.getSnapshot().byId[sessionId]?.title).toBe('Before restart')
+      expect(mock.remote.session.list).toHaveBeenCalledOnce()
     })
     client.ctx.emit('connection/reset')
     await client.flush()
     expect(sessions.list.getSnapshot().byId[sessionId]?.title).toBe('Before restart')
 
+    // A new Host generation invalidates the old cut before the reopened baseline arrives (lower seq wins only after the clear).
     projection = { asOfSeq: 1, values: { title: 'After restart' } }
     client.connection.reconnect()
     await vi.waitFor(() => {
       expect(sessions.list.getSnapshot().byId[sessionId]?.title).toBe('After restart')
+      expect(mock.remote.session.list).toHaveBeenCalledTimes(2)
     })
 
+    // After the row unloads, later generations neither repull the list nor reopen the control stream.
     await client.unload(SELF)
     client.connection.reconnect()
     await mock.streams.opened(EVENTS, 3)
     await vi.waitFor(() => { expect(client.connection.generation.getSnapshot()?.id).toBe(3) })
-    expect(connected).toHaveBeenCalledTimes(2)
+    await client.flush()
+    expect(mock.remote.session.list).toHaveBeenCalledTimes(2)
+    expect(mock.log.streams(CONTROL)).toHaveLength(2)
   })
 
   it('accepts the control baseline, retries a carrier loss once, and reports a second opening snapshot as a protocol failure', async ({ mock, start }) => {
-    const accept = vi.spyOn(ClientSessions.prototype, 'handleControlFrame')
+    const sessionId = sid('control-baseline')
+    const item = {
+      sessionId, updatedAt: 1, running: false, blank: false, agentAvailable: true,
+    }
+    mock.remote.session.list.mockResolvedValue(ok({ items: [item] }))
+    let opens = 0
+    mock.stream(CONTROL, (_args, stream) => {
+      opens += 1
+      stream.push({ type: 'baseline', value: { projections: { [sessionId]: {
+        asOfSeq: opens, values: { title: `baseline ${String(opens)}` },
+      } } } })
+    })
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
-    await start()
-    await vi.waitFor(() => { expect(baselines(accept)).toBe(1) })
-    expect(accept).toHaveBeenCalledWith(BASELINE)
+    const { sessions } = await bench(start)
+    await vi.waitFor(() => {
+      expect(sessions.list.getSnapshot().byId[sessionId]?.title).toBe('baseline 1')
+    })
 
-    // One immediate retry while the Host is available reopens the stream, whose script pushes the baseline again.
+    // One immediate retry while the Host is available reopens the stream, whose script pushes a fresh baseline.
     mock.streams.fail(CONTROL, new RemoteStreamCarrierError('generation lost'))
-    await vi.waitFor(() => { expect(baselines(accept)).toBe(2) })
-    expect(mock.log.streams(CONTROL)).toHaveLength(2)
+    await vi.waitFor(() => {
+      expect(mock.log.streams(CONTROL)).toHaveLength(2)
+      expect(sessions.list.getSnapshot().byId[sessionId]?.title).toBe('baseline 2')
+    })
+    expect(opens).toBe(2)
 
-    mock.streams.push(CONTROL, BASELINE)
+    // A second opening snapshot inside one generation is a protocol failure; the accepted cut stays published.
+    mock.streams.push(CONTROL, { type: 'baseline', value: { projections: {} } })
     await vi.waitFor(() => {
       expect(logged).toHaveBeenCalledWith(
         '[session-controller] control stream failed:',
         expect.objectContaining({ message: 'session control stream emitted more than one opening snapshot' }),
       )
     })
+    expect(sessions.list.getSnapshot().byId[sessionId]?.title).toBe('baseline 2')
+    expect(mock.log.streams(CONTROL)).toHaveLength(2)
   })
 
   it('materializes Host-addressed Agent scopes before the Session list arrives', async ({ mock, start }) => {
@@ -172,30 +215,44 @@ describe('Session Controller Client apply', () => {
   })
 
   it('waits for a Host generation before retrying the control stream', async ({ mock, start }) => {
-    const accept = vi.spyOn(ClientSessions.prototype, 'handleControlFrame')
+    const sessionId = sid('control-generation')
     const hostBack = Promise.withResolvers<undefined>()
-    let opens = 0
+    let eventsOpens = 0
+    let controlOpens = 0
     // The second $events generation stays unready until the test lets the Host answer.
     mock.stream(EVENTS, (_args, stream) => {
-      opens += 1
-      const ready = { type: 'ready', clientId: `mock-client-${String(opens)}`, host: { home: '/home/mock' } }
-      if (opens === 1) stream.push(ready)
+      eventsOpens += 1
+      const ready = { type: 'ready', clientId: `mock-client-${String(eventsOpens)}`, host: { home: '/home/mock' } }
+      if (eventsOpens === 1) stream.push(ready)
       else void hostBack.promise.then(() => { stream.push(ready) })
     })
-    const client = await start()
-    await vi.waitFor(() => { expect(baselines(accept)).toBe(1) })
+    mock.stream(CONTROL, (_args, stream) => {
+      controlOpens += 1
+      stream.push({ type: 'baseline', value: { projections: { [sessionId]: {
+        asOfSeq: controlOpens, values: { title: `baseline ${String(controlOpens)}` },
+      } } } })
+    })
+    const { client, sessions } = await bench(start)
+    await vi.waitFor(() => {
+      expect(sessions.list.getSnapshot().projectionsBySession[sessionId]?.values.title).toBe('baseline 1')
+    })
 
     client.connection.reconnect()
     await mock.streams.opened(EVENTS, 2)
     expect(client.connection.generation.getSnapshot()).toBeUndefined()
 
+    // Without a Host generation the carrier loss cannot reopen: no new open and no new baseline.
     mock.streams.fail(CONTROL, new RemoteStreamCarrierError('offline'))
     await client.flush()
-    expect(baselines(accept)).toBe(1)
+    expect(controlOpens).toBe(1)
     expect(mock.log.streams(CONTROL)).toHaveLength(1)
+    expect(sessions.list.getSnapshot().projectionsBySession[sessionId]?.values.title).toBe('baseline 1')
 
     hostBack.resolve(undefined)
-    await vi.waitFor(() => { expect(baselines(accept)).toBe(2) })
-    expect(client.connection.generation.getSnapshot()).toMatchObject({ id: 2 })
+    await vi.waitFor(() => {
+      expect(client.connection.generation.getSnapshot()).toMatchObject({ id: 2 })
+      expect(mock.log.streams(CONTROL)).toHaveLength(2)
+      expect(sessions.list.getSnapshot().projectionsBySession[sessionId]?.values.title).toBe('baseline 2')
+    })
   })
 })
