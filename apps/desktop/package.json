@@ -53,6 +53,7 @@
     "@deepseek-ai/dsh-client-ui-settings-general": "workspace:*",
     "@deepseek-ai/dsh-client-ui-sidebar-browser": "workspace:*",
     "@deepseek-ai/dsh-client-ui-theme": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-file-actions": "workspace:*",
     "@deepseek-ai/dsh-deepseek-account": "workspace:*",
     "@deepseek-ai/dsh-home-paths": "workspace:*",
     "@deepseek-ai/dsh-util-file-drag": "workspace:*",

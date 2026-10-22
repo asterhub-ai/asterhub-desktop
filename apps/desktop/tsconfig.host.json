@@ -43,6 +43,7 @@
     },
     {
       "path": "../../packages/browser-use/browser-use-desktop"
+      "path": "../../packages/client/ui-file-actions"
     }
   ],
   "exclude": [
