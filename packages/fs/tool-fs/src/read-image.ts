@@ -18,6 +18,7 @@ import type { AttachmentStore, ImageAttachmentRef, ImageMediaType } from '@deeps
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, ToolExecution } from '@deepseek-ai/dsh-tools'
+import { resolveProjectAttachmentScope } from '@deepseek-ai/dsh-project-storage'
 import type {} from '@deepseek-ai/dsh-fs'
 import { resolveRegularReadTarget } from './read-target.ts'
 
@@ -270,7 +271,10 @@ export function applyReadImageTool(ctx: Context): void {
       // committed object by the time the tool/result event is appended.
       let ref: ImageAttachmentRef
       try {
-        ref = await attachments.saveImage({ data, mediaType, name: basename(target.displayPath) })
+        const scope = exec.agent === undefined
+          ? undefined
+          : resolveProjectAttachmentScope(ctx, exec.agent.session.id)
+        ref = await attachments.saveImage({ data, mediaType, name: basename(target.displayPath) }, scope)
       } catch (error: unknown) {
         if (!(error instanceof AttachmentError)) throw error
         // Dimension refusals stay recoverable tool errors: an oversized image

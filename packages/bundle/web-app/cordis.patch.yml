@@ -75,6 +75,13 @@
         metadataLimitBytes: 1048576
         lockDeadlineMs: 5000
 
+    # Project-local Sessions own their attachment files; unscoped writes fail
+    # instead of persisting a reference outside the Session's project.
+    - id: attachment-local
+      name: '@deepseek-ai/dsh-attachment-local'
+      config:
+        projectLocal: true
+
     - id: session-persistence-project
       name: '@deepseek-ai/dsh-project-storage/persistence'
       config:

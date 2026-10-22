@@ -48,6 +48,9 @@
       "path": "../../sandbox/sandbox-policy"
     },
     {
+      "path": "../../workspace/project-storage"
+    },
+    {
       "path": "../../session/session-persistence"
     },
     {

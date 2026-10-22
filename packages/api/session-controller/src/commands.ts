@@ -19,6 +19,7 @@ import { buildForkSeed } from '@deepseek-ai/dsh-session/fork'
 import { SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
+import { resolveProjectAttachmentScope } from '@deepseek-ai/dsh-project-storage'
 import { SessionTitleInvalidError } from '@deepseek-ai/dsh-session-title'
 import { canonicalClientTimeZone } from '@deepseek-ai/dsh-util-time'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
@@ -359,7 +360,10 @@ export class SessionCommandController {
           request.content,
           receiptId => this.ctx.fileUploads.resolve(agent, receiptId),
         )
-        const content = await this.ctx.attachments.admitPromptContent(admission.content)
+        const attachmentScope = hasImage && this.ctx.get('projectStorage', false) !== undefined
+          ? resolveProjectAttachmentScope(this.ctx, agent.session.id)
+          : undefined
+        const content = await this.ctx.attachments.admitPromptContent(admission.content, attachmentScope)
         const message: UserMessage = createUserMessage({ content, source })
         if (this.ctx.agents.get(agent.id) !== agent) {
           throw new RemoteError(

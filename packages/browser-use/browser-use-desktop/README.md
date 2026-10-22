@@ -58,7 +58,7 @@ The plugin injects `browserUse`, `tools`, `agents`, `desktopBrowserTransport`, a
 
 The provider serializes operations per live Session through an in-memory queue. It derives trusted caller identities from the calling Agent and Host metadata, never accepting caller or Session identities from model arguments. Renderer tab commands expire after 15 seconds without a reply; cancellation, window teardown, and send failures remove their pending entries and timers, so a stale renderer cannot leave a request waiting indefinitely.
 
-When capturing screenshots, the tool verifies model image capability before requesting pixels. Stored screenshot bytes are committed through `ctx.attachments.saveImage()` and referenced as durable image attachments.
+When capturing screenshots, the tool verifies model image capability before requesting pixels. Stored screenshot bytes are committed through `ctx.attachments.saveImage()` under the caller Agent's Session scope when ProjectStorage is mounted.
 
 Text outputs are capped by `snapshotMaxChars` and `readResultMaxChars` within the 1,000,000-character transport ceiling, explicitly reporting truncation when truncated.
 

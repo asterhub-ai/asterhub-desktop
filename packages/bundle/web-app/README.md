@@ -15,7 +15,7 @@ Desktop analytics schedules partial batches every 30 seconds, with a 15-second e
 
 Desktop sessions include [local Anima memory](../../context/anima-memory/README.md), configured on its dedicated Settings page. Records and evidence stay locally; extraction can use a separate provider and model.
 
-Run `dsh --profile web` for chat, model/settings management, and Session history. It shares desktop model access, tools, and safety defaults. Startup prints an authenticated URL and opens a browser; SSH and `--no-open` leave it for manual use. Configure the port and allowed hosts; binding every interface is refused.
+Run `dsh --profile web` for chat, model/settings management, and Session history. It shares desktop models, tools, and safety defaults. Startup prints an authenticated URL and opens the default browser. Configure the port and allowed hosts; all-interface binds are refused. Project-local Sessions store images in their project's attachment store.
 
 The Host mounts the subagent model-selection settings provider required by the shipped presets. Model selection remains disabled until enabled with an allowed route list.
 

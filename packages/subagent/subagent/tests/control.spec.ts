@@ -1,11 +1,15 @@
 // The browser-facing prompt and interrupt controls and their stable failure
 // codes. Session Controller owns catalog observation and transport.
 
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import AttachmentStore, { AttachmentError } from '@deepseek-ai/dsh-attachment'
+import AttachmentStore, { AttachmentError, type AttachmentScope, type SaveImageAttachment } from '@deepseek-ai/dsh-attachment'
 import type { MessageId } from '@deepseek-ai/dsh-llm'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import ProjectStorage from '@deepseek-ai/dsh-project-storage'
+import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import SubagentRuntime, {
   SubagentError,
   type SubagentPromptRequestId,
@@ -118,6 +122,37 @@ describe('subagent prompt Remote', () => {
       { type: 'image', attachment: { ...IMAGE_REF, attachmentId: 'att-0', mediaType: 'image/png' } },
       { type: 'text', text: 'after' },
     ])
+  })
+
+  it('stores browser prompt images in the child Session project scope', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'subagent-image-scope-'))
+    const project = join(root, 'project')
+    await mkdir(project)
+    const { ctx, subagents } = await bench({ [PARENT]: { status: 'idle' } })
+    try {
+      await ctx.plugin(ProjectStorage, {
+        sessionMode: 'project-local', locatorPath: join(root, 'locator.json'),
+        legacySessionRoot: '', metadataLimitBytes: 1024 * 1024, lockDeadlineMs: 5000,
+      })
+      const binding = await ctx.projectStorage.open({ root: project, mode: 'new' })
+      await ctx.projectStorage.bindSession({
+        version: SESSION_FORMAT_VERSION, id: CHILD, createdAt: 1, cwd: project, isSeeded: false, delegationDepth: 0,
+      })
+      const saveImages = vi.fn(async (inputs: readonly SaveImageAttachment[], _scope?: AttachmentScope) =>
+        inputs.map((input, index) => ({ ...IMAGE_REF, attachmentId: `child-${index}`, mediaType: input.mediaType })))
+      ctx.provide('attachments', Object.setPrototypeOf({ saveImages }, AttachmentStore.prototype) as never)
+      promptDelivery(subagents).mockResolvedValue('m-content' as MessageId)
+
+      await subagents.prompt({
+        ...promptRequest(),
+        content: [{ type: 'image', mediaType: 'image/png', data: 'aGk=' }],
+      }, signal)
+
+      expect(saveImages.mock.calls[0]?.[1]).toEqual({ projectId: binding.id, sessionId: CHILD })
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
   })
 
   it('maps a refused image batch to subagent/attachment-invalid and delivers nothing', async () => {

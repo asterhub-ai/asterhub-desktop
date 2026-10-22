@@ -13,6 +13,7 @@ import {
 import type { Agent, AgentHandle, AgentOptions, ModelSelection } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, errorChain, type UserMessage } from '@deepseek-ai/dsh-llm'
 import { type Session, type SessionEvent, type SessionId, type TurnEndReason } from '@deepseek-ai/dsh-session'
+import { resolveProjectAttachmentScope } from '@deepseek-ai/dsh-project-storage'
 import { AcpContentError, admitAcpPrompt } from './content.ts'
 import { turnEndToStopReason } from './codec.ts'
 import { mountAcpMcpServers } from './mcp.ts'
@@ -277,12 +278,16 @@ export class AcpSession {
         if (this.ctx.agents.get(this.agent.id) !== this.agent) {
           throw internalError('prompt was not queued: the agent was disposed outside the bridge')
         }
+        const attachmentScope = params.prompt.some(block => block.type === 'image')
+          ? resolveProjectAttachmentScope(this.ctx, this.agent.session.id)
+          : undefined
         const content = await admitAcpPrompt(
           this.ctx,
           promptSelection,
           params.prompt,
           imageEnabled,
           admissionController.signal,
+          attachmentScope,
         )
         admissionController.signal.throwIfAborted()
         if (this.ctx.agents.get(this.agent.id) !== this.agent) {

@@ -463,7 +463,7 @@ describe('Desktop browser tools', () => {
 
       const expectedData: unknown = expect.any(Uint8Array)
       const expectedImage = { data: expectedData, mediaType: 'image/png' }
-      expect(attachments.saveImage).toHaveBeenCalledWith(expectedImage)
+      expect(attachments.saveImage).toHaveBeenCalledWith(expectedImage, undefined)
       expect(res.screenshotId).toBe(SNAPSHOT_1)
       expect(res.image.attachmentId).toBe('att-1')
 
