@@ -397,6 +397,7 @@ export class SessionCommandController {
 
   /**
    * Read one durable image after proving the Session log references it.
+   * When ProjectStorage is mounted, use the Session's project attachment scope.
    * @param request - Session and attachment identities used for authorization.
    * @returns the durable attachment reference and base64-encoded bytes.
    */
@@ -423,7 +424,14 @@ export class SessionCommandController {
       )
     }
     try {
-      const stored = await this.ctx.attachments.readImage(ref)
+      const storage = this.ctx.get('projectStorage', false)
+      const stored = storage === undefined
+        ? await this.ctx.attachments.readImage(ref)
+        : await this.ctx.attachments.readImage(
+          ref,
+          undefined,
+          resolveProjectAttachmentScope(this.ctx, request.sessionId),
+        )
       return {
         attachment: stored.ref,
         data: Buffer.from(stored.data).toString('base64'),

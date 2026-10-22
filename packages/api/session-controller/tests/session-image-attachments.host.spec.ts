@@ -28,7 +28,7 @@ describe('Session image attachment ownership', () => {
         metadataLimitBytes: 1024 * 1024,
         lockDeadlineMs: 5000,
       })
-      await ctx.plugin(AttachmentLocal, { dshHome, projectLocal: false })
+      await ctx.plugin(AttachmentLocal, { dshHome, projectLocal: true })
       const binding = await ctx.projectStorage.open({ root: project, mode: 'new' })
       const sessionId = SessionId('image-scope-session')
       const session = ctx.sessions.create(sessionId, { meta: { cwd: project } })
@@ -40,7 +40,9 @@ describe('Session image attachment ownership', () => {
         isSeeded: false,
         delegationDepth: 0,
       })
-      const followup = vi.fn<Agent['followup']>()
+      const followup = vi.fn<Agent['followup']>((message) => {
+        session.append('user/message', message, { surfaceOp: 'append' })
+      })
       const steer = vi.fn<Agent['steer']>()
       await ctx.agents.register(Object.assign({
         id: sessionId,
@@ -85,6 +87,16 @@ describe('Session image attachment ownership', () => {
       })).resolves.toMatchObject({ ok: true, value: { accepted: true } })
       const scope = resolveProjectAttachmentScope(ctx, sessionId)
       if (scope === undefined || scope.projectId !== binding.id) throw new Error('Session project scope was not registered')
+
+      const read = await remote.attachment({ sessionId, attachmentId: admitted.attachment.attachmentId })
+      expect(read).toMatchObject({ ok: true, value: { attachment: admitted.attachment } })
+      if (!read.ok) throw new Error('Session image RPC rejected a referenced project attachment')
+      const stored = await ctx.attachments.readImage(admitted.attachment, undefined, scope)
+      expect(Buffer.from(read.value.data, 'base64')).toEqual(Buffer.from(stored.data))
+      await expect(remote.attachment({ sessionId, attachmentId: 'unreferenced-image' as never }))
+        .resolves.toMatchObject({ ok: false, error: { code: 'session/attachment-invalid' } })
+      await expect(remote.attachment({ sessionId: SessionId('unowned-image-session'), attachmentId: admitted.attachment.attachmentId }))
+        .resolves.toMatchObject({ ok: false, error: { code: 'session/not-found' } })
 
       await expect(ctx.attachments.readImageRequest(
         admitted.attachment,
