@@ -1,7 +1,7 @@
 /**
  * Keyless snapshot coverage for the TypeScript SDK path: each scenario spawns
- * the real `dsh --profile sdk` runtime through
- * `@deepseek-ai/dsh-sdk-client`, drives one turn over stdio JSON-RPC,
+ * the real `dsh --profile sdk` or `sdk-minimal` runtime through
+ * `@deepseek-ai/dsh-sdk-client`, drives recorded turns and standalone commands over stdio JSON-RPC,
  * and pins the SDK `RunResult`, the complete notification stream, and the
  * persisted session logs. Replay serves recorded model
  * responses via `llm-replay` (`cordis.snapshot.yml`); `DSH_SNAPSHOT=record`
@@ -57,6 +57,7 @@ import {
 } from '@deepseek-ai/dsh-session-snapshot'
 import {
   DeepSeekHarness,
+  type CommandExecution,
   type HarnessNotification,
   type NotificationSubscription,
   type RunResult,
@@ -126,6 +127,10 @@ interface SdkAssertions {
 }
 
 const SDK_ASSERTIONS: Readonly<Record<string, SdkAssertions>> = {
+  'manual-compact': {
+    expectedFinalResponse: 'SDK_COMPACT_OK',
+    patches: [fileURLToPath(new URL('./manual-compact/capture.cordis.yml', import.meta.url))],
+  },
   'dynamic-tool-updates': {
     expectedFinalResponse: 'DONE',
   },
@@ -418,9 +423,17 @@ interface JsonObject {
 }
 
 interface TurnAction {
+  readonly kind: 'turn'
   readonly turn: number
   readonly content?: JsonObject[]
 }
+
+interface CommandAction {
+  readonly kind: 'command'
+  readonly line: string
+}
+
+type SdkAction = TurnAction | CommandAction
 
 function records(log: string): JsonObject[] {
   return log.split(/\r?\n/)
@@ -452,21 +465,31 @@ function modelFromSession(log: string): { provider: string; model: string } {
   throw new Error('SDK snapshot session has no request model')
 }
 
-function turnActions(log: string): TurnAction[] {
-  const actions: TurnAction[] = []
+/** Replay caller inputs from the log; in-turn commands need an explicit timing-aware controller. */
+function sdkActions(log: string): SdkAction[] {
+  const actions: SdkAction[] = []
   let current: TurnAction | undefined
   for (const record of records(log)) {
+    if (record.type === 'command/run') {
+      if (current !== undefined) throw new Error('SDK snapshot cannot replay a command inside an open turn')
+      const data = record.data as JsonObject | undefined
+      if (typeof data?.name !== 'string' || typeof data.args !== 'string') {
+        throw new Error('SDK snapshot command/run requires a name and recorded string arguments')
+      }
+      actions.push({ kind: 'command', line: `/${data.name}${data.args}` })
+      continue
+    }
     if (record.type === 'turn/start') {
       const data = record.data as JsonObject | undefined
       if (typeof data?.turn !== 'number') throw new Error('SDK snapshot turn/start has no turn')
-      current = { turn: data.turn }
+      current = { kind: 'turn', turn: data.turn }
       continue
     }
     if (record.type === 'user/message' && current !== undefined && current.content === undefined) {
       const data = record.data as JsonObject | undefined
       const source = data?.source as JsonObject | undefined
       if (source?.kind === 'user' && Array.isArray(data?.content)) {
-        current = { turn: current.turn, content: data.content as JsonObject[] }
+        current = { kind: 'turn', turn: current.turn, content: data.content as JsonObject[] }
       }
       continue
     }
@@ -478,10 +501,10 @@ function turnActions(log: string): TurnAction[] {
   return actions
 }
 
-function postTurnEventTypes(log: string): string[] {
+function postActionEventTypes(log: string): string[] {
   const values = records(log)
-  const finalTurnEnd = values.findLastIndex(record => record.type === 'turn/end')
-  return values.slice(finalTurnEnd + 1).flatMap(record => typeof record.type === 'string' ? [record.type] : [])
+  const finalActionEnd = values.findLastIndex(record => record.type === 'turn/end' || record.type === 'command/done')
+  return values.slice(finalActionEnd + 1).flatMap(record => typeof record.type === 'string' ? [record.type] : [])
 }
 
 function materializeInput(
@@ -538,6 +561,31 @@ async function waitForRootEvent(
   }
 }
 
+/** Command lifecycle notifications precede the RPC result on the same ordered transport. */
+function collectCommandNotifications(
+  subscription: NotificationSubscription,
+  sessionId: string,
+  execution: CommandExecution,
+  notifications: HarnessNotification[],
+  observe: (notification: HarnessNotification) => void,
+): void {
+  let started = false
+  for (let notification = subscription.tryNext(); notification !== undefined; notification = subscription.tryNext()) {
+    observe(notification)
+    const event = notification.params.sessionId === sessionId ? notificationEvent(notification) : undefined
+    const data = event?.data as JsonObject | undefined
+    if (event?.type === 'command/run' && data?.commandId === execution.commandId) started = true
+    if (!started) continue
+    notifications.push(notification)
+    if (event?.type !== 'command/done' || data?.commandId !== execution.commandId) continue
+    expect(execution.result.kind).toBe(data.kind)
+    expect(execution.result.text).toBe(data.text)
+    if (execution.result.kind === 'success') expect(execution.result.sourceEventSeq).toBe(data.sourceEventSeq)
+    return
+  }
+  throw new Error('SDK command response arrived without its preceding command lifecycle notifications')
+}
+
 // Dedicated desktop cases retain the shipped SDK defaults.
 const legacySdkCompositions: Partial<Record<string, true>> = {
   'default': true,
@@ -584,6 +632,7 @@ async function runScenario(scenario: CorpusScenario): Promise<{
   initialWorkspace: WorkspaceSnapshotEntry[]
   finalWorkspace: WorkspaceSnapshotEntry[]
   cwd: string
+  modelRequests: JsonObject[]
 }> {
   const cwd = await mkdtemp(join(tmpdir(), `sdk-snapshot-${scenario.name}-`))
   const dshHome = join(cwd, '.dsh')
@@ -624,6 +673,7 @@ async function runScenario(scenario: CorpusScenario): Promise<{
     ignoredRootEntries: RUNTIME_WORKSPACE_ENTRIES,
   })
   const [parentFixture, ...childFixtures] = replayFixtures
+  const actions = sdkActions(primaryFixture)
   const env: Record<string, string> = {
     ...Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== undefined)) as Record<string, string>,
     ...recording ? {} : REPLAY_CREDENTIAL_ENV,
@@ -675,8 +725,18 @@ async function runScenario(scenario: CorpusScenario): Promise<{
       liveSessions.push(child)
     }
     try {
-      const session = harness.session(sessionId)
-      for (const action of turnActions(primaryFixture)) {
+      let session = harness.session(sessionId)
+      for (const action of actions) {
+        if (action.kind === 'command') {
+          await session.query(action.line)
+          let execution: CommandExecution | undefined
+          for await (const message of session.receiveResponse()) {
+            if ('commandId' in message) execution = message
+          }
+          if (execution === undefined) throw new Error('SDK command query returned no command result')
+          collectCommandNotifications(subscription, sessionId, execution, notifications, observe)
+          continue
+        }
         if (action.content === undefined) {
           await waitForRootEvent(
             subscription,
@@ -686,12 +746,29 @@ async function runScenario(scenario: CorpusScenario): Promise<{
           )
           continue
         }
-        const result = await session.run(materializeInput(action.content, scenario, cwd, liveSessions), {
-          onNotification: (notification) => {
-            notifications.push(notification)
-            observe(notification)
-          },
-        })
+        let result: RunResult | undefined
+        if (scenario.name === 'manual-compact') {
+          const content = action.content[0]
+          if (action.content.length !== 1 || content?.type !== 'text' || typeof content.text !== 'string') {
+            throw new Error('manual compact query fixture requires one text block per prompt')
+          }
+          await session.query(content.text)
+          for await (const message of session.receiveResponse()) {
+            if ('finalResponse' in message) result = message
+            else if ('method' in message) {
+              notifications.push(message)
+              observe(message)
+            }
+          }
+          if (result === undefined) throw new Error('SDK prompt query returned no activity result')
+        } else {
+          result = await session.run(materializeInput(action.content, scenario, cwd, liveSessions), {
+            onNotification: (notification) => {
+              notifications.push(notification)
+              observe(notification)
+            },
+          })
+        }
         results.push(result)
         if (completionSubscription !== undefined && action.turn === 1) {
           expect(result.finalResponse, 'run returns at the first parent idle').toBe('DONE')
@@ -735,7 +812,7 @@ async function runScenario(scenario: CorpusScenario): Promise<{
           observe,
         )
       }
-      for (const type of postTurnEventTypes(primaryFixture)) {
+      for (const type of postActionEventTypes(primaryFixture)) {
         await waitForRootEvent(subscription, sessionId, event => event.type === type, observe)
       }
     } finally {
@@ -750,7 +827,10 @@ async function runScenario(scenario: CorpusScenario): Promise<{
     const finalWorkspace = await captureWorkspaceSnapshot(cwd, {
       ignoredRootEntries: RUNTIME_WORKSPACE_ENTRIES,
     })
-    return { results, notifications, observedMethods, logs, initialWorkspace, finalWorkspace, cwd }
+    const modelRequests = scenario.name === 'manual-compact'
+      ? records(await readFile(join(dshHome, 'compact-requests.jsonl'), 'utf8'))
+      : []
+    return { results, notifications, observedMethods, logs, initialWorkspace, finalWorkspace, cwd, modelRequests }
   } finally {
     await harness.close()
     await rm(cwd, { recursive: true, force: true })
@@ -915,7 +995,7 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
         expect(writerFiles, 'native writer oracle inventory').toEqual(retained
           ? files.map((_, index) => writerSnapshotName(index)).sort() : [])
       }
-      const { results, notifications, observedMethods, logs, initialWorkspace, finalWorkspace, cwd } = await runScenario(scenario)
+      const { results, notifications, observedMethods, logs, initialWorkspace, finalWorkspace, cwd, modelRequests } = await runScenario(scenario)
       const ordered = orderLogs(
         logs,
         recording ? logs.length : files.length,
@@ -923,6 +1003,83 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       )
       reconcileCatalogCreationTimes(ordered.map(log => log.content), 'validate')
       const actualContext = contextOf(ordered, cwd)
+      if (scenario.name === 'manual-compact') {
+        const parent = ordered[0]
+        if (parent === undefined) throw new Error('manual compact has no persisted Session')
+        const events = parseSessionLog(parent.content)
+        const commands = events.filter(event => event.type === 'command/run')
+        expect(commands).toHaveLength(1)
+        const command = commands[0]
+        if (command === undefined) throw new Error('manual compact has no command record')
+        expect(command.data.name).toBe('compact')
+        const summaries = events.filter(event => event.type === 'compaction/summary')
+        expect(summaries).toHaveLength(1)
+        const summary = summaries[0]
+        if (summary === undefined) throw new Error('manual compact has no summary')
+        expect(summary.data).toMatchObject({ sourceCommandId: command.data.commandId, llmStreamCall: true })
+        const bracket = events.filter(event => event.type === 'compaction/start' || event.type === 'compaction/end')
+        expect(bracket.map(event => event.type)).toEqual(['compaction/start', 'compaction/end'])
+        for (const event of bracket) expect(event.data).toMatchObject({ turn: null, sourceCommandId: command.data.commandId })
+        const done = events.find(event => event.type === 'command/done')
+        expect(done?.data).toMatchObject({ commandId: command.data.commandId, kind: 'success', sourceEventSeq: summary.seq })
+        const checkpoint = events.find(event => event.type === 'user/message'
+          && event.data.source.kind === 'compact-checkpoint')
+        expect(checkpoint?.surfaceOp).toEqual({
+          op: 'replace', startSeq: summary.data.shadowedRange.start, endSeq: summary.data.shadowedRange.end,
+        })
+        expect(events.filter(event => event.type === 'turn/start').map(event => event.data.turn)).toEqual([1, 2])
+        expect(events.filter(event => event.type === 'step/start')).toHaveLength(2)
+        const commandNotifications = notifications.flatMap(notification => {
+          const event = notification.params.sessionId === parent.header.id ? notificationEvent(notification) : undefined
+          return event?.type === 'command/run' || event?.type === 'command/done' ? [event.type] : []
+        })
+        expect(commandNotifications).toEqual(['command/run', 'command/done'])
+
+        expect(modelRequests.map(request => request.purpose)).toEqual([undefined, 'compaction', undefined])
+        const [initialRequest, summaryRequest, continuationRequest] = modelRequests
+        if (initialRequest === undefined || summaryRequest === undefined || continuationRequest === undefined) {
+          throw new Error('manual compact requires an initial, auxiliary, and continuation request')
+        }
+        const initialMessages = initialRequest.messages as JsonObject[]
+        const summaryMessages = summaryRequest.messages as JsonObject[]
+        const continuationMessages = continuationRequest.messages as JsonObject[]
+        expect(summaryRequest.tools).toEqual(initialRequest.tools)
+        expect(continuationRequest.tools).toEqual(initialRequest.tools)
+        expect(continuationRequest.provider).toBe(initialRequest.provider)
+        expect(continuationRequest.model).toBe(initialRequest.model)
+        expect(continuationMessages[0]).toEqual(initialMessages[0])
+        expect(summaryMessages.slice(0, -1)).toEqual(initialMessages)
+        expect(summaryMessages.at(-1)).toMatchObject({ role: 'user', content: [{
+          type: 'text', text: expect.stringContaining('You are now acting as a compaction engine'),
+        }] })
+        const continuationBlocks = continuationMessages.flatMap(message => message.content as JsonObject[])
+        expect(continuationBlocks).toEqual(expect.arrayContaining(summary.data.summary))
+        const texts = continuationBlocks.flatMap(block => block.type === 'text' ? [block.text] : [])
+        expect(texts).not.toContain('/compact')
+        expect(texts).not.toContain(done?.data.text)
+        expect(texts).toContain('SDK_COMPACT_READY')
+      }
+      expect(logs.some(log => log.content.includes('llm-replay: script exhausted')), `${scenario.name}: replay script covers every model request`).toBe(false)
+      if (scenario.name === 'subagent-dsh-sdk-diagnostic' || scenario.name === 'subagent-dsh-sdk-dynamic-route') {
+        const parentEvents = records(ordered[0]!.content)
+        const notices = parentEvents.filter(event => event.type === 'user/message'
+          && (event.data as JsonObject | undefined)?.source !== undefined
+          && ((event.data as JsonObject).source as JsonObject).kind === 'subagent-settled')
+        const expectedCount = scenario.name === 'subagent-dsh-sdk-diagnostic' ? 2 : 1
+        expect(notices).toHaveLength(expectedCount)
+        const catalog = parentEvents.filter(event => event.type === 'subagent/catalog')
+        expect(catalog).toHaveLength(expectedCount)
+        expect(catalog.every(event => (event.data as JsonObject).mode === 'external')).toBe(true)
+        const expectedContent = scenario.name === 'subagent-dsh-sdk-diagnostic'
+          ? 'partial child loader answer'
+          : 'child route: mock/mock-routed/max/777; cwd:'
+        for (const notice of notices) expect(JSON.stringify(notice)).toContain(expectedContent)
+        const finalAssistant = parentEvents.findLastIndex(event => event.type === 'assistant/message')
+        for (const notice of notices) expect(parentEvents.indexOf(notice)).toBeLessThan(finalAssistant)
+        expect(parentEvents.filter(event => event.type === 'turn/end')).toEqual([
+          expect.objectContaining({ data: { turn: 1, reason: { kind: 'completed' } } }),
+        ])
+      }
       if (scenario.name === 'dynamic-tool-updates') {
         const selectedTypes = new Set(['request/header', 'request/context', 'developer/message', 'tool/call', 'tool/result'])
         const events = results.flatMap(result => result.events).filter(event => selectedTypes.has(event.type))

@@ -1,12 +1,30 @@
-# AsterHub Python SDK
+# DeepSeek Harness Python SDK
 
 English | [中文](README.zh.md)
 
-Python subprocess SDK for driving AsterHub over newline-delimited JSON-RPC on stdio. Install `deepseek-harness-sdk`; it installs the exact same-version `deepseek-harness-runtime-bin` wheel for the current platform.
+Python subprocess SDK for driving DeepSeek Harness over newline-delimited JSON-RPC on stdio. Install `deepseek-harness-sdk`; it installs the exact same-version `deepseek-harness-runtime-bin` wheel for the current platform.
 
 ```sh
 python -m pip install deepseek-harness-sdk
 ```
+
+## Optional Office operations
+
+Download the Office runtime explicitly, then call the local API without an agent, Session, model request, API key, or Harness home:
+
+```py
+from deepseek_harness_runtime import download_office
+from deepseek_harness.office import convert, recalculate, render_images
+
+download_office()
+pdf = convert("report.docx", "report.pdf")
+workbook = recalculate("forecast.xlsx", "calculated.xlsx")
+preview = render_images("report.docx", "report-preview", pages=[1])
+```
+
+The output file or image directory must not exist. Successful outputs belong to the caller; Kit removes failed outputs. `OfficeOptions` supplies operation limits and font preferences. Results expose typed paths, missing fonts, and image metadata. `OfficeError` retains CLI failure codes; malformed results raise `SdkProtocolError`. Recalculation does not verify business logic or Excel fidelity. Ctrl+C waits for CLI cleanup; a second interrupt forces termination and may leave partial output. Windows requires an absolute `SystemRoot` and a shared console for Ctrl+C delivery.
+
+The authoring environment is independently optional through `deepseek_harness_runtime.download_primary_runtime()`. See the [runtime reference](../sdk-runtime/README.md) for cache selection, resource activation, and download behavior. SDK startup and Office operations never acquire missing resources automatically.
 
 ## Start a runtime
 
@@ -31,6 +49,38 @@ print(result.final_response)
 ```
 
 `DeepSeekHarness` starts lazily and reuses its runtime until `close()` or context-manager exit. The initial profile handshake has an independent 30-second default bound through `initialize_timeout_seconds`; ordinary turns remain unbounded unless `request_timeout_seconds` is set. A timeout names the selected profile and includes retained runtime diagnostics. `cwd` is the agent workspace; `runtime_cwd` independently selects the subprocess working directory. Both become absolute before launch. `provider`, `model`, optional `reasoning_effort`, and optional positive `max_tokens` are sent during JSON-RPC initialization. `base_url` and `api_key` explicitly override `DEEPSEEK_BASE_URL` and `DEEPSEEK_API_KEY` in the child environment.
+
+<a id="query-and-response"></a>
+## Query and response
+
+Call `session.query(text)` to send text, then iterate `session.receive_response()` to observe its result. `query()` returns `None` after sending, without waiting for the runtime's response. The runtime intercepts only `/compact` as a command; all other text, including `/plan` and other slash-prefixed input, remains an ordinary prompt. This input API accepts text strings only. `delivery="queue"` is the default; `delivery="steer"` directs an ordinary prompt to the next step. Command timing remains owned by the command.
+
+`receive_response()` claims the next query in send order. It first waits for the routing response, then yields `Notification` objects followed by one terminal value: `RunResult` for the prompt's inbox-receipt-to-idle interval, or `CommandExecution` after the command settles. Notifications can accumulate before receiving begins. Separate receivers can observe their queries concurrently, and another `query()` can be sent while a receiver waits. Close an unfinished iterator to release only its local observation; this does not cancel or roll back runtime work. Resources are released before yielding the terminal value.
+
+`CommandExecution` contains `command_id` and a `result` discriminated by `kind`. Success may include `text` and `source_event_seq`; an error includes `text`. Handler errors return `kind="error"`; routing, protocol and transport failures raise during receiving. Sending failures raise from `query()`. `request_timeout_seconds` bounds waiting for the routing response, not later prompt activity; an already-arrived response remains receivable after that deadline.
+
+The full `sdk` profile provides the intercepted `/compact` command. It can make an auxiliary model request and completes without requiring a normal turn or idle notification; empty history can succeed without a summary. The default `sdk-minimal` profile does not provide command execution. `session.run("/compact")` remains ordinary prompt text. The lower-level blocking `HarnessClient.session_command(session_id, line)` remains available for strict command execution and rejects command names other than `/compact`. See the [full SDK compaction example](examples/README.md#compact-a-full-sdk-session).
+
+<a id="client-approvals"></a>
+## Client approvals
+
+This low-level example receives one approval and rejects it. Use a dedicated request-handling thread or loop for a full run: `next_request()` blocks, and the request handler must run concurrently with `session/wait` or a high-level `run()`. Set `approval_requests=True` on `HarnessClient.initialize()` or `DeepSeekHarnessConfig` only when that handler is ready. Omission preserves the runtime's answerer chain. Decisions are one-shot; invalid responses and lost connections fail closed, and cancellation discards late replies. `ApprovalRequestResult` validates response values when constructing decisions.
+
+```py
+from deepseek_harness import ApprovalRequestParams, HarnessClient, HarnessConfig
+
+with HarnessClient(HarnessConfig(dsh_home="/absolute/path/to/dsh-home")) as client:
+    client.initialize(cwd="/absolute/path/to/workspace", provider="deepseek-official",
+                      model="deepseek-v4-flash", approval_requests=True)
+    client.session_prompt("main", [{"type": "text", "text": "Run the operation requiring approval."}])
+    request = client.next_request()
+    if request.method == "approval/request":
+        question = ApprovalRequestParams.model_validate(request.payload)
+        print(question.toolName, question.reason)
+        client.respond(request.id, {"outcome": "rejected"})
+    else:
+        client.respond_error(request.id, code=-32601, message="Unsupported client request")
+```
 
 ## Customize plugins
 
@@ -59,7 +109,13 @@ with DeepSeekHarness(
 
 `provider` selects a provider route registered by the chosen Cordis composition; `model` is the model id resolved by that adapter. `reasoning_effort` is an optional non-empty adapter-owned identifier for that exact route; omission preserves the model's own default. `max_tokens` is an optional positive per-request output-token cap for the root agent and its in-process descendants; omission leaves the provider default in control. Initialization rejects a missing adapter, unavailable model, or unsupported effort before a prompt runs. Compaction summaries keep the separate limit configured by their compaction plugin. The bundled default composition registers `deepseek-official`. A custom composition can mount `llm-pi-ai`, configure provider-specific credentials/endpoints there, and select any provider/model present in pi-ai's installed catalog.
 
-The shipped `sdk-minimal` profile is a standalone explicit tree rather than an overlay on `dsh-base`. Select it with `profile="sdk-minimal"`; the ordinary `model` argument is the sole runtime model selection, including for model ids outside the adapter's advisory catalog. It provides only a platform-selected persistent shell, local execution, and JSONL sessions; filesystem tools, settings, managed credentials, telemetry, Web tools, and the full default tool roster remain available through the separate full `sdk` and `web` profiles.
+The shipped `sdk-minimal` profile is a standalone explicit tree rather than an overlay on `dsh-base`. Select it with `profile="sdk-minimal"`; the ordinary `model` argument is the sole runtime model selection, including for model ids outside the adapter's advisory catalog. It provides a platform-selected persistent shell, `read_image`, `working_directory`, local execution, JSONL sessions, and automatic compaction. Text file tools, settings, managed credentials, telemetry, Web tools, and the full default tool roster remain available through the separate full `sdk` and `web` profiles. SDK prompt text does not execute `/compact`.
+
+## Native user questions
+
+Pass `on_user_question` to `DeepSeekHarnessConfig`, `DeepSeekHarness`, or `HarnessConfig` to answer the built-in `ask_user_question` tool through the native SDK protocol. The callback receives a `UserQuestionRequest` (`request_id`, `session_id`, and the original `questions`) and a `threading.Event` signalling cancellation. Return `UserQuestionAnswer` or a JSON object shaped as `{"answers": [{"id": "question-id", "selected": ["option label"], "custom": "optional free text"}]}`. Each original question id must appear exactly once. The application supplies its UI or simulated-user policy; the SDK does not choose answers.
+
+Callbacks run on separate threads so the reader can process cancellation and other requests. They may run concurrently and may make further client requests. Release callback-owned work when the cancellation Event is set. Closing the client signals outstanding callbacks and gives their workers a shared 0.5-second join window; callbacks that ignore cancellation may continue, but their late answers cannot reach the runtime or a later process. A callback exception becomes a protocol error, and an absent callback retains existing native answerers or reports `NO_PROVIDER`.
 
 ## Results and notifications
 
@@ -67,6 +123,8 @@ The shipped `sdk-minimal` profile is a standalone explicit tree rather than an o
 
 `HarnessClient` retains discovered subagent ancestry for the runtime process lifetime. During `Session.run()`, `RunResult.notifications` and `on_notification` receive the root session and known descendants in wire order. `RunResult.events` contains root-session events only, so descendant output cannot replace the root response. The low-level `session_prompt()` returns the queued message id immediately; callers that bypass `Session.run()` own the later activity boundary.
 
-The selected home stores profiles, plugins, and every profile-owned durable resource. The full `sdk` profile uses its credentials, settings, and session stores; `sdk-minimal` uses only its JSONL session store. Use a fresh home when those resources must be isolated, and a fresh session id for independent work. Reusing both a harness and session id continues the durable conversation and session-owned resources.
+The selected home stores profiles, plugins, and every profile-owned durable resource. The full `sdk` profile uses its credentials, settings, and session stores; `sdk-minimal` uses JSONL session storage and stores images under `$DSH_HOME/attachments/v1`, with request-image cache under `$DSH_HOME/cache/attachments`. Use a fresh home when those resources must be isolated, and a fresh session id for independent work. Reusing both a harness and session id continues the durable conversation and session-owned resources.
 
 See the [Python tutorial](../../docs/user/guide/python-sdk.md), [runnable example](examples/README.md), and [runtime wheel reference](../sdk-runtime/README.md).
+
+`Session.get_working_directory()` reads the effective working directory; `set_working_directory(path)` changes it and returns the validated absolute path. Both create an unknown Session without running a model turn. Relative paths use that Session's current directory. Origin metadata, permissions, and existing processes remain unchanged. The low-level client provides the same methods with a leading `session_id` argument.
