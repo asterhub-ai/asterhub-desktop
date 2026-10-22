@@ -16,13 +16,14 @@ interface VerificationRequest {
 
 function parseRequest(value: unknown): VerificationRequest {
   if (typeof value !== 'object' || value === null) throw new Error('migration verifier request must be an object')
+  const targetVersion = (value as Record<string, unknown>).targetVersion
   const request = value as Partial<VerificationRequest>
   if (typeof request.path !== 'string'
     || request.compression !== 'none' && request.compression !== 'zstd'
     || typeof request.expectedId !== 'string'
     || !Number.isSafeInteger(request.expectedEventCount)
     || (request.expectedEventCount as number) < 0
-    || (request.targetVersion !== undefined && request.targetVersion !== 4)
+    || targetVersion !== undefined && targetVersion !== 4
     || request.expectedPrefix !== undefined
       && (!Number.isSafeInteger(request.expectedPrefix.bytes)
         || request.expectedPrefix.bytes < 0

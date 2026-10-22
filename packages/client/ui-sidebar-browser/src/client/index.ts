@@ -104,7 +104,7 @@ export function apply(ctx: Context): void {
     }, BrowserBody)), 'ui-sidebar-browser.body')
     // Main issues tab commands; the handler runs against this Session's retained
     // Sidebar View and the same live controller map the bodies register into.
-    const automation = desktop?.onAutomationRequest
+    const automation = desktop?.onAutomationRequest?.bind(desktop)
     if (automation !== undefined) {
       scope.effect(() => automation(createDesktopBrowserAutomationHandler({
         openTabs,

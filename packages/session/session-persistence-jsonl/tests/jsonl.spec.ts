@@ -133,7 +133,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       }
       return actual.readdir(...args)
     }) as typeof actual.readdir,
-    open: (async (...args: Parameters<typeof actual.open>) => {
+    open: async (...args: Parameters<typeof actual.open>) => {
       const path = typeof args[0] === 'string' ? args[0] : undefined
       const flags = args[1]
       if (flags === 'a' && path === openAppendFailure.path && openAppendFailure.error !== undefined) {
@@ -143,7 +143,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
         }
       }
       return actual.open(...args)
-    }) as typeof actual.open,
+    },
   }
 })
 

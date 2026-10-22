@@ -137,15 +137,18 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
   }
 
   // node-pty writes synchronously; the seam returns a promise for remote transports.
+  // oxlint-disable-next-line typescript/require-await -- Preserve Promise rejection semantics for synchronous node-pty calls.
   async write(data: string): Promise<void> {
     if (this.exited) throw new Error('terminal process has exited')
     this.shellActivity?.invalidate()
     this.terminal.write(data)
   }
+  // oxlint-disable-next-line typescript/require-await -- Preserve the Promise-returning terminal API.
   async resize(cols: number, rows: number): Promise<void> {
     if (this.exited) throw new Error('terminal process has exited')
     this.terminal.resize(cols, rows)
   }
+  // oxlint-disable-next-line typescript/require-await -- Preserve the Promise-returning terminal API.
   async inspectForeground(): Promise<SubprocessTerminalForeground | undefined> {
     this.descendants(this.inspector.snapshot())
     const processGroupId = this.inspector.foregroundPgid(this.pid)
@@ -156,6 +159,7 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
     }
   }
 
+  // oxlint-disable-next-line typescript/require-await -- Preserve the Promise-returning terminal API.
   async inspectActivity(): Promise<SubprocessTerminalActivity> {
     let state: SubprocessTerminalActivity['state'] = this.quiescent ? 'idle' : 'unknown'
     let revision = 0

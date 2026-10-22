@@ -406,7 +406,8 @@ export class WorkspaceRegistry extends Service {
 
   private async prepareSessionDeletion(sessionId: SessionId): Promise<void> {
     await this.ctx.parallel('workspace/session-delete', { sessionId })
-    if (this.ctx.get('agents', false)?.get(sessionId) !== undefined) {
+    const agents = this.ctx.get('agents', false) as { get(sessionId: SessionId): unknown } | undefined
+    if (agents?.get(sessionId) !== undefined) {
       throw new Error(`Agent '${sessionId}' remains live after workspace deletion teardown`)
     }
   }

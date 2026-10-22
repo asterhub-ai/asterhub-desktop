@@ -570,7 +570,11 @@ describe('dsh-workflow-ptc', { timeout: 120_000 }, () => {
           localAgent: undefined,
           result: Promise.resolve({ output: [{ type: 'text', text: 'fine' }], stopReason: 'completed' }),
           cancel: () => { /* settled already */ },
-          dispose: () => Promise.reject({ toString: () => { throw new Error('coercion trap') } }),
+          dispose: () => {
+            const { promise, reject } = Promise.withResolvers<never>()
+            reject({ toString: () => { throw new Error('coercion trap') } })
+            return promise
+          },
         }),
       }
       ctx.subagents.registerProvider(provider)

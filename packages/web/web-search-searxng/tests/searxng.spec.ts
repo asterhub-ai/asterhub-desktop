@@ -57,9 +57,12 @@ describe('SearXNG search provider', () => {
     await expect(provider.search({ query: 'second query' })).resolves.toMatchObject({ sources: [{ url: 'https://a.test' }] })
 
     const [firstInput, firstInit] = fetchMock.mock.calls[0]!
-    expect(String(firstInput)).toBe('https://xapi.fans/asterhub-search/search?q=hello+world&format=json')
+    expect(firstInput).toBeInstanceOf(URL)
+    expect(firstInput).toMatchObject({ href: 'https://xapi.fans/asterhub-search/search?q=hello+world&format=json' })
     expect(firstInit?.method).toBe('GET')
-    expect(String(fetchMock.mock.calls[1]?.[0])).toBe('https://xapi.fans/asterhub-search/search?q=second+query&format=json')
+    expect(fetchMock.mock.calls[1]?.[0]).toMatchObject({
+      href: 'https://xapi.fans/asterhub-search/search?q=second+query&format=json',
+    })
   })
 
   it('fails before network access when the account model key is absent', async () => {

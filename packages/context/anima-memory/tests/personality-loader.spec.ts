@@ -54,10 +54,12 @@ async function loadAnima(config: Record<string, unknown>): Promise<Context> {
 
 function messageTexts(session: Session): string[] {
   return session.snapshotEvents()
-    .filter(event => event.type === 'user/message' && String(event.data.source.kind) === 'anima')
-    .flatMap(event => event.type === 'user/message'
-      ? event.data.content.filter(block => block.type === 'text').map(block => block.text)
-      : [])
+    .flatMap((event) => {
+      if (event.type !== 'user/message') return []
+      const sourceKind: string = event.data.source.kind
+      if (sourceKind !== 'anima') return []
+      return event.data.content.filter(block => block.type === 'text').map(block => block.text)
+    })
 }
 
 describe('Anima personality Loader composition', () => {

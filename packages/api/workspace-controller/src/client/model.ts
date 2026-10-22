@@ -469,11 +469,15 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
 
   private removeSession(sessionId: SessionId): void {
     let changed = false
-    const nextItems = this.items.map((item) => {
-      if (!item.sessionIds.includes(sessionId)) return item
-      changed = true
-      return { ...item, sessionIds: item.sessionIds.filter(id => id !== sessionId) }
-    })
+    const nextItems: WorkspaceView[] = []
+    for (const item of this.items) {
+      if (item.sessionIds.includes(sessionId)) {
+        changed = true
+        nextItems.push({ ...item, sessionIds: item.sessionIds.filter(id => id !== sessionId) })
+      } else {
+        nextItems.push(item)
+      }
+    }
     if (changed) this.items = nextItems
     const nextArchived = this.archivedSessionIds.filter(id => id !== sessionId)
     if (nextArchived.length !== this.archivedSessionIds.length) {

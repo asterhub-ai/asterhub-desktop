@@ -1,6 +1,4 @@
 import { EventEmitter } from 'node:events'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { JSDOM } from 'jsdom'
 import { brandNumber, brandString } from '@deepseek-ai/dsh-brand'
@@ -37,7 +35,7 @@ const electron = vi.hoisted(() => {
       let title = ''
       const loading = false
       const doc = 'document' in globalThis && typeof globalThis.document === 'object' && globalThis.document !== null
-        ? (globalThis.document as Document)
+        ? globalThis.document
         : undefined
       const isolatedWindow = doc?.defaultView
       const guest = Object.assign(new EE(), {
@@ -67,7 +65,7 @@ const electron = vi.hoisted(() => {
         sendInputEvent: vi.fn(),
         insertText: vi.fn((text: string) => {
           const currentDoc = 'document' in globalThis && typeof globalThis.document === 'object' && globalThis.document !== null
-            ? (globalThis.document as Document)
+            ? globalThis.document
             : undefined
           const active = currentDoc?.activeElement as HTMLInputElement | null
           if (active && 'value' in active) {
@@ -136,13 +134,17 @@ function makeOwner(): EventEmitter & { send: ReturnType<typeof vi.fn>; isDestroy
 }
 
 describe('browser automation e2e', () => {
-  let fixtureHtml: string
-
-  try {
-    fixtureHtml = readFileSync(resolve(__dirname, 'fixtures/browser-automation-page.html'), 'utf8')
-  } catch {
-    fixtureHtml = '<html><body><h1>Fallback</h1></body></html>'
-  }
+  const fixtureHtml = `<!doctype html>
+    <html lang="en">
+      <head><title>Automation Test Fixture</title></head>
+      <body>
+        <h1>Automation Test Fixture</h1>
+        <label for="username">Username</label>
+        <input id="username" type="text" value="">
+        <button type="button">Duplicate Action</button>
+        <button type="button">Duplicate Action</button>
+      </body>
+    </html>`
   let dom: JSDOM
 
   beforeEach(() => {

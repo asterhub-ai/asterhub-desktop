@@ -130,7 +130,7 @@ describe('SubagentModelSelectionConfig', () => {
 
   it('rejects global defaults when their settings owner is missing', () => {
     const ctx = new Context()
-    expect(() => tool.apply(ctx, { provider: 'spawn', globalModelDefaults: true }))
+    expect(() => { tool.apply(ctx, { provider: 'spawn', globalModelDefaults: true }) })
       .toThrow('globalModelDefaults requires the Host subagent model settings service')
   })
 

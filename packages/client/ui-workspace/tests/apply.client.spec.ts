@@ -288,7 +288,7 @@ describe('ui-workspace apply', () => {
     expect(b.slots.spec(MENU_ITEM)).toMatchObject({
       kind: 'list',
       scope: 'root',
-      inject: { hooks: { menuOpenState: expect.any(Function), shortcuts: expect.any(Object) } },
+      inject: { hooks: { menuOpenState: expect.any(Function) as (...args: never[]) => unknown, shortcuts: expect.any(Object) as object } },
     })
     expect(b.slots.spec(ROW_ACTION)).toEqual({ kind: 'list', scope: 'root' })
 

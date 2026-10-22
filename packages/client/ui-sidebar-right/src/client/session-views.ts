@@ -68,9 +68,11 @@ export class SidebarSessionViews {
       await view.reference.ready
     } catch (error) {
       release()
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- Disposal and abort can occur during the await.
       if (this.closed || signal.aborted) return () => {}
       throw error
     }
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- Abort can occur during the await.
     if (signal.aborted) {
       release()
       return () => {}

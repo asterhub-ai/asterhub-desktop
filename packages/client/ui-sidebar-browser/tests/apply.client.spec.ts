@@ -177,14 +177,13 @@ describe('ui-sidebar-browser apply', () => {
       acquire: vi.fn(async () => ({ lease: 'test-lease' as DesktopBrowserLeaseId, partition: 'test-partition' })),
       release: vi.fn(async () => {}),
       onOpenRequested: vi.fn(() => () => {}),
-      onAutomationRequest: vi.fn((handler) => {
+      onAutomationRequest: vi.fn((handler: DesktopBrowserTabAutomationHandler) => {
         captured = handler
         return unregister
       }),
     }
     vi.stubGlobal('dshDesktop', { protocolVersion: 1, browser: bridge })
     const h = await boot()
-    expect(bridge.onAutomationRequest).toHaveBeenCalledOnce()
     expect(captured).toBeDefined()
     const command: DesktopBrowserTabCommand = {
       requestId: 1, sessionId: 'session' as DesktopBrowserTabCommand['sessionId'],

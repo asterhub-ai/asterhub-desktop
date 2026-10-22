@@ -251,6 +251,7 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
   }
 
   /** @inheritdoc */
+  // oxlint-disable-next-line typescript/require-await -- Preserve Promise rejection semantics for synchronous validation.
   async terminalEnvironment(signal?: AbortSignal): Promise<SubprocessTerminalEnvironment> {
     signal?.throwIfAborted()
     const platform = process.platform === 'win32' ? 'windows' : 'posix'
@@ -258,6 +259,7 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
     return { platform, ...defaultShell === undefined ? {} : { defaultShell } }
   }
 
+  // oxlint-disable-next-line typescript/require-await -- Preserve Promise rejection semantics for synchronous setup.
   async spawnTerminal(spec: SubprocessTerminalSpawnSpec): Promise<SubprocessTerminalHandle> {
     const file = spec.argv[0]
     if (file === undefined || file.length === 0) {
