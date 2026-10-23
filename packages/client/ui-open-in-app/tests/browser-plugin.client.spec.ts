@@ -30,6 +30,7 @@ import type { OpenTargetReporter } from '../src/client/OpenTargetButton.tsx'
 import { FileRouteAction } from '../src/client/FileRouteAction.tsx'
 import type { OpenInAppOutcome } from '../src/client/outcome.ts'
 import { OpenInAppToast, type OpenInAppToastProps, type OpenInAppToastSource } from '../src/client/open-toast.tsx'
+import { MenuRegistry } from '@deepseek-ai/dsh-client-ui-context-menu/src/client/registry.ts'
 import { en, NS, zh } from '../src/client/locales.ts'
 
 vi.mock('@deepseek-ai/dsh-client-ui-primitives', async original => ({
@@ -77,7 +78,10 @@ async function bench() {
     getSnapshot: () => layoutStore.getSnapshot().panelInfo,
     subscribe: listener => layoutStore.subscribe(listener),
   })
-  ctx.provide('menus', { register: () => () => {}, open: vi.fn() } as never)
+  const notify = vi.fn()
+  const menus = new MenuRegistry(notify)
+  ctx.effect(() => () => { menus.dispose() })
+  ctx.provide('menus', { register: menus.register.bind(menus), resolve: menus.resolve.bind(menus), open: vi.fn(), notify } as never)
   ctx.provide('layout', layout)
   ctx.provide('sessions', { list })
   ctx.provide('shortcuts', { register: (command: ShortcutCommand) => { commands.set(command.id, command); return () => { commands.delete(command.id) } }, catalog: createSnapshotStore([]) })
@@ -108,6 +112,29 @@ function toastSource(ctx: Context): Omit<OpenInAppToastSource, 'report'> {
 }
 
 describe('open-in-app browser half', () => {
+  it('orders Session reveal between copy ID and archive, reports failure, and unregisters on disposal', async () => {
+    const fetcher = vi.fn(async (input: string | URL) => String(input) === 'open-in-app/apps'
+      ? new Response(JSON.stringify({ apps: ['finder'] })) : new Response('', { status: 502 }))
+    vi.stubGlobal('fetch', fetcher)
+    const { ctx, fiber, list, notify } = await bench()
+    const id = 'captured' as SessionId
+    list.set({ ...list.getSnapshot(), ids: [id], byId: {
+      [id]: { id, displayTitle: 'Captured', cwd: '/captured', running: false, blank: false, updatedAt: 0, retainedBy: {} },
+    } })
+    const menu = ctx.menus.resolve({ kind: 'session', value: { sessionId: id, displayTitle: 'Captured' } })
+    try {
+      expect(ctx.slots.entries('sidebar.workspaces.session.menu.item')).toHaveLength(0)
+      await vi.waitFor(() => { expect(menu.source.getSnapshot()[0]).toMatchObject({ label: 'Show in Finder', disabled: false }) })
+      menu.select('open-in-app.reveal/reveal')
+      await vi.waitFor(() => { expect(notify).toHaveBeenCalledWith(en['path.revealError']) })
+      expect(fetcher).toHaveBeenCalledWith('open-in-app/open', expect.objectContaining({
+        body: JSON.stringify({ app: 'finder', path: '/captured' }),
+      }))
+    } finally { menu.dispose(); await fiber.dispose() }
+    const removed = ctx.menus.resolve({ kind: 'session', value: { sessionId: id, displayTitle: 'Captured' } })
+    expect(removed.source.getSnapshot()).toEqual([])
+    removed.dispose()
+  })
   it('refuses absent workspaces and reports failed keyboard launches to the app-wide toast', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: string | URL) => String(input) === 'open-in-app/apps'
       ? new Response(JSON.stringify({ apps: ['finder'] })) : new Response('failed', { status: 500 })))
