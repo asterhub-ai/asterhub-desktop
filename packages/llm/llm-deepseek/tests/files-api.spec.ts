@@ -1,7 +1,7 @@
 import { once } from 'node:events'
 import { createServer } from 'node:http'
 import { describe, expect, it, vi } from 'vitest'
-import { LlmError, userAgent } from '@deepseek-ai/dsh-llm'
+import { APP_IDENTITY, LlmError, userAgent } from '@deepseek-ai/dsh-llm'
 import { DeepSeekFileId } from '../src/file-id.ts'
 import {
   DeepSeekFilesClient,
@@ -177,7 +177,11 @@ describe('DeepSeekFilesClient', () => {
       expect(init?.redirect).toBe('error')
       const headers = new Headers(init?.headers)
       expect(headers.get('x-api-key')).toBe('key')
-      expect(headers.get('user-agent')).toBe(userAgent())
+      expect(headers.get('user-agent')).toBe(userAgent({
+        ...APP_IDENTITY,
+        product: 'asterhub',
+        url: 'https://github.com/asterhub-ai/asterhub-desktop',
+      }))
       const form = init?.body
       expect(form).toBeInstanceOf(FormData)
       if (!(form instanceof FormData)) throw new Error('expected multipart body')
@@ -189,7 +193,12 @@ describe('DeepSeekFilesClient', () => {
       expect((blob as Blob).size).toBe(3)
       return new Response(JSON.stringify(file()), { status: 200 })
     }) as typeof fetch
-    const client = new DeepSeekFilesClient({ baseURL: 'https://api.deepseek.com/', headers: { 'x-api-key': 'key' }, fetch: fetchImpl })
+    const client = new DeepSeekFilesClient({
+      baseURL: 'https://api.deepseek.com/',
+      headers: { 'x-api-key': 'key', 'User-Agent': 'wrong' },
+      appIdentity: { ...APP_IDENTITY, product: 'asterhub', url: 'https://github.com/asterhub-ai/asterhub-desktop' },
+      fetch: fetchImpl,
+    })
 
     await expect(client.upload({
       data: Uint8Array.of(1, 2, 3),

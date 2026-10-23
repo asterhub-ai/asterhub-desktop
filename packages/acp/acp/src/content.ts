@@ -6,6 +6,7 @@ import { isImageAdmissionError } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef, ImageMediaType, SaveImageAttachment } from '@deepseek-ai/dsh-attachment'
 import type { AttachmentScope } from '@deepseek-ai/dsh-attachment'
 import type { ModelSelection } from '@deepseek-ai/dsh-agent'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 
 /** Raster formats shared by ACP image blocks and the core attachment vocabulary. */
@@ -219,6 +220,7 @@ export async function admitAcpPrompt(
 export async function assistantBlockToAcp(
   ctx: Context,
   block: ContentBlock,
+  sessionId: SessionId,
 ): Promise<AcpContentBlock | undefined> {
   if (block.type === 'text') {
     return block.text.length === 0 ? undefined : { type: 'text', text: block.text }
@@ -230,7 +232,7 @@ export async function assistantBlockToAcp(
   }
   let stored: Awaited<ReturnType<typeof attachments.readImage>>
   try {
-    stored = await attachments.readImage(block.attachment)
+    stored = await attachments.readImage(block.attachment, undefined, { sessionId })
   } catch (error: unknown) {
     throw new AcpContentError('cannot deliver assistant image: the attachment is unavailable or corrupt', 'internal', { cause: error })
   }

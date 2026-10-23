@@ -8,12 +8,13 @@
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import SubagentRuntime from '@deepseek-ai/dsh-subagent'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
 import {
   DeepSeekHarness,
@@ -43,9 +44,11 @@ const existingPatch = fileURLToPath(new URL(
 ))
 const defaultCreateHarness = runInternals.createHarness.bind(runInternals)
 let createdHarnessOptions: DeepSeekHarnessOptions[] = []
+let disposeTestCwd: (() => void) | undefined
 
 beforeEach(() => {
   createdHarnessOptions = []
+  disposeTestCwd = undefined
   runInternals.createHarness = (options) => {
     createdHarnessOptions.push(options)
     const runtime: RuntimeProcessOptions = {
@@ -68,7 +71,7 @@ afterEach(() => {
   runInternals.createHarness = defaultCreateHarness
 })
 
-/** A parent Agent stub. The SDK backend reads exactly one thing off it: the session header's cwd (the workspace its child inherits). */
+/** Parent Agent identity; the SDK backend resolves its execution cwd through the Context service. */
 const fakeParent = { id: 'parent', session: { header: { cwd: process.cwd() } } } as unknown as Agent
 
 function request(text = 'p', signal = new AbortController().signal, agentOptions?: AgentOptions) {
@@ -82,8 +85,14 @@ function request(text = 'p', signal = new AbortController().signal, agentOptions
 }
 
 /** Mount the SDK backend pointed at the fake runtime, scripted by `fakeEnv`. */
-async function setup(fakeEnv: Record<string, string> = {}, config: Partial<sdk.Config> = {}) {
+async function setup(
+  fakeEnv: Record<string, string> = {},
+  config: Partial<sdk.Config> = {},
+  cwdResolver: (header: { cwd?: string }) => string | undefined = header => header.cwd,
+) {
   const ctx = new Context()
+  await ctx.plugin(SessionCwd)
+  disposeTestCwd = ctx.sessionCwd.registerResolver(cwdResolver)
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(SubagentRuntime)
   // The Config type models the post-validation shape, so the default registry
@@ -215,6 +224,79 @@ describe('dsh-subagent-dsh-sdk provider', () => {
       rmSync(tmp, { recursive: true, force: true })
     }
   })
+  it('starts the real SDK child in the trusted current root after a project move', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'subagent-dsh-sdk-moved-'))
+    const movedRoot = join(tmp, 'moved-project')
+    const recordFile = join(tmp, 'init.jsonl')
+    try {
+      mkdirSync(movedRoot)
+      const ctx = await setup({ FAKE_RECORD_INIT: recordFile }, {}, () => movedRoot)
+      const run = await ctx.subagents.start('dsh-sdk', request())
+      await run.result
+      await run.dispose()
+      const { readFileSync } = await import('node:fs')
+      expect(JSON.parse(readFileSync(recordFile, 'utf8'))).toMatchObject({ cwd: movedRoot })
+      expect(fakeParent.session.header.cwd).not.toBe(movedRoot)
+      await ctx.fiber.dispose()
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  it('preserves an explicit SDK cwd over the trusted current root', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'subagent-dsh-sdk-cwd-override-'))
+    const configuredCwd = join(tmp, 'configured')
+    const recordFile = join(tmp, 'init.jsonl')
+    try {
+      mkdirSync(configuredCwd)
+      const ctx = await setup(
+        { FAKE_RECORD_INIT: recordFile },
+        { cwd: configuredCwd },
+        () => join(tmp, 'moved-current-root'),
+      )
+      const run = await ctx.subagents.start('dsh-sdk', request())
+      await run.result
+      await run.dispose()
+      const { readFileSync } = await import('node:fs')
+      expect(JSON.parse(readFileSync(recordFile, 'utf8'))).toMatchObject({ cwd: configuredCwd })
+      await ctx.fiber.dispose()
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  it.each([
+    ['resolver has no current root', () => undefined],
+    ['resolver fails', () => { throw new Error('session cwd resolver failed') }],
+  ])('refuses SDK process startup when the session cwd %s', async (_reason, resolver) => {
+    const tmp = mkdtempSync(join(tmpdir(), 'subagent-dsh-sdk-no-cwd-'))
+    const configuredCwd = join(tmp, 'configured')
+    try {
+      mkdirSync(configuredCwd)
+      const ctx = await setup({}, { cwd: configuredCwd }, resolver)
+      await expect(ctx.subagents.start('dsh-sdk', request())).rejects.toThrow()
+      expect(createdHarnessOptions).toEqual([])
+      await ctx.fiber.dispose()
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses SDK process startup after the session cwd provider is disposed', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'subagent-dsh-sdk-cwd-disposed-'))
+    const configuredCwd = join(tmp, 'configured')
+    try {
+      mkdirSync(configuredCwd)
+      const ctx = await setup({}, { cwd: configuredCwd })
+      disposeTestCwd?.()
+      await expect(ctx.subagents.start('dsh-sdk', request())).rejects.toThrow()
+      expect(createdHarnessOptions).toEqual([])
+      await ctx.fiber.dispose()
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
 
   it('preserves instance defaults around a partial request override', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'subagent-dsh-sdk-partial-route-'))
@@ -811,6 +893,7 @@ describe('dsh-subagent-dsh-sdk provider', () => {
 
   it('registers under the configured provider name and unregisters on fiber dispose (HMR safety)', async () => {
     const ctx = new Context()
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SubagentRuntime)
     const fiber = await ctx.plugin(sdk, {
@@ -838,6 +921,7 @@ describe('dsh-subagent-dsh-sdk provider', () => {
 
   it('rejects non-positive timing bounds at load', async () => {
     const ctx = new Context()
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SubagentRuntime)
     const base = { providerName: 'sdk', profile: 'sdk', patches: [], dshHome: process.cwd(), provider: 'p', model: 'm', env: {} }
@@ -849,6 +933,7 @@ describe('dsh-subagent-dsh-sdk provider', () => {
 
   it('requires an explicit absolute Harness home for nested dsh runtimes', async () => {
     const ctx = new Context()
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(SubagentRuntime)
     await expect(ctx.plugin(sdk, {
       providerName: 'sdk',
@@ -868,6 +953,7 @@ describe('dsh-subagent-dsh-sdk provider', () => {
     { field: 'patches[0]', override: { patches: ['./missing-child-patch.yml'] } },
   ])('rejects an invalid $field at load', async ({ field, override }) => {
     const ctx = new Context()
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(SubagentRuntime)
     await expect(ctx.plugin(sdk, {
       providerName: 'sdk',
@@ -886,6 +972,7 @@ describe('dsh-subagent-dsh-sdk provider', () => {
     'rejects invalid maxTokens %s at load',
     async (maxTokens) => {
       const ctx = new Context()
+      await ctx.plugin(SessionCwd)
       await ctx.plugin(SessionProjectionRegistry)
       await ctx.plugin(SubagentRuntime)
       await expect(ctx.plugin(sdk, {
@@ -906,6 +993,7 @@ describe('dsh-subagent-dsh-sdk provider', () => {
     'defensively rejects invalid maxTokens %s when apply is called directly',
     async (maxTokens) => {
       const ctx = new Context()
+      await ctx.plugin(SessionCwd)
       await ctx.plugin(SessionProjectionRegistry)
       await ctx.plugin(SubagentRuntime)
       expect(() => { sdk.apply(ctx, {
@@ -927,6 +1015,7 @@ describe('dsh-subagent-dsh-sdk provider', () => {
 
   it('rejects an empty config cwd at load', async () => {
     const ctx = new Context()
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SubagentRuntime)
     await expect(ctx.plugin(sdk, {
@@ -971,7 +1060,6 @@ describe('dsh-subagent-dsh-sdk provider', () => {
 
   it('keeps named plugin exports with no default export (loader shape)', () => {
     expect(sdk.name).toBe('subagent-dsh-sdk')
-    expect(sdk.inject).toEqual(['subagents'])
     expect(typeof sdk.apply).toBe('function')
     expect(typeof sdk.Config).toBe('function')
     expect((sdk as Record<string, unknown>).default).toBeUndefined()

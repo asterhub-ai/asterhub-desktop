@@ -99,7 +99,7 @@ kind: "package-reference"
 
 ### 请求解析
 
-工具在 `ctx.shell.resolve()` 运行前解析 workdir：显式的相对 `workdir` 相对会话 cwd 解析，沙箱策略的规范化 workspace root 优先，使约束与启动使用同一身份。沙箱策略通过 `ctx.sandboxPolicy` 按调用解析；升权请求在任何执行前经由 `ctx.approval`，若执行器会约束命令却没有挂载策略服务，工具在加载时失败。
+工具在 `ctx.shell.resolve()` 运行前解析 workdir：对于 agent 调用，基准目录来自 `ctx.sessionCwd` 权威解析的当前执行 cwd（不可用时 fail closed），显式的相对 `workdir` 相对该目录解析；沙箱策略的规范化 workspace root 优先，使约束与启动使用同一身份；无 agent 调用使用执行器配置的默认值。沙箱策略通过 `ctx.sandboxPolicy` 按调用解析；升权请求在任何执行前经由 `ctx.approval`，若执行器会约束命令却没有挂载策略服务，工具在加载时失败。
 
 ### 渲染故事
 

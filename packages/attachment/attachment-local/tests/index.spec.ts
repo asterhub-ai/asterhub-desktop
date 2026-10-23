@@ -2,8 +2,9 @@ import { Context } from '@deepseek-ai/cordis'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import ProjectStorage from '@deepseek-ai/dsh-project-storage'
 import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -113,17 +114,20 @@ describe('local attachment service', () => {
     const project = join(root, 'project'), dshHome = join(root, 'home')
     await mkdir(project)
     const ctx = new Context()
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(ProjectStorage, {
       sessionMode: 'project-local', locatorPath: join(dshHome, 'projects.json'),
       legacySessionRoot: '', metadataLimitBytes: 1024 * 1024, lockDeadlineMs: 5000,
     })
-    const binding = await ctx.projectStorage.open({ root: project, mode: 'new' })
+    await ctx.projectStorage.open({ root: project, mode: 'new' })
     const sessionId = SessionId('scoped-file-session')
     await ctx.projectStorage.bindSession({
       version: SESSION_FORMAT_VERSION, id: sessionId, createdAt: 10, cwd: project, isSeeded: false, delegationDepth: 0,
     })
-    const scope = { projectId: binding.id, sessionId }
+    const scope = { sessionId }
     const store = new LocalAttachmentStore(ctx, { dshHome, projectLocal: true })
+    expect(store.modelImageSessionRequired).toBe(true)
+    expect(new LocalAttachmentStore(new Context(), { dshHome }).modelImageSessionRequired).toBe(false)
     const data = Uint8Array.of(0, 1, 2, 255)
     try {
       const ref = await store.saveFile({ data, name: 'notes.bin' }, scope)
@@ -148,25 +152,124 @@ describe('local attachment service', () => {
         .resolves.toMatchObject({ attachment: image })
       const secondProject = join(root, 'second-project')
       await mkdir(secondProject)
-      const secondBinding = await ctx.projectStorage.open({ root: secondProject, mode: 'new' })
+      await ctx.projectStorage.open({ root: secondProject, mode: 'new' })
       const secondSession = SessionId('second-scoped-file-session')
       await ctx.projectStorage.bindSession({
         version: SESSION_FORMAT_VERSION, id: secondSession, createdAt: 11,
         cwd: secondProject, isSeeded: false, delegationDepth: 0,
       })
-      const secondScope = { projectId: secondBinding.id, sessionId: secondSession }
+      const secondScope = { sessionId: secondSession }
       const duplicate = await store.saveFile({ data, name: 'notes.bin' }, secondScope)
       expect(duplicate.attachmentId).toBe(ref.attachmentId)
       expect(store.fileHostPath(duplicate, secondScope)).not.toBe(store.fileHostPath(ref, scope))
-      await expect(store.saveFile({ data, name: 'mismatched.bin' }, { ...scope, projectId: 'not-the-owner' }))
-        .rejects.toMatchObject({ code: 'ATTACHMENT_SCOPE_UNAVAILABLE' })
+      await expect(store.readImage(image, undefined, secondScope)).rejects.toMatchObject({ code: 'ATTACHMENT_NOT_FOUND' })
+      await expect(store.saveFile({ data, name: 'unowned.bin' }, { sessionId: SessionId('unowned-session') }))
+        .rejects.toMatchObject({ name: 'Error' })
       await expect(store.saveFile({ data, name: 'unscoped.bin' })).rejects.toThrow(/scope/i)
     } finally {
       await ctx.fiber.dispose()
       await rm(root, { recursive: true, force: true })
     }
   })
+  it('keeps model-image routing guarded for a grouped attachment provider with mounted project ownership', async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'dsh-grouped-project-attachment-')))
+    const project = join(root, 'project')
+    const dshHome = join(root, 'home')
+    await mkdir(project)
+    const ctx = new Context()
+    const store = new LocalAttachmentStore(ctx, { dshHome })
+    await ctx.plugin(SessionCwd)
+    await ctx.plugin(ProjectStorage, {
+      sessionMode: 'grouped', locatorPath: join(dshHome, 'projects.json'),
+      legacySessionRoot: '', metadataLimitBytes: 1024 * 1024, lockDeadlineMs: 5000,
+    })
+    await ctx.projectStorage.open({ root: project, mode: 'new' })
+    const sessionId = SessionId('grouped-image-session')
+    await ctx.projectStorage.bindSession({
+      version: SESSION_FORMAT_VERSION, id: sessionId, createdAt: 12, cwd: project, isSeeded: false, delegationDepth: 0,
+    })
+    const scope = { sessionId }
+    const imageData = Uint8Array.from(Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWNgZGIGAAAOAAeCcsnOAAAAAElFTkSuQmCC',
+      'base64',
+    ))
+    try {
+      expect(store.modelImageSessionRequired).toBe(true)
+      const image = await store.saveImage({ data: imageData, mediaType: 'image/png' }, scope)
+      expect(store.imageHostPath(image, scope)).toContain(join(project, '.aster', 'attachments', 'v1', 'objects'))
+      await ctx.fiber.dispose()
+      expect(store.modelImageSessionRequired).toBe(true)
+      await expect(store.readImage(image, undefined, scope))
+        .rejects.toMatchObject({ code: 'ATTACHMENT_SCOPE_UNAVAILABLE' })
+      await expect(store.readImage(image)).rejects.toMatchObject({ code: 'ATTACHMENT_SCOPE_REQUIRED' })
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+  it('latches model-image Session requirements when a mounted project provider is removed before image access', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-attachment-provider-lifecycle-'))
+    const ctx = new Context()
+    const store = new LocalAttachmentStore(ctx, { dshHome: join(root, 'home') })
+    try {
+      await ctx.plugin(SessionCwd)
+      await ctx.plugin(ProjectStorage, {
+        sessionMode: 'grouped', locatorPath: join(root, 'projects.json'),
+        legacySessionRoot: '', metadataLimitBytes: 1024 * 1024, lockDeadlineMs: 5000,
+      })
+      await ctx.fiber.dispose()
 
+      expect(store.modelImageSessionRequired).toBe(true)
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses missing and read-only project roots and preserves scoped read cancellation', async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'dsh-project-attachment-status-')))
+    const project = join(root, 'project')
+    const dshHome = join(root, 'home')
+    await mkdir(project)
+    const ctx = new Context()
+    await ctx.plugin(SessionCwd)
+    await ctx.plugin(ProjectStorage, {
+      sessionMode: 'project-local', locatorPath: join(dshHome, 'projects.json'),
+      legacySessionRoot: '', metadataLimitBytes: 1024 * 1024, lockDeadlineMs: 5000,
+    })
+    const binding = await ctx.projectStorage.open({ root: project, mode: 'new' })
+    const sessionId = SessionId('status-image-session')
+    await ctx.projectStorage.bindSession({
+      version: SESSION_FORMAT_VERSION, id: sessionId, createdAt: 13, cwd: project, isSeeded: false, delegationDepth: 0,
+    })
+    const store = new LocalAttachmentStore(ctx, { dshHome, projectLocal: true })
+    const scope = { sessionId }
+    const imageData = Uint8Array.from(Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWNgZGIGAAAOAAeCcsnOAAAAAElFTkSuQmCC',
+      'base64',
+    ))
+    try {
+      const image = await store.saveImage({ data: imageData, mediaType: 'image/png' }, scope)
+      const controller = new AbortController()
+      controller.abort(new Error('attachment read cancelled'))
+      await expect(store.readImage(image, controller.signal, scope)).rejects.toThrow('attachment read cancelled')
+
+      if (process.platform !== 'win32') {
+        await chmod(project, 0o555)
+        await expect(ctx.projectStorage.status(binding.id)).resolves.toBe('read-only')
+        await expect(store.saveImage({ data: imageData, mediaType: 'image/png' }, scope))
+          .rejects.toMatchObject({ code: 'ATTACHMENT_SCOPE_UNAVAILABLE' })
+        await chmod(project, 0o700)
+      }
+      await rm(project, { recursive: true, force: true })
+      await expect(ctx.projectStorage.status(binding.id)).resolves.toBe('missing')
+      await expect(store.readImage(image, undefined, scope))
+        .rejects.toMatchObject({ code: 'ATTACHMENT_SCOPE_UNAVAILABLE' })
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
   it('commits a fully prepared image batch in input order', async () => {
     const dshHome = await mkdtemp(join(tmpdir(), 'dsh-attachment-batch-success-'))
     try {

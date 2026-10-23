@@ -28,6 +28,7 @@ import type { Session, SessionHeader, SessionId } from '@deepseek-ai/dsh-session
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-session-projection'
+import type {} from '@deepseek-ai/dsh-session/cwd'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { SessionPersistenceNotFoundError } from '@deepseek-ai/dsh-session-persistence'
 import type { SessionHandle, SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
@@ -369,7 +370,13 @@ export class AgentLoop extends Service implements AgentFactory {
     ctx.effect(() => ctx.agents.setFactory(this), 'agentLoop.setFactory()')
     ctx.systemPrompt.variable('provider', context => context.agent?.options.provider)
     ctx.systemPrompt.variable('model', context => context.agent?.options.model)
-    ctx.systemPrompt.variable('cwd', context => context.agent?.session.header.cwd)
+    ctx.systemPrompt.variable('cwd', (context) => {
+      if (context.agent === undefined) return undefined
+      const sessionCwd = context.agent.ctx.get('sessionCwd')
+      return sessionCwd === undefined
+        ? context.agent.session.header.cwd
+        : sessionCwd.resolve(context.agent.session.header)
+    })
 
     for (const { id, sessionId, cwd, resumeSessionId, ...options } of this.config.agents) {
       const meta = cwd === undefined ? {} : { cwd }

@@ -392,6 +392,10 @@ pnpm run prepare:desktop
 
 所有平台上的 Desktop 构建产物默认写入 `apps/desktop/.desktop-build`。`DSH_DESKTOP_BUILD_ROOT` 可指定仓库目录内的其他绝对路径。构建产物可再生成，并与 `$DSH_HOME` 用户数据分离；Windows ASAR 临时 staging 放在仓库根目录的 `temp/`。每条打包命令都会构建仓库，打包以 dsh 和私有 Desktop Host 为根的第一方生产依赖闭包，并准备目标专用的 Electron 分发包与 pnpm CLI。`prepare:dsh` 在构建时安装一次生产依赖图，准备物化包供 electron-builder 归档到 `app.asar/dsh`，移除包管理器元数据，并生成包含共享包版本和最终文件哈希的 `desktop-runtime.json`。在 macOS 上，它先签名并验证原生文件，再生成清单；electron-builder 不对已签名的此目录重复进行嵌套签名。资源映射明确包含默认根目录过滤器会忽略的 `dsh/node_modules`；准备完成的运行时清单在原生签名后检查。原生可执行文件及库解包到 ASAR 旁；Python、独立 Node 和 pnpm 保留在外部 runtime 资源中。Windows 打包逐项检查准备好的 PE，确认其 ASAR 条目已标记为解包，且磁盘副本字节一致；未签名构建也执行此检查。Builder glob 规则用单字符通配符匹配 PE 文件名中的花括号，因此同目录中名称匹配的文件也可能被解包。准备好的运行时 smoke 沿用已验证的目标描述符，不使用构建宿主的架构。签名安装包、公证、已安装应用升级和各目标原生模块的验收需要发布环境。
 
+Windows NSIS 编译使用所选目标 `installer-ui` 目录中生成的 include，因此位图和原生辅助库随 `DSH_DESKTOP_BUILD_ROOT` 一同定位。直接调用 `scripts/installer.nsh` 时，必须先定义 `INSTALLER_BUILD_DIR`；脚本不推断默认构建目录。
+
+即使 Node 能访问文件，Windows 原生依赖仍可能拒绝过深路径。Nomad 作业应将源码放在 allocation 自有的 `s/` 中，在启动打包前，将 `DSH_DESKTOP_BUILD_ROOT` 设置为该检出目录内 `.b/` 的绝对路径，并设置 `DSH_DESKTOP_BUILD_LAYOUT=compact`。紧凑布局使用 `w64`、`ma64`、`mx64` 目标目录，以及签名产物 `a/` 和未签名产物 `u/`；默认仍为标准布局。仓库 pnpm 配置还限制虚拟存储包目录名长度，但不改变存储位置。在新建的浅层 task 自有目录验证解出的安装包；不要使用全局盘符映射、改写用户数据或跳过正常 runtime smoke 来绕过路径故障。
+
 macOS 打包在组装 App 时、代码签名前写入 `Contents/Resources/app-update.yml`，供并行 ZIP 与 DMG 路线使用的目录构建也执行此操作。签名钩子验证准确的更新源和 updater 缓存目录。写入发布完成记录前，流程会再次检查两条路线的副本和最终移入的 App；配置缺失或不匹配会阻止移入产物，因而也会阻止上传。
 
 未压缩产物包含 Electron、物化后的 dsh 生产依赖树、pnpm，以及壳应用。安装包大小与文件系统占用不同；发布验收需要测量两者，以及 profile 插件存储和首次启动耗时。此布局用更多应用内文件换取消除用户机器上的核心包安装过程。

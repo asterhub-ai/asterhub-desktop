@@ -72,14 +72,8 @@ export interface SaveFileStreamAttachment {
 }
 
 
-/**
- * Trusted project and Session address used by project-local attachment storage.
- * Project-local providers route durable object reads and writes to the owning
- * project's `.aster` trees through this scope; grouped providers ignore it.
- * Callers obtain it from the Host or live Agent for a trusted Session address.
- */
+/** Trusted Session address used by project-local attachment storage. */
 export interface AttachmentScope {
-  readonly projectId: string
   readonly sessionId: Branded<'SessionId'>
 }
 /** Deployment-resolved limits used by upload admission and request buffering. */

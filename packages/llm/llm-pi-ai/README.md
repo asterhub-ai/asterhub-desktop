@@ -20,7 +20,7 @@ English | [中文](README.zh.md)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 - [Dev Note](#dev-note)
 
-For the AsterHub authenticated route, `/models` is the sole selectable catalog. Configured template models are not advertised. First-load errors remain visible; transient refresh errors can retain only the same credential’s last successful catalog. Credential replacement clears that catalog. Each prepared request captures its model descriptors independently of later catalog refreshes.
+A deployment may configure an authenticated account catalog as the sole selectable model source. In that mode, configured template models are not advertised; first-load errors remain visible, transient refresh errors can retain only the same credential’s last successful catalog, and credential replacement clears that catalog. Product bundles own the route profile and its credentials; this adapter enforces the configured profile without supplying product defaults.
 
 -----
 
@@ -29,7 +29,7 @@ For the AsterHub authenticated route, `/models` is the sole selectable catalog. 
 
 Mount this plugin when a composition routes model requests through pi-ai's provider catalogs or through gateways that pi-ai's installed catalog does not describe. The `providers` dictionary is the whole configuration surface: each key is the provider route name a request selects with `GenerateOptions.provider`.
 
-The adapter accepts the LLM service's [request-only user inputs](../llm/README.md#use-this-package) alongside durable history. User identity and attribution do not enter pi-ai content; assistant replay metadata and tool-call correlation remain attached to durable messages. The Desktop application's locked Sub2API route declares text and image input for discovered account models whose listing omits modality metadata.
+The adapter accepts the LLM service's [request-only user inputs](../llm/README.md#use-this-package) alongside durable history. User identity and attribution do not enter pi-ai content; assistant replay metadata and tool-call correlation remain attached to durable messages. Product bundles declare model metadata such as modalities when the upstream account catalog omits it.
 
 Explicit exhausted-quota or insufficient-balance details take precedence over HTTP 401/403 when classifying gateway failures. Authentication, rate limiting, timeout, transport, and server failures retain distinct stable codes; an unrecognized error remains unclassified rather than implying exhausted credits.
 
@@ -39,11 +39,14 @@ Choose this adapter when the same composition serves several providers, when a r
 
 ### Configure provider routes
 
-Each profile may set a `retryPolicy`; omission uses normal mode with five retries. `apiKeyEnv` is a credential reference resolved per request through the harness credential seam, so no secret enters the configuration file; a reference that resolves to nothing fails the request with `MISSING_CREDENTIAL`. Omitting it leaves the route configured-but-keyless, which for an installed catalog route defers to pi-ai's provider-native ambient discovery.
+Each profile may set a `retryPolicy`; omission uses normal mode with five retries. `apiKeyEnv` is a credential reference resolved per request through the harness credential seam, so no secret enters the configuration file; a reference that resolves to nothing fails the request with `MISSING_CREDENTIAL`. Omitting it leaves the route configured-but-keyless, which for an installed catalog route defers to pi-ai's provider-native ambient discovery. The optional top-level `appIdentity` sets the public `User-Agent` product and URL for provider calls and discovery; its version always comes from this package's metadata. Product compositions set it explicitly rather than relying on a product-specific library default.
 
 ```yaml
 - name: '@deepseek-ai/dsh-llm-pi-ai'
   config:
+    appIdentity:
+      product: example-agent
+      url: https://example.com/agent
     providers:
       openai:
         apiKeyEnv: OPENAI_API_KEY

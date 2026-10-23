@@ -22,8 +22,8 @@
  * @module dsh-llm-pi-ai/discovery
  */
 
-import { INVALID_CREDENTIAL_CODE, LlmError, normalizeApiKey } from '@deepseek-ai/dsh-llm'
-import type { LlmDiscoveredModel, LlmModelDiscoveryOperation, ModelModality } from '@deepseek-ai/dsh-llm'
+import { APP_IDENTITY, INVALID_CREDENTIAL_CODE, LlmError, normalizeApiKey } from '@deepseek-ai/dsh-llm'
+import type { AppIdentity, LlmDiscoveredModel, LlmModelDiscoveryOperation, ModelModality } from '@deepseek-ai/dsh-llm'
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
 import { catalogModels } from './catalog.ts'
 
@@ -285,6 +285,8 @@ function usableProbeKey(raw: string): string {
 export interface StoredModelDiscoveryProfile {
   /** Deployment headers configured on the named route. */
   readonly headers: Readonly<Record<string, string>> | undefined
+  /** Product/deployment attribution identity. */
+  readonly appIdentity?: Pick<AppIdentity, 'product' | 'url'>
   /** Resolve the named route's credential only when the draft carries none. */
   readonly resolveApiKey: () => Promise<string | undefined>
 }
@@ -356,7 +358,10 @@ export async function discoverModels(
     } else if (apiKey !== undefined) {
       headers.set('authorization', `Bearer ${apiKey}`)
     }
-    for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
+    for (const [name, value] of Object.entries(attributionHeaders({
+      ...APP_IDENTITY,
+      ...stored?.appIdentity,
+    }))) headers.set(name, value)
     response = await fetch(url, {
       method: 'GET',
       headers,

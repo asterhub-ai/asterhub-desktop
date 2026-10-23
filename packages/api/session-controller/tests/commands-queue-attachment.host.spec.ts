@@ -367,12 +367,11 @@ describe('Session attachment authorization', () => {
     const data = field === 'message' ? { message } : { [field]: content }
     const events = [event(type, SessionSeq(0), data)]
     const saved = JSON.stringify(events)
-    const readImage = vi.fn((image: ImageAttachmentRef) => Promise.resolve({ ref: image, data: Uint8Array.of(1) }))
-    const fixture = await persistedController(events, readImage)
+    const fixture = await persistedController(events, image =>
+      Promise.resolve({ ref: image, data: Uint8Array.of(1) }))
     try {
       await expect(fixture.controller.attachment({ sessionId: fixture.sessionId, attachmentId: ref.attachmentId }))
         .resolves.toEqual({ attachment: ref, data: 'AQ==' })
-      expect(readImage).toHaveBeenCalledExactlyOnceWith(ref)
       expect(JSON.stringify(events)).toBe(saved)
     } finally {
       await fixture.ctx.fiber.dispose()

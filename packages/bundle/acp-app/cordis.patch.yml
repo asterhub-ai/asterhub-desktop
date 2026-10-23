@@ -1,11 +1,5 @@
 # The automation-only ACP application over dsh-base. Stdout belongs to ACP.
 
-- id: system-prompt
-  config:
-    personaSuffix: 当前工作目录：{{cwd}}。
-    personaPrefix: >-
-      你是 AsterHub 的 AI 助手，当前使用 {{model}} 模型。请用清晰、准确的方式协助用户完成工作。
-
 - id: session-title-llm
   disabled: true
 

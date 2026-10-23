@@ -12,6 +12,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, AgentOptions, CreateAgentOptions } from '@deepseek-ai/dsh-agent'
 import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type { Session, SessionId } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-session/cwd'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type { ToolRestriction } from '@deepseek-ai/dsh-tools'
 // Type-only: make `ctx.get('sandboxPolicy')`, `ctx.get('approval')`, and
@@ -58,6 +59,11 @@ export function resolveChildDepth(parent: Agent, maxDepth: number | undefined): 
   return childDepth
 }
 
+function executionCwd(sessionCwd: Context['sessionCwd'] | undefined, parent: Agent): string | undefined {
+  if (sessionCwd !== undefined) return sessionCwd.resolve(parent.session.header)
+  return parent.options.cwd ?? parent.session.header.cwd
+}
+
 /**
  * Resolve the parent values inherited by a child. The latest request header
  * owns provider, model, and reasoning effort after request-time selection;
@@ -66,9 +72,13 @@ export function resolveChildDepth(parent: Agent, maxDepth: number | undefined): 
  * @param parent - delegating parent Agent.
  * @returns detached Agent options for child-option merging.
  */
-export function parentAgentOptionsForDelegation(parent: Agent): AgentOptions {
+export function parentAgentOptionsForDelegation(
+  parent: Agent,
+  sessionCwd?: Context['sessionCwd'],
+): AgentOptions {
   const requestConfig = parent.session.requestHeader()?.config
-  if (requestConfig === undefined) return { ...parent.options }
+  const cwd = executionCwd(sessionCwd, parent)
+  if (requestConfig === undefined) return { ...parent.options, ...cwd === undefined ? {} : { cwd } }
   const {
     provider: _createdProvider,
     model: _createdModel,
@@ -77,6 +87,7 @@ export function parentAgentOptionsForDelegation(parent: Agent): AgentOptions {
   } = parent.options
   return {
     ...createdOptions,
+    ...cwd === undefined ? {} : { cwd },
     provider: requestConfig.provider,
     model: requestConfig.model,
     ...requestConfig.reasoningEffort === undefined
@@ -100,13 +111,16 @@ export function resolveChildAgentOptions(
   parent: Agent,
   requested: AgentOptions | undefined,
   childDepth: number,
+  sessionCwd: Context['sessionCwd'],
 ): AgentOptions {
-  const parentOptions = parentAgentOptionsForDelegation(parent)
+  const parentOptions = parentAgentOptionsForDelegation(parent, sessionCwd)
   const parentProvider = parentOptions.provider
   const parentModel = parentOptions.model
   const parentReasoningEffort = parentOptions.reasoningEffort
   const parentMaxTokens = parentOptions.maxTokens
+  const parentCwd = parentOptions.cwd
   const resolved: AgentOptions = {
+    ...parentCwd !== undefined ? { cwd: parentCwd } : {},
     ...parentProvider !== undefined ? { provider: parentProvider } : {},
     ...parentModel !== undefined ? { model: parentModel } : {},
     ...parentReasoningEffort !== undefined ? { reasoningEffort: parentReasoningEffort } : {},
@@ -140,13 +154,14 @@ export function childSessionMeta(
   parent: Agent,
   childDepth: number,
   isSeeded: boolean,
+  sessionCwd: Context['sessionCwd'],
 ): NonNullable<CreateAgentOptions['meta']> {
-  const parentHeader = parent.session.header
+  const cwd = executionCwd(sessionCwd, parent)
   const agentPreset = parent.ctx.get('agentPresets')?.composedPreset(parent.ctx)
   return {
-    ...parentHeader.cwd !== undefined ? { cwd: parentHeader.cwd } : {},
+    ...cwd !== undefined ? { cwd } : {},
     ...agentPreset === undefined ? {} : { agentPreset },
-    parentSession: parentHeader.id,
+    parentSession: parent.session.header.id,
     isSeeded,
     // Navigation classification only; the descriptor remains the authority
     // for mode and continuation capability.
@@ -155,7 +170,6 @@ export function childSessionMeta(
     delegationDepth: childDepth,
   }
 }
-
 /** The scoped composition a child agent's creation window applies. */
 export interface ChildComposition {
   /** Per-child persona shadowing the deployment persona. */

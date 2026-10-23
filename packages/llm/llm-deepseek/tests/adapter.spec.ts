@@ -17,7 +17,7 @@ import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
-import LlmRuntime, { createAssistantMessage, createDeveloperMessage, createSystemMessage, createToolResultMessage, createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { APP_IDENTITY, createAssistantMessage, createDeveloperMessage, createSystemMessage, createToolResultMessage, createUserMessage, ToolCallId, userAgent } from '@deepseek-ai/dsh-llm'
 import type { Message } from '@deepseek-ai/dsh-llm'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import LocalCredentials from '@deepseek-ai/dsh-credentials-local'
@@ -127,7 +127,8 @@ describe('direct Messages HTTP', () => {
 
   it('uses the Messages endpoint, authentication, attribution and final usage', async () => {
     const http = await endpoint()
-    const llm = adapter({ baseURL: http.url })
+    const identity = { product: 'asterhub', url: 'https://github.com/asterhub-ai/asterhub-desktop' }
+    const llm = adapter({ baseURL: http.url }, { appIdentity: identity })
     const response = await assemble(llm.stream(options({ model: 'deepseek-flash', sessionId: SessionId('session-test'), purpose: 'compaction' })), 'deepseek-flash')
     expect(response.message.content).toEqual([{ type: 'text', text: 'Hello 世界' }])
     expect(response.message.source).toMatchObject({
@@ -135,7 +136,7 @@ describe('direct Messages HTTP', () => {
     })
     expect(http.requests[0]).toMatchObject({ path: '/anthropic/v1/messages', headers: {
       'x-api-key': 'test-key', 'anthropic-version': '2023-06-01',
-      'user-agent': expect.stringContaining('asterhub/') as string, 'x-deepseek-harness-user-id': 'test-user',
+      'user-agent': userAgent({ ...APP_IDENTITY, ...identity }), 'x-deepseek-harness-user-id': 'test-user',
       'x-deepseek-harness-session-id': 'session-test', 'x-deepseek-harness-compact': '1',
     }, body: { thinking: { type: 'enabled' }, output_config: { effort: 'high' } } })
     expect(llm.providerInfo('deepseek-official')).toEqual({ id: 'deepseek-official', name: 'DeepSeek' })

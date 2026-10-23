@@ -1,5 +1,5 @@
 # Agent preset standard: one `@deepseek-ai/dsh-agent-preset` declaration inserted
-# after the web patch. Edits saved from the Web editor override this row's
+# after the AsterHub product-Web patch. Edits saved from the Web editor override
 # `config.plugins` by id from the profile patch.
 - insert:
     - id: preset-standard

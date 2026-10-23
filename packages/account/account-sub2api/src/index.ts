@@ -475,10 +475,7 @@ export class AccountSub2apiService extends TypertRemoteService {
     super(ctx, 'accountSub2api')
     this.credentials = ctx.credentials
     const resolved = config as Required<Config>
-    const authBaseUrl = ctx.get('applicationModelRoute') === undefined
-      ? resolved.authBaseUrl
-      : 'https://xapi.fans/api/v1'
-    this.client = new Sub2ApiClient({ baseUrl: authBaseUrl, groupId: resolved.groupId })
+    this.client = new Sub2ApiClient({ baseUrl: resolved.authBaseUrl, groupId: resolved.groupId })
     // Awaited readiness: identity is only published after verifying a stored
     // token AND a bound model key exist locally, without network. Until the
     // readiness promise resolves, automationIdentity returns null (fail closed).

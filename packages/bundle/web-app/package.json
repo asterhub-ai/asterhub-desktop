@@ -23,7 +23,6 @@
       "default": "./lib/startup.js"
     },
     "./cordis.patch.yml": "./cordis.patch.yml",
-    "./presets/*.patch.yml": "./presets/*.patch.yml",
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
@@ -31,31 +30,15 @@
     "lib/index.js",
     "lib/startup.js",
     "cordis.patch.yml",
-    "presets/standard.patch.yml",
-    "presets/ptc.patch.yml",
-    "presets/minimal.patch.yml",
-    "presets/cordis.patch.yml",
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
   "dsh": {
     "bundle": {
-      "patch": [
-        "./cordis.patch.yml",
-        "./presets/standard.patch.yml",
-        "./presets/ptc.patch.yml",
-        "./presets/minimal.patch.yml",
-        "./presets/cordis.patch.yml"
-      ]
+      "patch": "./cordis.patch.yml"
     }
   },
   "dependencies": {
-    "@deepseek-ai/dsh-anima-memory": "workspace:*",
-    "@deepseek-ai/dsh-client-ui-settings-anima": "workspace:*",
-    "@deepseek-ai/dsh-agent-instructions": "workspace:*",
-    "@deepseek-ai/dsh-agent-preset": "workspace:*",
-    "@deepseek-ai/dsh-agent-preset-registry": "workspace:*",
-    "@deepseek-ai/dsh-agent-tool-presentation": "workspace:*",
     "@deepseek-ai/dsh-api-job-controller": "workspace:*",
     "@deepseek-ai/dsh-api-remotes": "workspace:*",
     "@deepseek-ai/dsh-api-session-controller": "workspace:*",
@@ -64,10 +47,7 @@
     "@deepseek-ai/dsh-api-workspace-controller": "workspace:*",
     "@deepseek-ai/dsh-api-workspace-files": "workspace:*",
     "@deepseek-ai/dsh-app-boot": "workspace:*",
-    "@deepseek-ai/dsh-project-storage": "workspace:*",
     "@deepseek-ai/dsh-client-connection": "workspace:*",
-    "@deepseek-ai/dsh-client-product-analytics": "workspace:*",
-    "@deepseek-ai/dsh-host-product-telemetry-otel": "workspace:*",
     "@deepseek-ai/dsh-client-file-upload": "workspace:*",
     "@deepseek-ai/dsh-client-hmr": "workspace:*",
     "@deepseek-ai/dsh-client-locale": "workspace:*",
@@ -76,10 +56,6 @@
     "@deepseek-ai/dsh-client-ui-agent-preset": "workspace:*",
     "@deepseek-ai/dsh-client-ui-approval": "workspace:*",
     "@deepseek-ai/dsh-client-ui-attachment": "workspace:*",
-    "@deepseek-ai/dsh-experimental-api-speech-to-text": "workspace:*",
-    "@deepseek-ai/dsh-experimental-client-ui-voice-input": "workspace:*",
-    "@deepseek-ai/dsh-experimental-speech-to-text": "workspace:*",
-    "@deepseek-ai/dsh-experimental-speech-to-text-sensevoice": "workspace:*",
     "@deepseek-ai/dsh-client-ui-brand-official": "workspace:*",
     "@deepseek-ai/dsh-client-ui-chat": "workspace:*",
     "@deepseek-ai/dsh-client-ui-commands": "workspace:*",
@@ -92,7 +68,6 @@
     "@deepseek-ai/dsh-client-ui-input-trigger": "workspace:*",
     "@deepseek-ai/dsh-client-ui-jobs": "workspace:*",
     "@deepseek-ai/dsh-client-ui-layout": "workspace:*",
-    "@deepseek-ai/dsh-client-ui-model-selection": "workspace:*",
     "@deepseek-ai/dsh-client-ui-message-feedback": "workspace:*",
     "@deepseek-ai/dsh-client-ui-open-in-app": "workspace:*",
     "@deepseek-ai/dsh-client-ui-permission-presets": "workspace:*",
@@ -142,7 +117,6 @@
     "@deepseek-ai/dsh-launch-environment": "workspace:*",
     "@deepseek-ai/dsh-message-feedback": "workspace:*",
     "@deepseek-ai/dsh-office-to-pdf": "workspace:*",
-    "@deepseek-ai/dsh-persona": "workspace:*",
     "@deepseek-ai/dsh-plan-mode": "workspace:*",
     "@deepseek-ai/dsh-plugin-manager": "workspace:*",
     "@deepseek-ai/dsh-session-log-export": "workspace:*",
@@ -178,8 +152,6 @@
     "@deepseek-ai/schemastery": "workspace:~",
     "commander": "^15.0.0",
     "open": "^11.0.0",
-    "@deepseek-ai/dsh-account-sub2api": "workspace:*",
-    "@deepseek-ai/dsh-client-ui-settings-account": "workspace:*",
     "@deepseek-ai/dsh-client-shortcuts": "workspace:*",
     "@deepseek-ai/dsh-client-ui-shortcuts": "workspace:*",
     "@deepseek-ai/dsh-client-ui-settings-session-log": "workspace:*"
@@ -203,6 +175,8 @@
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
     "@deepseek-ai/dsh-typert-registry": "workspace:*",
     "@deepseek-ai/libreoffice-kit": "^0.1.5",
-    "@deepseek-ai/dsh-otel": "workspace:*"
+    "@deepseek-ai/dsh-otel": "workspace:*",
+    "@deepseek-ai/dsh-host-product-telemetry-otel": "workspace:*",
+    "@deepseek-ai/dsh-client-product-analytics": "workspace:*"
   }
 }

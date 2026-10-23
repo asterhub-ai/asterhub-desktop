@@ -4,10 +4,10 @@
  * session, model route, and tools — driven over stdio JSON-RPC through the
  * TypeScript SDK client, so it shares no Cordis context. It accepts the
  * provider/model/reasoning/maxTokens subset of `agentOptions`; other start
- * features remain unsupported. The ONE thing it reads off `request.parent`
- * is the session's workspace cwd. This plugin uses named
- * exports only; a default would hide its loader metadata (see
- * `docs/postmortem/0001-acp-default-export-drops-inject.md`).
+ * features remain unsupported. Its launch cwd always comes from the current
+ * trusted SessionCwd provider, while an explicit configured `cwd` overrides
+ * that resolved root. It uses named exports only; a default would hide its
+ * loader metadata (see `docs/postmortem/0001-acp-default-export-drops-inject.md`).
  * @module @deepseek-ai/dsh-subagent-dsh-sdk
  */
 
@@ -26,9 +26,8 @@ import {
   startSdkRun,
   type SdkRunSpec,
 } from './run.ts'
-
 export const name = 'subagent-dsh-sdk'
-export const inject = ['subagents']
+export const inject = ['sessionCwd', 'subagents']
 
 /** Config: how to spawn and drive the child SDK runtime process. */
 export interface Config {
@@ -147,7 +146,11 @@ class SdkSubagentProvider implements SubagentProvider {
     }
     let cwd: string
     try {
-      cwd = resolveChildCwd('subagent-dsh-sdk', this.config.cwd, request.parent.session.header.cwd)
+      const parentCwd = this.ctx.sessionCwd.resolve(request.parent.session.header)
+      if (parentCwd === undefined || parentCwd.length === 0) {
+        throw new Error('subagent-dsh-sdk: parent Session has no current execution directory')
+      }
+      cwd = resolveChildCwd('subagent-dsh-sdk', this.config.cwd, parentCwd)
     } catch (error: unknown) {
       const failure = sdkConfigurationFailure(error)
       this.ctx.logger.warn(`subagent-dsh-sdk "${this.name}": child start failed: %o`, error)

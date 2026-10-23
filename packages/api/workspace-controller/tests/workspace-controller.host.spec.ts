@@ -4,6 +4,7 @@ import { basename, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import { sessionDir } from '../../../session/session-persistence-jsonl/src/format.ts'
 import Storage from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
@@ -81,6 +82,7 @@ function stageDir(root: string, name: string): string {
 }
 
 async function mountProjectStorage(ctx: Context, root: string): Promise<void> {
+  await ctx.plugin(SessionCwd)
   await ctx.plugin(ProjectStorage, {
     sessionMode: 'project-local',
     locatorPath: join(root, 'locator.json'),

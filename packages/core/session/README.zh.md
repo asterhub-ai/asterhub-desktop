@@ -37,6 +37,10 @@ ctx.sessions.get(sessionId)      // the live session
 ctx.sessions.list()              // every live session, in creation order
 ```
 
+### 解析当前执行目录
+
+`@deepseek-ai/dsh-session/cwd` 提供 `ctx.sessionCwd`，这是一个窄能力，可根据不可变 Session header 解析可信的当前执行目录。项目解析器绑定前，它返回历史 `header.cwd`；绑定后，提供方结果（包括 `undefined` 或错误）具有权威性。活动提供方只能注册一次，并拥有幂等 disposer；移除后，该能力会 fail closed，直到另一提供方注册。ProjectStorage 拥有自己的解析器，消费方无需依赖 Workspace 索引。
+
 ### 追加与派生
 
 `session.append(type, data, opts?)` 提交一个类型化事件——它先快照并冻结载荷、校验其为无损 JSON，再通知观察者。`session.deriveMessages()` 把日志投影为模型看到的 `Message[]`，采用增量且有缓存的方式：

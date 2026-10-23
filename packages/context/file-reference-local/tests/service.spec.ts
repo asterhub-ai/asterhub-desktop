@@ -5,6 +5,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import ToolRegistry, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
@@ -22,6 +23,7 @@ async function harness(): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
   await ctx.plugin(SystemPrompt, { personaPrefix: '' })
+  await ctx.plugin(SessionCwd)
   await ctx.plugin(ToolRegistry)
   await ctx.plugin(AgentRegistry)
   return ctx
@@ -69,6 +71,26 @@ describe('LocalFileReferenceService', () => {
         name: 'read', description: 'read a file', parameters: {}, execute: () => Promise.resolve([]),
       }))
       expect(renderPrompt(await ctx.systemPrompt.assemble())).toContain(FILE_REFERENCE_PROMPT)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('refuses historical file discovery after a late-mounted cwd provider disappears', async () => {
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SessionStore)
+      await ctx.plugin(AgentRegistry)
+      await ctx.plugin(LocalFileReferenceService)
+      const { agent } = await stubAgent(ctx, 'late-cwd-provider')
+      const cwdFiber = await ctx.plugin(SessionCwd)
+      const disposeResolver = ctx.sessionCwd.registerResolver(header => header.cwd)
+      const signal = new AbortController().signal
+      await expect(ctx.fileReferences.list(agent, 'README', signal))
+        .resolves.toEqual([{ path: 'README.md', kind: 'file' }])
+      disposeResolver()
+      await cwdFiber.dispose()
+      await expect(ctx.fileReferences.list(agent, 'README', signal)).rejects.toThrow(/unavailable/)
     } finally {
       await ctx.fiber.dispose()
     }
@@ -145,16 +167,31 @@ describe('LocalFileReferenceService', () => {
       .toThrow('excludedDirectories')
   })
 
-  it('deduplicates lifecycle announcements and falls back to the process cwd', async () => {
+  it('uses the current root for search and refuses an unavailable binding', async () => {
     const ctx = await harness()
-    const fiber = ctx.plugin(LocalFileReferenceService)
-    await fiber
-    const { agent } = await stubAgent(ctx, 'cwd-fallback', false)
-    await ctx.serial('agent/created', { agent, source: 'startup' })
-    const list = vi.spyOn(WorkspaceFileSearch.prototype, 'list').mockResolvedValue([])
-    await expect(ctx.fileReferences.list(agent, '', new AbortController().signal)).resolves.toEqual([])
-    await expect(ctx.fileReferences.list(agent, 'src', new AbortController().signal)).resolves.toEqual([])
-    expect(list).toHaveBeenCalledTimes(2)
+    const { agent } = await stubAgent(ctx, 'moved-root')
+    const currentRoot = await mkdtemp(join(tmpdir(), 'dsh-file-reference-moved-'))
+    roots.push(currentRoot)
+    await writeFile(join(currentRoot, 'NEW_ONLY.md'), 'current project file')
+    const unbind = ctx.sessionCwd.registerResolver(() => currentRoot)
+    await ctx.plugin(LocalFileReferenceService)
+
+    await expect(ctx.fileReferences.list(agent, 'NEW_ONLY', new AbortController().signal))
+      .resolves.toEqual([{ path: 'NEW_ONLY.md', kind: 'file' }])
+
+    unbind()
+    await expect(ctx.fileReferences.list(agent, 'README', new AbortController().signal))
+      .rejects.toThrow('Session cwd provider is unavailable')
+  })
+
+  it('does not use process cwd when the current execution root is unavailable', async () => {
+    const ctx = await harness()
+    const { agent } = await stubAgent(ctx, 'missing-root', false)
+    ctx.sessionCwd.registerResolver(() => undefined)
+    await ctx.plugin(LocalFileReferenceService)
+
+    await expect(ctx.fileReferences.list(agent, '', new AbortController().signal))
+      .rejects.toThrow(`Session ${agent.id} has no current execution directory`)
   })
 
   it('logs rejected prompt cleanup without failing service teardown', async () => {

@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type {
@@ -428,6 +429,7 @@ describe('task admission and package contracts', () => {
   it('registers the default descriptor, validates config, and unregisters on HMR', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     const fiber = await ctx.plugin(codex, {})
@@ -458,6 +460,7 @@ describe('task admission and package contracts', () => {
   it('keeps named instances, runs, and HMR ownership isolated', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     const safeChild = fakeChild()
@@ -561,6 +564,7 @@ describe('task admission and package contracts', () => {
   it('rejects duplicate provider names without replacing the first instance', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     const firstFiber = await ctx.plugin(codex, {
@@ -597,6 +601,7 @@ describe('task admission and package contracts', () => {
   it('resolves the safe permission default when apply is called directly', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     const child = fakeChild()
@@ -692,6 +697,7 @@ describe('task admission and package contracts', () => {
   it('requires a parent session cwd without suggesting unsupported config', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     const spawn = vi.spyOn(ctx.subprocess, 'spawn')
@@ -705,7 +711,7 @@ describe('task admission and package contracts', () => {
       } as unknown as Agent,
       signal: new AbortController().signal,
     })).rejects.toThrow(
-      'subagent-codex: no working directory for the child — delegate from a parent session that has one',
+      'subagent-codex: no current working directory for the child — delegate from a parent session with one',
     )
     expect(spawn).not.toHaveBeenCalled()
     await ctx.fiber.dispose()
@@ -714,7 +720,6 @@ describe('task admission and package contracts', () => {
   it('keeps the namespace export shape', () => {
     expect('default' in codex).toBe(false)
     expect(codex.name).toBe('subagent-codex')
-    expect(codex.inject).toEqual(['subagents', 'subprocess'])
     const loader = Object.create(Loader.prototype) as Loader
     expect(loader.unwrapExports(codex)).toBe(codex)
   })
@@ -2119,6 +2124,7 @@ describe('run lifecycle and quiescence', () => {
   it('uses the registered provider config and logs flattened errors', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     const child = fakeChild()

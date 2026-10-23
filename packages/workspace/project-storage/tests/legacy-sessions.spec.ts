@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { SESSION_FORMAT_VERSION, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import ProjectStorage from '../src/index.ts'
 import ProjectSessionPersistence from '../src/persistence.ts'
 import { ProjectId } from '../src/manifest.ts'
@@ -157,6 +158,7 @@ describe('createLegacyAdopter', () => {
     }
 
     const ctx = new Context()
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(ProjectStorage, {
       sessionMode: 'project-local',
       locatorPath,

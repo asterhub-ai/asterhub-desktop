@@ -42,6 +42,7 @@ async function harness(
 ): Promise<{ ctx: Context; root: string; disposeInventory: () => Promise<void> }> {
   const root = await mkdtemp(join(tmpdir(), 'dsh-plugin-packages-'))
   roots.push(root)
+  await writeFile(join(root, 'package.json'), JSON.stringify({ type: 'module' }))
   const ctx = new Context()
   contexts.push(ctx)
   ctx.baseUrl = pathToFileURL(join(root, 'cordis.yml')).href

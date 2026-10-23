@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Every base-backed `dsh --profile` surface runs on `dsh-base`, so those surfaces share a model connection, the full tool set, durable session history, and workspace safety defaults. The shipped `sdk-minimal` profile deliberately uses a complete standalone tree instead. You rarely touch this bundle directly — shipped base-backed profiles already include it, and a custom base-backed profile names it first. When you need different defaults, change your profile patch or add a later bundle; this package is not a library you import.
+Every base-backed `dsh --profile` surface runs on `dsh-base`, which supplies the generic model, tool, session, and safety services. Shipped profiles add explicit product and surface layers afterward; the shipped `sdk-minimal` profile deliberately uses a complete standalone tree instead. You rarely touch this bundle directly — shipped base-backed profiles already include it, and a custom base-backed profile names it first. When you need different defaults, change your profile patch or add a later bundle; this package is not a library you import.
 
 ## Table of Contents
 
@@ -47,7 +47,7 @@ Run `dsh --profile my-profile "your task"` and you get a working agent with mode
 
 ### What you get
 
-Out of the box, every profile built on this core provides: a DeepSeek model connection (the provider and model are configurable, and you can enable extra providers from your settings), the full tool set — file editing, shell commands, web search, public HTTP(S) fetch, subagents, task and goal tracking — durable sessions that survive restarts, and the default permission policy that confines file writes to your workspace and asks before risky actions. The default web-search provider uses AsterHub's authenticated SearXNG endpoint and the active Sub2API model key, not DeepSeek's search API. Web fetch runs without per-call approval; its provider rejects non-public destinations. Feedback stays in the Session log. [OTel session upload](../../session/session-telemetry-otel/README.md) defaults to `FEEDBACK_ONLY` for all users, including `deepseek-official`: new text feedback, message ratings, edits, and withdrawals release the complete canonical prefix through that event, including context. Later records wait for the next explicit feedback; sending an authorized batch needs no further interaction or model call. `DISABLED` prevents OTel capture. The default-on [DeepSeek session-log contributor](../../session/session-log-deepseek/README.md) remains a separate request path.
+Out of the box, the generic base supplies configurable model and web services, the full tool set — file editing, shell commands, public HTTP(S) fetch, subagents, task and goal tracking — durable sessions that survive restarts, and the default permission policy that confines file writes to your workspace and asks before risky actions. Shipped AsterHub profiles add their deployment-owned provider route, authenticated search, identity, and product skills in a separate product bundle. Web and Desktop add project-local storage, account, Anima, and voice services through the product-Web layer. Web fetch runs without per-call approval; its provider rejects non-public destinations. Feedback stays in the Session log. [OTel session upload](../../session/session-telemetry-otel/README.md) defaults to `FEEDBACK_ONLY` for all users; the default-on [DeepSeek session-log contributor](../../session/session-log-deepseek/README.md) remains a separate request path.
 
 Default file editing uses `read`, `write`, and `edit`. The `str_replace_editor` tool remains available as an explicit opt-in. To add it to a base-backed profile, put this entry in the profile, home, or invocation patch:
 
@@ -81,7 +81,7 @@ The bundle is a static patch document: one `insert` list applied over the empty 
 
 ### Composition mechanics
 
-A patch replaces the targeted row's whole `config` rather than merging into it. Later bundle layers and the user's profile `cordis.patch.yml` override rows by id, with the last write winning per row. Rows whose value differs by mode do not live here: each mode bundle restates its complete configuration, keeping any single row down to one bundle layer plus the user's. The full row set and its rationale are documented inline in [`cordis.patch.yml`](cordis.patch.yml); the [generated composition graph](../../../apps/cli/composition.md) renders it.
+The generic base supplies service identities and neutral defaults. Product and mode-specific values live in explicit later bundles, keeping private deployment configuration out of generic composition.
 
 ### Platform gating
 

@@ -78,6 +78,31 @@ flowchart LR
   pkg_subagent_in_process_driver["subagent-in-process-driver"]
   pkg_invariants["invariants"]
   pkg_message_feedback["message-feedback"]
+  svc_sessionCwd["ctx.sessionCwd<br/>Current execution directory resolver"]
+  pkg_sandbox_policy["sandbox-policy"]
+  pkg_agent_instructions["agent-instructions"]
+  pkg_file_reference_local["file-reference-local"]
+  pkg_session_reference["session-reference"]
+  pkg_tool_skill["tool-skill"]
+  pkg_acp["acp"]
+  pkg_tool_fs_search["tool-fs-search"]
+  pkg_tool_lsp["tool-lsp"]
+  pkg_tool_bash["tool-bash"]
+  pkg_tool_pwsh["tool-pwsh"]
+  pkg_tool_bash_persistent["tool-bash-persistent"]
+  pkg_tool_pwsh_persistent["tool-pwsh-persistent"]
+  pkg_tools["tools"]
+  pkg_tool_present["tool-present"]
+  pkg_hooks_claude_code["hooks-claude-code"]
+  pkg_hooks_codex["hooks-codex"]
+  pkg_subagent["subagent"]
+  pkg_subagent_dsh_sdk["subagent-dsh-sdk"]
+  pkg_subagent_acp["subagent-acp"]
+  pkg_subagent_claude_code["subagent-claude-code"]
+  pkg_subagent_codex["subagent-codex"]
+  pkg_experimental_auto_review["experimental-auto-review"]
+  pkg_experimental_browser_use_runtime["experimental-browser-use-runtime"]
+  pkg_headless["headless"]
   pkg_experimental_api_speech_to_text["experimental-api-speech-to-text"]
   svc_speechController["ctx.speechController<br/>Experimental transcription Remote"]
   svc_sessionController["ctx.sessionController<br/>Host Session Remote controller"]
@@ -104,9 +129,6 @@ flowchart LR
   svc_typertGateway["ctx.typertGateway<br/>Typert Host invocation gateway"]
   svc_sessionPersistence["ctx.sessionPersistence<br/>Durable session persistence seam"]
   pkg_session_persistence_jsonl["session-persistence-jsonl"]
-  pkg_tool_bash["tool-bash"]
-  pkg_hooks_claude_code["hooks-claude-code"]
-  pkg_hooks_codex["hooks-codex"]
   pkg_config_editor["config-editor"]
   svc_configEditor["ctx.configEditor<br/>Profile configuration edits"]
   pkg_settings["settings"]
@@ -143,11 +165,9 @@ flowchart LR
   svc_sessionFeedback["ctx.sessionFeedback<br/>Session-level feedback recorder"]
   svc_workspaceRegistry["ctx.workspaceRegistry<br/>Workspace entity registry"]
   svc_sessionQuery["ctx.sessionQuery<br/>Session reads, traces, filters, and search"]
-  pkg_session_reference["session-reference"]
   pkg_tool_session_query["tool-session-query"]
   pkg_file_reference["file-reference"]
   svc_fileReferences["ctx.fileReferences<br/>File reference discovery"]
-  pkg_file_reference_local["file-reference-local"]
   svc_sessionReferenceResolver["ctx.sessionReferenceResolver<br/>Cross-session snapshot preparation"]
   pkg_session_title["session-title"]
   svc_sessionTitle["ctx.sessionTitle<br/>Log-backed session titles"]
@@ -155,13 +175,11 @@ flowchart LR
   pkg_session_title_all_prompts_llm["session-title-all-prompts-llm"]
   pkg_system_prompt["system-prompt"]
   svc_systemPrompt["ctx.systemPrompt<br/>System prompt assembly registry"]
-  pkg_tools["tools"]
   pkg_tool_terminal["tool-terminal"]
   pkg_tool_web["tool-web"]
   svc_tools["ctx.tools<br/>Tool registry and guarded execution pipeline"]
   pkg_tool_ask_user["tool-ask-user"]
   pkg_tool_cordis["tool-cordis"]
-  pkg_tool_skill["tool-skill"]
   pkg_tool_todo["tool-todo"]
   pkg_user_questions["user-questions"]
   svc_userQuestions["ctx.userQuestions<br/>Human question/answer seam"]
@@ -182,9 +200,7 @@ flowchart LR
   pkg_skill_filesystem["skill-filesystem"]
   pkg_skill_office["skill-office"]
   svc_agents["ctx.agents<br/>Agent service"]
-  pkg_acp["acp"]
   svc_agentDefaultModel["ctx.agentDefaultModel<br/>Default Agent model selection"]
-  pkg_headless["headless"]
   svc_agentLoop["ctx.agentLoop<br/>Concrete loop driver"]
   pkg_base["base"]
   pkg_sdk_minimal["sdk-minimal"]
@@ -204,13 +220,9 @@ flowchart LR
   pkg_bash_sandbox["bash-sandbox"]
   pkg_terminal_bash["terminal-bash"]
   pkg_lsp_stdio["lsp-stdio"]
-  pkg_subagent_acp["subagent-acp"]
-  pkg_subagent_codex["subagent-codex"]
-  pkg_subagent_claude_code["subagent-claude-code"]
   pkg_shell["shell"]
   svc_shell["ctx.shell<br/>Bash executor seam"]
   pkg_pwsh_local["pwsh-local"]
-  pkg_tool_pwsh["tool-pwsh"]
   pkg_shell_env["shell-env"]
   svc_shellEnv["ctx.shellEnv<br/>Managed bash environment registry"]
   pkg_terminal["terminal"]
@@ -218,7 +230,6 @@ flowchart LR
   pkg_sandbox["sandbox"]
   svc_sandbox["ctx.sandbox<br/>Process-sandbox seam"]
   pkg_sandbox_local["sandbox-local"]
-  pkg_sandbox_policy["sandbox-policy"]
   svc_sandboxPolicy["ctx.sandboxPolicy<br/>Sandbox policy home"]
   pkg_fs_sandbox["fs-sandbox"]
   pkg_user_approval["user-approval"]
@@ -236,11 +247,9 @@ flowchart LR
   pkg_fs_observation_policy["fs-observation-policy"]
   pkg_compaction["compaction"]
   svc_compaction["ctx.compaction<br/>Compaction seam"]
-  pkg_subagent["subagent"]
   svc_subagents["ctx.subagents<br/>Subagent provider and continuation service"]
   pkg_subagent_spawn_in_process["subagent-spawn-in-process"]
   pkg_subagent_fork_in_process["subagent-fork-in-process"]
-  pkg_subagent_dsh_sdk["subagent-dsh-sdk"]
   pkg_tool_subagent_control["tool-subagent-control"]
   pkg_tool_ralph["tool-ralph"]
   pkg_experimental_speech_to_text["experimental-speech-to-text"]
@@ -282,7 +291,6 @@ flowchart LR
   pkg_webhook_github["webhook-github"]
   pkg_lsp["lsp"]
   svc_lsp["ctx.lsp<br/>Language-server navigation seam"]
-  pkg_tool_lsp["tool-lsp"]
   pkg_cordis_host_runner["cordis-host-runner"]
   svc_dynamicCordisRunner["ctx.dynamicCordisRunner<br/>Dynamic Cordis package host runner"]
   svc_cordisInspect["ctx.cordisInspect<br/>Dynamic Cordis inspect registry"]
@@ -382,6 +390,7 @@ flowchart LR
   pkg_sandbox_ssh --> svc_sandbox
   pkg_sandbox_windows_acl --> svc_skills
   pkg_schedule --> svc_schedule
+  pkg_session --> svc_sessionCwd
   pkg_session --> svc_sessions
   pkg_session_log_deepseek --> svc_deepseekLlmApiExtensions
   pkg_session_persistence --> svc_sessionPersistence
@@ -515,6 +524,35 @@ flowchart LR
   svc_sandboxPolicy --> pkg_bash_sandbox
   svc_sandboxPolicy --> pkg_fs_sandbox
   svc_sandboxPolicy --> pkg_terminal_bash
+  svc_sessionCwd --> pkg_acp
+  svc_sessionCwd --> pkg_agent_instructions
+  svc_sessionCwd --> pkg_agent_loop
+  svc_sessionCwd --> pkg_api_session_controller
+  svc_sessionCwd --> pkg_experimental_auto_review
+  svc_sessionCwd --> pkg_experimental_browser_use_runtime
+  svc_sessionCwd --> pkg_file_reference_local
+  svc_sessionCwd --> pkg_headless
+  svc_sessionCwd --> pkg_hooks_claude_code
+  svc_sessionCwd --> pkg_hooks_codex
+  svc_sessionCwd --> pkg_project_storage
+  svc_sessionCwd --> pkg_sandbox_policy
+  svc_sessionCwd --> pkg_session_reference
+  svc_sessionCwd --> pkg_subagent
+  svc_sessionCwd --> pkg_subagent_acp
+  svc_sessionCwd --> pkg_subagent_claude_code
+  svc_sessionCwd --> pkg_subagent_codex
+  svc_sessionCwd --> pkg_subagent_dsh_sdk
+  svc_sessionCwd --> pkg_subagent_in_process_driver
+  svc_sessionCwd --> pkg_tool_bash
+  svc_sessionCwd --> pkg_tool_bash_persistent
+  svc_sessionCwd --> pkg_tool_fs
+  svc_sessionCwd --> pkg_tool_fs_search
+  svc_sessionCwd --> pkg_tool_lsp
+  svc_sessionCwd --> pkg_tool_present
+  svc_sessionCwd --> pkg_tool_pwsh
+  svc_sessionCwd --> pkg_tool_pwsh_persistent
+  svc_sessionCwd --> pkg_tool_skill
+  svc_sessionCwd --> pkg_tools
   svc_sessionPersistence --> pkg_agent_loop
   svc_sessionPersistence --> pkg_hooks_claude_code
   svc_sessionPersistence --> pkg_hooks_codex
@@ -619,6 +657,7 @@ flowchart LR
 | `ctx.tokenMeter` | `core` | [`token-meter`](../packages/llm/token-meter) | - | [`compaction-basic`](../packages/compaction/compaction-basic) | - | Owns isolated per-session replay folds; pressure consumers share immutable revisioned measurements. |
 | `ctx.toolResultPruner` | `core` | [`compaction-tool-result-pruner`](../packages/compaction/compaction-tool-result-pruner) | - | [`compaction-basic`](../packages/compaction/compaction-basic) | - | Rewrites oversized current tool results through replayable single-node surface replacements before summary compaction. |
 | `ctx.sessions` | `core` | [`session`](../packages/core/session) | - | [`agent-loop`](../packages/core/agent-loop), [`agent`](../packages/core/agent), [`session-persistence`](../packages/session/session-persistence), [`session-query`](../packages/session-query/session-query), [`session-query-sqlite`](../packages/session-query/session-query-sqlite), [`subagent-in-process-driver`](../packages/subagent/subagent-in-process-driver), [`invariants`](../packages/runtime-diagnostics/invariants), [`message-feedback`](../packages/feedback/message-feedback) | - | Owns append-only Session instances and emits the durable session event feed. |
+| `ctx.sessionCwd` | `service` | [`session`](../packages/core/session) | - | [`project-storage`](../packages/workspace/project-storage), [`sandbox-policy`](../packages/sandbox/sandbox-policy), [`agent-instructions`](../packages/context/agent-instructions), [`file-reference-local`](../packages/context/file-reference-local), [`session-reference`](../packages/context/session-reference), [`tool-skill`](../packages/skill/tool-skill), [`api-session-controller`](../packages/api/session-controller), [`acp`](../packages/acp/acp), [`agent-loop`](../packages/core/agent-loop), [`tool-fs`](../packages/fs/tool-fs), [`tool-fs-search`](../packages/fs/tool-fs-search), [`tool-lsp`](../packages/lsp/tool-lsp), [`tool-bash`](../packages/shell/tool-bash), [`tool-pwsh`](../packages/shell/tool-pwsh), [`tool-bash-persistent`](../packages/shell/tool-bash-persistent), [`tool-pwsh-persistent`](../packages/shell/tool-pwsh-persistent), [`tools`](../packages/core/tools), [`tool-present`](../packages/deliverables/tool-present), [`hooks-claude-code`](../packages/hooks/hooks-claude-code), [`hooks-codex`](../packages/hooks/hooks-codex), [`subagent`](../packages/subagent/subagent), [`subagent-dsh-sdk`](../packages/subagent/subagent-dsh-sdk), [`subagent-acp`](../packages/subagent/subagent-acp), [`subagent-claude-code`](../packages/subagent/subagent-claude-code), [`subagent-codex`](../packages/subagent/subagent-codex), [`subagent-in-process-driver`](../packages/subagent/subagent-in-process-driver), [`experimental-auto-review`](../packages/experimental/auto-review), [`experimental-browser-use-runtime`](../packages/experimental/browser-use-runtime), [`headless`](../packages/bundle/headless) | - | Resolves the authoritative current execution root for an immutable Session header without altering historical persisted metadata. |
 | `ctx.speechController` | `core` | [`experimental-api-speech-to-text`](../packages/experimental/api-speech-to-text) | - | - | - | Validates bounded browser audio before provider dispatch. |
 | `ctx.sessionController` | `core` | [`api-session-controller`](../packages/api/session-controller) | - | - | - | Owns Session commands, cold reads, durable-event following, live control state, model catalogs, workspace opening, and Agent activation policy. |
 | `ctx.sessionFileReferences` | `core` | [`api-session-controller`](../packages/api/session-controller) | - | - | - | Delegates file-reference discovery through the Session Controller's established Agent lookup policy. |

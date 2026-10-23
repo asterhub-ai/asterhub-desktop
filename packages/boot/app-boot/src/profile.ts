@@ -178,16 +178,21 @@ export function resolveProfileDir(name: string, home: string = resolveDshHome())
 /** The shipped profile templates auto-initialized on first use, by name. */
 export const PROFILE_TEMPLATES: Record<string, ProfileTemplate> = {
   acp: {
-    bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-acp-app'],
+    bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-asterhub-product', '@deepseek-ai/dsh-acp-app'],
   },
   web: {
-    bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'],
+    bundles: [
+      '@deepseek-ai/dsh-base',
+      '@deepseek-ai/dsh-asterhub-product',
+      '@deepseek-ai/dsh-web-app',
+      '@deepseek-ai/dsh-asterhub-product-web',
+    ],
   },
   headless: {
-    bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless'],
+    bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-asterhub-product', '@deepseek-ai/dsh-headless'],
   },
   sdk: {
-    bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-sdk-app'],
+    bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-asterhub-product', '@deepseek-ai/dsh-sdk-app'],
   },
   'sdk-minimal': {
     bundles: ['@deepseek-ai/dsh-sdk-minimal'],
@@ -195,8 +200,14 @@ export const PROFILE_TEMPLATES: Record<string, ProfileTemplate> = {
 }
 
 /** Installation-owned bundle tuples normalized to the shipped template. */
-const INSTALLATION_OWNED_PROFILE_TUPLES: Record<string, readonly string[]> = {
-  headless: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-headless'],
+const INSTALLATION_OWNED_PROFILE_TUPLES: Record<string, readonly (readonly string[])[]> = {
+  web: [['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app']],
+  sdk: [['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-sdk-app']],
+  acp: [['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-acp-app']],
+  headless: [
+    ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless'],
+    ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-headless'],
+  ],
 }
 
 /** The bundle list a `dsh plugin` init uses for a name with no shipped template. */
@@ -624,11 +635,11 @@ function sameBundles(left: readonly string[], right: readonly string[]): boolean
  * preserving all other manifest fields. Other bundle lists remain untouched.
  */
 function normalizeShippedProfile(name: string, dir: string, manifest: ProfileManifest): ProfileManifest {
-  const installationOwned = INSTALLATION_OWNED_PROFILE_TUPLES[name]
+  const retiredTuples = INSTALLATION_OWNED_PROFILE_TUPLES[name]
   const template = PROFILE_TEMPLATES[name]
   const bundles = manifest.dsh?.profile?.bundles
   if (template === undefined || bundles === undefined) return manifest
-  const isRetiredTuple = installationOwned !== undefined && sameBundles(bundles, installationOwned)
+  const isRetiredTuple = retiredTuples?.some(tuple => sameBundles(bundles, tuple)) ?? false
   if (!isRetiredTuple) return manifest
   const normalized: ProfileManifest = {
     ...manifest,

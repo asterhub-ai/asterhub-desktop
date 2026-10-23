@@ -341,13 +341,21 @@ describe('loadProfile', () => {
     const home = tmp()
     expect(() => loadProfile('t', 'custom', anchor, home))
       .toThrow('profile "custom" does not exist')
-    expect(PROFILE_TEMPLATES.web?.bundles).toContain('@deepseek-ai/dsh-base')
-    expect(PROFILE_TEMPLATES.acp).toEqual({
-      bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-acp-app'],
-    })
-    expect(PROFILE_TEMPLATES.sdk).toEqual({
-      bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-sdk-app'],
-    })
+    expect(PROFILE_TEMPLATES.web?.bundles).toEqual([
+      '@deepseek-ai/dsh-base',
+      '@deepseek-ai/dsh-asterhub-product',
+      '@deepseek-ai/dsh-web-app',
+      '@deepseek-ai/dsh-asterhub-product-web',
+    ])
+    expect(PROFILE_TEMPLATES.headless?.bundles).toEqual([
+      '@deepseek-ai/dsh-base', '@deepseek-ai/dsh-asterhub-product', '@deepseek-ai/dsh-headless',
+    ])
+    expect(PROFILE_TEMPLATES.acp?.bundles).toEqual([
+      '@deepseek-ai/dsh-base', '@deepseek-ai/dsh-asterhub-product', '@deepseek-ai/dsh-acp-app',
+    ])
+    expect(PROFILE_TEMPLATES.sdk?.bundles).toEqual([
+      '@deepseek-ai/dsh-base', '@deepseek-ai/dsh-asterhub-product', '@deepseek-ai/dsh-sdk-app',
+    ])
     expect(PROFILE_TEMPLATES['sdk-minimal']).toEqual({
       bundles: ['@deepseek-ai/dsh-sdk-minimal'],
     })
@@ -372,7 +380,7 @@ describe('loadProfile', () => {
     writeProfileManifest(stock, retiredManifest)
     loadProfile('t', 'headless', anchor, home)
     expect(readProfileManifest('t', stock).dsh?.profile).toEqual({
-      bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless'],
+      bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-asterhub-product', '@deepseek-ai/dsh-headless'],
     })
 
     const customHome = tmp()
@@ -384,6 +392,31 @@ describe('loadProfile', () => {
     expect(readProfileManifest('t', custom).dsh?.profile?.bundles).toEqual([
       '@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-headless', 'custom-bundle',
     ])
+  })
+
+  it.each(['web', 'sdk', 'acp'])('restores product layers for the saved shipped %s profile without replacing user configuration', (name) => {
+    const application = `@deepseek-ai/dsh-${name}-app`
+    const anchor = stageInstallation({
+      '@deepseek-ai/dsh-base': { patch: '- insert: [{ id: settings, name: test-settings, config: { source: generic } }]\n' },
+      '@deepseek-ai/dsh-asterhub-product': { patch: '- id: settings\n  config: { source: product }\n' },
+      '@deepseek-ai/dsh-asterhub-product-web': { patch: '- insert: [{ id: storage, name: test-storage, config: { mode: project } }]\n' },
+      [application]: { patch: '[]\n' },
+    })
+    const home = tmp()
+    const dir = resolveProfileDir(name, home)
+    initProfile(dir, ['@deepseek-ai/dsh-base', application])
+    const manifest = readProfileManifest('t', dir)
+    writeProfileManifest(dir, { ...manifest, dependencies: { 'user-plugin': '1.2.3' } })
+    const patch = '- insert: [{ id: user, name: user-plugin, config: { enabled: true } }]\n'
+    writeFileSync(join(dir, PROFILE_PATCH_FILENAME), patch)
+    const profile = loadProfile('t', name, anchor, home)
+    expect(composeEntries([...profile.layers.map(layer => layer.patches), profile.patches])).toEqual([
+      { id: 'settings', name: 'test-settings', config: { source: 'product' } },
+      ...name === 'web' ? [{ id: 'storage', name: 'test-storage', config: { mode: 'project' } }] : [],
+      { id: 'user', name: 'user-plugin', config: { enabled: true } },
+    ])
+    expect(readProfileManifest('t', dir).dependencies).toEqual({ 'user-plugin': '1.2.3' })
+    expect(readFileSync(join(dir, PROFILE_PATCH_FILENAME), 'utf8')).toBe(patch)
   })
 
   it.each(['missing package', 'invalid manifest', 'not a bundle', 'missing patch', 'invalid patch'])(

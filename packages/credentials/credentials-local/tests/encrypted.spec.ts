@@ -72,3 +72,22 @@ it('does not publish a document when encryption fails', async () => {
   await expect(ctx.credentials.set(credentialRef('ASTERHUB_ENCRYPTED_TEST'), 'secret')).rejects.toThrow('cipher unavailable')
   await expect(readFile(path)).rejects.toMatchObject({ code: 'ENOENT' })
 })
+it('refuses corrupted ciphertext at boot without rewriting or disclosing its contents', async () => {
+  const { path, boot, encryption } = await setup()
+  const ciphertext = await encryption.encrypt('version: 1\nrefs:\n  TEST_KEY: private-test-value\n')
+  const damaged = `${ciphertext.slice(0, -2)}${ciphertext.endsWith('A') ? 'B' : 'A'}=`
+  const stored = `asterhub-credentials:v1:${damaged}`
+  await writeFile(path, stored, { mode: 0o600 })
+
+  await expect(boot()).rejects.toThrow()
+  expect(await readFile(path, 'utf8')).toBe(stored)
+  expect(stored).not.toContain('private-test-value')
+})
+
+it('refuses encrypted storage when the host has not provided a cipher', async () => {
+  const { path } = await setup()
+  const ctx = new Context()
+  await expect(ctx.plugin(LocalCredentialProvider, { path, encrypted: true, watch: false }))
+    .rejects.toThrow('encrypted storage requires the credentialCipher service')
+  await expect(readFile(path)).rejects.toMatchObject({ code: 'ENOENT' })
+})

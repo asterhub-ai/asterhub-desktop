@@ -47,7 +47,7 @@ kind: "package-reference"
 
 ### 失败与恢复
 
-该工具要求会话工作区根目录（`header.cwd`），没有回退值；缺失时会在任何查询前以 `LSP_WORKSPACE_REQUIRED` 失败。当没有提供方处理该文件扩展名时，查询以 `LSP_UNAVAILABLE` 失败；格式错误的提供方载荷仍保持为结构化 `LSP_MALFORMED_RESPONSE` 错误。这些会呈现为模型可读、可路由的错误工具结果。
+该工具要求从权威当前执行 cwd 取得会话工作区根目录；agent 当前根目录不可用时不会回退。缺少根目录时会在任何查询前以 `LSP_WORKSPACE_REQUIRED` 失败。当没有提供方处理该文件扩展名时，查询以 `LSP_UNAVAILABLE` 失败；格式错误的提供方载荷仍保持为结构化 `LSP_MALFORMED_RESPONSE` 错误。这些会呈现为模型可读、可路由的工具错误结果。
 
 -----
 
@@ -74,7 +74,7 @@ kind: "package-reference"
 |---|---|
 | [`src/index.ts`](src/index.ts) | 插件入口：配置 schema、工具注册、系统提示词区段、执行 |
 | [`src/render.ts`](src/render.ts) | 纯格式化、坐标转换、URI 解析、结果上限、UI 呈现 |
-| [`src/session-cwd.ts`](src/session-cwd.ts) | 从会话 `header.cwd` 取得工作区根目录 |
+| [`src/session-cwd.ts`](src/session-cwd.ts) | 通过 `ctx.sessionCwd` 取得当前执行根目录 |
 | — | 不发布运行时不变式伴生入口；该无状态适配器提供一个工具和一个提示词区段，而查询生命周期与结果关系仍由它所组合的工具 seam 和 LSP seam 负责。 |
 
 </details>

@@ -25,12 +25,14 @@ afterEach(async () => {
 it('stores the account model key and exposes configured payment methods without an availability flag', async () => {
   const root = await mkdtemp(join(tmpdir(), 'asterhub-account-record-'))
   roots.push(root)
+  let keyListCalls = 0
   let pricing: Record<string, unknown> = {}
   const server = createServer((request, response) => {
     response.setHeader('content-type', 'application/json')
     if (request.url === '/api/v1/auth/login') {
       response.end(JSON.stringify({ code: 0, data: { access_token: 'account-token', user: { id: 7, email: 'user@example.com' } } }))
     } else if (request.url?.startsWith('/api/v1/keys?')) {
+      keyListCalls++
       response.end(JSON.stringify({ code: 0, data: { items: [{ id: 3, key: 'account-model-key', group_id: 6 }], pages: 1 } }))
     } else if (request.url === '/api/v1/user/profile') {
       response.end(JSON.stringify({ code: 0, data: { balance: 0 } }))
@@ -85,6 +87,7 @@ it('stores the account model key and exposes configured payment methods without 
   pricing = { ...validPricing, recharge_bonus_tiers: [{ min_amount: 0, bonus_percent: 5 }] }
   expect((await ctx.accountSub2api.paymentMethods())[0]?.pricing?.bonusTiers)
     .toEqual([{ minAmount: 0, bonusPercent: 5 }])
+  expect(keyListCalls).toBe(1)
   expect(await ctx.credentials.readRecord(credentialKey('asterhub-account', 'model-api-key')))
     .toEqual({ kind: 'api-key', key: 'account-model-key' })
   expect(await ctx.credentials.resolve(credentialRef(MODEL_KEY_REF))).toMatchObject({
@@ -93,6 +96,13 @@ it('stores the account model key and exposes configured payment methods without 
 
   await ctx.accountSub2api.logout()
   expect(await ctx.credentials.readRecord(credentialKey('asterhub-account', 'model-api-key'))).toBeUndefined()
+  await ctx.accountSub2api.login({ email: 'user@example.com', password: 'test-password', rememberUsername: false, autoLogin: false })
+  expect(keyListCalls).toBe(1)
+  expect(await ctx.credentials.readRecord(credentialKey('asterhub-account', 'model-api-key')))
+    .toEqual({ kind: 'api-key', key: 'account-model-key' })
+  expect(await ctx.credentials.resolve(credentialRef(MODEL_KEY_REF))).toMatchObject({
+    value: 'process-environment-key-must-not-become-the-model-key', source: 'env',
+  })
 }, 15000)
 
 it('returns loggedIn: false when stored session token encounters 401 on quota check instead of throwing', async () => {

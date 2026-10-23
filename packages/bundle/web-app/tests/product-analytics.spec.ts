@@ -39,7 +39,7 @@ it.each([
   await ctx.plugin(Loader).await()
   ctx.loader.builtins.telemetry = Telemetry
   ctx.loader.builtins.analytics = Analytics
-  const rows = loadOverlayPatches('analytics', fileURLToPath(new URL('../cordis.patch.yml', import.meta.url)))
+  const rows = loadOverlayPatches('analytics', fileURLToPath(new URL('../../asterhub-product-web/cordis.patch.yml', import.meta.url)))
     .flatMap(patch => patch.insert ?? []).filter(row => row.id === 'desktop-product-telemetry' || row.id === 'product-analytics')
   const entries = rows.map(row => ({ ...row, name: row.id === 'desktop-product-telemetry' ? 'cordis:telemetry' : 'cordis:analytics' }))
   await ctx.loader.root.update(entries)

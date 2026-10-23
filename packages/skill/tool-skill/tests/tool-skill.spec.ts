@@ -9,6 +9,7 @@ import { createScope, type Scope } from '@deepseek-ai/dsh-scope'
 import {
   SESSION_FORMAT_VERSION, Session, SessionId, type SessionEvent, type UserMessage,
 } from '@deepseek-ai/dsh-session'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import AgentRegistry, { agentEvents, type Agent, type PreStepDecision } from '@deepseek-ai/dsh-agent'
@@ -56,6 +57,7 @@ async function setup(home: string, config: toolSkill.Config = {}): Promise<Conte
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
+  await ctx.plugin(SessionCwd)
   await ctx.plugin(SkillRegistry)
   await ctx.plugin(SkillFileSystem, { dshHome: join(home, '.dsh'), agentsHome: join(home, '.agents'), watch: false })
   await ctx.plugin(toolSkill, config)
@@ -792,6 +794,7 @@ describe('dsh-tool-skill', () => {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(AgentRegistry)
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(SkillRegistry)
     await ctx.plugin(SkillFileSystem, { dshHome: join(home, '.dsh'), agentsHome: join(home, '.agents'), watch: false })
 
@@ -1122,5 +1125,45 @@ describe('user-explicit invocation injection', () => {
       .filter(message => (message.source as { kind?: string }).kind === 'skill-invocation')
       .map(message => (message.source as { name: string }).name)
     expect(invoked).toEqual(['shared-skill'])
+  })
+
+  it('uses the moved project root for catalog, explicit invocation, and tool loading', async () => {
+    const home = await tempDir('moved-skill')
+    const oldRoot = join(home, 'old-project')
+    const movedRoot = join(home, 'moved-project')
+    await writeSkill(join(oldRoot, '.dsh/skills'), 'old-only-skill', 'Old project', 'Old instructions.')
+    await writeSkill(join(movedRoot, '.dsh/skills'), 'current-skill', 'Moved project', 'Current instructions.')
+    const ctx = await setup(home)
+    const agent = sessionAgent(Session.create(SessionId('moved-skill-agent'), [], {
+      version: SESSION_FORMAT_VERSION,
+      id: SessionId('moved-skill-agent'),
+      createdAt: 0,
+      cwd: oldRoot,
+      isSeeded: false,
+    }))
+    ctx.sessionCwd.registerResolver(() => movedRoot)
+
+    const catalog = await composePrefixForAgent(ctx, agent)
+    expect(JSON.stringify(catalog)).toContain('current-skill')
+    expect(JSON.stringify(catalog)).not.toContain('old-only-skill')
+
+    const decision = await proposeStep(ctx, agent, [gesture('/current-skill')])
+    if (decision.kind !== 'enter') throw new Error('expected enter')
+    const invocation = decision.messages.find(message =>
+      (message.source as { kind?: string }).kind === 'skill-invocation')
+    expect(invocation?.source).toMatchObject({ kind: 'skill-invocation', name: 'current-skill' })
+    expect(JSON.stringify(invocation?.content)).toContain('Current instructions.')
+    expect(JSON.stringify(invocation?.content)).not.toContain('Old instructions.')
+
+    const loaded = await ctx.tools.execute({
+      signal: testToolSignal,
+      callId: ToolCallId('moved-skill-load'),
+      name: 'skill',
+      arguments: { name: 'current-skill' },
+      agent,
+    })
+    expect(loaded.isError).toBe(false)
+    expect(JSON.stringify(loaded.content)).toContain('Current instructions.')
+    expect(JSON.stringify(loaded.content)).not.toContain('Old instructions.')
   })
 })

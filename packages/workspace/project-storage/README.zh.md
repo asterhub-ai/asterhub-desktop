@@ -15,7 +15,7 @@ kind: "package-reference"
 - [Host 服务](#toc-host-service)
 - [检查与 adoption](#toc-inspection-and-adoption)
 - [项目 Session 持久化](#toc-project-session-persistence)
-- [附件作用域](#toc-attachment-scope)
+- [附件路由](#toc-attachment-routing)
 - [Git 隐私](#toc-git-privacy)
 - [打包契约](#toc-packaging-contract)
 - [验证](#toc-verification)
@@ -40,6 +40,8 @@ Host 服务通过 `ctx.projectStorage` 暴露；浏览器安全的 `./types` 入
 
 注册的注销函数遵循 Cordis effect 所有权，并可能返回 Promise；调用方应等待注销完成，再释放依赖这些注册的资源。
 
+`ProjectStorageService` 依赖 `ctx.sessionCwd`，并在服务生命周期内注册权威目录解析器。两种插件加载顺序均受支持；项目存储会等待目录服务就绪后再激活。移除项目存储会注销解析器，后续目录解析将失败，而不是返回历史项目路径。
+
 <a id="toc-inspection-and-adoption"></a>
 ## 检查与 adoption
 
@@ -60,10 +62,10 @@ Windows 目录的只读属性不能表示子文件写入权限。打开和状态
 
 每个项目在隔离的 `sessionPersistence` store 中挂载 JSONL provider。路由器通过显式 store 查询取得该 provider，因此注入路由器的调用方不会将路由器自身解析为它的后端。
 
-<a id="toc-attachment-scope"></a>
-## 附件作用域
+<a id="toc-attachment-routing"></a>
+## 附件路由
 
-`resolveProjectAttachmentScope(ctx, sessionId)` 解析已注册 Session 的可信项目所有者，并返回项目级附件 provider 用于将持久化对象读写路由到所属项目 `.aster` 树的 `AttachmentScope`。未挂载 project storage 时返回 `undefined`；Session 未关联已注册项目所有者时抛出异常。该帮助函数通过 Cordis 全局服务注册表读取服务，调用方无需注入这个可选服务；grouped provider 不传入该作用域。
+附件调用方仅传入可信 Session ID。附件 provider 通过 ProjectStorage 解析项目归属，将已归属的 Session 路由到项目 `.aster` 树；未挂载 project storage 时，未作用域的全局调用仍可使用。若已挂载 ProjectStorage 但该 Session 没有所有者，则拒绝请求，不会回退到全局存储。
 
 <a id="toc-git-privacy"></a>
 ## Git 隐私

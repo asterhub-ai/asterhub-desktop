@@ -1,8 +1,18 @@
 import type { z } from 'zod'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join, relative } from 'node:path'
+import { createUserMessage, LlmAdapter } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, LlmResolvedModelInfo } from '@deepseek-ai/dsh-llm'
+import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import { boot } from '@deepseek-ai/dsh-app-boot'
+import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
+import ProjectStorage from '@deepseek-ai/dsh-project-storage'
+import ProjectSessionPersistence from '@deepseek-ai/dsh-project-storage/persistence'
+import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
+import { ApiSessionAgentController } from '../../../api/session-controller/src/agent.ts'
 import { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-workspace'
@@ -10,7 +20,7 @@ import Storage from '@deepseek-ai/dsh-storage'
 import type { StorageBackend } from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
-import SessionStore, { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { SESSION_FORMAT_VERSION, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionHeader } from '@deepseek-ai/dsh-session'
 import { SessionPersistenceRevision } from '@deepseek-ai/dsh-session-persistence'
 import type { SessionPersistenceSnapshot } from '@deepseek-ai/dsh-session-persistence'
@@ -33,6 +43,32 @@ const header = (id: string, cwd?: string, createdAt = 0): SessionHeader => ({
   isSeeded: false,
   ...(cwd === undefined ? {} : { cwd }),
 })
+
+function pendingAdapter() {
+  let resolveEntered: () => void
+  const entered = new Promise<void>((res) => { resolveEntered = res })
+  let wasCancelled = false
+  class PendingAdapter extends LlmAdapter {
+    override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
+      return Promise.resolve({ provider, id: model, name: model })
+    }
+    override async *stream(options: GenerateOptions) {
+      resolveEntered()
+      let rejectAborted: (err: Error) => void
+      const aborted = new Promise<void>((_, rej) => { rejectAborted = rej })
+      const signal = options.signal
+      const abort = () => {
+        wasCancelled = true
+        rejectAborted(new Error('controlled pending Agent was cancelled'))
+      }
+      if (signal === undefined) throw new Error('Agent request did not carry an abort signal')
+      if (signal.aborted) abort()
+      else signal.addEventListener('abort', abort, { once: true })
+      await aborted
+    }
+  }
+  return { adapter: new PendingAdapter(), entered, wasCancelled: () => wasCancelled }
+}
 
 interface HarnessOptions {
   pool?: MemoryMediaPool
@@ -588,7 +624,130 @@ describe('WorkspaceRegistry create and lookup', () => {
     expect(result.registry.list()).toContain(workspace)
   })
 
+  it('loads the explicit SessionCwd leaf through the profile boot tree and releases its resolver on teardown', async () => {
+    const projectRoot = await makeDir('profile-session-cwd-project')
+    const configPath = join(base, 'session-cwd-profile.cordis.yml')
+    const locatorPath = join(base, 'session-cwd-profile-locator.json')
+    await writeFile(configPath, [
+      '- id: session-cwd',
+      '  name: "cordis:session-cwd"',
+      '- id: project-storage',
+      '  name: "cordis:project-storage"',
+      '  config:',
+      '    sessionMode: project-local',
+      `    locatorPath: ${JSON.stringify(locatorPath)}`,
+      '    legacySessionRoot: ""',
+      '    metadataLimitBytes: 1048576',
+      '    lockDeadlineMs: 5000',
+      '',
+    ].join('\n'))
 
+    const ctx = await boot('workspace-test', configPath, undefined, (setupCtx) => {
+      setupCtx.loader.builtins['session-cwd'] = SessionCwd
+      setupCtx.loader.builtins['project-storage'] = ProjectStorage
+    })
+    const meta = header('profile-loaded-session', projectRoot)
+    const cwdService = ctx.sessionCwd
+    try {
+      const binding = await ctx.projectStorage.open({ root: projectRoot, mode: 'new' })
+      await ctx.projectStorage.bindSession(meta)
+      expect(cwdService.resolve(meta)).toBe(projectRoot)
+      expect(ctx.projectStorage.manifest(binding.id).sessions.map(({ id }) => id)).toEqual([meta.id])
+    } finally {
+      await ctx.fiber.dispose()
+    }
+    expect(() => cwdService.resolve(meta)).toThrow(/unavailable/)
+  })
+
+
+  it('cancels and closes a pending live Agent before deleting only its persisted project generation', async () => {
+    const projectRoot = await makeDir('delete-active-project-session')
+    const ctx = new Context()
+    const activeId = SessionId('active-delete-session')
+    const siblingId = SessionId('preserved-sibling-session')
+    const pending = pendingAdapter()
+    try {
+      await ctx.plugin(Storage)
+      const pool = new MemoryMediaPool()
+      ctx.storage.backend.register('memory', new MemoryStorageBackend(pool))
+      const facility = new DomainFacility(ctx, { backend: 'memory', routes: {} })
+      ctx.storage.mount('domain', facility)
+      ctx.provide('storageDomain', facility)
+      await ctx.plugin(TypertRegistry)
+      await mountAgentLoopTestDependencies(ctx)
+      await ctx.plugin(ProjectStorage, {
+        sessionMode: 'project-local',
+        locatorPath: join(base, 'active-delete-locator.json'),
+        legacySessionRoot: '',
+        metadataLimitBytes: 1024 * 1024,
+        lockDeadlineMs: 5000,
+      })
+      const binding = await ctx.projectStorage.open({ root: projectRoot, mode: 'new' })
+      await ctx.plugin(ProjectSessionPersistence, { compression: 'none' })
+      await ctx.plugin(WorkspaceRegistry)
+      await ctx.plugin(AgentLoop, { agents: [] })
+      const agentController = new ApiSessionAgentController(ctx)
+      ctx.llm.registerAdapter(['pending'], pending.adapter)
+
+      const workspace = await ctx.workspaceRegistry.create(projectRoot)
+      await ctx.projectStorage.bindSession(header(siblingId, projectRoot))
+      const siblingWriter = await ctx.sessionPersistence.create(header(siblingId, projectRoot))
+      await siblingWriter.append([{ type: 'turn/start', time: 1, seq: SessionSeq(0), data: { turn: 1 } }])
+      await siblingWriter.close()
+      const handle = await agentController.createForkAgent({
+        sessionId: activeId,
+        meta: { cwd: projectRoot },
+        agentOptions: { provider: 'pending', model: 'pending', cwd: projectRoot },
+      })
+      handle.followup(createUserMessage({
+        content: [{ type: 'text', text: 'hold until Workspace deletes this Session' }],
+        source: { kind: 'user' },
+      }))
+      await pending.entered
+      await workspace.attachSession(activeId)
+      await workspace.attachSession(siblingId)
+
+      const location = ctx.projectStorage.locateSession(activeId)
+      expect(location).toBeDefined()
+      const sharedAttachment = join(location!.attachmentsRoot, 'shared-fixture.bin')
+      const attachmentBytes = Buffer.from('shared project attachment')
+      await mkdir(location!.attachmentsRoot, { recursive: true })
+      await writeFile(sharedAttachment, attachmentBytes)
+      await ctx.sessionPersistence.flush()
+
+      const deleted: SessionId[] = []
+      let stateAtDeleted: {
+        cancelled: boolean
+        agent: unknown
+        session: unknown
+      } | undefined
+      ctx.on('workspace/session-deleted', ({ sessionId }) => {
+        deleted.push(sessionId)
+        stateAtDeleted = {
+          cancelled: pending.wasCancelled(),
+          agent: ctx.agents.get(sessionId),
+          session: ctx.sessions.get(sessionId),
+        }
+      })
+
+      await expect(ctx.workspaceRegistry.deleteSession(activeId)).resolves.toBe(true)
+
+      expect(deleted).toEqual([activeId])
+      expect(stateAtDeleted).toEqual({ cancelled: true, agent: undefined, session: undefined })
+      expect(ctx.agents.get(activeId)).toBeUndefined()
+      expect(ctx.sessions.get(activeId)).toBeUndefined()
+      expect(workspace.sessionIds).toEqual([siblingId])
+      expect(ctx.projectStorage.manifest(binding.id).sessions.map(({ id }) => id)).toEqual([siblingId])
+      expect((await ctx.sessionPersistence.list()).map(({ header: stored }) => stored.id)).toEqual([siblingId])
+      await expect(ctx.sessionPersistence.stat(activeId)).rejects.toThrow()
+      await expect(readFile(sharedAttachment)).resolves.toEqual(attachmentBytes)
+      expect((await stat(projectRoot)).isDirectory()).toBe(true)
+      expect(ctx.projectStorage.locateSession(activeId)).toBeUndefined()
+      expect(ctx.projectStorage.locateSession(siblingId)).toBeDefined()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
   it('deleteSession removes an individual session from workspace and registry', async () => {
     const dir = await makeDir('delete-individual-session')
     const result = await harness({ sessions: [header('s1', dir), header('s2', dir)] })

@@ -7,6 +7,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-session/cwd'
 import z from '@deepseek-ai/schemastery'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import {
@@ -28,7 +29,7 @@ import {
 } from './run.ts'
 
 export const name = 'subagent-codex'
-export const inject = ['subagents', 'subprocess']
+export const inject = ['sessionCwd', 'subagents', 'subprocess']
 
 const DEFAULT_PROVIDER_NAME = 'codex'
 
@@ -71,10 +72,10 @@ class CodexProvider implements SubagentProvider {
   ) {}
 
   start(request: ResolvedSubagentStartRequest) {
-    const parentCwd = request.parent.session.header.cwd
+    const parentCwd = this.ctx.sessionCwd.resolve(request.parent.session.header)
     if (parentCwd === undefined) {
       throw new Error(
-        'subagent-codex: no working directory for the child — delegate from a parent session that has one',
+        'subagent-codex: no current working directory for the child — delegate from a parent session with one',
       )
     }
     let cwd: string

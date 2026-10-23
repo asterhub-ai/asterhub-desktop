@@ -1,6 +1,7 @@
 /** DeepSeek Files API transport. @module dsh-llm-deepseek/files-api */
 
-import { attributionHeaders, LlmError } from '@deepseek-ai/dsh-llm'
+import { APP_IDENTITY, attributionHeaders, LlmError } from '@deepseek-ai/dsh-llm'
+import type { AppIdentity } from '@deepseek-ai/dsh-llm'
 import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import { DeepSeekFileId } from './file-id.ts'
 import type { DeepSeekFileId as DeepSeekFileIdType } from './file-id.ts'
@@ -72,6 +73,8 @@ interface FilesApiOptions {
   baseURL: string
   /** Provider-resolved authentication headers for this endpoint. */
   headers: Readonly<Record<string, string>>
+  /** Application identity used on upload/cleanup requests. */
+  appIdentity?: AppIdentity
   fetch?: typeof fetch
 }
 
@@ -131,6 +134,7 @@ function providerErrorDetail(value: unknown): { message?: string; detail: string
 export class DeepSeekFilesClient {
   private readonly baseURL: string
   private readonly authHeaders: Readonly<Record<string, string>>
+  private readonly identity: AppIdentity
   private readonly fetchImpl: typeof fetch
 
   /**
@@ -138,6 +142,7 @@ export class DeepSeekFilesClient {
    */
   constructor(options: FilesApiOptions) {
     this.authHeaders = options.headers
+    this.identity = options.appIdentity ?? APP_IDENTITY
     this.fetchImpl = options.fetch ?? globalThis.fetch
     this.baseURL = messagesApiRoot(options.baseURL)
   }
@@ -145,8 +150,8 @@ export class DeepSeekFilesClient {
   private async request(path: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
     let response: Response
     try {
-      const headers = new Headers(attributionHeaders())
-      for (const [name, value] of Object.entries(this.authHeaders)) headers.set(name, value)
+      const headers = new Headers(this.authHeaders)
+      for (const [name, value] of Object.entries(attributionHeaders(this.identity))) headers.set(name, value)
       headers.set('anthropic-version', '2023-06-01')
       headers.set('anthropic-beta', MESSAGES_FILES_BETA)
       response = await this.fetchImpl(`${this.baseURL}${path}`, {

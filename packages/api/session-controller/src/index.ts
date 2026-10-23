@@ -150,6 +150,7 @@ export class SessionController extends TypertRemoteService {
     'llm',
     'sessions',
     'sessionProjections',
+    'sessionCwd',
     'sessionQuery',
     'typert',
     'workspaceRegistry',

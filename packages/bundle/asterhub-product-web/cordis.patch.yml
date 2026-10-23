@@ -1,0 +1,71 @@
+# AsterHub product services that require the browser workbench. This layer is
+# composed after dsh-web-app by Web and Desktop; it is intentionally absent from
+# headless, SDK, ACP, and sdk-minimal profiles.
+- id: attachment-local
+  config:
+    projectLocal: true
+- insert:
+    - id: agent-preset-registry
+      name: '@deepseek-ai/dsh-agent-preset-registry'
+      config:
+        default: standard
+- insert:
+    - id: desktop-product-telemetry
+      name: '@deepseek-ai/dsh-host-product-telemetry-otel'
+      disabled: !!js "ctx.get('profileContext')?.name !== 'desktop' || !process.env.DSH_PRODUCT_ANALYTICS_OTLP_URL"
+      config:
+        endpoint: !!js process.env.DSH_PRODUCT_ANALYTICS_OTLP_URL
+        serviceName: asterhub-desktop
+        serviceVersion: !!js process.env.DSH_CLIENT_VERSION
+        compression: gzip
+        scheduledDelayMillis: 30000
+        timeoutMillis: 15000
+        exportTimeoutMillis: 20000
+        shutdownTimeoutMillis: 2000
+    - id: product-analytics
+      name: '@deepseek-ai/dsh-client-product-analytics'
+      disabled: !!js "ctx.get('profileContext')?.name !== 'desktop' || !process.env.DSH_PRODUCT_ANALYTICS_OTLP_URL"
+      config:
+        appVersion: !!js process.env.DSH_CLIENT_VERSION
+    - id: anima
+      name: '@deepseek-ai/dsh-anima-memory'
+      config:
+        dataRoot: !!js dshHomePath('anima')
+        runtimeRoot: !!js process.env.DSH_ANIMA_RUNTIME_ROOT || ''
+    - id: project-storage
+      name: '@deepseek-ai/dsh-project-storage'
+      config:
+        sessionMode: project-local
+        locatorPath: !!js dshHomePath('locator.json')
+        legacySessionRoot: !!js dshHomePath('sessions')
+        metadataLimitBytes: 1048576
+        lockDeadlineMs: 5000
+    - id: session-persistence-project
+      name: '@deepseek-ai/dsh-project-storage/persistence'
+      config:
+        compression: zstd
+    - id: ui-settings-account
+      name: '@deepseek-ai/dsh-client-ui-settings-account'
+    - id: ui-settings-anima
+      name: '@deepseek-ai/dsh-client-ui-settings-anima'
+    - id: speech-to-text
+      name: '@deepseek-ai/dsh-experimental-speech-to-text'
+      config:
+        defaultProvider: sensevoice-local
+    - id: speech-to-text-sensevoice
+      name: '@deepseek-ai/dsh-experimental-speech-to-text-sensevoice'
+      config:
+        dataRoot: !!js dshHomePath('speech-to-text', 'sensevoice')
+        modelDirectory: !!js "process.env.DSH_SPEECH_MODEL_DIRECTORY || undefined"
+        vadModelPath: !!js "process.env.DSH_SPEECH_VAD_MODEL_PATH || undefined"
+    - id: api-speech-to-text
+      name: '@deepseek-ai/dsh-experimental-api-speech-to-text'
+    - id: ui-voice-input
+      name: '@deepseek-ai/dsh-experimental-client-ui-voice-input'
+    - id: ui-model-selection
+      name: '@deepseek-ai/dsh-client-ui-model-selection'
+    - id: account-sub2api
+      name: '@deepseek-ai/dsh-account-sub2api'
+      config:
+        authBaseUrl: 'https://xapi.fans/api/v1'
+        groupId: 6

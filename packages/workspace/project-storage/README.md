@@ -15,7 +15,7 @@ Store project identity, Session membership, and portable metadata beside each wo
 - [Host service](#toc-host-service)
 - [Inspection and adoption](#toc-inspection-and-adoption)
 - [Project Session persistence](#toc-project-session-persistence)
-- [Attachment scope](#toc-attachment-scope)
+- [Attachment routing](#toc-attachment-routing)
 - [Git privacy](#toc-git-privacy)
 - [Packaging contract](#toc-packaging-contract)
 - [Verification](#toc-verification)
@@ -40,6 +40,8 @@ The Host-facing service is exposed as `ctx.projectStorage`; the browser-safe `./
 
 Registration disposers follow Cordis effect ownership and may return a Promise; callers await disposal before releasing dependent resources.
 
+`ProjectStorageService` requires `ctx.sessionCwd` and registers its authoritative resolver for the service lifetime. Either plugin load order is supported; project storage waits for the cwd service before activating. Removing project storage disposes the resolver, so subsequent cwd resolution fails rather than returning a historical project path.
+
 <a id="toc-inspection-and-adoption"></a>
 ## Inspection and adoption
 
@@ -60,10 +62,10 @@ On Windows, directory read-only attributes do not determine child write permissi
 
 Each project mounts a JSONL provider in an isolated `sessionPersistence` store. The router retrieves that provider with an explicit store lookup, so callers injecting the router cannot resolve the router itself as its own backend.
 
-<a id="toc-attachment-scope"></a>
-## Attachment scope
+<a id="toc-attachment-routing"></a>
+## Attachment routing
 
-`resolveProjectAttachmentScope(ctx, sessionId)` derives the trusted project owner for a registered Session and returns the `AttachmentScope` that project-local attachment providers use to route durable object reads and writes to the owning project's `.aster` trees. It returns `undefined` when project storage is not mounted and throws when the Session has no registered project owner. The helper resolves the service through Cordis's global service store, so callers do not need to inject this optional service; grouped providers omit this scope.
+Attachment callers pass only the trusted Session ID. The attachment provider resolves project ownership through ProjectStorage, routes owned Sessions to their project's `.aster` tree, and keeps unscoped/global callers usable when project storage is absent. A mounted ProjectStorage with no owner for the requested Session refuses the request rather than falling back to global storage.
 
 <a id="toc-git-privacy"></a>
 ## Git privacy

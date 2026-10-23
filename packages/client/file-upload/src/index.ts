@@ -8,7 +8,6 @@ import type {} from '@deepseek-ai/dsh-client-connection'
 import type { CommandFileReceiptResolver } from '@deepseek-ai/dsh-commands'
 import { scopeOf } from '@deepseek-ai/dsh-scope'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
-import { resolveProjectAttachmentScope } from '@deepseek-ai/dsh-project-storage'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { handleFileUploadHttp } from './http-route.ts'
 import { FILE_UPLOAD_PATH } from './protocol.ts'
@@ -260,8 +259,7 @@ export class FileUploads extends TypertRemoteService {
     if (staged.size === 0) this.stagedFiles.delete(session)
   }
   private attachmentScope(sessionId: SessionId) {
-    if (this.ctx.get('projectStorage', false) === undefined) return undefined
-    return resolveProjectAttachmentScope(this.ctx, sessionId)
+    return { sessionId }
   }
 }
 

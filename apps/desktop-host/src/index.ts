@@ -7,6 +7,7 @@ import { runProfile } from '@deepseek-ai/dsh/profile-boot'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import { APPLICATION_MODEL_ROUTE } from '@deepseek-ai/dsh-asterhub-product'
 import * as desktopOffice from './office.ts'
 
 import { installDesktopUpdateTaskControl } from './update-tasks.ts'
@@ -34,17 +35,7 @@ async function main(): Promise<void> {
     resolvedProfile: { profile, installAnchor },
     patchFiles: [],
     hostSetup: (hostCtx) => {
-      hostCtx.provide('applicationModelRoute', Object.freeze({
-        provider: 'sub2api',
-        model: '__unselected__',
-        selectableModels: true,
-        syncModels: true,
-        baseURL: 'https://xapi.fans/v1',
-        api: 'openai-completions',
-        credentialRecord: 'asterhub-account/model-api-key',
-        contextWindow: 262144,
-        maxTokens: 32768,
-      }))
+      hostCtx.provide('applicationModelRoute', APPLICATION_MODEL_ROUTE)
       hostCtx.provide('applicationCatalogPublicKey', ASTERHUB_CATALOG_PUBLIC_KEY)
       hostCtx.provide('desktopBrowserTransport', desktopBrowserTransport)
       hostCtx.provide('credentialCipher', credentialCipher)

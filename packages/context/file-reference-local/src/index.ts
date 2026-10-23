@@ -7,6 +7,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-session/cwd'
 import FileReferenceService, {
   FILE_REFERENCE_PROMPT,
   type FileReferenceCandidate,
@@ -50,12 +51,14 @@ export class LocalFileReferenceService extends FileReferenceService {
   })
 
   private readonly config: FileSearchConfig
-  private readonly searches = new Map<Agent, WorkspaceFileSearch>()
+  private sessionCwd: Context['sessionCwd'] | undefined
+  private readonly searches = new Map<Agent, { cwd: string; search: WorkspaceFileSearch }>()
   private readonly promptFibers = new Map<Agent, ReturnType<Context['inject']>>()
   private readonly promptDisposals = new Set<Promise<void>>()
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx)
+    this.sessionCwd = ctx.get('sessionCwd', false)
     this.config = {
       maxResults: config.maxResults ?? DEFAULT_FILE_SEARCH_MAX_RESULTS,
       maxEntries: config.maxEntries ?? DEFAULT_FILE_SEARCH_MAX_ENTRIES,
@@ -91,18 +94,17 @@ export class LocalFileReferenceService extends FileReferenceService {
     for (const agent of ctx.agents.list()) installPrompt(agent)
     ctx.on('agent/created', async ({ agent }) => { await installPrompt(agent) })
     ctx.on('agent/disposed', ({ agent }) => {
-      this.searches.get(agent)?.dispose()
+      this.searches.get(agent)?.search.dispose()
       this.searches.delete(agent)
       disposePrompt(agent)
     })
     ctx.on('session/event', (session, event) => {
       if (event.type !== 'tool/result') return
       const agent = ctx.agents.get(session.id)
-      if (agent !== undefined) this.searches.get(agent)?.invalidate()
+      if (agent !== undefined) this.searches.get(agent)?.search.invalidate()
     })
     ctx.effect(() => async () => {
-      for (const search of this.searches.values()) search.dispose()
-      this.searches.clear()
+      for (const { search } of this.searches.values()) search.dispose()
       const promptFibers = [...this.promptFibers.values()]
       this.promptFibers.clear()
       await Promise.all([
@@ -112,17 +114,22 @@ export class LocalFileReferenceService extends FileReferenceService {
     }, 'file-reference-local: search cache')
   }
 
-  override list(
+  override async list(
     agent: Agent,
     query: string,
     signal: AbortSignal,
   ): Promise<FileReferenceCandidate[]> {
-    let search = this.searches.get(agent)
-    if (search === undefined) {
-      search = new WorkspaceFileSearch(agent.session.header.cwd ?? process.cwd(), this.config)
-      this.searches.set(agent, search)
+    this.sessionCwd = this.ctx.get('sessionCwd', false) ?? this.sessionCwd
+    const sessionCwd = this.sessionCwd
+    const cwd = sessionCwd ? sessionCwd.resolve(agent.session.header) : (agent.options.cwd ?? agent.session.header.cwd)
+    if (cwd === undefined) throw new Error(`Session ${agent.id} has no current execution directory`)
+    let entry = this.searches.get(agent)
+    if (entry?.cwd !== cwd) {
+      entry?.search.dispose()
+      entry = { cwd, search: new WorkspaceFileSearch(cwd, this.config) }
+      this.searches.set(agent, entry)
     }
-    return search.list(query, signal)
+    return entry.search.list(query, signal)
   }
 }
 

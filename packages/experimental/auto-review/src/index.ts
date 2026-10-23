@@ -122,8 +122,8 @@ interface ScopedPtcStart {
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'experimental-auto-review'
-/** Complete host services required before Auto may be advertised. */
-export const inject = ['approval', 'llm', 'permissionPresets', 'sessions', 'tools']
+/** Host services required to freeze authorization context from current session state. */
+export const inject = ['approval', 'llm', 'permissionPresets', 'sessionCwd', 'sessions', 'tools']
 
 /** Return JSON text for one immutable logged value. */
 function json(value: unknown): string {
@@ -371,7 +371,7 @@ function snapshotAutoReview(agent: Agent, exec: ToolExecution): ReviewSnapshot {
   if (header === undefined || header.config.provider.length === 0 || header.config.model.length === 0) {
     throw new Error('auto-review: no complete request-header route is available')
   }
-  const cwd = session.header.cwd
+  const cwd = agent.ctx.sessionCwd.resolve(session.header)
   if (cwd === undefined || cwd.length === 0) {
     throw new Error('auto-review: the session has no working directory')
   }

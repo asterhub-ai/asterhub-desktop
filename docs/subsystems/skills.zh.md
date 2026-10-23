@@ -248,7 +248,7 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 ### `ctx.sessionSkillCatalog` — `SessionSkillCatalog`
 
-Host service backing `ctx.remote.skills` without activating a cold Agent.
+Host service backing `ctx.remote.skills`; cold catalog discovery resolves the Session's current execution root.
 
 ```ts cordis-catalog
 /**

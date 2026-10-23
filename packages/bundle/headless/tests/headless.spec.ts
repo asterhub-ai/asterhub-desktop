@@ -15,6 +15,7 @@ import type {
 import AgentDefaultModelConfig from '@deepseek-ai/dsh-agent-default-model'
 import { LlmAttemptId, ToolCallId, createAssistantMessage, createToolResultMessage, type MessageId, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { Session, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
 import { SessionQueryError } from '@deepseek-ai/dsh-session-query'
@@ -170,6 +171,7 @@ async function bench(script: Script, options: BenchOptions = {}): Promise<{
   }
 
   await ctx.plugin(SessionStore)
+  await ctx.plugin(SessionCwd)
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(AgentDefaultModelConfig, { provider: 'test-provider', model: 'test-model' })
@@ -257,6 +259,26 @@ describe('headless runner', () => {
     test.ctx.sessions.create(brandString<SessionId>('session-exact'), { meta: { cwd } })
     try { expect(await test.run()).toMatchObject({ code: 0, out: 'remote resumed\n' }) }
     finally { await test.ctx.fiber.dispose() }
+  })
+
+  it('resumes moved project Sessions with the current root while preserving historical metadata', async () => {
+    const oldRoot = '/historical/project'
+    const currentRoot = '/moved/project'
+    const sessionId = 'session-moved'
+    const test = await bench({
+      afterPrompt(session, message) { appendTurn(session, 1, message, 'resumed from moved project', true) },
+    }, {
+      filesystemCwd: currentRoot,
+      sessionId,
+      observe: async () => ({ header: { cwd: oldRoot, origin: 'user' }, events: [], [Symbol.dispose]() {} }),
+    })
+    test.ctx.sessions.create(brandString<SessionId>(sessionId), { meta: { cwd: oldRoot } })
+    test.ctx.sessionCwd.registerResolver(() => currentRoot)
+    try {
+      expect(await test.run()).toMatchObject({ code: 0, out: 'resumed from moved project\n' })
+      expect(test.ctx.sessions.get(brandString<SessionId>(sessionId))?.header.cwd).toBe(oldRoot)
+      expect(test.ctx.agents.get(brandString<SessionId>(sessionId))?.options.cwd).toBe(currentRoot)
+    } finally { await test.ctx.fiber.dispose() }
   })
 
   it('aggregates the final text across the complete idle-to-idle interval and flushes before exit', async () => {
@@ -616,7 +638,7 @@ describe('headless runner', () => {
     await test.ctx.fiber.dispose()
   })
 
-  it('rejects a persisted Session recorded in another working directory', async () => {
+  it('rejects a persisted Session that resolves to another working directory', async () => {
     const test = await bench({ afterPrompt: () => {} }, {
       sessionId: 'session-exact',
       observe: () => Promise.resolve({
@@ -627,7 +649,7 @@ describe('headless runner', () => {
     })
     const result = await test.run()
     expect(result.code).toBe(1)
-    expect(result.err).toContain('was recorded in "/somewhere/else"')
+    expect(result.err).toContain('resolves to "/somewhere/else"')
     await test.ctx.fiber.dispose()
   })
 
@@ -752,14 +774,14 @@ describe('headless runner', () => {
     await test.ctx.fiber.dispose()
   })
 
-  it('rejects a live Agent recorded in another working directory', async () => {
+  it('rejects a live Agent that resolves to another working directory', async () => {
     const test = await bench({ afterPrompt: () => {} }, {
       sessionId: 'session-exact',
       preliveMeta: { cwd: '/somewhere/else' },
     })
     const result = await test.run()
     expect(result.code).toBe(1)
-    expect(result.err).toContain('was recorded in "/somewhere/else"')
+    expect(result.err).toContain('resolves to "/somewhere/else"')
     await test.ctx.fiber.dispose()
   })
 

@@ -12,6 +12,7 @@ import { SessionPersistenceRevision, type SessionPersistenceSnapshot } from '@de
 import { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import { makeBridgeHarness, textResponse, type BridgeHarness } from './harness.ts'
 import { startHttpMcpFixture } from '../../../mcp/mcp-client/tests/http-fixture.ts'
+import { AcpSession } from '../src/session.ts'
 
 /** Wrap a bare header as the snapshot shape `SessionPersistence.list` now returns. */
 function snapshotOf(header: SessionHeader): SessionPersistenceSnapshot {
@@ -94,6 +95,7 @@ describe('automation-only ACP bridge', () => {
     expect('messageId' in harness.updates[0]!).toBe(true)
     if ('messageId' in harness.updates[0]!) expect(typeof harness.updates[0].messageId).toBe('string')
     expect(harness.ctx.agents.get(SessionId(sessionId))?.session.header.cwd).toBe(process.cwd())
+    expect(harness.ctx.agents.get(SessionId(sessionId))?.options.cwd).toBe(process.cwd())
     expect(harness.adapter.requests[0]?.messages.at(-1)?.content).toEqual([{ type: 'text', text: 'say hello' }])
   })
 
@@ -178,6 +180,7 @@ describe('automation-only ACP bridge', () => {
       cwd: process.cwd(),
       mcpServers: [],
     })
+    expect(harness.ctx.agents.get(SessionId(created.sessionId))?.options.cwd).toBe(process.cwd())
     // Resume authorizes one known id through a point stat, never a corpus scan.
     expect(statSpy).toHaveBeenCalledWith(SessionId(created.sessionId), expect.anything())
     expect(listSpy).not.toHaveBeenCalled()
@@ -202,6 +205,33 @@ describe('automation-only ACP bridge', () => {
     })
     await expect(harness.client.resumeSession({ sessionId: created.sessionId, cwd: process.cwd() }))
       .resolves.toHaveProperty('configOptions')
+  })
+
+  it('lists and resumes a closed session against its moved execution root', async () => {
+    const movedRoot = await mkdtemp(join(tmpdir(), 'dsh-acp-moved-root-'))
+    harness = await makeBridgeHarness({ script: [textResponse('persisted')] })
+    try {
+      await harness.client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+      const created = await harness.client.newSession({ cwd: process.cwd(), mcpServers: [] })
+      await harness.client.closeSession({ sessionId: created.sessionId })
+      const unbind = harness.ctx.sessionCwd.registerResolver(() => movedRoot)
+
+      await expect(harness.client.listSessions({ cwd: movedRoot })).resolves.toEqual({
+        sessions: [{ sessionId: created.sessionId, cwd: movedRoot }],
+      })
+      await harness.client.resumeSession({
+        sessionId: created.sessionId,
+        cwd: movedRoot,
+        mcpServers: [],
+      })
+      const agent = harness.ctx.agents.get(SessionId(created.sessionId))
+      expect(agent?.session.header.cwd).toBe(process.cwd())
+      expect(agent?.options.cwd).toBe(movedRoot)
+
+      unbind()
+    } finally {
+      await rm(movedRoot, { recursive: true, force: true })
+    }
   })
 
   it('rejects active or wrong-workspace resume before composing another Agent', async () => {
@@ -451,6 +481,28 @@ describe('automation-only ACP bridge', () => {
     await expect(harness.client.resumeSession({ sessionId: created.sessionId, cwd: process.cwd() }))
       .rejects.toThrow(/Internal error/)
     expect(harness.ctx.agents.list()).toHaveLength(0)
+  })
+
+  it('refuses an already-cancelled resume without publishing an Agent or removing its persisted session', async () => {
+    harness = await makeBridgeHarness({ script: [textResponse('persisted')] })
+    await harness.client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+    const created = await harness.client.newSession({ cwd: process.cwd(), mcpServers: [] })
+    await harness.client.prompt({ sessionId: created.sessionId, prompt: [{ type: 'text', text: 'persist' }] })
+    await harness.client.closeSession({ sessionId: created.sessionId })
+    const controller = new AbortController()
+    controller.abort()
+    await expect(AcpSession.resume(harness.ctx, {
+      sessionId: SessionId(created.sessionId),
+      cwd: process.cwd(),
+      mcpServers: [],
+      agentOptions: {},
+      fallbackSelection: { provider: 'mock', model: 'mock' },
+      signal: controller.signal,
+      notify: () => Promise.resolve(),
+    })).rejects.toThrow(/abort|cancel/i)
+    expect(harness.ctx.agents.get(SessionId(created.sessionId))).toBeUndefined()
+    expect((await harness.ctx.sessionPersistence.list()).map(snapshot => snapshot.header.id))
+      .toContain(SessionId(created.sessionId))
   })
 
   it('propagates non-MCP Agent factory failures and non-config selection failures', async () => {
@@ -831,7 +883,7 @@ describe('automation-only ACP bridge', () => {
     await harness.client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
     const { sessionId } = await harness.client.newSession({ cwd: process.cwd(), mcpServers: [] })
 
-    expect(harness.ctx.agents.get(SessionId(sessionId))?.options).toEqual({})
+    expect(harness.ctx.agents.get(SessionId(sessionId))?.options).toEqual({ cwd: process.cwd() })
   })
 
   it('allows request listeners to supply a route when ACP has no initial selection', async () => {

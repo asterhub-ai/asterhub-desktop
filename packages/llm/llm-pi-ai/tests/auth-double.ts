@@ -16,17 +16,17 @@ export function memoryAuth(seed: Record<string, Credential> = {}): PiAiAuthInjec
   return {
     stored,
     credentials: {
-      read: id => Promise.resolve(stored.get(id)),
+      read: (id: string) => Promise.resolve(stored.get(id)),
       list: () => Promise.resolve([...stored].map(([providerId, credential]) => ({
         providerId,
         type: credential.type,
       }))),
-      async modify(id, mutate) {
+      async modify(id: string, mutate: (credential: Credential | undefined) => Promise<Credential | undefined> | Credential | undefined) {
         const next = await mutate(stored.get(id))
         if (next !== undefined) stored.set(id, next)
         return stored.get(id)
       },
-      delete: (id) => {
+      delete: (id: string) => {
         stored.delete(id)
         return Promise.resolve()
       },

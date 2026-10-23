@@ -5,9 +5,28 @@ import { Client } from '@modelcontextprotocol/client'
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
 import { scrubbedParentEnv } from '@deepseek-ai/dsh-subprocess'
 import { createMcpToolDefinition } from '@deepseek-ai/dsh-mcp-client'
+import { resolveSessionRoot } from './session-root.mjs'
+
+
+function resolveCliPolicy(ctx, execution, root) {
+  return {
+    ...ctx.sandboxPolicy.resolve(execution === undefined ? {} : { session: execution.agent.session }),
+    workspaceRoot: root,
+  }
+}
+
+async function confinedCliArgv(ctx, execution, root, policy = resolveCliPolicy(ctx, execution, root)) {
+  if (policy.mode === 'danger-full-access') return [process.execPath, cliEntry, 'mcp']
+  const { argv } = await ctx.sandbox.confine(
+    [process.execPath, cliEntry, 'mcp'],
+    policy,
+    execution?.signal,
+  )
+  return argv
+}
 
 export const name = 'asterhub-genoffice-cli'
-export const inject = ['tools', 'profileContext']
+export const inject = ['tools', 'profileContext', 'sandbox', 'sandboxPolicy', 'sessionCwd']
 
 const SERVER_NAME = 'aster_genoffice'
 const MAX_PUBLIC_TOOL_NAME_LENGTH = 64
@@ -56,48 +75,54 @@ function childEnvironment() {
     ELECTRON_RUN_AS_NODE: '1',
     GENOFFICE_AUDIT_LOG: 'off',
   }
-  if (process.env.GENOFFICE_ALLOWED_ROOTS) {
+  if (process.env.GENOFFICE_ALLOWED_ROOTS !== undefined) {
     env.GENOFFICE_ALLOWED_ROOTS = process.env.GENOFFICE_ALLOWED_ROOTS
   }
   return env
 }
 
-async function openClient(root) {
+async function openClient(ctx, execution, root, policy) {
+  const argv = await confinedCliArgv(ctx, execution, root, policy)
   const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: [cliEntry, 'mcp'],
+    command: argv[0],
+    args: argv.slice(1),
     cwd: root,
     env: childEnvironment(),
   })
   const client = new Client({ name: 'asterhub-genoffice', version: '0.11.0' }, { capabilities: {} })
-  await client.connect(transport)
-  return { client, transport }
+  try {
+    await client.connect(transport)
+    return { client, transport }
+  }
+  catch (error) {
+    await client.close().catch(() => undefined)
+    throw error
+  }
 }
 
-async function sessionRoot(ctx, execution) {
-  const candidate = execution.agent?.session?.header?.cwd
-    ?? execution.agent?.options?.cwd
-    ?? ctx.profileContext?.cwd
-    ?? process.cwd()
+async function discoveryClient(ctx) {
+  const root = await realpath(ctx.profileContext.cwd)
+  const argv = await confinedCliArgv(ctx, undefined, root)
+  const transport = new StdioClientTransport({
+    command: argv[0],
+    args: argv.slice(1),
+    cwd: root,
+    env: childEnvironment(),
+  })
+  const client = new Client({ name: 'asterhub-genoffice', version: '0.11.0' }, { capabilities: {} })
   try {
-    if (typeof candidate === 'string') {
-      const root = await realpath(candidate)
-      if ((await stat(root)).isDirectory()) return root
-    }
-  } catch {}
-  if (typeof ctx.profileContext?.cwd === 'string') {
-    try {
-      const fallback = await realpath(ctx.profileContext.cwd)
-      if ((await stat(fallback)).isDirectory()) return fallback
-    } catch {}
+    await client.connect(transport)
+    return { client, transport }
   }
-  return await realpath(process.cwd())
+  catch (error) {
+    await client.close().catch(() => undefined)
+    throw error
+  }
 }
 
 /** Install the GenOffice CLI/MCP bridge with per-session file roots and seamless writes. */
 export async function apply(ctx) {
-  const profileRoot = await realpath(ctx.profileContext.cwd)
-  const discovery = await openClient(profileRoot)
+  const discovery = await discoveryClient(ctx)
   let tools
   try {
     tools = (await discovery.client.listTools(undefined, { cacheMode: 'refresh' })).tools
@@ -116,16 +141,17 @@ export async function apply(ctx) {
   const disposers = []
   const releaseConnection = async connection => {
     if (!connection) return
-    connections.delete(connection.sessionId)
+    connections.delete(connection.key)
     await connection.client.close().catch(() => undefined)
   }
 
   const connectSession = async execution => {
-    const root = await sessionRoot(ctx, execution)
+    const root = await resolveSessionRoot(ctx, execution)
     const sessionId = execution.agent.session.id
-    const existing = connections.get(sessionId)
+    const policy = resolveCliPolicy(ctx, execution, root)
+    const key = `${sessionId}\0${root}\0${policy.mode}`
+    const existing = connections.get(key)
     if (existing?.root === root && !existing.closed) return existing
-    if (existing) await releaseConnection(existing)
 
     if (connections.size >= MAX_SESSION_SERVERS) {
       const oldest = [...connections.values()]
@@ -135,9 +161,9 @@ export async function apply(ctx) {
       await releaseConnection(oldest)
     }
 
-    const opened = await openClient(root)
+    const opened = await openClient(ctx, execution, root, policy)
     const connection = {
-      sessionId,
+      key,
       root,
       client: opened.client,
       transport: opened.transport,
@@ -147,9 +173,9 @@ export async function apply(ctx) {
     }
     opened.transport.onclose = () => {
       connection.closed = true
-      if (connections.get(sessionId) === connection) connections.delete(sessionId)
+      if (connections.get(key) === connection) connections.delete(key)
     }
-    connections.set(sessionId, connection)
+    connections.set(key, connection)
     return connection
   }
 

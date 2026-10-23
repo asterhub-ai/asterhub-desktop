@@ -1,6 +1,7 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { existsSync as fileExists } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
@@ -11,9 +12,9 @@ import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import Tools from '@deepseek-ai/dsh-tools'
 import McpResources from '@deepseek-ai/dsh-mcp-resources'
 import { PtcRuntime } from '@deepseek-ai/dsh-ptc-runtime'
-import Llm, { LlmAdapter, ToolCallId, createUserMessage } from '@deepseek-ai/dsh-llm'
-import type { GenerateOptions, LlmResolvedModelInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
+import Llm, { LlmAdapter, ToolCallId, createUserMessage, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import Sessions, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import Agents from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -39,7 +40,7 @@ class FixtureModel extends LlmAdapter {
   }
   async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     this.requests.push(options)
-    if (options.tools?.some(tool => tool.name === TOOL) && options.messages.at(-1)?.role === 'user') {
+    if (options.tools?.some((tool: { name: string }) => tool.name === TOOL) && options.messages.at(-1)?.role === 'user') {
       const call = { type: 'tool-call' as const, id: ToolCallId('visit'), name: TOOL, arguments: '{"label":"fixture"}' }
       yield { type: 'block-start', index: 0, blockType: 'tool-call' }
       yield { type: 'tool-call-delta', index: 0, id: call.id, name: call.name, argumentsDelta: call.arguments }
@@ -69,7 +70,7 @@ async function load(exclusive = false, mode?: string, toolCallTimeoutMs?: number
     ['browserUse', BrowserUse], ['prompt', SystemPrompt], ['tools', Tools], ['llm', Llm],
     ['sessions', Sessions], ['agents', Agents], ['loop', AgentLoop], ['projections', Projections],
     ['model', { inject: ['llm'], apply(ctx: Context) { ctx.effect(() => ctx.llm.registerAdapter(['fixture'], model)) } }],
-    ['browser', { inject: ['browserUse', 'agents', 'tools', 'systemPrompt'], apply(ctx: Context) {
+    ['browser', { inject: ['browserUse', 'agents', 'sessionCwd', 'tools', 'systemPrompt'], apply(ctx: Context) {
       mountSessionMcp(ctx, { name: 'browser-fixture', exclusive, command: process.execPath, args: [fixture, root, ...mode === undefined ? [] : [mode]], ...toolCallTimeoutMs === undefined ? {} : { toolCallTimeoutMs, env: {} } })
     } }],
   ])
@@ -77,6 +78,7 @@ async function load(exclusive = false, mode?: string, toolCallTimeoutMs?: number
   await writeFile(configPath, JSON.stringify([...modules.keys()].map(name => ({ id: name, name, config: name === 'loop' ? { agents: [] } : name === 'prompt' && toolOrder !== undefined ? { toolOrder } : {} }))))
   const ctx = new Context()
   contexts.push(ctx)
+  await ctx.plugin(SessionCwd)
   ctx.baseUrl = pathToFileURL(root).href + '/'
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
@@ -161,6 +163,33 @@ it('waits for SystemPrompt and ToolRuntime before reserving the provider', async
 })
 
 describe('Session MCP Loader composition', () => {
+  it('starts the real MCP process in the trusted current root after a project move', async () => {
+    const { ctx, root, browser } = await load()
+    const movedRoot = join(root, 'moved-project')
+    await mkdir(movedRoot)
+    ctx.sessionCwd.registerResolver(() => movedRoot)
+    const owner = await ctx.agents.create({ sessionId: SessionId('moved-root'), meta: { cwd: root } })
+    expect(owner.agent.session.header.cwd).toBe(root)
+    expect((await events(root)).find(event => event.event === 'start')).toMatchObject({ cwd: movedRoot })
+    await owner.dispose()
+    await browser.dispose()
+  })
+
+  it.each([
+    ['has no current root', (ctx: Context) => ctx.sessionCwd.registerResolver(() => undefined)],
+    ['throws while resolving the current root', (ctx: Context) => ctx.sessionCwd.registerResolver(() => { throw new Error('cwd provider failed') })],
+    ['has been disposed', (ctx: Context) => {
+      const dispose = ctx.sessionCwd.registerResolver(() => '/old-root')
+      dispose()
+    }],
+  ])('refuses MCP process startup when the cwd provider %s', async (_reason, bindProvider) => {
+    const { ctx, root, browser } = await load()
+    bindProvider(ctx)
+    await expect(ctx.agents.create({ sessionId: SessionId('no-current-root'), meta: { cwd: root } })).rejects.toThrow()
+    expect(fileExists(join(root, 'events.ndjson'))).toBe(false)
+    await browser.dispose()
+  })
+
   it('discovers schemas before the first model request and retains distinct state across turns', async () => {
     const { ctx, root, model, browser } = await load(false, undefined, 5000, [TOOL, '<unlisted-tools>'])
     const first = await ctx.agents.create({ sessionId: SessionId('first'), meta: { cwd: root }, agentOptions: { provider: 'fixture', model: 'fixture' } })
@@ -169,7 +198,7 @@ describe('Session MCP Loader composition', () => {
     first.agent.followup(createUserMessage({ content: [{ type: 'text', text: 'Visit the fixture.' }], source: { kind: 'user' } }))
     await first.agent.whenIdle()
     expect(model.requests).toHaveLength(2)
-    expect(model.requests[0]?.tools?.find(tool => tool.name === TOOL)).toMatchObject({ description: 'Visit the fixture page.', parameters: { required: ['label'], additionalProperties: false } })
+    expect(model.requests[0]?.tools?.find((tool: { name: string }) => tool.name === TOOL)).toMatchObject({ description: 'Visit the fixture page.', parameters: { required: ['label'], additionalProperties: false } })
     expect(JSON.stringify(first.agent.session.snapshotEvents())).toContain('Visit 1: fixture')
     expect((await execute(ctx, first.agent)).content).toEqual([{ type: 'text', text: 'Visit 2: direct' }])
     first.agent.followup(createUserMessage({ content: [{ type: 'text', text: 'Visit once more.' }], source: { kind: 'user' } }))
@@ -213,7 +242,7 @@ describe('Session MCP Loader composition', () => {
     }
     await Promise.all([second.agent.whenIdle(), child.agent.whenIdle()])
     expect(model.requests).toHaveLength(2)
-    expect(model.requests.map(request => request.tools?.map(tool => tool.name))).toEqual([['unrelated'], ['unrelated']])
+    expect(model.requests.map(request => request.tools?.map((tool: { name: string }) => tool.name))).toEqual([['unrelated'], ['unrelated']])
     for (const { agent } of [second, child]) {
       expect(ctx.tools.schemas(agent).map(tool => tool.name)).toEqual(['unrelated'])
       expect((await execute(ctx, agent)).isError).toBe(true)
@@ -435,7 +464,7 @@ describe('Session MCP Loader composition', () => {
     const owner = await creation
     await owner.agent.whenIdle()
     expect(model.requests).toHaveLength(1)
-    expect(model.requests[0]?.tools?.map(tool => tool.name)).toEqual(['run_code'])
+    expect(model.requests[0]?.tools?.map((tool: { name: string }) => tool.name)).toEqual(['run_code'])
     expect(JSON.stringify(model.requests[0]?.messages)).toContain(TOOL)
   })
 

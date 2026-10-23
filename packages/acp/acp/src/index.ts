@@ -47,6 +47,7 @@ import {
 } from '@agentclientprotocol/sdk'
 import type { ModelSelection } from '@deepseek-ai/dsh-agent'
 import type { SessionId } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-session/cwd'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 // Side-effect type import: declaration-merges the approval waterfall answered below.
 import type {} from '@deepseek-ai/dsh-user-approval'
@@ -59,7 +60,7 @@ const DEFAULT_SESSION_LIST_PAGE_SIZE = 100
 
 export const name = 'acp'
 /** Core services required by the standard automation controls. */
-export const inject = ['agents', 'llm', 'sessionPersistence', 'sessions']
+export const inject = ['agents', 'llm', 'sessionPersistence', 'sessions', 'sessionCwd']
 
 /** Preserve invalid-parameter detail in the SDK wire error message. */
 function invalidParams(detail: string): RequestError {
@@ -249,7 +250,8 @@ export function apply(ctx: Context, config: AcpConfig): void {
         if (persisted === undefined || persisted.origin === 'subagent' || persisted.parentSession !== undefined) {
           throw invalidParams(`session is not resumable: ${sessionId}`)
         }
-        if (!await sameDirectory(persisted.cwd, params.cwd)) {
+        const cwd = ctx.sessionCwd.resolve(persisted)
+        if (cwd === undefined || !await sameDirectory(cwd, params.cwd)) {
           throw invalidParams(`session cwd does not match: ${params.cwd}`)
         }
         let record: AcpSession
@@ -268,7 +270,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
           throw error
         }
         /* v8 ignore start -- the persisted header was checked before resume; the factory restores that exact header. */
-        if (!await sameDirectory(record.agent.session.header.cwd, params.cwd)) {
+        if (!await sameDirectory(record.agent.options.cwd, params.cwd)) {
           await record.close('session/resume cwd mismatch')
           throw invalidParams(`session cwd does not match: ${params.cwd}`)
         }
@@ -308,13 +310,13 @@ export function apply(ctx: Context, config: AcpConfig): void {
             || ctx.sessions.get(header.id) !== undefined
             || header.origin === 'subagent'
             || header.parentSession !== undefined
-            || header.cwd === undefined
-            || !isAbsolute(header.cwd)
         ) return undefined
-        if (params.cwd !== undefined && params.cwd !== null && !await sameDirectory(header.cwd, params.cwd)) {
+        const cwd = ctx.sessionCwd.resolve(header)
+        if (cwd === undefined || !isAbsolute(cwd)) return undefined
+        if (params.cwd !== undefined && params.cwd !== null && !await sameDirectory(cwd, params.cwd)) {
           return undefined
         }
-        return { sessionId: header.id, cwd: header.cwd, createdAt: header.createdAt }
+        return { sessionId: header.id, cwd, createdAt: header.createdAt }
       }))
       const entries = filtered
         .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined)

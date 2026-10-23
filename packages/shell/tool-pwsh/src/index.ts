@@ -149,14 +149,29 @@ function pwshDescription(windowsSandbox: boolean): string {
 }
 
 /**
- * Resolve an explicit workdir first, making a relative one session-workspace-relative;
- * otherwise use the session header cwd and leave executor defaulting as the fallback.
+ * Resolve an explicit model workdir relative to the authoritative current session cwd.
  */
-function resolveWorkdir(modelWorkdir: string | undefined, exec: { agent?: Agent }): string | undefined {
-  const headerCwd = exec.agent?.session.header.cwd
-  if (modelWorkdir === undefined) return headerCwd
-  if (headerCwd !== undefined && !isAbsolute(modelWorkdir)) {
-    return resolvePath(headerCwd, modelWorkdir)
+function resolveWorkdir(
+  modelWorkdir: string | undefined,
+  exec: { agent?: Agent },
+  policyWorkspaceRoot?: string,
+): string | undefined {
+  const agent = exec.agent
+  let sessionCwd = policyWorkspaceRoot
+  if (sessionCwd === undefined && agent !== undefined) {
+    const service = agent.ctx?.get?.('sessionCwd', false)
+    if (service !== undefined) {
+      sessionCwd = service.resolve(agent.session.header)
+      if (sessionCwd === undefined) {
+        throw new Error(`Session ${agent.session.id} has no current execution directory`)
+      }
+    } else {
+      sessionCwd = agent.options?.cwd ?? agent.session.header?.cwd
+    }
+  }
+  if (modelWorkdir === undefined) return sessionCwd
+  if (sessionCwd !== undefined && !isAbsolute(modelWorkdir)) {
+    return resolvePath(sessionCwd, modelWorkdir)
   }
   return modelWorkdir
 }
@@ -505,7 +520,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         const policy = approvedMode === undefined
           ? standingPolicy
           : { ...(standingPolicy as SandboxExecutionPolicy), mode: approvedMode }
-        const workdir = resolveWorkdir(args.workdir, exec)
+        const workdir = resolveWorkdir(args.workdir, exec, standingPolicy?.workspaceRoot)
         const request: ShellExecRequest = {
           command: args.command,
           ...workdir !== undefined ? { workdir } : {},

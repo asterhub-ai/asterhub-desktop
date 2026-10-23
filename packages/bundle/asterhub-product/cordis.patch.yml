@@ -1,0 +1,42 @@
+# Shared AsterHub product defaults for every base-backed profile.
+# Implementations remain in the generic service packages; this layer only
+# selects the deployment-owned route, authenticated search, and skills.
+- insert:
+    - id: asterhub-model-policy
+      name: '@deepseek-ai/dsh-asterhub-product'
+- id: agent-default-model
+  inject: [applicationModelRoute]
+  config:
+    locked: true
+
+- id: llm
+  inject: [applicationModelRoute]
+
+- id: llm-pi-ai
+  config:
+    appIdentity:
+      product: asterhub
+      url: https://github.com/asterhub-ai/asterhub-desktop
+    deploymentLocked: true
+    providers: !!js "(() => { const route = ctx.get('applicationModelRoute'); return route?.profile === undefined ? {} : { [route.provider]: structuredClone(route.profile) } })()"
+
+- id: web
+  config:
+    searchProvider: asterhub-searxng
+    fetchProvider: http
+- insert:
+    - id: web-search-searxng
+      name: '@deepseek-ai/dsh-web-search-searxng'
+      config:
+        baseURL: https://xapi.fans/asterhub-search
+
+
+- insert:
+    - id: asterhub-skills
+      name: '@deepseek-ai/dsh-asterhub-skills'
+
+- id: system-prompt
+  config:
+    harnessIdentity: 你是 AsterHub 的 AI 助手。
+    personaPrefix: !!js "ctx.get('profileContext')?.name === 'sdk' ? 'You are a coding agent powered by the {{model}} model.' : ['headless', 'acp'].includes(ctx.get('profileContext')?.name) ? '你是 AsterHub 的 AI 助手，当前使用 {{model}} 模型。请用清晰、准确的方式协助用户完成工作。' : '当前会话使用 {{model}} 模型。'"
+    personaSuffix: !!js "ctx.get('profileContext')?.name === 'sdk' ? 'Your working directory is {{cwd}}.' : '当前工作目录：{{cwd}}。'"

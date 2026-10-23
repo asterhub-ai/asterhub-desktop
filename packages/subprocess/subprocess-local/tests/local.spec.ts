@@ -490,7 +490,7 @@ describe('LocalSubprocessRuntime', () => {
     }
   })
 
-  it('allocates Windows terminals through the console host node-pty ships', async () => {
+  it('allocates Windows terminals with their requested cwd through the console host node-pty ships', async () => {
     const exitListeners: ((event: { exitCode: number; signal?: number }) => void)[] = []
     const terminal = {
       pid: 123,
@@ -502,6 +502,7 @@ describe('LocalSubprocessRuntime', () => {
       write: () => {},
       kill: () => {},
     }
+    const requestedCwd = resolve(tmpdir(), 'dsh-subprocess-requested-terminal-cwd')
     const nodePtySpawn = vi.fn((
       _file: string, _args: string[], _options: IPtyForkOptions | IWindowsPtyForkOptions,
     ) => terminal)
@@ -531,15 +532,18 @@ describe('LocalSubprocessRuntime', () => {
       const spawn = async (platform: NodeJS.Platform): Promise<SubprocessTerminalHandle> => {
         runtime.internals = { platform }
         return runtime.spawnTerminal({
-          argv: ['shell'], cwd: process.cwd(), rows: 24, cols: 80, terminalType: 'dumb', graceMs: 1,
+          argv: ['shell'], cwd: requestedCwd, rows: 24, cols: 80, terminalType: 'dumb', graceMs: 1,
         })
       }
 
       const windows = await spawn('win32')
-      expect(nodePtySpawn).toHaveBeenLastCalledWith('shell', [], expect.objectContaining({ useConptyDll: true }))
+      expect(nodePtySpawn).toHaveBeenLastCalledWith('shell', [], expect.objectContaining({
+        useConptyDll: true,
+        cwd: requestedCwd,
+      }))
       const posix = await spawn('darwin')
       expect(nodePtySpawn.mock.calls.at(-1)?.[2]).not.toHaveProperty('useConptyDll')
-
+      expect(nodePtySpawn.mock.calls.at(-1)?.[2]).toHaveProperty('cwd', requestedCwd)
       for (const listener of exitListeners) listener({ exitCode: 0 })
       await Promise.all([windows.done, posix.done])
     } finally {

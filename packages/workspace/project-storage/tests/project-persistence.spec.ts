@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { SESSION_FORMAT_VERSION, SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionHeader } from '@deepseek-ai/dsh-session/types'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import ProjectStorage from '../src/index.ts'
 import ProjectSessionPersistence from '../src/persistence.ts'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -27,6 +28,7 @@ async function filesUnder(root: string): Promise<string[]> {
 
 async function mount(_root: string, locatorPath: string): Promise<Context> {
   const ctx = new Context()
+  await ctx.plugin(SessionCwd)
   await ctx.plugin(ProjectStorage, {
     sessionMode: 'project-local', locatorPath, legacySessionRoot: '', metadataLimitBytes: 1024 * 1024, lockDeadlineMs: 5000,
   })
@@ -34,6 +36,32 @@ async function mount(_root: string, locatorPath: string): Promise<Context> {
 }
 
 describe('project-routed Session persistence', () => {
+  it('resolves the project owner when SessionCwd loads after project storage', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'project-cwd-order-'))
+    roots.push(home)
+    const ctx = new Context()
+    try {
+      await ctx.plugin(ProjectStorage, {
+        sessionMode: 'project-local', locatorPath: join(home, 'locator.json'),
+        legacySessionRoot: '', metadataLimitBytes: 1024 * 1024, lockDeadlineMs: 5000,
+      })
+      await ctx.plugin(SessionCwd)
+      const project = join(home, 'project')
+      await mkdir(project)
+      await ctx.projectStorage.open({ root: project, mode: 'new' })
+      const header: SessionHeader = {
+        version: SESSION_FORMAT_VERSION, id: SessionId('late-cwd-owner'),
+        createdAt: 1, isSeeded: false, cwd: project,
+      }
+      await ctx.projectStorage.bindSession(header)
+      const historicalHeader = { ...header, cwd: join(home, 'historical') }
+      expect(ctx.sessionCwd.resolve(historicalHeader)).toBe(ctx.projectStorage.executionCwd(historicalHeader))
+      expect(ctx.sessionCwd.resolve(historicalHeader)).not.toBe(historicalHeader.cwd)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('resumes the same immutable Session bytes from a copied project root', async () => {
     const home = await mkdtemp(join(tmpdir(), 'project-persistence-'))
     roots.push(home)

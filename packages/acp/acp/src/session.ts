@@ -13,7 +13,6 @@ import {
 import type { Agent, AgentHandle, AgentOptions, ModelSelection } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, errorChain, type UserMessage } from '@deepseek-ai/dsh-llm'
 import { type Session, type SessionEvent, type SessionId, type TurnEndReason } from '@deepseek-ai/dsh-session'
-import { resolveProjectAttachmentScope } from '@deepseek-ai/dsh-project-storage'
 import { AcpContentError, admitAcpPrompt } from './content.ts'
 import { turnEndToStopReason } from './codec.ts'
 import { mountAcpMcpServers } from './mcp.ts'
@@ -129,7 +128,7 @@ export class AcpSession {
     const handle = await ctx.agents.create({
       sessionId: options.sessionId,
       meta: { cwd: options.cwd },
-      agentOptions: options.agentOptions,
+      agentOptions: { ...options.agentOptions, cwd: options.cwd },
       signal: options.signal,
       setup: async (agentCtx) => {
         modelControl.install(agentCtx)
@@ -149,7 +148,7 @@ export class AcpSession {
     let modelControl: AcpModelControl | undefined
     const handle = await ctx.agents.resume({
       resumeSessionId: options.sessionId,
-      agentOptions: options.agentOptions,
+      agentOptions: { ...options.agentOptions, cwd: options.cwd },
       signal: options.signal,
       setup: async (agentCtx, agent) => {
         modelControl = new AcpModelControl(
@@ -279,7 +278,7 @@ export class AcpSession {
           throw internalError('prompt was not queued: the agent was disposed outside the bridge')
         }
         const attachmentScope = params.prompt.some(block => block.type === 'image')
-          ? resolveProjectAttachmentScope(this.ctx, this.agent.session.id)
+          ? { sessionId: this.agent.session.id }
           : undefined
         const content = await admitAcpPrompt(
           this.ctx,
@@ -353,7 +352,7 @@ export class AcpSession {
         const inflight = this.inflight?.turn === event.data.turn ? this.inflight : undefined
         const previous = this.outputTail
         const delivery = previous.then(async () => {
-          for (const update of await assistantUpdates(this.ctx, session, event)) {
+          for (const update of await assistantUpdates(this.ctx, session, event, this.agent.session.id)) {
             await this.notify({ sessionId: this.agent.session.id, update })
           }
         })
@@ -376,7 +375,7 @@ export class AcpSession {
         this.outputTail = previous
           .then(async () => this.notify({
             sessionId: this.agent.session.id,
-            update: await toolResultUpdate(this.ctx, event),
+            update: await toolResultUpdate(this.ctx, this.agent.session.id, event),
           }))
           /* v8 ignore start -- supplemental-content conversion failure is contained and cannot fail Agent work. */
           .catch((error: unknown) => {

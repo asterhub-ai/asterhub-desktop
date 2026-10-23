@@ -1,28 +1,28 @@
 /**
- * Derive the working directory a filesystem tool resolves relative paths against: the calling
- * agent's per-session workspace (`exec.agent.session.header.cwd`), so each session's
- * `read`/`write`/`edit` act on its workspace, not the server's launch directory.
- * Non-agent calls return `undefined`, leaving the fallback in the provider rather than reading
- * `process.cwd()` at the tool boundary.
+ * Resolve the current execution directory for an agent call without changing
+ * the immutable session header. Agentless calls keep the provider's default.
  * @module @deepseek-ai/dsh-tool-fs/session-cwd
  */
 
+import type {} from '@deepseek-ai/dsh-session/cwd'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
-
-/**
- * The session workspace cwd for this call, or `undefined` when none applies.
- * @param exec - the tool-execution context; only its optional `agent` is read.
- * @returns the calling agent's session cwd, or undefined for a non-agent caller (the backend then applies its own default).
- */
+/** @param exec - tool context. @returns current session cwd or undefined for agentless calls. */
 export function sessionCwd(exec: ToolExecution): string | undefined {
-  return exec.agent?.session.header.cwd
+  const agent = exec.agent
+  if (agent === undefined) return undefined
+  const sessionCwd = agent.ctx?.get?.('sessionCwd', false)
+  if (sessionCwd !== undefined) {
+    const cwd = sessionCwd.resolve(agent.session.header)
+    if (cwd === undefined) throw new Error(`Session ${agent.session.id} has no current execution directory`)
+    return cwd
+  }
+  return agent.options?.cwd ?? agent.session.header?.cwd
 }
 
 /**
  * Resolution options shared by all model-facing filesystem tools.
- * @param exec - the tool-execution context supplying session cwd and cancellation.
- * @param policyWorkspaceRoot - resolved per-call root, when a mutation carries sandbox policy.
- * @returns provider resolution options for the current tool call.
+ * A sandbox policy root is authoritative for mutations and must not be
+ * replaced by a stale or conflicting session value.
  */
 export function sessionResolveOptions(
   exec: ToolExecution,

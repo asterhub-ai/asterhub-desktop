@@ -21,6 +21,7 @@ import {
   type SkillSummary,
 } from '@deepseek-ai/dsh-skill'
 
+import type {} from '@deepseek-ai/dsh-session/cwd'
 export const name = 'tool-skill'
 export const inject = ['agents', 'tools', 'skills']
 
@@ -130,7 +131,8 @@ export function apply(ctx: Context, config: Config = {}): void {
       }
       // The agent is its own scope key, so the lookup resolves the layered
       // registry exactly as this agent's composition sees it.
-      const lookup = { cwd: exec.agent?.session.header.cwd, signal: exec.signal, scope: exec.agent }
+      const agent = exec.agent
+      const lookup = { cwd: currentExecutionCwd(ctx, agent), signal: exec.signal, scope: agent }
       const summary = (await ctx.skills.list(lookup)).find(skill => skill.name === args.name)
       if (!summary) {
         throw new Error(`skill "${args.name}" is unknown or no longer available`)
@@ -183,7 +185,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     const names = invokedSkillNames(messages)
     if (names.length === 0) return decision
     signal.throwIfAborted()
-    const lookup = { cwd: agent.session.header.cwd, signal, scope: agent }
+    const lookup = { cwd: currentExecutionCwd(ctx, agent), signal, scope: agent }
     const injections: UserMessage[] = []
     for (const name of names) {
       const skill = await ctx.skills.get(name, lookup)
@@ -219,7 +221,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     signal.throwIfAborted()
     const toolVisible = ctx.tools.get(skillTool.name, agent) === skillTool
     const snapshot = toolVisible
-      ? await ctx.skills.snapshot({ cwd: agent.session.header.cwd, signal, scope: agent })
+      ? await ctx.skills.snapshot({ cwd: currentExecutionCwd(ctx, agent), signal, scope: agent })
       : { skills: [], complete: true }
     signal.throwIfAborted()
     if (!snapshot.complete) return decision
@@ -249,6 +251,14 @@ export function apply(ctx: Context, config: Config = {}): void {
         : decision.messages.map(message => message.id === existing.message.id ? catalog : message),
     }
   })
+}
+function currentExecutionCwd(ctx: Context, agent: Agent | undefined): string | undefined {
+  if (agent === undefined) return undefined
+  const sessionCwd = ctx.get('sessionCwd', false) ?? agent.ctx.get('sessionCwd', false)
+  if (sessionCwd !== undefined) {
+    return sessionCwd.resolve(agent.session.header)
+  }
+  return agent.options.cwd ?? agent.session.header.cwd
 }
 
 function renderCatalogMessage(entries: SkillCatalogSource['entries']): UserMessage {

@@ -5,6 +5,7 @@ import { CompactionId, compactCheckpointSource } from '@deepseek-ai/dsh-compacti
 import LlmRuntime, { createDeveloperMessage, createMessage, createSystemMessage, createToolResultMessage, createUserMessage, LlmError, ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import SessionStore, { Session, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SessionQueryEngine from '@deepseek-ai/dsh-session-query'
 import SessionTitleService from '@deepseek-ai/dsh-session-title'
@@ -47,6 +48,7 @@ class TestSessionQueryEngine extends SessionQueryEngine {
 async function harness(config: Config = {}): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
+  await ctx.plugin(SessionCwd)
   // The live registry and the title unit it hosts: discovery labels an
   // attached session from its projection cut, never from its log.
   await ctx.plugin(SessionProjectionRegistry)
@@ -684,6 +686,39 @@ describe('session reference discovery and preparation', () => {
     releaseList?.()
     await Promise.resolve()
     listSessions.mockRestore()
+  })
+
+  it('ranks workspace affinity by current roots while preserving historical cwd metadata', async () => {
+    const ctx = await harness()
+    const target = ctx.sessions.create(SessionId('moved-target'), { meta: { cwd: '/old-target' } })
+    const movedCandidate = { id: SessionId('moved-candidate'), createdAt: 20, cwd: '/old-target' }
+    const otherCandidate = { id: SessionId('other-candidate'), createdAt: 10, cwd: '/moved-target' }
+    vi.spyOn(ctx.sessionQuery, 'listSessions').mockResolvedValue([
+      { header: otherCandidate, live: false, persisted: true },
+      { header: movedCandidate, live: false, persisted: true },
+    ] as never)
+    ctx.sessionCwd.registerResolver(header => header.id === target.id || header.id === movedCandidate.id
+      ? '/moved-target'
+      : '/elsewhere')
+
+    await expect(ctx.sessionReferenceResolver.listCandidates(fakeAgent(target))).resolves.toEqual([
+      {
+        sessionId: movedCandidate.id,
+        label: movedCandidate.id,
+        displayTitle: movedCandidate.id,
+        cwd: '/old-target',
+        sameWorkspace: true,
+        createdAt: 20,
+      },
+      {
+        sessionId: otherCandidate.id,
+        label: otherCandidate.id,
+        displayTitle: otherCandidate.id,
+        cwd: '/moved-target',
+        sameWorkspace: false,
+        createdAt: 10,
+      },
+    ])
   })
 
   it('reads an attached session\'s current title, ahead of any checkpoint', async () => {

@@ -99,7 +99,7 @@ This section explains the design decisions behind the tool and points at the cod
 
 ### Request resolution
 
-The tool resolves the workdir before `ctx.shell.resolve()` runs: an explicit relative `workdir` is resolved against the session cwd, and a sandbox policy's canonical workspace root wins so confinement and launch use the same identity. Sandbox policy resolves per call through `ctx.sandboxPolicy`; an escalation request goes through `ctx.approval` before anything executes, and the tool fails at load if the executor confines but no policy service is mounted.
+The tool resolves the workdir before `ctx.shell.resolve()` runs: for an agent call, the base is the authoritative current execution cwd from `ctx.sessionCwd` (failing closed if unavailable); an explicit relative `workdir` resolves against it. A sandbox policy's canonical workspace root wins so confinement and launch use the same identity. For non-agent calls, the executor uses its configured default. Sandbox policy resolves per call through `ctx.sandboxPolicy`; an escalation request goes through `ctx.approval` before anything executes, and the tool fails at load if the executor confines but no policy service is mounted.
 
 ### Rendering story
 

@@ -45,7 +45,10 @@ try {
     $caseArchive = if ($mode -eq 'broken') { $brokenArchive } else { $archive }
     $reportDir = Join-Path $caseRoot 'installer-logs'
     $compileArgs = @('/V2', "/DOUTPUT_FILE=$probe", "/DPAYLOAD_FILE=$caseArchive", "/DTARGET_DIR=$target", "/DDSH_SEVENZIP_PATH=$SevenZip")
-    if ($FrameLibrary) { $compileArgs += @("/DSOURCE_DLL=$FrameLibrary", "/DREPORT_DIR=$reportDir") }
+    if ($FrameLibrary) {
+      $uiDirectory = Split-Path -Parent $FrameLibrary
+      $compileArgs += @("/DSOURCE_DLL=$FrameLibrary", "/DINSTALLER_BUILD_DIR=$uiDirectory", "/DREPORT_DIR=$reportDir")
+    }
     if ($mode -eq 'missing-stage') { $compileArgs += '/DMISSING_STAGE' }
     if ($mode -eq 'cancelled') { $compileArgs += '/DCANCELLED' }
     Invoke-Checked $Makensis ($compileArgs + $fixture)

@@ -72,6 +72,7 @@ export function workspaceBaselineIdentity(
   projectRoot: string,
 ): string {
   return JSON.stringify({
+    executionRoot: projectRoot,
     projectRoot: relative(cwd, projectRoot),
     projectRootMarkers: config.projectRootMarkers,
     maxBytes: config.maxBytes,

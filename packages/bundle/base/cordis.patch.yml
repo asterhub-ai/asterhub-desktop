@@ -13,8 +13,6 @@
 # driven); the grouping is for readers.
 
 - insert:
-    - id: asterhub-skills
-      name: '@deepseek-ai/dsh-asterhub-skills'
 
     - id: tool-plugin-manager
       name: '@deepseek-ai/dsh-plugin-manager/tools'
@@ -42,6 +40,8 @@
 
     - id: session
       name: '@deepseek-ai/dsh-session'
+    - id: session-cwd
+      name: '@deepseek-ai/dsh-session/cwd'
 
     - id: session-log-deepseek
       name: '@deepseek-ai/dsh-session-log-deepseek'
@@ -79,17 +79,14 @@
 
     - id: plugin-package-inventory-deepseek
       name: '@deepseek-ai/dsh-plugin-package-inventory-deepseek'
-
-    # The transport-independent default for Agents created by entry points.
-    # AsterHub owns the provider route. No model is selected until the user chooses.
-    # limited to models returned by the authenticated route catalog.
     - id: agent-default-model
       name: '@deepseek-ai/dsh-agent-default-model'
-      config:
-        provider: sub2api
-        model: __unselected__
-        locked: true
 
+    - id: llm-pi-ai
+      name: '@deepseek-ai/dsh-llm-pi-ai'
+
+    # Generic selection and provider services; deployment defaults are layered
+    # by the selected product bundle.
     - id: jobs
       name: '@deepseek-ai/dsh-jobs-local'
 
@@ -107,42 +104,13 @@
       name: '@deepseek-ai/dsh-settings'
       disabled: !!js "!ctx.get('profileContext')"
 
-    # Credential references stay layered for normal DSH routes. The AsterHub
-    # model route reads a dedicated Host credential record instead, so process
-    # environment and .env values cannot shadow account login.
+    # Credential persistence is shared. Desktop uses OS-backed encryption;
+    # other profiles retain the existing local credential backend.
     - id: credentials
       name: '@deepseek-ai/dsh-credentials-local'
       config:
         encrypted: !!js "ctx.get('profileContext')?.name === 'desktop'"
 
-    # The pi-ai adapter serves the fixed AsterHub endpoint and account catalog.
-    # The configured model is a descriptor template; the key comes from an account-owned Host
-    # credential record written after Sub2API login.
-    - id: llm-pi-ai
-      name: '@deepseek-ai/dsh-llm-pi-ai'
-      config:
-        deploymentLocked: true
-        providers:
-          sub2api:
-            displayName: AsterHub
-            credentialRecord: asterhub-account/model-api-key
-            api: openai-completions
-            baseURL: 'https://xapi.fans/v1'
-            syncModels: true
-            models:
-              - id: __unselected__
-                name: AsterHub
-                contextWindow: 262144
-                maxTokens: 32768
-                input: [text, image]
-                reasoningEfforts:
-                  off:
-                  low: low
-                  medium: medium
-                  high: high
-                compat:
-                  thinkingFormat: openai
-            reasoning: medium
 
     - id: session-persistence-jsonl
       name: '@deepseek-ai/dsh-session-persistence-jsonl'
@@ -475,23 +443,13 @@
         thresholds: [3, 5, 8]
         argumentsPreviewChars: 500
 
-    # The shared base enables stable model-facing web_search and web_fetch
-    # tools. The Web app disables this host row and composes both tools per agent
-    # preset; products with a stricter network policy override tool-web. AsterHub
-    # routes search through its authenticated SearXNG endpoint and reuses the
-    # Sub2API model-key record; the key is stripped before reaching SearXNG.
-    # Anonymous fetch accepts only public HTTP(S) destinations, resolves and
-    # validates every destination, and pins every actual connection.
+    # Shared public HTTP web services; product bundles add an authenticated
+    # search provider when their account route is present.
     - id: web
       name: '@deepseek-ai/dsh-web'
       config:
-        searchProvider: asterhub-searxng
         fetchProvider: http
 
-    - id: web-search-searxng
-      name: '@deepseek-ai/dsh-web-search-searxng'
-      config:
-        baseURL: https://xapi.fans/asterhub-search
 
     - id: web-fetch-http
       name: '@deepseek-ai/dsh-web-fetch-http'
@@ -512,12 +470,9 @@
     - id: tools
       name: '@deepseek-ai/dsh-tools'
 
-    # The deployment persona is a deployment choice; plan-mode and tool plugins own
-    # their own prompt sections.
+    # The deployment persona is configured by the selected product layer.
     - id: system-prompt
       name: '@deepseek-ai/dsh-system-prompt'
-      config:
-        personaPrefix: ''
 
     # Agents created at startup. The base stays empty; raw overlays may create
     # agents, while Web creates sessions on client request.

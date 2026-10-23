@@ -10,6 +10,7 @@
 import { accessSync, constants, statSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-session/cwd'
 import z from '@deepseek-ai/schemastery'
 import type {
   ResolvedSubagentStartRequest,
@@ -21,7 +22,7 @@ import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { acpConfigurationFailure, type AcpRunSpec, DEFAULT_DISPOSE_EOF_GRACE_MS, DEFAULT_DISPOSE_GRACE_MS, type PermissionPolicy, startAcpRun } from './run.ts'
 
 export const name = 'subagent-acp'
-export const inject = ['subagents', 'subprocess']
+export const inject = ['sessionCwd', 'subagents', 'subprocess']
 
 /** Config: how to spawn and drive the child ACP agent process. */
 export interface Config {
@@ -129,9 +130,9 @@ function assertUsableCwd(label: string, cwd: string): string {
  * child to the server's launch directory instead of the delegating session's
  * workspace (one server process serves many sessions, each with its own cwd).
  */
-function resolveCwd(configured: string | undefined, request: SubagentStartRequest): string {
+function resolveCwd(configured: string | undefined, request: SubagentStartRequest, sessionCwd: Context['sessionCwd']): string {
   if (configured !== undefined) return configured
-  const parentCwd = request.parent.session.header.cwd
+  const parentCwd = sessionCwd.resolve(request.parent.session.header)
   if (parentCwd === undefined) {
     throw new Error('subagent-acp: no working directory for the child — configure `cwd` or delegate from a parent session that has one')
   }
@@ -162,7 +163,7 @@ class AcpProvider implements SubagentProvider {
     }
     let cwd: string
     try {
-      cwd = resolveCwd(this.config.cwd, request)
+      cwd = resolveCwd(this.config.cwd, request, this.ctx.sessionCwd)
     } catch (error: unknown) {
       const failure = acpConfigurationFailure(error)
       this.ctx.logger.warn(`subagent-acp "${this.name}": child start failed: %o`, error)

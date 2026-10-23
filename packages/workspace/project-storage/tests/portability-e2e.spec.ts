@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { SESSION_FORMAT_VERSION, SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import type { SessionHeader } from '@deepseek-ai/dsh-session/types'
-import ProjectStorage, { ensureProjectGitExclusion, resolveProjectAttachmentScope } from '../src/index.ts'
+import ProjectStorage, { ensureProjectGitExclusion } from '../src/index.ts'
 import ProjectSessionPersistence from '../src/persistence.ts'
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -50,6 +51,7 @@ describe('end-to-end project portability across synthetic machines', () => {
     await mkdir(projectA, { recursive: true })
 
     const ctxA = new Context()
+    await ctxA.plugin(SessionCwd)
     await ctxA.plugin(ProjectStorage, {
       sessionMode: 'project-local',
       locatorPath: locatorA,
@@ -113,8 +115,6 @@ describe('end-to-end project portability across synthetic machines', () => {
     await subWriterA.close()
 
     // Write an attachment file inside .aster/attachments/v1
-    const attachmentScope = resolveProjectAttachmentScope(ctxA, parentSessionId)
-    expect(attachmentScope).toEqual({ projectId, sessionId: parentSessionId })
 
     const attachmentLoc = ctxA.projectStorage.locateSession(parentSessionId)
     expect(attachmentLoc).toBeDefined()
@@ -135,7 +135,9 @@ describe('end-to-end project portability across synthetic machines', () => {
     expect(manifestA.pinnedSessionIds).toContain(parentSessionId)
 
     // Dispose Machine A completely
+    const sourceSessionCwd = ctxA.sessionCwd
     await ctxA.fiber.dispose()
+    expect(() => sourceSessionCwd.resolve(headerA)).toThrow(/unavailable/)
 
     // Record digests of all files in .aster before copying
     const originalDigests = await collectFileDigests(join(projectA, '.aster'))
@@ -159,6 +161,7 @@ describe('end-to-end project portability across synthetic machines', () => {
     // 3. Machine B: Discover existing project, confirm open, cold resume
     // -------------------------------------------------------------
     const ctxB = new Context()
+    await ctxB.plugin(SessionCwd)
     await ctxB.plugin(ProjectStorage, {
       sessionMode: 'project-local',
       locatorPath: locatorB,
@@ -218,15 +221,13 @@ describe('end-to-end project portability across synthetic machines', () => {
     }
 
     // Current execution cwd on Machine B must resolve to projectB, NOT projectA!
-    const execCwdParent = ctxB.projectStorage.executionCwd(headerA)
+    const execCwdParent = ctxB.sessionCwd.resolve(headerA)
     expect(execCwdParent).toBe(projectB)
 
-    const execCwdSubagent = ctxB.projectStorage.executionCwd(subagentHeaderA)
+    const execCwdSubagent = ctxB.sessionCwd.resolve(subagentHeaderA)
     expect(execCwdSubagent).toBe(projectB)
 
     // Verify attachment bytes preserved on Machine B
-    const attachmentScopeB = resolveProjectAttachmentScope(ctxB, parentSessionId)
-    expect(attachmentScopeB).toEqual({ projectId, sessionId: parentSessionId })
     const locB = ctxB.projectStorage.locateSession(parentSessionId)
     expect(locB).toBeDefined()
     const targetAttachmentPath = join(locB!.attachmentsRoot, `sample-${sampleAttachmentDigest}.bin`)

@@ -7,15 +7,13 @@ kind: "package-bundle"
 
 [English](README.md) | 中文
 
-仅当显式配置 `DSH_PRODUCT_ANALYTICS_OTLP_URL` 时才挂载桌面埋点，导出器只向该地址发送。Web profile 不挂载这两个服务。
+随发行版交付的 Web 与 Desktop profile 会在此通用 Web 表层之后装配 AsterHub product-Web 层。仅显式配置 `DSH_PRODUCT_ANALYTICS_OTLP_URL` 时才挂载 Desktop 分析。
 
-桌面埋点每 30 秒调度未满批次，exporter 超时为 15 秒，processor 超时为 20 秒。退出时允许 2 秒排空，随后取消待完成的请求和重试等待，避免埋点阻止 Host 退出。尚未发送完成的事件可能丢失。
+桌面分析每 30 秒处理未满批次；exporter 超时 15 秒，processor 超时 20 秒。退出时允许 2 秒排空，随后取消待完成的请求，因此待处理事件可能丢失。
 
 ## 概述
 
-桌面会话内置[本地 Anima 记忆](../../context/anima-memory/README.zh.md)，并在专用设置页面中配置。记忆记录与证据保存在本地；提炼可单独配置模型提供方和模型。
-
-运行 `dsh --profile web` 可使用聊天、模型与设置管理和 Session 历史。它共享桌面模型、工具和安全默认值。启动会打印带认证信息的 URL 并打开默认浏览器。请配置端口与允许的主机；禁止绑定所有接口。项目本地 Session 会将图片字节存入所属项目的附件存储。
+随发行版交付的 Web 与 Desktop profile 会通过 AsterHub product-Web 层添加[本地 Anima 记忆](../../context/anima-memory/README.zh.md)、账户、语音输入与项目本地会话存储。该产品层还会注册四种 preset：`standard`（默认）、`ptc`、`minimal` 和 `cordis`。这些产品服务不属于此通用浏览器表层组合包。
 
 Host 挂载内置 preset 所需的子 Agent 模型选择设置 provider。模型选择保持禁用，直到启用并配置允许的路由列表。
 
@@ -44,9 +42,7 @@ dsh --profile web --no-open --port 8080
 
 启动后你会看到 `dsh web:` 行，其根 URL 携带新的进程 token。除非 `--no-open` 或 SSH 会话抑制，否则默认浏览器会打开该 URL、取得签名 cookie，再重定向到不含认证参数的同一目录。页面加载且你可以与 agent 对话，就说明成功了。两种可预期的失败：前端未构建时，启动会以构建提示停止（checkout 中运行 `pnpm run build`）；浏览器无法打开时，stderr 会打印不含凭据的诊断，但服务器会继续运行——请自行打开已打印的启动 URL。
 
-**设置 → 模型**显示 **DeepSeek**，使用 `DEEPSEEK_API_KEY`。默认模型为 `deepseek-official` / `deepseek-flash`（DeepSeek-V41-Flash）。[DeepSeek 插件](../../llm/llm-deepseek/README.zh.md#endpoint-and-wire-format)使用 Messages API。
-
-已保存的模型选择覆盖组合默认值。设置卡接受兼容 Messages 的 API 地址与凭据引用。
+随发行版交付的 AsterHub product-Web 层会在 **设置 → 模型**提供经过账户认证的路由与模型目录。Provider 和 endpoint 配置保持部署锁定；用户只能选择账户当前可用的模型。
 
 ### 配置
 
@@ -81,11 +77,11 @@ dsh --profile web --no-open --port 8080
 <details>
 <summary>实现细节——点击展开</summary>
 
-此 bundle 由一层五个文件的补丁和一个运行时胶水插件组成：`cordis.patch.yml` 承载宿主行和 preset 注册表，每个 `presets/<id>.patch.yml` 插入一条随发行版交付的 preset 声明，按 `dsh.bundle.patch` 列出的顺序应用。存储栈与投影缓存来自 `dsh-base`；Web 叠加层的工作区和消息反馈条目消费共享的 `storageDomain` 服务。补丁重述 base 有意省略的界面专用值，插入 Web 专用宿主条目和浏览器插件列表，再将 Agent 层移到预设后面。胶水插件负责 dist 服务、信任采样、提示词段落、bash 变量和就绪通知。`office-to-pdf` 条目为宿主消费者挂载一个延迟创建引擎的 [Office 转换提供方](../../document/office-to-pdf/README.zh.md)，使用此 bundle 的 Desktop 组合也共享该提供方。 转换服务的 Remote 方法负责预览读取授权，Document Preview 负责 Office 查看器和客户端缓存。
+此通用 Web bundle 包含浏览器宿主行、传输层、浏览器名录和运行时胶水插件。AsterHub product-Web 组合包拥有随发行版交付的 preset 注册表与声明，以及仅供产品使用的账户、存储、记忆、语音和分析默认值。存储栈与投影缓存来自 `dsh-base`；Web 叠加层的工作区和消息反馈条目消费共享的 `storageDomain` 服务。胶水插件负责 dist 服务、信任采样、提示词段落、bash 变量和就绪通知。`office-to-pdf` 条目为宿主消费者挂载一个延迟创建引擎的 [Office 转换提供方](../../document/office-to-pdf/README.zh.md)，使用此 bundle 的 Desktop 组合也共享该提供方。转换服务的 Remote 方法负责预览读取授权，Document Preview 负责 Office 查看器和客户端缓存。
 
 ### patch 语义
 
-patch 会替换目标行的整个 `config`，因此每个 Web 行都重述自己拥有的每个键：基础行上的 persona 前缀与后缀模板、`DSH_TOOLS_MODE` PTC mode 开关与 `session-query-sqlite` 值，随后 `insert` 添加 Web 宿主行、传输层与浏览器名录。base 以进程级挂载的按 agent 工具行在这里被禁用，由 preset 名录接管；每项宿主层与 preset 层归属决策的理由以行内注释写在 patch 里。
+patch 会替换目标行的整个 `config`。此层拥有 Web 调用设置与 `session-query-sqlite` 覆盖；产品 persona、preset 组合与私有服务由后续产品层提供。Web 表层插入宿主行、传输层和浏览器名录，再由产品层的 preset 接管 Agent 工具组合。
 
 ### 就绪宣告
 
@@ -101,8 +97,8 @@ URL 行与浏览器交接都是就绪信号：监督方一观察到该行就发�
 |---|---|
 | [`src/index.ts`](src/index.ts) | `web-app` 粘合插件：dist 解析、LAN 信任采样、提示词段落、bash 变量、URL 行、浏览器交接 |
 | [`src/startup.ts`](src/startup.ts) | `web-startup` 提供方：`--host`、`--port`、`--trusted-host`、`--no-open`、`--help` |
-| [`cordis.patch.yml`](cordis.patch.yml) | Web patch：重述的基础值、Web 宿主行、浏览器名录、preset 注册表 |
-| [`presets/`](presets) | 每个随发行版交付的 preset（`standard`、`ptc`、`minimal`、`cordis`）各一条 `@deepseek-ai/dsh-agent-preset` 声明，各自一个补丁文件 |
+| [`cordis.patch.yml`](cordis.patch.yml) | 通用 Web 宿主行、浏览器名录与表层值 |
+| — | 随发行版交付的 AsterHub preset 与产品注册表位于 [`asterhub-product-web`](../asterhub-product-web/README.zh.md) |
 | — | 不发布运行时不变式伴生入口；每项贡献（frontend-static 子插件、提示词段落、bashEnv 注册）都会随 fiber 由注册表释放，且每个所属注册表的包负责该关系的不变式；本包不持有需要审计的可变状态。 |
 | [`tests/web-app.spec.ts`](tests/web-app.spec.ts) | dist 解析、回退席位、提示词段落、就绪宣告 |
 | [`tests/startup.spec.ts`](tests/startup.spec.ts) | 在真实 Loader 树上的命令行解析 |

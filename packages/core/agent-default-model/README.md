@@ -31,7 +31,7 @@ Mount this package wherever agents are created without an explicit model route. 
 
 ### Configure the default
 
-The composition requires a provider and model. Consumers read the live references even when no configuration editor is mounted.
+The composition requires a provider and model unless an application route supplies the deployment default. In that case an omitted field is read from the trusted route. Consumers read the live references even when no configuration editor is mounted.
 
 ```yaml
 - name: '@deepseek-ai/dsh-agent-default-model'
@@ -42,8 +42,8 @@ The composition requires a provider and model. Consumers read the live reference
 
 | Field | Default | Meaning |
 |---|---|---|
-| `provider` | required | Registered provider route for fresh agents |
-| `model` | required | Provider-owned model id for fresh agents |
+| `provider` | application route or required | Registered provider route for fresh agents |
+| `model` | application route or required | Provider-owned model id for fresh agents |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-agent-default-model) lists every accepted field. `reasoningEffort` is optional; saving a selection without it removes that field from the profile’s complete config override.
 

@@ -31,7 +31,7 @@ AsterHub 路由锁定时，只允许保存供应商与应用路由一致、且 I
 
 ### 配置默认值
 
-组合要求提供 provider 和模型。即使没有挂载配置编辑器，消费者也可读取即时引用。
+除非应用路由提供部署默认值，否则组合必须指定 provider 与模型。此时可省略配置字段，并从可信应用路由读取。即使没有挂载配置编辑器，消费者也可读取即时引用。
 
 ```yaml
 - name: '@deepseek-ai/dsh-agent-default-model'
@@ -42,8 +42,8 @@ AsterHub 路由锁定时，只允许保存供应商与应用路由一致、且 I
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
-| `provider` | 必填 | 新 agent 使用的已注册提供方路由 |
-| `model` | 必填 | 新 agent 使用的、由提供方持有的模型 id |
+| `provider` | 应用路由或必填 | 新 agent 使用的已注册提供方路由 |
+| `model` | 应用路由或必填 | 新 agent 使用的、由提供方持有的模型 id |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-agent-default-model) 列出所有接受的字段。`reasoningEffort` 是可选的；保存不含此字段的选择，会从 profile 的完整配置覆盖中移除此字段。
 
