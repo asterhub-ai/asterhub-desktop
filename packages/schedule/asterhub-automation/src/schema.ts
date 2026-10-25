@@ -46,12 +46,12 @@ const timingSchema: z.ZodType<AutomationTiming> = z.discriminatedUnion('kind', [
   }),
   z.object({
     kind: z.literal('daily'),
-    time: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/),
+    time: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?$/),
     timeZone: z.string().min(1),
   }),
   z.object({
     kind: z.literal('weekly'),
-    time: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/),
+    time: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?$/),
     timeZone: z.string().min(1),
     weekdays: z.array(z.number().int().min(1).max(7)).min(1),
   }),

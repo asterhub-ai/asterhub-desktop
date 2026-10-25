@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write README.md
 /asterhub:
-  en: 8097bdefb5ee83f7
-  zh: 9ef065a2a6b9ecb8
+  en: 640eb9fac0f57483
+  zh: 575763bf9765cd7b
 /asterhub/developer-preview:
   en: 711816da77fa57ef
   zh: 683a3e8c3aad0c9b

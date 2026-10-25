@@ -130,9 +130,6 @@ export function apply(ctx: Context): void {
     if (!result.ok) throw new Error(result.error.message)
     return result.value
   }
-
-  // Stable per-surface occupancy sources (the renderer's hook cache keys by
-  // source identity): true while the surface's directory-flow hole is filled.
   const flowSource = (hole: 'sidebar.workspaces.directoryFlow' | 'conversation.hero.workspace.directoryFlow'): HostObservable<boolean> => ({
     getSnapshot: () => ctx.slots.entries(hole).length > 0,
     subscribe: listener => ctx.slots.subscribe(hole, listener),

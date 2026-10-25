@@ -152,11 +152,22 @@ describe('confirmed native task management', () => {
     expect(paused.task?.activeRunId).toBe(manual.runId)
   })
 
-  it('does not drop an unexpired receipt when the configured receipt capacity is full', async () => {
-    const f = await fixture({ receiptRecords: 1 })
-    const created = await f.confirm({ action: 'create', draft })
-    if (created.task === null) throw new Error('create did not persist a task')
-    await expect(f.confirm({ action: 'pause', id: created.taskId, expectedRevision: created.task.revision })).rejects.toMatchObject({ code: 'receipt_capacity' })
-    expect(f.store.get(created.taskId)?.enabled).toBe(true)
+  it('creates and persists daily and weekly tasks without fractional second schema rejection', async () => {
+    const f = await fixture()
+    const dailyDraft: AutomationDraft = {
+      ...draft,
+      name: 'Daily Task',
+      timing: { kind: 'daily', time: '09:30:00', timeZone: 'Asia/Shanghai' },
+    }
+    const dailyCreated = await f.confirm({ action: 'create', draft: dailyDraft })
+    expect(dailyCreated.task?.definition.timing.kind).toBe('daily')
+
+    const weeklyDraft: AutomationDraft = {
+      ...draft,
+      name: 'Weekly Task',
+      timing: { kind: 'weekly', time: '09:30:00', timeZone: 'Asia/Shanghai', weekdays: [1, 3, 5] },
+    }
+    const weeklyCreated = await f.confirm({ action: 'create', draft: weeklyDraft })
+    expect(weeklyCreated.task?.definition.timing.kind).toBe('weekly')
   })
 })

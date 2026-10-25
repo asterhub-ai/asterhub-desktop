@@ -303,7 +303,11 @@ export async function executeRun(host: AutomationRuntimeHost,
     if (handle !== undefined) {
       ctx.userQuestions.cancelPending(handle.agent)
       await handle.agent.whenIdle()
-      if (!(await ctx.sessions.flush(handle.agent.session))) throw new Error('automation canceled result persistence unavailable')
+      try {
+        await ctx.sessions.flush(handle.agent.session)
+      } catch {
+        // Teardown flush must not abort saving terminal run state.
+      }
     }
     await queuedWrites
     run = { ...run,

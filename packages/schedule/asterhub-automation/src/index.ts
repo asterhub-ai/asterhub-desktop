@@ -168,7 +168,7 @@ export type { AutomationChangedEvent, AutomationAccountChangedEvent, AutomationR
  *   scopes only; scheduled-run/descendant scopes never receive it.
  */
 export class AutomationService extends TypertRemoteService implements AutomationRuntimeHost {
-  static inject = ['storageDomain', 'workspaceRegistry', 'accountSub2api', 'llm', 'agents', 'agentPresets', 'sessionController', 'sessionProjections', 'sessionPersistence', 'userQuestions', 'permissionPresets', 'sessionTitle', 'jobs']
+  static inject = ['storageDomain', 'workspaceRegistry', 'accountSub2api', 'llm', 'agents', 'agentPresets', 'sessionController', 'sessionProjections', 'sessionPersistence', 'userQuestions', 'permissionPresets', 'sessionTitle', 'jobs', 'sessions']
 
   static Config = Config
 

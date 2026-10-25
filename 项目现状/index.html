@@ -1,0 +1,2379 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="AsterHub 项目状态、阶段、待办、风险与交付证据的离线快照。">
+  <title>AsterHub / 项目现状</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --blue: #2563eb;
+      --blue-ink: #1d4ed8;
+      --bg: #f8fafc;
+      --fg: #1e293b;
+      --muted: #475569;
+      --soft: #64748b;
+      --border: #e2e8f0;
+      --surface: #fff;
+      --pale: #eff6ff;
+      --orange: #ea580c;
+      --orange-pale: #fff7ed;
+      --red: #dc2626;
+      --red-pale: #fef2f2;
+      --green: #15803d;
+      --green-pale: #f0fdf4;
+      --violet: #6d28d9;
+      --violet-pale: #f5f3ff;
+      --shadow: 0 1px 2px rgba(15, 23, 42, .035), 0 8px 24px rgba(15, 23, 42, .035);
+      --radius: 16px;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      font-weight: 400;
+      color: var(--fg);
+      background: var(--bg);
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: 22px;
+    }
+    body {
+      min-width: 320px;
+      margin: 0;
+      background: var(--bg);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+    a {
+      color: var(--blue-ink);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    button, input, select, textarea {
+      font: inherit;
+    }
+    button, a, select {
+      touch-action: manipulation;
+    }
+    button {
+      color: inherit;
+    }
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 3px solid rgba(37, 99, 235, .34);
+      outline-offset: 3px;
+    }
+    .skip-link {
+      position: fixed;
+      z-index: 20;
+      top: 12px;
+      left: 12px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: var(--shadow);
+      transform: translateY(-160%);
+    }
+    .skip-link:focus {
+      transform: none;
+    }
+    .shell {
+      min-height: 100vh;
+    }
+    .sidebar {
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      width: 252px;
+      padding: 27px 18px 22px;
+      border-right: 1px solid var(--border);
+      background: #fff;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 10px 28px;
+    }
+    .brand-mark {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border-radius: 11px;
+      background: var(--blue);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: -.04em;
+    }
+    .brand-name {
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: .01em;
+    }
+    .brand-sub {
+      display: block;
+      margin-top: 1px;
+      color: var(--soft);
+      font-size: 11px;
+    }
+    .nav-caption {
+      margin: 0 10px 9px;
+      color: var(--soft);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    .nav-list {
+      display: grid;
+      gap: 4px;
+    }
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      min-height: 42px;
+      padding: 8px 11px;
+      border-radius: 9px;
+      color: var(--muted);
+      font-size: 13px;
+      transition: background .16s ease, color .16s ease;
+    }
+    .nav-link:hover {
+      background: #f1f5f9;
+      color: var(--fg);
+      text-decoration: none;
+    }
+    .nav-link[aria-current="location"] {
+      background: var(--pale);
+      color: var(--blue-ink);
+      font-weight: 500;
+    }
+    .nav-icon {
+      display: block;
+      flex: none;
+      width: 17px;
+      height: 17px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .sidebar-note {
+      margin: auto 6px 0;
+      padding: 13px 13px 14px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fbfdff;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.55;
+    }
+    .sidebar-note strong {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--fg);
+      font-weight: 500;
+    }
+    .sidebar-note p {
+      margin: 0;
+    }
+    .sidebar-date {
+      margin: 13px 10px 0;
+      color: var(--soft);
+      font-size: 11px;
+    }
+    .main {
+      min-height: 100vh;
+      margin-left: 252px;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 62px;
+      padding: 0 clamp(22px, 4vw, 58px);
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, .82);
+    }
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .refresh-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .refresh-time {
+      font-size: 11px;
+      color: var(--soft);
+    }
+    .refresh-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--fg);
+      font-size: 12px;
+      cursor: pointer;
+      line-height: 1.4;
+      transition: background .15s, border-color .15s, color .15s;
+    }
+    .refresh-button:hover {
+      background: var(--pale);
+      border-color: #bfdbfe;
+      color: var(--blue-ink);
+    }
+    .refresh-button.refreshing .refresh-icon {
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      100% { transform: rotate(360deg); }
+    }
+    .auto-refresh-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+    }
+    .auto-refresh-label input[type="checkbox"] {
+      cursor: pointer;
+      accent-color: var(--blue);
+      margin: 0;
+    }
+    .crumb {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--soft);
+      font-size: 12px;
+    }
+    .crumb strong {
+      color: var(--fg);
+      font-weight: 500;
+    }
+    .crumb-sep {
+      color: #cbd5e1;
+    }
+    .snapshot-badge {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .snapshot-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--blue);
+    }
+    .content {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      padding: 39px clamp(22px, 4vw, 58px) 72px;
+    }
+    .eyebrow {
+      color: var(--blue-ink);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    .page-title {
+      margin: 8px 0 5px;
+      font-size: clamp(27px, 3vw, 37px);
+      font-weight: 500;
+      line-height: 1.2;
+      letter-spacing: -.045em;
+    }
+    .page-lead {
+      max-width: 780px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .hero {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 24px;
+      overflow: hidden;
+      margin-top: 27px;
+      padding: 26px 28px;
+      border: 1px solid #dbeafe;
+      border-radius: var(--radius);
+      background: linear-gradient(112deg, #fff 8%, #f3f7ff 100%);
+      box-shadow: var(--shadow);
+    }
+    .hero:after {
+      position: absolute;
+      top: -93px;
+      right: -53px;
+      width: 230px;
+      height: 230px;
+      border: 1px solid rgba(37, 99, 235, .09);
+      border-radius: 50%;
+      box-shadow: 0 0 0 22px rgba(37, 99, 235, .025), 0 0 0 48px rgba(37, 99, 235, .018);
+      content: "";
+      pointer-events: none;
+    }
+    .hero-copy, .hero-side {
+      position: relative;
+      z-index: 1;
+    }
+    .hero-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--blue-ink);
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .hero-label .snapshot-dot {
+      background: var(--orange);
+    }
+    .hero h2 {
+      max-width: 700px;
+      margin: 10px 0 8px;
+      font-size: clamp(21px, 2.4vw, 29px);
+      font-weight: 500;
+      line-height: 1.35;
+      letter-spacing: -.035em;
+    }
+    .hero-copy p {
+      max-width: 720px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 19px;
+      margin-top: 15px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .hero-meta span {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .hero-side {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: center;
+      width: 190px;
+      min-width: 0;
+      padding: 17px 18px;
+      border: 1px solid rgba(37, 99, 235, .13);
+      border-radius: 13px;
+      background: rgba(255, 255, 255, .8);
+    }
+    .hero-side-label {
+      color: var(--soft);
+      font-size: 10px;
+      letter-spacing: .08em;
+    }
+    .hero-version {
+      display: block;
+      margin: 7px 0 5px;
+      font-size: 36px;
+      font-weight: 500;
+      line-height: 1.1;
+      letter-spacing: -.045em;
+      font-variant-numeric: tabular-nums;
+    }
+    .hero-framework {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    .section {
+      margin-top: 43px;
+      scroll-margin-top: 22px;
+    }
+    .section-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .section-heading {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 500;
+      letter-spacing: -.025em;
+    }
+    .section-desc {
+      margin: 4px 0 0;
+      color: var(--soft);
+      font-size: 12px;
+    }
+    .section-kicker {
+      color: var(--blue-ink);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .checkpoint-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .checkpoint {
+      min-height: 130px;
+      padding: 17px 18px;
+    }
+    .checkpoint-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .checkpoint h3 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .checkpoint p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.65;
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+      padding: 3px 8px;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 500;
+      line-height: 1.45;
+      white-space: nowrap;
+    }
+    .status:before {
+      width: 6px;
+      height: 6px;
+      flex: none;
+      border-radius: 50%;
+      background: currentColor;
+      content: "";
+    }
+    .status-verified {
+      border-color: #bbf7d0;
+      background: var(--green-pale);
+      color: #166534;
+    }
+    .status-partial {
+      border-color: #fed7aa;
+      background: var(--orange-pale);
+      color: #9a3412;
+    }
+    .status-conflict {
+      border-color: #ddd6fe;
+      background: var(--violet-pale);
+      color: #6d28d9;
+    }
+    .status-issue {
+      border-color: #fecaca;
+      background: var(--red-pale);
+      color: #b91c1c;
+    }
+    .status-pending, .status-blocked {
+      border-color: var(--border);
+      background: #f1f5f9;
+      color: #475569;
+    }
+    .status-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px 13px;
+      margin-top: 13px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--soft);
+      font-size: 10px;
+    }
+    .legend-item .status {
+      padding: 2px 7px;
+    }
+    .release-card {
+      padding: 21px 22px;
+    }
+    .release-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+    }
+    .release-name {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 500;
+      overflow-wrap: anywhere;
+    }
+    .release-info {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .release-hash {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      margin-top: 17px;
+      padding: 12px 13px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #f8fafc;
+    }
+    .hash-label {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--soft);
+      font-size: 10px;
+    }
+    .hash-value {
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.6;
+      overflow-wrap: anywhere;
+      user-select: all;
+    }
+    .copy-button, .filter-reset {
+      min-height: 36px;
+      padding: 7px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--fg);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background .16s ease, border-color .16s ease;
+    }
+    .copy-button:hover, .filter-reset:hover {
+      border-color: #cbd5e1;
+      background: #f1f5f9;
+    }
+    .copy-button:active, .filter-reset:active {
+      background: #e2e8f0;
+    }
+    .copy-feedback {
+      min-height: 18px;
+      margin: 7px 0 0;
+      color: var(--green);
+      font-size: 11px;
+    }
+    .release-limitation {
+      margin: 11px 0 0;
+      padding-left: 11px;
+      border-left: 2px solid #fdba74;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .stage-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .stage-card {
+      position: relative;
+      overflow: hidden;
+      padding: 17px 18px 18px;
+    }
+    .stage-card:before {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: 3px;
+      background: #cbd5e1;
+      content: "";
+    }
+    .stage-card[data-status="verified"]:before {
+      background: #22c55e;
+    }
+    .stage-card[data-status="partial"]:before {
+      background: #f97316;
+    }
+    .stage-card[data-status="issue"]:before {
+      background: #ef4444;
+    }
+    .stage-card[data-status="conflict"]:before {
+      background: #8b5cf6;
+    }
+    .stage-card h3 {
+      margin: 10px 0 5px;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.45;
+    }
+    .stage-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.65;
+    }
+    .stage-id {
+      display: inline-block;
+      margin-right: 6px;
+      color: var(--blue-ink);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: .03em;
+    }
+    .card-link {
+      display: inline-flex;
+      margin-top: 10px;
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .filters {
+      display: grid;
+      grid-template-columns: minmax(180px, 1.35fr) minmax(150px, .75fr) minmax(150px, .75fr) auto;
+      align-items: end;
+      gap: 10px;
+      padding: 15px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #fff;
+      box-shadow: var(--shadow);
+    }
+    .field label {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .field input, .field select {
+      width: 100%;
+      min-height: 39px;
+      padding: 8px 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #fff;
+      color: var(--fg);
+      font-size: 12px;
+    }
+    .field input::placeholder {
+      color: #94a3b8;
+    }
+    .filter-reset {
+      min-height: 39px;
+    }
+    .result-count {
+      min-height: 22px;
+      margin: 10px 2px 9px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .task-list {
+      display: grid;
+      gap: 10px;
+    }
+    .task-card {
+      padding: 17px 18px;
+    }
+    .task-top {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+      gap: 12px;
+    }
+    .task-title-wrap {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+    }
+    .task-id {
+      min-width: 34px;
+      padding-top: 2px;
+      color: var(--soft);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 10px;
+    }
+    .task-title {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.55;
+    }
+    .task-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 9px 0 0 43px;
+    }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 7px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.5;
+    }
+    .tag-priority {
+      border-color: #fed7aa;
+      background: var(--orange-pale);
+      color: #9a3412;
+    }
+    .task-detail {
+      margin: 12px 0 0 43px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .task-acceptance {
+      margin: 9px 0 0 43px;
+      padding: 9px 11px;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .task-acceptance strong {
+      color: var(--fg);
+      font-weight: 500;
+    }
+    .task-source {
+      margin: 9px 0 0 43px;
+      font-size: 10px;
+    }
+    .empty-state {
+      padding: 30px 20px;
+      border: 1px dashed #cbd5e1;
+      border-radius: var(--radius);
+      background: #fff;
+      color: var(--muted);
+      text-align: center;
+    }
+    .empty-state strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--fg);
+      font-weight: 500;
+    }
+    .issue-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .issue-card {
+      padding: 17px 18px;
+    }
+    .issue-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .issue-card h3 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .severity {
+      flex: none;
+      padding: 2px 7px;
+      border-radius: 6px;
+      background: var(--red-pale);
+      color: #b91c1c;
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .issue-card p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .issue-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid #f1f5f9;
+    }
+    .issue-foot .status {
+      font-size: 9px;
+    }
+    .issue-task {
+      font-size: 10px;
+    }
+    .capability-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .capability {
+      min-height: 122px;
+      padding: 17px 18px;
+    }
+    .capability h3 {
+      margin: 0 0 7px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .capability-state {
+      display: inline-block;
+      margin-bottom: 7px;
+      color: var(--blue-ink);
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .capability p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .next-card {
+      padding: 9px 20px;
+    }
+    .next-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .next-list li {
+      position: relative;
+      padding: 12px 0 12px 23px;
+      border-bottom: 1px solid #f1f5f9;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .next-list li:last-child {
+      border-bottom: 0;
+    }
+    .next-list li:before {
+      position: absolute;
+      top: 19px;
+      left: 1px;
+      width: 8px;
+      height: 8px;
+      border: 2px solid var(--blue);
+      border-radius: 50%;
+      background: #fff;
+      content: "";
+    }
+    .docs-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .doc-card {
+      display: flex;
+      gap: 12px;
+      padding: 14px 15px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fff;
+      transition: border-color .16s ease, box-shadow .16s ease;
+    }
+    .doc-card:hover {
+      border-color: #bfdbfe;
+      box-shadow: 0 3px 12px rgba(37, 99, 235, .07);
+      text-decoration: none;
+    }
+    .doc-icon {
+      display: grid;
+      flex: none;
+      width: 32px;
+      height: 36px;
+      place-items: center;
+      border: 1px solid #dbeafe;
+      border-radius: 8px;
+      background: #eff6ff;
+      color: var(--blue-ink);
+      font-size: 9px;
+      font-weight: 500;
+      letter-spacing: .04em;
+    }
+    .doc-card strong {
+      display: block;
+      color: var(--fg);
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .doc-kind {
+      display: block;
+      margin-top: 1px;
+      color: var(--blue-ink);
+      font-size: 9px;
+    }
+    .doc-card p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.55;
+    }
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      margin-top: 44px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+      color: var(--soft);
+      font-size: 10px;
+    }
+    .footer a {
+      font-size: 10px;
+    }
+    .mobile-nav {
+      display: none;
+    }
+    .issue-form-card {
+      padding: 20px;
+    }
+    .issue-form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .issue-form-grid .field-wide {
+      grid-column: 1 / -1;
+    }
+    .issue-field label {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .issue-field .required {
+      color: #b91c1c;
+    }
+    .issue-control {
+      width: 100%;
+      min-height: 40px;
+      padding: 8px 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #fff;
+      color: var(--fg);
+      font: inherit;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    textarea.issue-control {
+      min-height: 86px;
+      resize: vertical;
+    }
+    .issue-control::placeholder {
+      color: #64748b;
+    }
+    .issue-field [aria-invalid="true"] {
+      border-color: #b91c1c;
+      background: #fffafa;
+    }
+    .issue-hint {
+      margin: 5px 0 0;
+      color: var(--soft);
+      font-size: 10px;
+      line-height: 1.5;
+    }
+    .issue-form-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-top: 17px;
+      padding-top: 15px;
+      border-top: 1px solid var(--border);
+    }
+    .issue-binding {
+      min-width: 0;
+      color: var(--muted);
+      font-size: 11px;
+      overflow-wrap: anywhere;
+    }
+    .issue-binding strong {
+      display: block;
+      color: var(--fg);
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .issue-form-actions {
+      display: flex;
+      flex: none;
+      align-items: center;
+      gap: 9px;
+    }
+    .issue-choose, .issue-submit {
+      min-height: 40px;
+      padding: 8px 13px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--fg);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background .16s ease, border-color .16s ease, color .16s ease;
+    }
+    .issue-choose:hover {
+      border-color: #cbd5e1;
+      background: #f8fafc;
+    }
+    .issue-submit {
+      border-color: var(--blue);
+      background: var(--blue);
+      color: #fff;
+    }
+    .issue-submit:hover {
+      border-color: var(--blue-ink);
+      background: var(--blue-ink);
+    }
+    .issue-submit:disabled {
+      border-color: #94a3b8;
+      background: #94a3b8;
+      cursor: wait;
+    }
+    .issue-message {
+      min-height: 24px;
+      margin: 11px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .issue-message[data-state="success"] {
+      color: #166534;
+    }
+    .issue-message[data-state="error"] {
+      color: #991b1b;
+    }
+    .issue-records {
+      display: grid;
+      gap: 8px;
+      margin-top: 17px;
+      padding-top: 15px;
+      border-top: 1px solid var(--border);
+    }
+    .issue-record-list {
+      display: grid;
+      gap: 8px;
+    }
+    .issue-records[hidden], .issue-records-empty[hidden] {
+      display: none;
+    }
+    .issue-records-title {
+      margin: 0;
+      color: var(--fg);
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .issue-record {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 9px 14px;
+      align-items: start;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: #fbfdff;
+    }
+    .issue-record-title {
+      margin: 0;
+      color: var(--fg);
+      font-size: 11px;
+      font-weight: 500;
+      overflow-wrap: anywhere;
+    }
+    .issue-record-meta {
+      margin: 3px 0 0;
+      color: var(--soft);
+      font-size: 10px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      overflow-wrap: anywhere;
+    }
+    .issue-record-state {
+      color: #9a3412;
+      font-size: 10px;
+      white-space: nowrap;
+    }
+    .issue-record-state[data-state="triaged"] {
+      color: #166534;
+    }
+    .issue-records-empty {
+      margin: 0;
+      color: var(--soft);
+      font-size: 11px;
+    }
+    .handoff-purpose {
+      margin: 0;
+      padding: 15px 18px;
+      border: 1px solid #dbeafe;
+      border-radius: 12px;
+      background: linear-gradient(108deg, #fff 0%, #f3f7ff 100%);
+      color: var(--fg);
+      font-size: 13px;
+      line-height: 1.65;
+    }
+    .handoff-usage {
+      margin-top: 10px;
+      padding: 11px 14px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .handoff-usage summary {
+      color: var(--fg);
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .handoff-usage ul {
+      display: grid;
+      gap: 6px;
+      margin: 10px 0 0;
+      padding-left: 19px;
+    }
+    .handoff-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin: 13px 0;
+    }
+    .handoff-freshness {
+      min-width: 0;
+      color: var(--muted);
+      font-size: 11px;
+      overflow-wrap: anywhere;
+    }
+    .handoff-freshness strong {
+      margin-right: 6px;
+      color: var(--fg);
+      font-weight: 500;
+    }
+    .handoff-copy {
+      min-height: 39px;
+      flex: none;
+      padding: 8px 13px;
+      border: 1px solid var(--blue);
+      border-radius: 8px;
+      background: var(--blue);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background .16s ease, border-color .16s ease;
+    }
+    .handoff-copy:hover:not(:disabled) {
+      border-color: var(--blue-ink);
+      background: var(--blue-ink);
+    }
+    .handoff-copy:disabled {
+      border-color: #94a3b8;
+      background: #94a3b8;
+      cursor: not-allowed;
+    }
+    .handoff-copy-message {
+      min-height: 22px;
+      margin: -7px 0 8px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .handoff-copy-message[data-state="success"] {
+      color: #166534;
+    }
+    .handoff-copy-message[data-state="error"] {
+      color: #991b1b;
+    }
+    .handoff-copy-fallback {
+      width: 100%;
+      min-height: 150px;
+      margin: 0 0 12px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: #f8fafc;
+      color: var(--fg);
+      font: 11px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
+      overflow-wrap: anywhere;
+      resize: vertical;
+    }
+    .handoff-copy-fallback[hidden] {
+      display: none;
+    }
+    .handoff-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .handoff-grid[hidden] {
+      display: none;
+    }
+    .handoff-card {
+      min-width: 0;
+      padding: 16px 17px;
+    }
+    .handoff-card-wide {
+      grid-column: 1 / -1;
+    }
+    .handoff-card h3 {
+      margin: 0 0 10px;
+      color: var(--fg);
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .handoff-rows {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+    }
+    .handoff-row {
+      display: grid;
+      grid-template-columns: minmax(90px, 130px) minmax(0, 1fr);
+      align-items: start;
+      gap: 5px 12px;
+    }
+    .handoff-row dt {
+      color: var(--soft);
+      font-size: 10px;
+    }
+    .handoff-row dd {
+      min-width: 0;
+      margin: 0;
+      color: var(--muted);
+      font-size: 11px;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+    .handoff-row code, .handoff-item code, .handoff-job code {
+      color: var(--fg);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 10px;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+    .handoff-list {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding-left: 19px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .handoff-list li {
+      padding-left: 2px;
+      overflow-wrap: anywhere;
+    }
+    .handoff-slices, .handoff-items, .handoff-verifications {
+      display: grid;
+      gap: 9px;
+    }
+    .handoff-inventory-group {
+      padding: 10px 11px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: #fff;
+    }
+    .handoff-group-title {
+      color: var(--fg);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      overflow-wrap: anywhere;
+    }
+    .handoff-inventory-group > .handoff-items {
+      margin-top: 9px;
+    }
+    .handoff-copy-disclosure > summary {
+      color: var(--fg);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      overflow-wrap: anywhere;
+    }
+    .handoff-copy-disclosure > summary:focus-visible {
+      outline: 3px solid rgba(37, 99, 235, .26);
+      outline-offset: 3px;
+      border-radius: 3px;
+    }
+    .handoff-slice-content, .handoff-triage-detail > div {
+      margin-top: 9px;
+    }
+    .handoff-item, .handoff-job {
+      padding: 10px 11px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: #fbfdff;
+    }
+    .handoff-item-title, .handoff-job-title {
+      margin: 0 0 5px;
+      color: var(--fg);
+      font-size: 11px;
+      font-weight: 500;
+      overflow-wrap: anywhere;
+    }
+    .handoff-item p, .handoff-job p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 10px;
+      overflow-wrap: anywhere;
+    }
+    .handoff-item a, .handoff-job a {
+      overflow-wrap: anywhere;
+    }
+    .handoff-empty {
+      color: var(--soft);
+      font-size: 11px;
+      font-style: italic;
+    }
+    @media (max-width: 820px) {
+      .handoff-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .handoff-card-wide {
+        grid-column: auto;
+      }
+    }
+    @media (max-width: 620px) {
+      .handoff-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .handoff-copy {
+        width: 100%;
+      }
+      .handoff-card {
+        padding: 14px 13px;
+      }
+      .handoff-row {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 2px;
+      }
+    }
+    @media print {
+      #agent-handoff .handoff-toolbar, #agent-handoff .handoff-copy-message,
+      #agent-handoff .handoff-copy-fallback {
+        display: none !important;
+      }
+    }
+    @media (max-width: 620px) {
+      .issue-form-card {
+        padding: 16px 13px;
+      }
+      .issue-form-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 11px;
+      }
+      .issue-form-grid .field-wide {
+        grid-column: auto;
+      }
+      .issue-form-footer {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .issue-form-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      }
+      .issue-choose, .issue-submit {
+        width: 100%;
+      }
+    }
+    @media print {
+      #submit-issue {
+        display: none !important;
+      }
+    }
+    @media (max-width: 1120px) {
+      .checkpoint-grid, .stage-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .capability-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 820px) {
+      .sidebar {
+        width: 206px;
+        padding-inline: 13px;
+      }
+      .main {
+        margin-left: 206px;
+      }
+      .content {
+        padding-top: 30px;
+      }
+      .hero {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 17px;
+      }
+      .hero-side {
+        width: 100%;
+        padding: 14px 16px;
+      }
+      .filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .filters .field:first-child {
+        grid-column: 1 / -1;
+      }
+      .filter-reset {
+        width: 100%;
+      }
+    }
+    @media (max-width: 620px) {
+      html {
+        scroll-padding-top: 108px;
+      }
+      body {
+        font-size: 13px;
+      }
+      .sidebar {
+        position: sticky;
+        inset-inline: 0;
+        top: 0;
+        width: auto;
+        height: auto;
+        padding: 0 14px;
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+        background: rgba(255, 255, 255, .97);
+        backdrop-filter: blur(10px);
+      }
+      .brand {
+        padding: 10px 2px 8px;
+      }
+      .brand-mark {
+        width: 30px;
+        height: 30px;
+      }
+      .brand-name {
+        font-size: 13px;
+      }
+      .brand-sub, .nav-caption, .sidebar-note, .sidebar-date {
+        display: none;
+      }
+      .nav-list {
+        display: flex;
+        gap: 5px;
+        overflow-x: auto;
+        padding: 0 0 9px;
+        scrollbar-width: thin;
+      }
+      .nav-link {
+        min-height: 36px;
+        gap: 7px;
+        padding: 6px 9px;
+        font-size: 11px;
+        white-space: nowrap;
+      }
+      .nav-icon {
+        width: 15px;
+        height: 15px;
+      }
+      .main {
+        margin-left: 0;
+      }
+      .topbar {
+        height: auto;
+        min-height: 45px;
+        padding: 8px 17px;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .topbar-actions {
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .refresh-controls {
+        gap: 6px;
+      }
+      .content {
+        padding: 24px 16px 48px;
+      }
+      .page-title {
+        font-size: 28px;
+      }
+      .page-lead {
+        font-size: 12px;
+      }
+      .hero {
+        gap: 15px;
+        margin-top: 20px;
+        padding: 20px 18px;
+      }
+      .hero h2 {
+        font-size: 21px;
+      }
+      .hero-side {
+        gap: 0;
+        padding: 13px 14px;
+      }
+      .hero-version {
+        margin: 5px 0 4px;
+        font-size: 32px;
+      }
+      .section {
+        margin-top: 34px;
+      }
+      .section-head {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .section-heading {
+        font-size: 18px;
+      }
+      .checkpoint-grid, .stage-grid, .issue-grid, .capability-grid, .docs-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .checkpoint {
+        min-height: 0;
+      }
+      .checkpoint p {
+        margin-top: 7px;
+      }
+      .stage-card {
+        padding: 15px 16px;
+      }
+      .filters {
+        grid-template-columns: minmax(0, 1fr);
+        padding: 12px;
+      }
+      .filters .field:first-child {
+        grid-column: auto;
+      }
+      .task-card {
+        padding: 15px 13px;
+      }
+      .task-top {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 9px;
+      }
+      .task-top > .status {
+        width: max-content;
+        margin-left: 43px;
+      }
+      .task-title {
+        font-size: 12px;
+      }
+      .task-meta, .task-detail, .task-acceptance, .task-source {
+        margin-left: 0;
+      }
+      .task-id {
+        min-width: 31px;
+      }
+      .release-card {
+        padding: 17px 14px;
+      }
+      .release-top {
+        flex-direction: column;
+        gap: 8px;
+      }
+      .release-hash {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 9px;
+      }
+      .copy-button {
+        width: 100%;
+      }
+      .footer {
+        flex-direction: column;
+        gap: 6px;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+      *, *:before, *:after {
+        scroll-behavior: auto !important;
+        transition-duration: .01ms !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+      }
+    }
+    @media print {
+      :root {
+        --bg: #fff;
+        --surface: #fff;
+      }
+      body {
+        background: #fff;
+        color: #111;
+        font-size: 10pt;
+      }
+      .sidebar, .topbar, .filters, .copy-button, .skip-link {
+        display: none !important;
+      }
+      .main {
+        margin: 0;
+      }
+      .content {
+        width: 100%;
+        max-width: none;
+        padding: 0;
+      }
+      .hero, .card, .doc-card, .filters {
+        break-inside: avoid;
+        box-shadow: none;
+      }
+      .hero {
+        background: #fff;
+      }
+      .section {
+        margin-top: 24px;
+        break-inside: auto;
+      }
+      .checkpoint-grid, .stage-grid, .capability-grid, .issue-grid, .docs-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .task-list {
+        gap: 6px;
+      }
+      .task-card, .issue-card, .stage-card {
+        break-inside: avoid;
+      }
+      .doc-card {
+        color: #111;
+      }
+      .doc-card:after {
+        color: #555;
+        font-size: 8pt;
+        content: attr(href);
+      }
+      .footer {
+        margin-top: 24px;
+      }
+      a {
+        color: #111;
+        text-decoration: underline;
+      }
+      .status {
+        border-color: #999;
+        background: #fff;
+        color: #111;
+      }
+    }
+  </style>
+  <script id="status-data-script" src="status-data.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">跳到主要内容</a>
+  <noscript><div style="margin:16px;padding:16px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;color:#1e293b">此离线看板需要启用 JavaScript 才能读取同目录的状态快照并呈现内容。</div></noscript>
+  <div class="shell">
+    <aside class="sidebar" aria-label="项目导航">
+      <a class="brand" href="#overview" aria-label="AsterHub 项目现状首页">
+        <span class="brand-mark" aria-hidden="true">A</span><span><span class="brand-name">AsterHub</span><span class="brand-sub">项目状态工作区</span></span>
+      </a>
+      <p class="nav-caption">工作区</p>
+      <nav class="nav-list" aria-label="看板章节">
+        <a class="nav-link" href="#overview" aria-current="location"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>项目概览</a>
+        <a class="nav-link" href="#agent-handoff"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M5 5.5h14v10H9l-4 3z"/><path d="M8 9h8m-8 3h5"/></svg>Agent 交接</a>
+        <a class="nav-link" href="#journal-view"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="4.5" y="4.5" width="15" height="15" rx="2"/><path d="M8 9h8M8 12.5h8M8 16h5"/></svg>认领与台账</a>
+        <a class="nav-link" href="#checkpoints"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 12.5 9.2 17 20 6"/><path d="M20 12v6.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-13A1.5 1.5 0 0 1 5.5 4H15"/></svg>验收检查点</a>
+        <a class="nav-link" href="#stages"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h5l2 3h9v10H4z"/><path d="M4 6V4.5A1.5 1.5 0 0 1 5.5 3H10l2 3"/></svg>W0–W11 阶段</a>
+        <a class="nav-link" href="#tasks"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"/><path d="m3.5 6 .8.8L6 5m-2.5 7 .8.8L6 11m-2.5 7 .8.8L6 17"/></svg>待办与筛选</a>
+        <a class="nav-link" href="#issues"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 22 20H2z"/><path d="M12 9v4m0 3.5v.1"/></svg>问题与风险</a>
+        <a class="nav-link" href="#capabilities"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></svg>能力概览</a>
+        <a class="nav-link" href="#next"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 12h15m-6-6 6 6-6 6"/></svg>下一步</a>
+        <a class="nav-link" href="#documents"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M7 3.5h7l5 5v12H7z"/><path d="M14 3.5v5h5M10 13h6m-6 3.5h6"/></svg>证据与文档</a>
+        <a class="nav-link" href="#submit-issue"><svg class="nav-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/><rect x="3" y="3" width="18" height="18" rx="4"/></svg>提交问题</a>
+      </nav>
+      <div class="sidebar-note"><strong>快照，不是实时监控</strong><p id="scope-note">状态来自经人工核对的数据快照；不会自动更新 CI、任务或发布状态。</p></div>
+      <div class="sidebar-date" id="sidebar-date"></div>
+    </aside>
+    <main class="main" id="main-content" tabindex="-1">
+      <div class="topbar">
+        <div class="crumb"><span>AsterHub</span><span class="crumb-sep" aria-hidden="true">/</span><strong>项目现状</strong></div>
+        <div class="topbar-actions">
+          <div class="snapshot-badge"><span class="snapshot-dot" aria-hidden="true"></span><span id="snapshot-date">离线状态快照</span></div>
+          <div class="refresh-controls" id="refresh-controls">
+            <span class="refresh-time" id="refresh-last-updated" title="最近刷新时间">刚刚更新</span>
+            <button class="refresh-button" id="refresh-now-button" type="button" aria-label="立即重新读取数据快照">
+              <svg class="refresh-icon" aria-hidden="true" viewBox="0 0 16 16" width="14" height="14">
+                <path fill="currentColor" d="M8 2.5a5.5 5.5 0 0 1 4.7 2.7l.9-.9A.5.5 0 0 1 14.5 4.7v3a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.35-.85l1.1-1.1A4.5 4.5 0 1 0 12.5 8a.5.5 0 0 1 1 0 5.5 5.5 0 1 1-5.5-5.5z"/>
+              </svg>
+              <span>刷新快照</span>
+            </button>
+            <label class="auto-refresh-label" title="每 30 秒自动重新读取 status-data.js 快照（草稿编辑时不打扰）">
+              <input type="checkbox" id="auto-refresh-toggle" checked>
+              <span>自动刷新</span>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="content">
+        <header id="overview">
+          <div class="eyebrow">Project workspace · Offline snapshot</div>
+          <h1 class="page-title" id="page-title">AsterHub 项目现状</h1>
+          <p class="page-lead" id="page-summary"></p>
+          <div class="hero">
+            <div class="hero-copy"><div class="hero-label"><span class="snapshot-dot" aria-hidden="true"></span><span id="phase-label"></span></div><h2 id="verdict"></h2><p id="paused-note"></p><div class="hero-meta"><span><span aria-hidden="true">分支</span><strong id="branch-name" style="font-weight:500"></strong></span><span><span aria-hidden="true">主线</span><strong id="main-branch" style="font-weight:500"></strong></span><span id="snapshot-note"></span></div></div>
+            <div class="hero-side"><span class="hero-side-label">Desktop 产品版本</span><strong class="hero-version" id="product-version"></strong><span class="hero-framework">框架版本 <span id="framework-version"></span></span></div>
+          </div>
+        </header>
+        <section class="section" id="agent-handoff" aria-labelledby="agent-handoff-title">
+          <div class="section-head">
+            <div><div class="section-kicker">Cross-agent handoff</div><h2 class="section-heading" id="agent-handoff-title">Agent 交接</h2><p class="section-desc">工作区、代理切片、改动归属、证据和接续动作的快照。</p></div>
+          </div>
+          <p class="handoff-purpose" id="handoff-purpose">用途说明尚未记录。</p>
+          <details class="handoff-usage" id="handoff-usage" hidden>
+            <summary>Agent 使用规则</summary>
+            <ul id="handoff-usage-rules"></ul>
+          </details>
+          <div class="handoff-toolbar">
+            <div class="handoff-freshness" id="handoff-freshness" role="status" aria-live="polite">交接快照：尚未记录</div>
+            <button class="handoff-copy" id="handoff-copy" type="button" disabled>复制交接摘要</button>
+          </div>
+          <p class="handoff-copy-message" id="handoff-copy-message" role="status" aria-live="polite"></p>
+          <textarea class="handoff-copy-fallback" id="handoff-copy-fallback" aria-label="交接摘要文本，可手动选择复制" readonly hidden></textarea>
+          <div class="handoff-empty" id="handoff-empty" role="status">Agent 交接快照尚未记录；不会以当前环境或聊天内容代填。</div>
+          <div class="handoff-grid" id="handoff-grid" hidden>
+            <article class="card handoff-card" id="handoff-source-card"></article>
+            <article class="card handoff-card" id="handoff-read-order-card"></article>
+            <article class="card handoff-card handoff-card-wide" id="handoff-slices-card"></article>
+            <article class="card handoff-card handoff-card-wide" id="handoff-files-card"></article>
+            <article class="card handoff-card handoff-card-wide" id="handoff-verifications-card"></article>
+            <article class="card handoff-card" id="handoff-next-card"></article>
+            <article class="card handoff-card" id="handoff-safety-card"></article>
+            <article class="card handoff-card handoff-card-wide" id="handoff-inbox-card"></article>
+          </div>
+        </section>
+        <section class="section" id="journal-view" aria-labelledby="journal-view-title">
+          <div class="section-head">
+            <div><div class="section-kicker">Ledger &amp; claims</div><h2 class="section-heading" id="journal-view-title">认领与台账</h2><p class="section-desc">占用、断点与最近台账事件的只读快照；本区块不写入台账，也不代任何 Agent 声明认领。</p></div>
+          </div>
+          <div class="handoff-freshness" id="journal-freshness" role="status" aria-live="polite">台账快照：尚未生成</div>
+          <div class="handoff-empty" id="journal-empty" role="status">台账快照尚未生成；运行 node 项目现状/read-journal-view.mjs 后刷新页面即可生成 journal-view-data.js。</div>
+          <div class="handoff-grid" id="journal-grid" hidden>
+            <article class="card handoff-card handoff-card-wide" id="journal-occupancy-card"></article>
+            <article class="card handoff-card handoff-card-wide" id="journal-events-card"></article>
+          </div>
+          <p class="handoff-purpose">生成方式：node 项目现状/read-journal-view.mjs（只读 journal/*.jsonl 与 status-data.js）；台账本体与 handoff.mjs 输出仍是权威，页面数据可能落后于台账最后一条事件。</p>
+        </section>
+        <section class="section" id="checkpoints" aria-labelledby="checkpoints-title"><div class="section-head"><div><div class="section-kicker">Acceptance snapshot</div><h2 class="section-heading" id="checkpoints-title">验收检查点</h2><p class="section-desc">限定范围陈述；局部通过不代表全产品验收完成。</p></div></div><div class="checkpoint-grid" id="checkpoint-grid"></div><div class="status-legend" aria-label="状态说明" id="status-legend"></div></section>
+        <section class="section" id="release" aria-labelledby="release-title"><div class="section-head"><div><div class="section-kicker">Artifact record</div><h2 class="section-heading" id="release-title">交付产物</h2><p class="section-desc">仅呈现快照中记录的精确产物信息与限制。</p></div></div><article class="card release-card" id="release-card"></article></section>
+        <section class="section" id="stages" aria-labelledby="stages-title"><div class="section-head"><div><div class="section-kicker">Workstream status</div><h2 class="section-heading" id="stages-title">W0–W11 阶段进展</h2><p class="section-desc">按阶段列出状态和说明，不汇总为推测性的完成比例。</p></div></div><div class="stage-grid" id="stage-grid"></div></section>
+        <section class="section" id="tasks" aria-labelledby="tasks-title"><div class="section-head"><div><div class="section-kicker">Open work</div><h2 class="section-heading" id="tasks-title">待办事项</h2><p class="section-desc">筛选只改变当前列表展示，不会修改状态数据。</p></div></div><div class="filters" role="search"><div class="field"><label for="task-search">搜索待办</label><input id="task-search" type="search" placeholder="输入编号、标题或关键词" autocomplete="off"></div><div class="field"><label for="status-filter">按状态筛选</label><select id="status-filter"><option value="">全部状态</option></select></div><div class="field"><label for="category-filter">按类别筛选</label><select id="category-filter"><option value="">全部类别</option></select></div><button class="filter-reset" id="filter-reset" type="button">重置筛选</button></div><p class="result-count" id="task-count" role="status" aria-live="polite"></p><div class="task-list" id="task-list"></div><div class="empty-state" id="task-empty" hidden><strong>没有符合条件的待办</strong><span>请调整搜索词或筛选条件，或重置筛选。</span></div></section>
+        <section class="section" id="issues" aria-labelledby="issues-title"><div class="section-head"><div><div class="section-kicker">Known risks</div><h2 class="section-heading" id="issues-title">问题与风险</h2><p class="section-desc">保留未解决、阻塞或证据冲突；不将不确定事项描述为已修复。</p></div></div><div class="issue-grid" id="issue-grid"></div></section>
+        <section class="section" id="submit-issue" aria-labelledby="submit-issue-title">
+          <div class="section-head"><div><div class="section-kicker">Local issue inbox</div><h2 class="section-heading" id="submit-issue-title">提交问题</h2><p class="section-desc">记录提交到本地 JSONL 文件；刷新或关闭页面后仍可由助手读取分诊，不会自动标记为已修复。</p></div></div>
+          <div class="card issue-form-card">
+            <form id="issue-submission-form" novalidate>
+              <div class="issue-form-grid">
+                <div class="issue-field field-wide">
+                  <label for="issue-title">问题标题 <span class="required">必填</span></label>
+                  <input class="issue-control" id="issue-title" name="title" maxlength="180" autocomplete="off" required aria-describedby="issue-title-hint">
+                  <p class="issue-hint" id="issue-title-hint">用一句话说明问题；最多 180 个字符。</p>
+                </div>
+                <div class="issue-field">
+                  <label for="issue-steps">复现步骤</label>
+                  <textarea class="issue-control" id="issue-steps" name="steps" rows="3" aria-describedby="issue-steps-hint"></textarea>
+                  <p class="issue-hint" id="issue-steps-hint">按实际操作顺序填写，可留空。</p>
+                </div>
+                <div class="issue-field">
+                  <label for="issue-actual">实际结果 <span class="required">必填</span></label>
+                  <textarea class="issue-control" id="issue-actual" name="actual" rows="3" required aria-describedby="issue-actual-hint"></textarea>
+                  <p class="issue-hint" id="issue-actual-hint">说明发生了什么；这是必填项。</p>
+                </div>
+                <div class="issue-field">
+                  <label for="issue-expected">预期结果</label>
+                  <textarea class="issue-control" id="issue-expected" name="expected" rows="3"></textarea>
+                </div>
+                <div class="issue-field">
+                  <label for="issue-notes">补充说明</label>
+                  <textarea class="issue-control" id="issue-notes" name="notes" rows="3"></textarea>
+                </div>
+              </div>
+              <div class="issue-form-footer">
+                <div class="issue-binding" id="issue-binding" role="status" aria-live="polite"><strong>尚未选择保存位置</strong>请选择项目现状文件夹；文件名固定为 问题提交记录.jsonl。</div>
+                <div class="issue-form-actions">
+                  <button class="issue-choose" id="issue-choose-directory" type="button">选择项目文件夹</button>
+                  <button class="issue-submit" id="issue-submit" type="submit">提交到本地</button>
+                </div>
+              </div>
+              <p class="issue-message" id="issue-message" role="status" aria-live="polite"></p>
+            </form>
+            <div class="issue-records" id="issue-records" aria-labelledby="issue-records-title" hidden>
+              <h3 class="issue-records-title" id="issue-records-title">本地提交记录</h3>
+              <div class="issue-record-list" id="issue-record-list"></div>
+              <p class="issue-records-empty" id="issue-records-empty" hidden>此文件中还没有问题记录。</p>
+            </div>
+          </div>
+        </section>
+        <section class="section" id="capabilities" aria-labelledby="capabilities-title"><div class="section-head"><div><div class="section-kicker">Product surfaces</div><h2 class="section-heading" id="capabilities-title">能力概览</h2><p class="section-desc">实现状态与真实场景验收边界分开呈现。</p></div></div><div class="capability-grid" id="capability-grid"></div></section>
+        <section class="section" id="next" aria-labelledby="next-title"><div class="section-head"><div><div class="section-kicker">Handoff direction</div><h2 class="section-heading" id="next-title">下一步</h2><p class="section-desc">依照当前记录的约束推进；未授权的对外或破坏性操作不会执行。</p></div></div><div class="card next-card"><ol class="next-list" id="next-list"></ol></div></section>
+        <section class="section" id="documents" aria-labelledby="documents-title"><div class="section-head"><div><div class="section-kicker">Evidence & references</div><h2 class="section-heading" id="documents-title">证据与文档</h2><p class="section-desc">相对当前文件的本地链接；文件是否可用取决于对应项目文件是否在本机。</p></div></div><div class="docs-grid" id="documents-grid"></div></section>
+        <footer class="footer"><span id="footer-scope">人工核对快照 · 不自动同步 CI、任务或发布系统</span><a href="#overview">返回顶部 ↑</a></footer>
+      </div>
+    </main>
+  </div>
+  <script>
+    (() => {
+      'use strict';
+
+      const $ = id => document.getElementById(id);
+      const statusNames = {
+        verified: '已核验',
+        partial: '部分完成',
+        conflict: '证据冲突',
+        issue: '存在问题',
+        pending: '待处理',
+        blocked: '受阻',
+      };
+      const statusClass = value =>
+        `status status-${Object.hasOwn(statusNames, value) ? value : 'pending'}`;
+      const setText = (id, value) => {
+        const el = $(id);
+        if (el) el.textContent = value ?? '';
+      };
+      const addText = (parent, tag, className, text) => {
+        const element = document.createElement(tag);
+        if (className) element.className = className;
+        element.textContent = text ?? '';
+        parent.append(element);
+        return element;
+      };
+      const statusBadge = (status, label) => {
+        const element = document.createElement('span');
+        element.className = statusClass(status);
+        element.textContent = label || statusNames[status] || '未分类';
+        return element;
+      };
+      const allowedLocalHref = value => {
+        if (
+          typeof value !== 'string' ||
+          !value ||
+          value.startsWith('/') ||
+          value.startsWith('\\') ||
+          value.includes('\\') ||
+          /[\u0000-\u001f]/.test(value) ||
+          /^[a-z][a-z\d+.-]*:/i.test(value) ||
+          /[?#]/.test(value)
+        ) {
+          return null;
+        }
+        const extension = value.split('/').pop().split('.').pop().toLowerCase();
+        return ['md', 'txt', 'json', 'ts', 'tsx', 'js', 'yml', 'yaml', 'log', 'html', 'xlsx'].includes(
+          extension,
+        )
+          ? value
+          : null;
+      };
+      const localLink = (value, label, className) => {
+        const href = allowedLocalHref(value);
+        if (!href) return null;
+        const link = document.createElement('a');
+        link.href = href;
+        link.textContent = label;
+        link.className = className || '';
+        link.setAttribute('aria-label', label);
+        return link;
+      };
+
+      const taskList = $('task-list');
+      const taskSearch = $('task-search');
+      const statusFilter = $('status-filter');
+      const categoryFilter = $('category-filter');
+      let currentTasks = [];
+
+      const renderTasks = () => {
+        const query = (taskSearch ? taskSearch.value : '').trim().toLocaleLowerCase();
+        const status = statusFilter ? statusFilter.value : '';
+        const category = categoryFilter ? categoryFilter.value : '';
+        const visible = currentTasks.filter(task => {
+          const haystack = [
+            task.id,
+            task.title,
+            task.category,
+            task.priority,
+            task.status,
+            task.label,
+            task.detail,
+            task.acceptance,
+          ]
+            .join(' ')
+            .toLocaleLowerCase();
+          return (
+            (!query || haystack.includes(query)) &&
+            (!status || task.status === status) &&
+            (!category || task.category === category)
+          );
+        });
+        taskList.replaceChildren();
+        for (const task of visible) {
+          const card = document.createElement('article');
+          card.className = 'card task-card';
+          const top = document.createElement('div');
+          top.className = 'task-top';
+          const titleWrap = document.createElement('div');
+          titleWrap.className = 'task-title-wrap';
+          addText(titleWrap, 'span', 'task-id', task.id);
+          addText(titleWrap, 'h3', 'task-title', task.title);
+          top.append(titleWrap, statusBadge(task.status, task.label));
+          card.append(top);
+
+          const tags = document.createElement('div');
+          tags.className = 'task-meta';
+          addText(tags, 'span', 'tag', task.category);
+          addText(tags, 'span', 'tag tag-priority', task.priority);
+          card.append(tags);
+          addText(card, 'p', 'task-detail', task.detail);
+          if (task.acceptance) {
+            const acceptance = addText(card, 'p', 'task-acceptance', '');
+            addText(acceptance, 'strong', '', '验收边界：');
+            acceptance.append(document.createTextNode(task.acceptance));
+          }
+          const source = localLink(task.source, '查看关联源码');
+          if (source) {
+            source.className = 'task-source';
+            card.append(source);
+          }
+          taskList.append(card);
+        }
+        const count = visible.length;
+        setText(
+          'task-count',
+          `显示 ${count} 项，共 ${currentTasks.length} 项待办。${count === currentTasks.length ? '' : '筛选结果已更新。'}`,
+        );
+        $('task-empty').hidden = count !== 0;
+      };
+
+      const fillOptions = (select, values, labels = {}) => {
+        const currentVal = select.value;
+        select.replaceChildren();
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = select === statusFilter ? '全部状态' : '全部分类';
+        select.append(defaultOption);
+        for (const value of [...new Set(values.filter(Boolean))].sort((a, b) =>
+          a.localeCompare(b, 'zh-CN'),
+        )) {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = labels[value] || value;
+          select.append(option);
+        }
+        if (currentVal) select.value = currentVal;
+      };
+
+      function renderDashboard() {
+        const data = window.ASTERHUB_STATUS;
+        if (!data) {
+          const existing = $('error-snapshot-alert');
+          if (!existing) {
+            document.body.insertAdjacentHTML(
+              'afterbegin',
+              '<div id="error-snapshot-alert" style="margin:16px;padding:16px;border:1px solid #fecaca;border-radius:12px;background:#fef2f2;color:#7f1d1d">无法读取状态快照。请确认 status-data.js 与 index.html 位于同一文件夹。</div>',
+            );
+          }
+          return;
+        }
+        const existing = $('error-snapshot-alert');
+        if (existing) existing.remove();
+
+        setText('page-title', data.meta?.title || 'AsterHub 项目现状');
+        document.title = data.meta?.title || 'AsterHub / 项目现状';
+        setText('page-summary', data.meta?.summary);
+        setText('scope-note', data.meta?.scope);
+        setText('phase-label', data.meta?.phase);
+        setText('verdict', data.meta?.verdict);
+        setText('paused-note', data.meta?.paused);
+        setText('branch-name', data.meta?.branch);
+        setText('main-branch', data.meta?.mainBranch);
+        setText('product-version', data.meta?.productVersion);
+        setText('framework-version', data.meta?.frameworkVersion);
+        setText('snapshot-date', `快照日期 ${data.meta?.date || ''}`);
+        setText('sidebar-date', `数据日期 · ${data.meta?.date || ''}`);
+        setText(
+          'snapshot-note',
+          data.meta?.date ? `快照 · ${data.meta.date}` : '人工核对快照',
+        );
+
+        const checkpoints = $('checkpoint-grid');
+        checkpoints.replaceChildren();
+        for (const item of data.checkpoints || []) {
+          const card = document.createElement('article');
+          card.className = 'card checkpoint';
+          const top = document.createElement('div');
+          top.className = 'checkpoint-top';
+          addText(top, 'h3', '', item.title);
+          top.append(statusBadge(item.status, item.label));
+          card.append(top);
+          addText(card, 'p', '', item.detail);
+          checkpoints.append(card);
+        }
+
+        const legend = $('status-legend');
+        legend.replaceChildren();
+        for (const [status, label] of Object.entries(statusNames)) {
+          const item = document.createElement('span');
+          item.className = 'legend-item';
+          item.append(statusBadge(status, label));
+          legend.append(item);
+        }
+
+        const release = data.release || {};
+        const releaseCard = $('release-card');
+        releaseCard.replaceChildren();
+        const releaseTop = document.createElement('div');
+        releaseTop.className = 'release-top';
+        const releaseTitle = document.createElement('div');
+        addText(releaseTitle, 'h3', 'release-name', release.name);
+        addText(
+          releaseTitle,
+          'div',
+          'release-info',
+          `${release.size || ''} · ${release.status || ''}`,
+        );
+        const artifact = allowedLocalHref(release.path);
+        if (artifact) {
+          const file = localLink(release.path, '产物路径', 'card-link');
+          if (file) releaseTitle.append(file);
+        }
+        releaseTop.append(
+          releaseTitle,
+          statusBadge(
+            release.status === 'Unsigned · 仅测试交付' ? 'partial' : 'pending',
+            release.status || '状态未记录',
+          ),
+        );
+        releaseCard.append(releaseTop);
+
+        const hash = document.createElement('div');
+        hash.className = 'release-hash';
+        const hashCopy = document.createElement('div');
+        addText(hashCopy, 'span', 'hash-label', 'SHA-256');
+        addText(hashCopy, 'code', 'hash-value', release.sha256);
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.className = 'copy-button';
+        copy.textContent = '复制哈希';
+        copy.setAttribute('aria-describedby', 'copy-feedback');
+        hash.append(hashCopy, copy);
+        releaseCard.append(hash);
+
+        const feedback = addText(releaseCard, 'p', 'copy-feedback', '');
+        feedback.id = 'copy-feedback';
+        copy.addEventListener('click', async () => {
+          try {
+            if (navigator.clipboard && window.isSecureContext) {
+              await navigator.clipboard.writeText(release.sha256);
+            } else {
+              const field = document.createElement('textarea');
+              field.value = release.sha256;
+              field.setAttribute('readonly', '');
+              field.style.position = 'fixed';
+              field.style.opacity = '0';
+              document.body.append(field);
+              field.select();
+              const copied = document.execCommand('copy');
+              field.remove();
+              if (!copied) throw new Error('copy failed');
+            }
+            feedback.textContent = 'SHA-256 已复制。';
+          } catch {
+            feedback.textContent = '浏览器未允许复制；可选择并手动复制哈希。';
+          }
+        });
+
+        const evidence = localLink(release.evidence, '查看最终交付依据');
+        if (evidence) {
+          evidence.className = 'card-link';
+          releaseCard.append(evidence);
+        }
+        addText(releaseCard, 'p', 'release-limitation', release.limitations);
+
+        const stages = $('stage-grid');
+        stages.replaceChildren();
+        for (const item of data.stages || []) {
+          const card = document.createElement('article');
+          card.className = 'card stage-card';
+          card.dataset.status = item.status || 'pending';
+          const top = document.createElement('div');
+          top.className = 'checkpoint-top';
+          const id = addText(top, 'span', 'stage-id', item.id);
+          id.setAttribute('aria-label', `阶段 ${item.id}`);
+          top.append(statusBadge(item.status, item.label));
+          card.append(top);
+          const title = addText(card, 'h3', '', item.title);
+          title.insertAdjacentText('afterbegin', `${item.id} · `);
+          addText(card, 'p', '', item.detail);
+          const evidenceLink = localLink(item.evidence, '查看阶段证据');
+          if (evidenceLink) {
+            evidenceLink.className = 'card-link';
+            card.append(evidenceLink);
+          }
+          stages.append(card);
+        }
+
+        currentTasks = data.tasks || [];
+        fillOptions(
+          statusFilter,
+          currentTasks.map(task => task.status),
+          statusNames,
+        );
+        fillOptions(
+          categoryFilter,
+          currentTasks.map(task => task.category),
+        );
+        renderTasks();
+
+        const issues = $('issue-grid');
+        issues.replaceChildren();
+        for (const item of data.issues || []) {
+          const card = document.createElement('article');
+          card.className = 'card issue-card';
+          const top = document.createElement('div');
+          top.className = 'issue-top';
+          addText(top, 'h3', '', item.title);
+          addText(top, 'span', 'severity', item.severity);
+          card.append(top);
+          addText(card, 'p', '', item.detail);
+          const foot = document.createElement('div');
+          foot.className = 'issue-foot';
+          foot.append(statusBadge(item.status, item.label));
+          const task = currentTasks.find(entry => entry.id === item.task);
+          if (task) {
+            const link = document.createElement('a');
+            link.href = '#tasks';
+            link.className = 'issue-task';
+            link.textContent = `关联 ${task.id} · ${task.title}`;
+            link.addEventListener('click', () => {
+              taskSearch.value = task.id;
+              statusFilter.value = '';
+              categoryFilter.value = '';
+              renderTasks();
+            });
+            foot.append(link);
+          }
+          card.append(foot);
+          issues.append(card);
+        }
+
+        const capabilities = $('capability-grid');
+        capabilities.replaceChildren();
+        for (const item of data.capabilities || []) {
+          const card = document.createElement('article');
+          card.className = 'card capability';
+          addText(card, 'h3', '', item.title);
+          addText(card, 'span', 'capability-state', item.state);
+          addText(card, 'p', '', item.detail);
+          capabilities.append(card);
+        }
+
+        const next = $('next-list');
+        next.replaceChildren();
+        for (const item of data.next || []) {
+          addText(next, 'li', '', item);
+        }
+
+        const documents = $('documents-grid');
+        documents.replaceChildren();
+        for (const item of data.documents || []) {
+          const link = localLink(item.href, item.title, 'doc-card');
+          if (!link) continue;
+          const icon = addText(
+            link,
+            'span',
+            'doc-icon',
+            (item.kind || '文档').slice(0, 3),
+          );
+          icon.setAttribute('aria-hidden', 'true');
+          const copy = document.createElement('span');
+          addText(copy, 'strong', '', item.title);
+          addText(copy, 'span', 'doc-kind', item.kind);
+          addText(copy, 'p', '', item.detail);
+          link.append(copy);
+          documents.append(link);
+        }
+      }
+
+      taskSearch.addEventListener('input', renderTasks);
+      statusFilter.addEventListener('change', renderTasks);
+      categoryFilter.addEventListener('change', renderTasks);
+      $('filter-reset').addEventListener('click', () => {
+        taskSearch.value = '';
+        statusFilter.value = '';
+        categoryFilter.value = '';
+        renderTasks();
+        taskSearch.focus();
+      });
+
+      const navLinks = [...document.querySelectorAll('.nav-link')];
+      const sectionIds = navLinks.map(link => link.hash.slice(1));
+      if ('IntersectionObserver' in window) {
+        const observer = new IntersectionObserver(
+          entries => {
+            for (const entry of entries) {
+              if (entry.isIntersecting) {
+                for (const link of navLinks) {
+                  if (link.hash === `#${entry.target.id}`) {
+                    link.setAttribute('aria-current', 'location');
+                  } else {
+                    link.removeAttribute('aria-current');
+                  }
+                }
+              }
+            }
+          },
+          { rootMargin: '-18% 0px -72% 0px', threshold: 0 },
+        );
+        for (const id of sectionIds) {
+          const section = $(id);
+          if (section) observer.observe(section);
+        }
+      }
+      for (const link of navLinks) {
+        link.addEventListener('click', () => {
+          for (const other of navLinks) {
+            other.removeAttribute('aria-current');
+          }
+          link.setAttribute('aria-current', 'location');
+        });
+      }
+
+      // Initial render
+      renderDashboard();
+
+      // Safe Snapshot Reload & Auto-refresh (Offline-safe, no full page reload, no draft loss)
+      let isReloading = false;
+      let autoRefreshTimer = null;
+
+      function reloadSnapshot(manual = false) {
+        if (isReloading) return;
+        const submitBtn = $('issue-submit');
+        if (submitBtn && submitBtn.disabled && submitBtn.textContent.includes('正在')) {
+          return;
+        }
+        isReloading = true;
+        const updateLabel = $('refresh-last-updated');
+        const refreshBtn = $('refresh-now-button');
+        if (refreshBtn) refreshBtn.classList.add('refreshing');
+
+        const oldScript = document.getElementById('status-data-script');
+        const newScript = document.createElement('script');
+        newScript.id = 'status-data-script';
+        const src = location.protocol === 'file:' ? 'status-data.js' : `status-data.js?_t=${Date.now()}`;
+        newScript.src = src;
+
+        newScript.onload = () => {
+          isReloading = false;
+          if (refreshBtn) refreshBtn.classList.remove('refreshing');
+          if (oldScript && oldScript.parentNode) {
+            oldScript.parentNode.removeChild(oldScript);
+          }
+          const now = new Date();
+          const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+          if (updateLabel) {
+            updateLabel.textContent = `${timeStr} 已刷新`;
+            updateLabel.title = `最近成功读取 status-data.js：${now.toLocaleString()}`;
+          }
+          renderDashboard();
+          window.dispatchEvent(new CustomEvent('asterhub:status-updated', { detail: { time: now, data: window.ASTERHUB_STATUS } }));
+          reloadJournalData();
+        };
+
+        newScript.onerror = () => {
+          isReloading = false;
+          if (refreshBtn) refreshBtn.classList.remove('refreshing');
+          if (newScript.parentNode) newScript.parentNode.removeChild(newScript);
+          if (updateLabel) {
+            updateLabel.textContent = '快照读取异常';
+            updateLabel.title = '无法读取 status-data.js，保留当前视图';
+          }
+        };
+
+        document.head.appendChild(newScript);
+      }
+
+      // 台账只读数据：与状态快照同一刷新周期重新注入；失败时静默保留上一次数据。
+      function reloadJournalData() {
+        const journalScript = document.getElementById('journal-view-data-script');
+        if (journalScript && journalScript.parentNode) {
+          journalScript.parentNode.removeChild(journalScript);
+        }
+        const script = document.createElement('script');
+        script.id = 'journal-view-data-script';
+        script.src = location.protocol === 'file:' ? 'journal-view-data.js' : `journal-view-data.js?_t=${Date.now()}`;
+        script.onload = () => {
+          window.dispatchEvent(new CustomEvent('asterhub:journals-updated'));
+        };
+        script.onerror = () => {
+          if (script.parentNode) script.parentNode.removeChild(script);
+        };
+        document.head.appendChild(script);
+      }
+
+      function setupAutoRefresh() {
+        const toggle = $('auto-refresh-toggle');
+        const updateTimer = () => {
+          if (autoRefreshTimer) {
+            clearInterval(autoRefreshTimer);
+            autoRefreshTimer = null;
+          }
+          if (toggle && toggle.checked) {
+            autoRefreshTimer = setInterval(() => {
+              reloadSnapshot(false);
+            }, 30000);
+          }
+        };
+        if (toggle) {
+          toggle.addEventListener('change', updateTimer);
+        }
+        const refreshBtn = $('refresh-now-button');
+        if (refreshBtn) {
+          refreshBtn.addEventListener('click', () => reloadSnapshot(true));
+        }
+        updateTimer();
+      }
+
+      setupAutoRefresh();
+    })();
+  </script>
+<script src="issue-submission.js"></script>
+<script src="handoff-view.js"></script>
+<script src="journal-view-data.js"></script>
+<script src="journal-view.js"></script>
+</body>
+</html>
