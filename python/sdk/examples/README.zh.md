@@ -22,15 +22,17 @@ python python/sdk/examples/minimal.py \
 随附的 [`@deepseek-ai/dsh-sdk-minimal` 组合包](../../../packages/bundle/sdk-minimal/README.zh.md) 是该模式完整且显式的 Cordis 配置树。它只暴露：
 
 - Linux／macOS 上所有者作用域内的持久 `bash`，或 Windows 上的 `pwsh`
+- 配合支持图片输入的模型读取 PNG/JPEG/WebP/GIF 文件的 `read_image`
+- 查询或修改 Session 目录的 `working_directory`
 
-该组合包不包含 `dsh-base`，因此每一个新增配置项都是显式 profile 变更。运行时上下文、文件系统工具、本地指令发现、压缩（compaction）、设置、托管凭据、遥测、Web 工具、subagent 与完整默认工具清单均不存在。配置树保留 SDK 启动与 JSON-RPC 服务、一个由环境配置的 DeepSeek 适配器、本地执行和 JSONL 持久化。
+该组合包不包含 `dsh-base`，因此每一个新增配置项都是显式 profile 变更。运行时上下文、文本文件工具、本地指令发现、设置、托管凭据、遥测、Web 工具、subagent 与完整默认工具清单均不存在。配置树保留 SDK 启动与 JSON-RPC 服务、一个由环境配置的 DeepSeek 适配器、本地执行和 JSONL 持久化。[自动上下文压缩](../../../packages/bundle/sdk-minimal/README.zh.md#model-experience)通过额外模型请求生成较早历史的摘要，同时保留完整日志。SDK 提示词文本不会执行斜杠命令。
 
 持久 PTY 可以修改运行时进程可访问的任何路径，因此只应在一次性 checkout 或容器中使用。
 
 <a id="compact-a-full-sdk-session"></a>
 ## 压缩完整 SDK Session
 
-[压缩示例](compact.py)使用完整 `sdk` profile。它将所选工作区的 `README.md` 读入 `Session.query()` 输入，通过同一方法发送 `/compact`，随后使用保留的上下文继续提问。每次 query 都配对调用 `Session.receive_response()`。模型凭据和 `DSH_MODEL` 默认值与极简示例一致，并且要求显式指定 home：
+[压缩示例](compact.py)使用完整 `sdk` profile。它将所选工作区的 `README.md` 读入 `Session.run()` 输入，通过同一方法执行 `/compact`，随后使用保留的上下文继续提问。模型凭据和 `DSH_MODEL` 默认值与极简示例一致，并且要求显式指定 home：
 
 ```sh
 python python/sdk/examples/compact.py \
@@ -38,12 +40,12 @@ python python/sdk/examples/compact.py \
   --workspace /absolute/path/to/disposable-workspace
 ```
 
-脚本消费通知，并将命令 id 和结果与模型回复分开打印。轮次或命令失败时，示例会停止。完成和错误行为见[查询与接收](../README.zh.md#query-and-response)；`minimal.py` 保留其 `run()` 入口，不启用命令执行。
+脚本将命令 id 和结果与模型回复分开打印。轮次或命令失败时，示例会停止。完成和错误行为见[运行文本与命令](../README.zh.md#run-text-and-commands)；`minimal.py` 使用同一个 `run()` 入口，能力由所选 profile 提供。
 
 <a id="change-session-permissions"></a>
 ## 修改 Session 权限
 
-[权限示例](permission.py)以 `workspace-write` 为默认值启动完整 `sdk` profile，发送 `/permission <preset>`，随后在同一个 Session 中提交普通 query。请显式指定 preset：
+[权限示例](permission.py)以 `workspace-write` 为默认值启动完整 `sdk` profile，发送 `/permission <preset>`，随后在同一个 Session 中运行普通文本。请显式指定 preset：
 
 ```sh
 python python/sdk/examples/permission.py \
@@ -52,9 +54,22 @@ python python/sdk/examples/permission.py \
   --preset read-only
 ```
 
-命令会修改 Session 的策略，而打印出的启动设置仍为 `workspace-write`。后续 query 使用 Session 的当前策略。裸 `/permission` 是普通文本，未知 preset 返回命令错误。结果和状态语义见[查询与接收](../README.zh.md#query-and-response)。
+命令会修改 Session 的策略，而打印出的启动设置仍为 `workspace-write`。后续输入使用 Session 的当前策略。裸 `/permission` 是普通文本，未知 preset 返回命令错误。结果和状态语义见[运行文本与命令](../README.zh.md#run-text-and-commands)。
 
 <a id="review-a-plan"></a>
+## 运行目标
+
+[目标示例](goal.py) 提交 `/goal <objective>`，打印目标变化和助手回复，并在终态目标事件后等待最后的回复。示例使用完整 SDK profile 和 workspace-write 权限。
+
+```sh
+python python/sdk/examples/goal.py \
+  --dsh-home /absolute/path/to/goal-dsh-home \
+  --workspace /absolute/path/to/disposable-workspace \
+  "Calculate 17 * 19, verify the result, and complete the goal without changing files."
+```
+
+`--timeout-seconds` 限制观察时间，默认为 300 秒。超时会报告失败并关闭运行时，不会将目标标记为完成。恢复会话后可查看持久化目标，再显式恢复执行。自动轮次之间存在 idle 间隙，因此仅调用 `session/wait` 不足以等待目标结束。
+
 ## 添加插件
 
 对同一个显式 home 使用运行时 wheel 包提供的 `dsh` 命令，以进行持久 profile 变更：

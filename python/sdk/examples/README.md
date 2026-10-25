@@ -22,15 +22,17 @@ Set `DEEPSEEK_BASE_URL` for a compatible proxy, `DSH_MODEL` for the script's def
 The shipped [`@deepseek-ai/dsh-sdk-minimal` bundle](../../../packages/bundle/sdk-minimal/README.md) is the complete explicit Cordis tree for this mode. It exposes exactly:
 
 - owner-scoped persistent `bash` on Linux/macOS or `pwsh` on Windows
+- `read_image` for PNG/JPEG/WebP/GIF files, with an image-capable model
+- `working_directory` to inspect or change the Session directory
 
-The bundle does not include `dsh-base`, so every additional row is an explicit profile change. Runtime context, filesystem tools, local instruction discovery, compaction, settings, managed credentials, telemetry, Web tools, subagents, and the full default tool roster are absent. The tree retains SDK startup and JSON-RPC serving, one environment-configured DeepSeek adapter, local execution, and JSONL persistence.
+The bundle does not include `dsh-base`, so every additional row is an explicit profile change. Runtime context, text file tools, local instruction discovery, settings, managed credentials, telemetry, Web tools, subagents, and the full default tool roster are absent. The tree retains SDK startup and JSON-RPC serving, one environment-configured DeepSeek adapter, local execution, and JSONL persistence. [Automatic context compaction](../../../packages/bundle/sdk-minimal/README.md#model-experience) summarizes older history through an additional model request while preserving the complete log. This minimal composition leaves unsupported slash input on the ordinary prompt path.
 
 The persistent PTY can modify any path available to the runtime process, so use a disposable checkout or container.
 
 <a id="compact-a-full-sdk-session"></a>
 ## Compact a full SDK Session
 
-The [compaction example](compact.py) uses the full `sdk` profile. It reads `README.md` from the selected workspace into a `Session.query()` prompt, sends `/compact` through the same method, then asks a follow-up using the retained context. Each query is paired with `Session.receive_response()`. It uses the same model credentials and `DSH_MODEL` default as the minimal example, and requires an explicit home:
+The [compaction example](compact.py) uses the full `sdk` profile. It reads `README.md` from the selected workspace into a `Session.run()` prompt, executes `/compact` through the same method, then asks a follow-up using the retained context. It uses the same model credentials and `DSH_MODEL` default as the minimal example, and requires an explicit home:
 
 ```sh
 python python/sdk/examples/compact.py \
@@ -38,12 +40,12 @@ python python/sdk/examples/compact.py \
   --workspace /absolute/path/to/disposable-workspace
 ```
 
-The script consumes notifications and prints the command id and outcome separately from the model's responses. A failed turn or command stops the example. See [Query and response](../README.md#query-and-response) for completion and error behavior; `minimal.py` retains its `run()` entry and does not enable command execution.
+The script prints command ids and outcomes separately from model responses. A failed turn or command stops the example. See [Run text and commands](../README.md#run-text-and-commands) for completion and error behavior; `minimal.py` uses the same `run()` entry, with capabilities supplied by its selected profile.
 
 <a id="change-session-permissions"></a>
 ## Change Session permissions
 
-The [permission example](permission.py) starts the full `sdk` profile with a `workspace-write` default, sends `/permission <preset>`, then submits an ordinary query on the same Session. Supply the preset explicitly:
+The [permission example](permission.py) starts the full `sdk` profile with a `workspace-write` default, sends `/permission <preset>`, then runs ordinary text on the same Session. Supply the preset explicitly:
 
 ```sh
 python python/sdk/examples/permission.py \
@@ -52,9 +54,22 @@ python python/sdk/examples/permission.py \
   --preset read-only
 ```
 
-The command changes the Session's policy while the printed launch setting remains `workspace-write`. The later query uses the Session's current policy. Bare `/permission` is ordinary text, and unknown presets produce a command error. See [Query and response](../README.md#query-and-response) for result and state semantics.
+The command changes the Session's policy while the printed launch setting remains `workspace-write`. The later input uses the Session's current policy. Bare `/permission` is ordinary text, and unknown presets produce a command error. See [Run text and commands](../README.md#run-text-and-commands) for result and state semantics.
 
 <a id="review-a-plan"></a>
+## Run a goal
+
+The [goal example](goal.py) submits `/goal <objective>`, prints goal changes and assistant replies, and waits for the final reply after a terminal goal event. It uses the full SDK profile and workspace-write permissions.
+
+```sh
+python python/sdk/examples/goal.py \
+  --dsh-home /absolute/path/to/goal-dsh-home \
+  --workspace /absolute/path/to/disposable-workspace \
+  "Calculate 17 * 19, verify the result, and complete the goal without changing files."
+```
+
+`--timeout-seconds` bounds observation (300 seconds by default). A timeout reports failure and closes the runtime; it does not mark the goal complete. The persisted goal can be inspected after restoration and explicitly resumed. `session/wait` alone is insufficient because automatic rounds have idle gaps.
+
 ## Add plugins
 
 Use the runtime wheel's `dsh` command against the same explicit home for persistent profile changes:

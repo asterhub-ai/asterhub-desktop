@@ -6,14 +6,17 @@
   en: c97ffc5ce0f7db05
   zh: bdd91202075498a3
 /python-sdk-example/run-the-minimal-agent:
-  en: d84191740ee4030e
-  zh: 4fc0a468221919ae
+  en: ac09bb6bc3ab76a0
+  zh: 6258540acaf4bc37
 /python-sdk-example/compact-a-full-sdk-session:
-  en: ad4d67225570ed01
-  zh: 0d59f6dac40129d6
+  en: 7749773f97211ac1
+  zh: 594348ae66a2ef6c
 /python-sdk-example/change-session-permissions:
-  en: 3471642d8444d0e9
-  zh: 7831f28295a6e68a
+  en: 1fe5e06c6842a53b
+  zh: ff0836d8cffaeef7
+/python-sdk-example/run-a-goal:
+  en: ae73e9fd9d402047
+  zh: f9694bc6a6e12929
 /python-sdk-example/add-plugins:
   en: 5e1e30dac13f6c9e
   zh: 0af98ebb75c88f43
