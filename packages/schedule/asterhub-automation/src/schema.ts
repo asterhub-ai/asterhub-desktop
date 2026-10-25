@@ -26,7 +26,10 @@ const instantSchema = z.string().refine(
   { message: 'Expected ISO 8601 UTC timestamp' },
 )
 
-/** Normalized timing validator. */
+/**
+ * Normalized timing validator.
+ * Daily and weekly timings accept both standard HH:mm:ss and millisecond-precision HH:mm:ss.SSS.
+ */
 const timingSchema: z.ZodType<AutomationTiming> = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('once'),
@@ -46,12 +49,12 @@ const timingSchema: z.ZodType<AutomationTiming> = z.discriminatedUnion('kind', [
   }),
   z.object({
     kind: z.literal('daily'),
-    time: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/),
+    time: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?$/),
     timeZone: z.string().min(1),
   }),
   z.object({
     kind: z.literal('weekly'),
-    time: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/),
+    time: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?$/),
     timeZone: z.string().min(1),
     weekdays: z.array(z.number().int().min(1).max(7)).min(1),
   }),
@@ -123,6 +126,11 @@ const receiptSchema: z.ZodType<AutomationReceipt> = z.object({
 export const taskAggregateSchema: z.ZodType<AutomationTask> = z.object({
   id: taskIdSchema,
   ownerAccountId: z.string().min(1),
+  // Optional binding written only by tool-created tasks; absent on stored
+  // GUI-created records, so no migration rewrites committed generations.
+  originSessionId: z.string().min(1)
+    .transform((v): SessionId => brandString<SessionId>(v))
+    .optional(),
   revision: z.number().int().nonnegative(),
   recordVersion: z.number().int().nonnegative(),
   authorizationRevision: z.number().int().nonnegative(),

@@ -1,6 +1,6 @@
 /** Native model calls preserve Anima's upstream review and reflection protocols. */
 import type { Context } from '@deepseek-ai/cordis'
-import { BlockAssembler, createUserMessage, type UserMessage, type ContextFormed } from '@deepseek-ai/dsh-llm'
+import { BlockAssembler, createUserMessage, type UserMessage, type ContextFormed, type FinishReason } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionSeq as Seq } from '@deepseek-ai/dsh-session'
 import { deadline } from '@deepseek-ai/dsh-timeout'
@@ -57,9 +57,24 @@ export function modelRoute(ctx: Context, operation: ModelOperation): { provider:
 }
 
 /**
+ * Parse one complete JSON response after enforcing its terminal finish reason.
+ * @param text - Complete assembled text response.
+ * @param finish - Provider finish reason for the response.
+ * @returns parsed JSON value; rejects incomplete output or surrounding prose.
+ */
+export function parseModelOutput(text: string, finish: FinishReason): unknown {
+  if (finish.kind !== 'stop') {
+    throw new Error(`Anima model request did not finish successfully (finish=${JSON.stringify(finish)})`)
+  }
+  const trimmed = text.trim()
+  const fenced = /^```json[ \t]*\r?\n([\s\S]*?)\r?\n```$/i.exec(trimmed)
+  return JSON.parse(fenced?.[1] ?? trimmed)
+}
+
+/**
  * Invoke the Host LLM registry with bounded JSON input and output.
  * @param ctx - Host model registry.
- * @param operation - Auxiliary operation owner and current limits.
+ * @param operation - Auxiliary model owner and current limits.
  * @param kind - Original Anima operation kind.
  * @param system - Original Anima system instruction.
  * @param input - JSON model input prepared by Anima.
@@ -80,17 +95,15 @@ export async function invokeModel(ctx: Context, operation: ModelOperation, kind:
     let outputBytes = 0
     for await (const chunk of ctx.llm.stream({ ...route, system, messages, maxTokens: policy.maxOutputTokens,
       signal: timeout.signal, sessionId: agent.id, purpose: 'anima-memory' })) {
-      timeout.signal.throwIfAborted()
       outputBytes += Buffer.byteLength(JSON.stringify(chunk), 'utf8')
       if (outputBytes > policy.maxInputBytes) throw new Error('Anima model output exceeds maxInputBytes')
       assembler.push(chunk)
     }
     timeout.signal.throwIfAborted()
-    if (assembler.finish.kind !== 'stop') throw new Error('Anima model request did not finish successfully')
     const blocks = assembler.blocks()
     if (blocks.some(block => block.type !== 'text' && block.type !== 'reasoning')) throw new Error('Anima model output must contain JSON text')
     text = blocks.filter(block => block.type === 'text').map(block => block.text).join('')
-    const result: unknown = JSON.parse(text)
+    const result = parseModelOutput(text, assembler.finish)
     agent.session.append('anima/extraction-result', { requestSeq: request.seq, text, error: null })
     return result
   } catch (error) {

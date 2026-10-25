@@ -133,7 +133,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: '@Remote async login(input: AccountLoginInput): Promise<AccountStatus>',
         description: 'Sign in and bind one reusable model key to this account.',
         parameters: [{ name: 'input', description: 'account credentials and local sign-in preferences.' }],
-        returns: 'current account state after credentials are stored.',
+        returns: 'current account state after the credential transition completes; environment-supplied references are skipped, not stored.',
       },
       {
         signature: '@Remote async logout(): Promise<void>',
@@ -614,6 +614,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     summary: 'Immutable binary attachment service.',
     description: 'Immutable binary attachment service. Implementations validate bytes before publishing a reference.',
     methods: [
+      {
+        signature: 'abstract readonly imageLimits: ImageAttachmentLimits',
+        description: 'Deployment-resolved image policy used by authoritative and fast-path validation.',
+        parameters: [],
+      },
       {
         signature: 'abstract validateImage(input: SaveImageAttachment): Promise<void>',
         description: 'Validate one image without persisting it. Batch callers validate every member before saving any member.',
@@ -4093,6 +4098,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the existing or newly durable workspace.',
       },
       {
+        signature: 'async reconcileProjectSessions(path: string): Promise<void>',
+        description: 'Attach stored Sessions whose authoritative project location matches an opened Workspace.',
+        parameters: [{ name: 'path', description: 'Existing Workspace directory.' }],
+        returns: 'completion after the Session membership records are durable.',
+      },
+      {
         signature: 'initializeDefault(resolveDirectory: () => Promise<string>): Promise<Workspace | undefined>',
         description: 'Initialize the default Workspace only while both the registry and Session history are empty. Repeated requests reuse its durable identity; deleting that registration permanently disables automatic creation.',
         parameters: [{ name: 'resolveDirectory', description: 'resolve the absolute directory; called only for eligible creation, inside the registry mutation queue. Missing directories are created recursively before registration, and the initial title is the requested directory\'s own final segment — not the canonical one, so a symlink at that path does not retitle the Workspace after its target. After resolution, caller cancellation does not roll back creation or registration.' }],
@@ -4930,7 +4941,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AccountStatus',
-    declaration: 'export interface AccountStatus {\n    readonly loggedIn: boolean;\n    readonly keyBound: boolean;\n    readonly user?: AccountUser;\n    readonly balance?: number;\n    readonly rememberedUsername?: string;\n    readonly autoLogin?: boolean;\n}',
+    declaration: 'export interface AccountStatus {\n    readonly loggedIn: boolean;\n    readonly keyBound: boolean;\n    readonly user?: AccountUser;\n    readonly balance?: number;\n    readonly rememberedUsername?: string;\n    readonly autoLogin?: boolean;\n    readonly credentialsFromEnv?: boolean;\n}',
   },
   {
     name: 'AccountUsageSnapshot',
@@ -5226,7 +5237,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AutomationOperation',
-    declaration: 'export type AutomationOperation = {\n    readonly action: \'create\';\n    readonly draft: AutomationDraft;\n} | {\n    readonly action: \'update\';\n    readonly id: AutomationTaskId;\n    readonly expectedRevision: number;\n    readonly draft: AutomationDraft;\n} | {\n    readonly action: \'pause\' | \'resume\' | \'remove\' | \'purgeDeleted\';\n    readonly id: AutomationTaskId;\n    readonly expectedRevision: number;\n} | {\n    readonly action: \'run\';\n    readonly id: AutomationTaskId;\n    readonly expectedRevision: number;\n} | {\n    readonly action: \'stop\';\n    readonly id: AutomationTaskId;\n    readonly runId: AutomationRunId;\n};',
+    declaration: 'export type AutomationOperation = {\n    readonly action: \'create\';\n    readonly draft: AutomationDraft;\n    readonly originSessionId?: SessionId;\n} | {\n    readonly action: \'update\';\n    readonly id: AutomationTaskId;\n    readonly expectedRevision: number;\n    readonly draft: AutomationDraft;\n} | {\n    readonly action: \'pause\' | \'resume\' | \'remove\' | \'purgeDeleted\';\n    readonly id: AutomationTaskId;\n    readonly expectedRevision: number;\n} | {\n    readonly action: \'run\';\n    readonly id: AutomationTaskId;\n    readonly expectedRevision: number;\n} | {\n    readonly action: \'stop\';\n    readonly id: AutomationTaskId;\n    readonly runId: AutomationRunId;\n};',
   },
   {
     name: 'AutomationPreparedOperation',
@@ -5270,7 +5281,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AutomationTask',
-    declaration: 'export interface AutomationTask {\n    readonly id: AutomationTaskId;\n    readonly ownerAccountId: string;\n    readonly revision: number;\n    readonly recordVersion: number;\n    readonly authorizationRevision: number;\n    readonly consentRevision: number;\n    readonly ruleRevision: number;\n    readonly definition: AutomationSnapshot;\n    readonly enabled: boolean;\n    readonly deletedAt: string | null;\n    readonly nextOccurrenceAt: string | null;\n    readonly occurrenceWatermark: {\n        readonly ruleRevision: number;\n        readonly at: string;\n    } | null;\n    readonly pendingOccurrence: {\n        readonly at: string;\n        readonly from: string;\n        readonly ruleRevision: number;\n    } | null;\n    readonly activeRunId: AutomationRunId | null;\n    readonly runs: readonly AutomationRun[];\n    readonly requestReceipts: readonly AutomationReceipt[];\n    readonly creationRequest: {\n        readonly requestId: string;\n        readonly digest: string;\n    };\n    readonly historyPruned: boolean;\n    readonly skippedRange: {\n        readonly from: string;\n        readonly through: string;\n        readonly reason: string;\n    } | null;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
+    declaration: 'export interface AutomationTask {\n    readonly id: AutomationTaskId;\n    readonly ownerAccountId: string;\n    readonly originSessionId?: SessionId | undefined;\n    readonly revision: number;\n    readonly recordVersion: number;\n    readonly authorizationRevision: number;\n    readonly consentRevision: number;\n    readonly ruleRevision: number;\n    readonly definition: AutomationSnapshot;\n    readonly enabled: boolean;\n    readonly deletedAt: string | null;\n    readonly nextOccurrenceAt: string | null;\n    readonly occurrenceWatermark: {\n        readonly ruleRevision: number;\n        readonly at: string;\n    } | null;\n    readonly pendingOccurrence: {\n        readonly at: string;\n        readonly from: string;\n        readonly ruleRevision: number;\n    } | null;\n    readonly activeRunId: AutomationRunId | null;\n    readonly runs: readonly AutomationRun[];\n    readonly requestReceipts: readonly AutomationReceipt[];\n    readonly creationRequest: {\n        readonly requestId: string;\n        readonly digest: string;\n    };\n    readonly historyPruned: boolean;\n    readonly skippedRange: {\n        readonly from: string;\n        readonly through: string;\n        readonly reason: string;\n    } | null;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
   },
   {
     name: 'AutomationTaskId',
@@ -6019,6 +6030,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'HostConnectionRpc',
     declaration: 'export interface HostConnectionRpc {\n    handle(channel: string, handler: ConnectionRpcHandler): () => Promise<void>;\n    intercept(channel: \'/api\', matches: ConnectionRpcEndpointMatcher, handler: ConnectionRpcHandler): () => Promise<void>;\n}',
+  },
+  {
+    name: 'ImageAttachmentLimits',
+    declaration: 'export interface ImageAttachmentLimits {\n    maxImageBytes: number;\n    maxImagesPerMessage: number;\n    maxMessageImageBytes: number;\n    maxImagePixels: number;\n    maxImageDimension: number;\n    mediaTypes: readonly ImageMediaType[];\n}',
   },
   {
     name: 'ImageAttachmentRef',

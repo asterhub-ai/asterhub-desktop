@@ -46,6 +46,14 @@ export interface AccountStatus {
   readonly rememberedUsername?: string
   /** Whether the Host may use its saved password to renew an expired session. */
   readonly autoLogin?: boolean
+  /**
+   * Whether part of the account credentials is supplied by the read-only
+   * launching environment instead of persisted by this installation. Sign-in
+   * succeeds, but writing such references is skipped — the provider rejects a
+   * write an environment value would shadow — so their effective values stay
+   * the environment's until it stops supplying them.
+   */
+  readonly credentialsFromEnv?: boolean
 }
 
 /** One live quota read. */

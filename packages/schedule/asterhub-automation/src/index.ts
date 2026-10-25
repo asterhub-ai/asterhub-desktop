@@ -168,7 +168,7 @@ export type { AutomationChangedEvent, AutomationAccountChangedEvent, AutomationR
  *   scopes only; scheduled-run/descendant scopes never receive it.
  */
 export class AutomationService extends TypertRemoteService implements AutomationRuntimeHost {
-  static inject = ['storageDomain', 'workspaceRegistry', 'accountSub2api', 'llm', 'agents', 'agentPresets', 'sessionController', 'sessionProjections', 'sessionPersistence', 'userQuestions', 'permissionPresets', 'sessionTitle', 'jobs']
+  static inject = ['storageDomain', 'workspaceRegistry', 'accountSub2api', 'llm', 'agents', 'agentPresets', 'sessions', 'sessionController', 'sessionProjections', 'sessionPersistence', 'userQuestions', 'permissionPresets', 'sessionTitle', 'jobs']
 
   static Config = Config
 
@@ -183,7 +183,7 @@ export class AutomationService extends TypertRemoteService implements Automation
   private stopping = false
 
   /**
-   * @param ctx - Host context supplying storage, workspace, account, and llm services.
+   * @param ctx - Host context supplying storage, workspace, account, llm, and sessions services.
    * @param config - Validated configuration (Schemastery resolves defaults).
    */
   constructor(ctx: Context, config: Config) {

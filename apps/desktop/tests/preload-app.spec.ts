@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 import { JSDOM } from 'jsdom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import type { DesktopBrowserTabCommand } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import { installMandatoryUpdateOverlay } from '../src/preload-mandatory-overlay.ts'
 import { syncWindowsAppearance } from '../src/preload-windows.ts'
 import { DESKTOP_IPC, type DshDesktopProductApi } from '../src/ipc.ts'
 
 const electron = vi.hoisted(() => ({
   contextBridge: { exposeInMainWorld: vi.fn() },
-  ipcRenderer: { invoke: vi.fn(), on: vi.fn(), off: vi.fn(), send: vi.fn() },
+  ipcRenderer: { invoke: vi.fn(), on: vi.fn(), off: vi.fn(), send: vi.fn(), sendSync: vi.fn(() => '0.21.0') },
   webUtils: { getPathForFile: vi.fn() },
 }))
 vi.mock('electron', () => electron)
@@ -44,6 +45,7 @@ it('limits product documents to update status and a native confirmation action',
   await api.updates.status()
   await api.updates.open()
   expect(electron.ipcRenderer.invoke.mock.calls).toEqual([[DESKTOP_IPC.updatesStatus], [DESKTOP_IPC.updatesOpen]])
+  expect(api.installedVersion).toBe('0.21.0')
   expect(api).not.toHaveProperty('plugins')
   expect(api).not.toHaveProperty('backend')
   expect(api.updates).not.toHaveProperty('install')
@@ -263,4 +265,39 @@ it('forwards browser guest input only for the focused live webview lease', async
   handler({}, input)
   expect(listener).toHaveBeenCalledOnce()
   off()
+})
+
+it('replies to a correlated browser automation request from Main', async () => {
+  vi.stubGlobal('location', new URL('dsh-app://app/'))
+  await import('../src/preload-app.ts')
+  const api = electron.contextBridge.exposeInMainWorld.mock.calls.find(([name]) => name === 'dshDesktop')?.[1] as DshDesktopProductApi
+  const command = { requestId: 17, sessionId: 'synthetic-session', operation: { kind: 'tabs.list', limit: 256 } }
+  const result = { status: 'success' as const, value: { kind: 'tabs' as const, tabs: [], truncated: false } }
+  const handler = vi.fn(async (received: DesktopBrowserTabCommand) => {
+    expect(received).toEqual(command)
+    return result
+  })
+  api.browser.onAutomationRequest?.(handler)
+  const listener = electron.ipcRenderer.on.mock.calls.find(([channel]) => channel === DESKTOP_IPC.browserAutomation)?.[1] as
+    (event: unknown, command: unknown) => void
+  listener({}, command)
+  await new Promise(resolve => setTimeout(resolve, 0))
+  expect(handler).toHaveBeenCalledExactlyOnceWith(command)
+  expect(electron.ipcRenderer.send).toHaveBeenCalledExactlyOnceWith(DESKTOP_IPC.browserAutomationReply, {
+    requestId: command.requestId, result,
+  })
+})
+
+it('forwards Main cancellation by request id to the browser handler', async () => {
+  vi.stubGlobal('location', new URL('dsh-app://app/'))
+  await import('../src/preload-app.ts')
+  const api = electron.contextBridge.exposeInMainWorld.mock.calls.find(([name]) => name === 'dshDesktop')?.[1] as DshDesktopProductApi
+  const cancel = vi.fn()
+  const dispose = api.browser.onAutomationCancel?.(cancel)
+  const listener = electron.ipcRenderer.on.mock.calls.find(([channel]) => channel === DESKTOP_IPC.browserAutomationCancel)?.[1] as
+    (event: unknown, requestId: number) => void
+  listener({}, 17)
+  expect(cancel).toHaveBeenCalledExactlyOnceWith(17)
+  dispose?.()
+  expect(electron.ipcRenderer.off).toHaveBeenCalledExactlyOnceWith(DESKTOP_IPC.browserAutomationCancel, listener)
 })

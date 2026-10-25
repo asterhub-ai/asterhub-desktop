@@ -295,6 +295,24 @@ export class WorkspaceRegistry extends Service {
   }
 
   /**
+   * Attach stored Sessions whose authoritative project location matches an opened Workspace.
+   * @param path - Existing Workspace directory.
+   * @returns completion after the Session membership records are durable.
+   */
+  async reconcileProjectSessions(path: string): Promise<void> {
+    const canonical = await realpathNormalize(path)
+    await this.enqueueOperation(async () => {
+      const workspace = [...this.entities.values()].find(entity => entity.path === canonical)
+      if (workspace === undefined) throw new Error(`workspace is not registered: ${canonical}`)
+      const headers = await this.listStoredHeaders()
+      await this.indexHeaders(headers)
+      for (const header of headers) {
+        if (this.sessionPaths.get(header.id) === canonical) await workspace.attachSession(header.id)
+      }
+    })
+  }
+
+  /**
    * Initialize the default Workspace only while both the registry and Session
    * history are empty. Repeated requests reuse its durable identity; deleting
    * that registration permanently disables automatic creation.

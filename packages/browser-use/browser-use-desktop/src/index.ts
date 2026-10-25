@@ -7,6 +7,7 @@ export { createDesktopBrowserTransport } from './transport.ts'
 export type { DesktopBrowserTransportPort } from './transport.ts'
 export {
   isDesktopBrowserCancelMessage,
+  isDesktopBrowserHttpUrl,
   isDesktopBrowserOperation,
   isDesktopBrowserRequestMessage,
   isDesktopBrowserResultMessage,

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { SessionId, SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
-import { createUserMessage, MessageId, ToolCallId } from '@deepseek-ai/dsh-llm'
+import { createMessage, createUserMessage, MessageId, ToolCallId } from '@deepseek-ai/dsh-llm'
 import { mapSessionEvent, mapSessionEvents } from '../src/session-capture.ts'
+import type {} from '@deepseek-ai/dsh-tools'
+import type {} from '../src/extraction.ts'
 
 const sessionId = SessionId('session-1')
 
@@ -63,5 +65,23 @@ describe('mapSessionEvent', () => {
       { kind: 'boundary', boundary_type: 'checkpoint', source: { event_id: '9:checkpoint' } },
     ])
     expect(mapSessionEvent(sessionId, stepEnd)).toBeUndefined()
+  })
+  it('omits tool-only assistant messages without filtering user messages', () => {
+    const assistant = {
+      type: 'assistant/message', seq: SessionSeq(12), time: 15, surfaceOp: 'append',
+      data: { turn: 3, step: 2, stream: [],
+        message: createMessage({ role: 'assistant', source: { kind: 'model', provider: 'p', model: 'm' },
+          content: [{ type: 'tool-call', id: ToolCallId('call-2'), name: 'search', arguments: '{}' }] }) },
+    } satisfies SessionEvent<'assistant/message'>
+    const synthetic = {
+      type: 'user/message', seq: SessionSeq(13), time: 16, surfaceOp: 'append',
+      data: createUserMessage({ source: { kind: 'anima' }, content: [{ type: 'text', text: 'context' }] }),
+    } satisfies SessionEvent<'user/message'>
+
+    expect(mapSessionEvent(sessionId, assistant)).toBeUndefined()
+    expect(mapSessionEvent(sessionId, synthetic)).toMatchObject({
+      role: 'user', message_origin: 'runtime_synthetic', content_parts: [{ type: 'text', text: 'context' }],
+    })
+
   })
 })

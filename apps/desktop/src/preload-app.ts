@@ -13,8 +13,16 @@ import { installMandatoryUpdateOverlay } from './preload-mandatory-overlay.ts'
 import { createDesktopBrowserBridge } from './preload-browser.ts'
 
 function createProductApi(): DshDesktopProductApi {
+  let installedVersion = ''
+  try {
+    if (typeof ipcRenderer.sendSync === 'function') {
+      const version: unknown = ipcRenderer.sendSync(DESKTOP_IPC.appVersion)
+      if (typeof version === 'string') installedVersion = version
+    }
+  } catch {}
   return {
     protocolVersion: 1,
+    installedVersion,
     browser: createDesktopBrowserBridge(),
     deviceInfo: () => ipcRenderer.invoke(DESKTOP_IPC.deviceInfo) as Promise<string>,
     keyboard: {

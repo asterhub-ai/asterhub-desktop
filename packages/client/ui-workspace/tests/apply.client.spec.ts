@@ -59,6 +59,7 @@ async function bench() {
     title: 'new', sessionIds: [], createdAt: '0', updatedAt: '0',
   }))
   const rename = vi.fn(async () => ({}))
+  const openProject = vi.fn(async () => workspace('ws-import', ['prior-session']))
   const selectPanel = vi.fn()
   ctx.provide('layout', { selectPanel, beginNavigation: () => new AbortController().signal })
   const search = vi.fn(async () => ({
@@ -109,6 +110,7 @@ async function bench() {
   ctx.provide('workspaces', {
     list: { getSnapshot: () => workspaceSnapshot, subscribe: workspacesSubscribe },
     create,
+    openProject,
     initializeDefault,
     rename,
     delete: deleteWorkspace,
@@ -119,6 +121,7 @@ async function bench() {
     unpinSession,
     insertSessionBefore: vi.fn(async () => ({})),
   } as never)
+  const refreshSessions = vi.fn(async () => undefined)
   ctx.provide('sessions', {
     list: { getSnapshot: () => sessionSnapshot, subscribe },
     create: createSession,
@@ -128,7 +131,7 @@ async function bench() {
     searchResultLimit: 20,
     binding,
     subagentAddress: vi.fn(() => undefined),
-    refreshProjections: vi.fn(() => Promise.resolve()),
+    refresh: refreshSessions,
     fork,
   } as never)
   const pickDirectory = vi.fn(() => Promise.resolve({ ok: true as const, value: '/projects/picked' }))
@@ -146,6 +149,7 @@ async function bench() {
     retain, using, selectPanel, search, renameSession, binding, fork, pickDirectory, pinSession, unpinSession,
     createSession, deleteWorkspace, deleteSession,
     workspacesSubscribe, initializeDefault,
+    openProject, refreshSessions,
     setWorkspaces: (snapshot: WorkspaceSnapshot): void => { workspaceSnapshot = snapshot },
     setSessions: (snapshot: SessionListState): void => { sessionSnapshot = snapshot },
   }
@@ -586,7 +590,7 @@ describe('ui-workspace apply', () => {
     expect(unarchiveSession).toHaveBeenCalledWith('session')
   })
 
-  it('routes browser actions and picker creation to the services', async () => {
+  it('refreshes Session summaries after browser and picker project imports', async () => {
     const b = await bench()
     declare(b.slots, 'sidebar.workspaces', 'conversation.hero.workspace')
     await b.ctx.plugin({ inject: [...inject], apply }).await()
@@ -601,6 +605,10 @@ describe('ui-workspace apply', () => {
     browser.open('session' as never)
     expect(b.retain).toHaveBeenCalledWith('session', { source: 'mainView' })
     const signal = new AbortController().signal
+    const input = { path: '/tmp/imported', mode: 'existing' as const, expectedId: 'project-1' }
+    await expect(browser.openProjectWorkspace!(input, signal)).resolves.toMatchObject({ workspaceId: 'ws-import' })
+    expect(b.openProject).toHaveBeenCalledWith(input, signal)
+    expect(b.refreshSessions).toHaveBeenCalledTimes(1)
     await expect(browser.searchSessions('match', signal)).resolves.toEqual({
       items: [{ sessionId: 'session', snippet: 'match' }],
       hasMore: false,
@@ -613,8 +621,8 @@ describe('ui-workspace apply', () => {
     expect(b.create).toHaveBeenCalledWith({ path: '/tmp/browser-project' })
 
     const picker = faceOf(b.slots.entries('conversation.hero.workspace')[0]!) as WorkspacePickerInjected
-    await picker.createWorkspace({ path: '/tmp/project' })
-    expect(b.create).toHaveBeenCalledWith({ path: '/tmp/project' })
+    await expect(picker.openProjectWorkspace!(input, signal)).resolves.toMatchObject({ workspaceId: 'ws-import' })
+    expect(b.refreshSessions).toHaveBeenCalledTimes(2)
   })
 
   it('declares the browser child slots and reports directory-flow occupancy per surface', async () => {

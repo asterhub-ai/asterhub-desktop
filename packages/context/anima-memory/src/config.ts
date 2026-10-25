@@ -114,7 +114,7 @@ export const Config = z.object({
   modelProvider: z.string().default('').volatile(),
   model: z.string().default('').volatile(),
   maxInputBytes: z.number().step(1).min(1024).max(1000000).default(32768).volatile(),
-  maxOutputTokens: z.number().step(1).min(128).max(16384).default(2048).volatile(),
+  maxOutputTokens: z.number().step(1).min(128).max(8192).default(2048).volatile(),
   timeoutMs: z.number().step(1).min(1000).max(300000).default(30000).volatile(),
 })
 

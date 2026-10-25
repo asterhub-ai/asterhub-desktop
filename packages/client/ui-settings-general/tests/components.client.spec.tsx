@@ -191,4 +191,11 @@ describe('current version', () => {
     expect(screen.getByText('Current version: 1.2.3-rc.4')).toBeTruthy()
     expect(screen.queryByRole('button')).toBeNull()
   })
+
+  it('prefers the installed Desktop version over the shared framework build version', () => {
+    vi.stubEnv('DSH_CLIENT_VERSION', '0.2.0-rc.3')
+    const desktopProps = { ...kit, installedVersion: '0.21.0' }
+    render(<CurrentVersionRow {...desktopProps} t={t} />)
+    expect(screen.getByText('Current version: 0.21.0')).toBeTruthy()
+  })
 })

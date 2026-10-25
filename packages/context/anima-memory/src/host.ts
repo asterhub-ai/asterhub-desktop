@@ -8,7 +8,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
-import { CaptureCore, Neo4jStore, projectIdentity, uuidV5FromParts, type CaptureSession } from '@deepseek-ai/anima-capture'
+import { CaptureCore, Neo4jStore, projectIdentity, uuidV5FromParts, type AppendResult, type CaptureSession } from '@deepseek-ai/anima-capture'
 import {
   MemoryCore, Neo4jMemoryStore, Neo4jPersonalityStore, registerProjectOwnership,
   listProjectOwnership, buildManualReflectionSystemPrompt, type ProjectMemorySearchResult, type ProjectOwnershipScope,
@@ -264,7 +264,7 @@ export class AnimaHost {
                 }
               }
               const written = await binding.capture.append(fact)
-              if (written.status !== 'written' && written.status !== 'duplicate') throw new Error(`Anima capture failed: ${written.status}`)
+              if (written.status !== 'written' && written.status !== 'duplicate') throw new Error(formatCaptureFailure(written))
               if (!binding.eventUids.has(event.seq)) binding.eventUids.set(event.seq, written.event_uid)
               if (event.type === 'tool/call' || event.type === 'tool/ptc-dispatch-start') {
                 const callId = event.type === 'tool/call' ? event.data.callId : event.data.subCallId
@@ -564,4 +564,32 @@ export function evidenceSpan(text: string, quote: string, part: number): {
  */
 export function operationDecision(installation: string, session: string, call: string): string {
   return uuidV5FromParts(['anima.memory-operation-decision', 'v1', installation, session, call])
+}
+
+/** Safe, bounded descriptions for upstream Anima capture failure codes. */
+const CAPTURE_FAILURE_DESCRIPTIONS: Record<string, string> = {
+  database_error: 'Database write failed before commit boundary',
+  core_degraded: 'Capture subsystem is degraded due to prior database failure',
+  invalid_source_facts: 'Source Session event rejected by validation schema',
+  identity_conflict: 'Session or project identity conflict in graph',
+  queue_full: 'Capture queue capacity exceeded',
+  core_closed: 'Capture core is closed',
+  correlation_target_missing: 'Tool result correlation target event was not found',
+}
+
+/**
+ * Format a non-successful CaptureCore append outcome into a sanitized, bounded error message.
+ * Internal Cypher queries, credentials, and raw filesystem paths are never echoed.
+ * @param result - Non-written, non-duplicate append outcome from CaptureSession.
+ * @returns Bounded error message containing status, failure code, and safe description.
+ */
+export function formatCaptureFailure(
+  result: Exclude<AppendResult, { status: 'written' | 'duplicate' }>,
+): string {
+  if (result.status === 'indeterminate') {
+    return 'Anima capture indeterminate: Write outcome is unknown after cancellation or timeout'
+  }
+  const code = result.code
+  const description = CAPTURE_FAILURE_DESCRIPTIONS[code] ?? 'Unspecified capture failure'
+  return `Anima capture failed: ${code} (${description})`
 }

@@ -234,14 +234,14 @@ export async function runRipgrep(
   const agent = exec.agent
   let cwd: string | undefined
   if (agent !== undefined) {
-    const sessionCwd = agent.ctx?.get?.('sessionCwd', false)
+    const sessionCwd = agent.ctx.get('sessionCwd', false)
     if (sessionCwd !== undefined) {
       cwd = sessionCwd.resolve(agent.session.header)
       if (cwd === undefined) {
         throw new Error(`Session ${agent.session.id} has no current execution directory`)
       }
     } else {
-      cwd = agent.options?.cwd ?? agent.session.header?.cwd
+      cwd = agent.options.cwd ?? agent.session.header.cwd
     }
   }
   const workdir = cwd ?? process.cwd()

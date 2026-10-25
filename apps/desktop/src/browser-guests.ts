@@ -30,6 +30,7 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import { AutomationSession } from './browser-automation.ts'
 import { DESKTOP_IPC } from './ipc.ts'
+import { isDesktopBrowserHttpUrl } from '@deepseek-ai/dsh-browser-use-desktop/protocol'
 
 interface RendererReply {
   readonly requestId: number
@@ -553,12 +554,16 @@ export class DesktopBrowserGuests {
           lease.guest !== undefined &&
           !lease.guest.isDestroyed()
         ) {
+          const currentUrl = lease.guest.getURL()
+          if (!isDesktopBrowserHttpUrl(currentUrl)) {
+            break
+          }
           results.push({
             target: {
               tabId: brandString<DesktopBrowserTabId>(lease.tabId),
               generation: lease.generation,
             },
-            url: lease.guest.getURL(),
+            url: currentUrl,
             title: lease.guest.getTitle(),
             active: reported.active,
             ownership: 'user',
@@ -644,16 +649,26 @@ export class DesktopBrowserGuests {
         operation,
       }
       return new Promise<DesktopBrowserTabCommandResult>((resolve, reject) => {
+        const cancelRendererCommand = () => {
+          if (owner.isDestroyed()) return
+          try {
+            owner.send(DESKTOP_IPC.browserAutomationCancel, commandId)
+          } catch {
+            // The request is already being rejected; no renderer cancellation can be delivered.
+          }
+        }
         const onAbort = () => {
           const pending = this.pendingRendererCommands.get(commandId)
           if (pending === undefined) return
           this.pendingRendererCommands.delete(commandId)
           clearTimeout(pending.timeout)
+          cancelRendererCommand()
           reject(new Error('Browser operation was cancelled'))
         }
         const timeout = setTimeout(() => {
           if (!this.pendingRendererCommands.delete(commandId)) return
           signal.removeEventListener('abort', onAbort)
+          cancelRendererCommand()
           reject(new Error('Timed out waiting for browser renderer'))
         }, DESKTOP_BROWSER_RENDERER_COMMAND_TIMEOUT_MS)
         this.pendingRendererCommands.set(commandId, {
@@ -685,6 +700,7 @@ export class DesktopBrowserGuests {
           const pending = this.pendingRendererCommands.get(commandId)
           if (pending === undefined) return
           this.pendingRendererCommands.delete(commandId)
+          cancelRendererCommand()
           pending.reject(error instanceof Error ? error : new Error('Failed to send browser command to renderer'))
         }
       })

@@ -10,13 +10,13 @@ import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 export function sessionCwd(exec: ToolExecution): string | undefined {
   const agent = exec.agent
   if (agent === undefined) return undefined
-  const sessionCwd = agent.ctx?.get?.('sessionCwd', false)
+  const sessionCwd = agent.ctx.get('sessionCwd', false)
   if (sessionCwd !== undefined) {
     const cwd = sessionCwd.resolve(agent.session.header)
     if (cwd === undefined) throw new Error(`Session ${agent.session.id} has no current execution directory`)
     return cwd
   }
-  return agent.options?.cwd ?? agent.session.header?.cwd
+  return agent.options.cwd ?? agent.session.header.cwd
 }
 
 /**

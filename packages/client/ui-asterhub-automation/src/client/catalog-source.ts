@@ -148,6 +148,7 @@ export function createCatalogSource<T extends { readonly id: string }>(
    */
   const resetIdentity = (): void => {
     epoch++
+    inFlight = undefined
     publish({ records: [], status: 'loading', readRequest: snapshot.readRequest + 1, settled: false, readSettled: 0, identityGeneration: snapshot.identityGeneration + 1 })
   }
 

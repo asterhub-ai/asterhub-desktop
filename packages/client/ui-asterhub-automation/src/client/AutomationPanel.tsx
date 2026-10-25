@@ -6,7 +6,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import type { AutomationTask, AutomationTaskId, AutomationChoices } from '@deepseek-ai/dsh-asterhub-automation/client'
+import type { AutomationTask, AutomationTaskId, AutomationChoices, AutomationRun } from '@deepseek-ai/dsh-asterhub-automation/client'
 import type { CatalogSnapshot } from './catalog-source.ts'
 import { AutomationFeedback } from './AutomationFeedback.tsx'
 import { AutomationDetail, type AutomationDetailInjected, type AutomationDetailTab } from './AutomationDetail.tsx'
@@ -60,15 +60,27 @@ function formatNextOccurrence(task: AutomationTask): string {
   return new Date(task.nextOccurrenceAt).toLocaleString()
 }
 
-/** Recent run state label for row. */
-function recentRunState(task: AutomationTask, t: PropsLocale<'automation'>['t']): string {
+/** The run a row presents as its most recent: the active run, else the last history entry. */
+function recentRun(task: AutomationTask): AutomationRun | null {
   if (task.activeRunId !== null) {
     const activeRun = task.runs.find(r => r.id === task.activeRunId)
-    if (activeRun !== undefined) return t(`run.state.${activeRun.state}`)
+    if (activeRun !== undefined) return activeRun
   }
-  const latest = task.runs.at(-1)
-  if (latest !== undefined) return t(`run.state.${latest.state}`)
-  return ''
+  return task.runs.at(-1) ?? null
+}
+
+/** Format an instant as locale-owned relative time for the list row. */
+function formatRelativeTime(iso: string, t: PropsLocale<'automation'>['t']): string {
+  const timestamp = Date.parse(iso)
+  if (Number.isNaN(timestamp)) return ''
+  const relative = new Intl.RelativeTimeFormat(t('time.locale'), { numeric: 'auto' })
+  const diffSeconds = Math.round((timestamp - Date.now()) / 1000)
+  const elapsed = Math.abs(diffSeconds)
+  if (elapsed < 60) return relative.format(diffSeconds, 'second')
+  if (elapsed < 3600) return relative.format(Math.round(diffSeconds / 60), 'minute')
+  if (elapsed < 86400) return relative.format(Math.round(diffSeconds / 3600), 'hour')
+  if (elapsed < 7 * 86400) return relative.format(Math.round(diffSeconds / 86400), 'day')
+  return new Date(timestamp).toLocaleString(t('time.locale'))
 }
 
 /**
@@ -133,9 +145,10 @@ export function AutomationPanel(props: AutomationPanelProps) {
   const rows = useMemo(() => {
     const query = search.trim().toLowerCase()
     return records.filter((record) => {
+      if (record.deletedAt !== null) return false
       const matchesStatus = statusFilter === 'all'
-        || (statusFilter === 'enabled' && record.enabled && record.deletedAt === null)
-        || (statusFilter === 'paused' && !record.enabled && record.deletedAt === null)
+        || (statusFilter === 'enabled' && record.enabled)
+        || (statusFilter === 'paused' && !record.enabled)
       const matchesSearch = record.definition.name.toLowerCase().includes(query)
         || record.definition.instruction.toLowerCase().includes(query)
       return matchesStatus && matchesSearch
@@ -148,10 +161,10 @@ export function AutomationPanel(props: AutomationPanelProps) {
 
   const emptyTitle = statusFilter === 'paused' && search.trim() === ''
     ? 'list.emptyInactive'
-    : records.length === 0 ? 'list.empty' : 'list.noMatches'
+    : records.every(record => record.deletedAt !== null) ? 'list.empty' : 'list.noMatches'
 
   const selected = useMemo(() =>
-    records.find(item => item.id === selectedId),
+    records.find(item => item.id === selectedId && item.deletedAt === null),
   [records, selectedId],
   )
 
@@ -266,46 +279,70 @@ export function AutomationPanel(props: AutomationPanelProps) {
                 {rows.map((record) => {
                   const nextRun = formatNextOccurrence(record)
                   const isPaused = !record.enabled || record.deletedAt !== null
-                  const recentState = recentRunState(record, t)
+                  const recent = recentRun(record)
+                  const recentAt = recent?.finishedAt ?? recent?.startedAt ?? recent?.requestedAt ?? null
+                  const recentRelative = recentAt !== null ? formatRelativeTime(recentAt, t) : ''
+                  const rowSessionId = recent?.sessionId ?? record.originSessionId ?? null
                   return (
                     <li key={record.id}>
-                      <Button
-                        className={clsx(
-                          css.row,
-                          selectedId === record.id && css.selectedRow,
-                          isPaused && css.pausedRow,
-                        )}
-                        aria-label={record.definition.name}
-                        aria-describedby={`${detailId}-metadata-${record.id}`}
-                        aria-expanded={selectedId === record.id}
-                        aria-controls={selectedId === record.id ? detailId : undefined}
-                        onClick={(event) => {
-                          rowRef.current = event.currentTarget
-                          setSelectedId(record.id)
-                          setTab('config')
-                        }}
-                      >
-                        <IconClockOutlineRegular className={css.rowGlyph} />
-                        <span className={css.rowContent}>
-                          <span className={css.rowTitle}>{record.definition.name}</span>
-                          <span className={css.rowSummary} id={`${detailId}-metadata-${record.id}`}>
-                            {isPaused && <span className={css.metadata}>{t('status.paused')}</span>}
-                            <span className={css.metadata}>{formatTiming(record, t)}</span>
-                            {!isPaused && nextRun && (
-                              <span className={css.metadata}>
-                                {t('list.nextPrefix')}
-                                <time dateTime={record.nextOccurrenceAt ?? undefined}>
-                                  {nextRun}
-                                </time>
-                              </span>
-                            )}
-                            {recentState && (
-                              <span className={css.metadata}>{recentState}</span>
-                            )}
+                      <div className={css.rowShell}>
+                        <Button
+                          className={clsx(
+                            css.row,
+                            selectedId === record.id && css.selectedRow,
+                            isPaused && css.pausedRow,
+                          )}
+                          aria-label={record.definition.name}
+                          aria-describedby={`${detailId}-metadata-${record.id}`}
+                          aria-expanded={selectedId === record.id}
+                          aria-controls={selectedId === record.id ? detailId : undefined}
+                          onClick={(event) => {
+                            rowRef.current = event.currentTarget
+                            setSelectedId(record.id)
+                            setTab('config')
+                          }}
+                        >
+                          <IconClockOutlineRegular className={css.rowGlyph} />
+                          <span className={css.rowContent}>
+                            <span className={css.rowTitle}>{record.definition.name}</span>
+                            <span className={css.rowSummary} id={`${detailId}-metadata-${record.id}`}>
+                              {isPaused && <span className={css.metadata}>{t('status.paused')}</span>}
+                              <span className={css.metadata}>{formatTiming(record, t)}</span>
+                              {!isPaused && nextRun && (
+                                <span className={css.metadata}>
+                                  {t('list.nextPrefix')}
+                                  <time dateTime={record.nextOccurrenceAt ?? undefined}>
+                                    {nextRun}
+                                  </time>
+                                </span>
+                              )}
+                              {recent !== null && (
+                                <span className={clsx(css.metadata, css.metadataRecent)}>
+                                  {t('list.lastRunPrefix')}
+                                  {t(`run.state.${recent.state}`)}
+                                  {recentRelative !== '' && (
+                                    <>
+                                      <span aria-hidden="true">·</span>
+                                      <time dateTime={recentAt ?? undefined}>{recentRelative}</time>
+                                    </>
+                                  )}
+                                </span>
+                              )}
+                            </span>
+                            <span className={css.rowInstruction}>{record.definition.instruction}</span>
                           </span>
-                          <span className={css.rowInstruction}>{record.definition.instruction}</span>
-                        </span>
-                      </Button>
+                        </Button>
+                        {rowSessionId !== null && (
+                          <Button
+                            size="sm"
+                            className={css.rowSession}
+                            aria-label={`${record.definition.name} · ${t('session.link')}`}
+                            onClick={() => { detailProps.onOpenSession(rowSessionId) }}
+                          >
+                            {t('session.link')}
+                          </Button>
+                        )}
+                      </div>
                     </li>
                   )
                 })}

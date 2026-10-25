@@ -76,8 +76,8 @@ interface HarnessOptions {
   liveSessions?: SessionHeader[]
   sessionStore?: boolean
   backend?: StorageBackend
+  projectLocations?: ReadonlyMap<SessionId, string>
 }
-
 /** Boot the real storage/domain/registry composition over controllable header-only peers. */
 async function harness(options: HarnessOptions = {}) {
   const pool = options.pool ?? new MemoryMediaPool()
@@ -94,6 +94,14 @@ async function harness(options: HarnessOptions = {}) {
   const open = vi.fn(() => { throw new Error('event bodies must not be opened') })
   const stat = vi.fn(() => { throw new Error('per-session stat must not be needed') })
   ctx.provide('sessionPersistence', { list, open, stat } as never)
+  if (options.projectLocations !== undefined) {
+    ctx.provide('projectStorage', {
+      locateSession: (id: SessionId) => {
+        const projectRoot = options.projectLocations!.get(id)
+        return projectRoot === undefined ? undefined : { projectRoot }
+      },
+    } as never)
+  }
 
   if (options.sessionStore === true) {
     await ctx.plugin(SessionStore)
@@ -253,6 +261,28 @@ describe('WorkspaceRegistry lifecycle and bootstrap', () => {
     expect(ctx.workspaceRegistry.list()).toEqual([])
     expect(list).toHaveBeenCalledTimes(1)
     expect(storedState(pool)).toEqual({ initialized: true, workspaceIds: [], archivedSessionIds: [], pinnedSessionIds: [] })
+  })
+
+  it('reconciles newly imported project history against its moved root without changing stored cwd', async () => {
+    const movedRoot = await makeDir('imported-project')
+    const originalRoot = join(base, 'old-device', 'workspace')
+    const imported = header('imported-session', originalRoot, 100)
+    const h = await harness({
+      sessions: [],
+      projectLocations: new Map([[imported.id, movedRoot]]),
+    })
+    try {
+      const workspace = await h.registry.create(movedRoot)
+      h.setSessions([imported])
+
+      await h.registry.reconcileProjectSessions(movedRoot)
+
+      expect(workspace.sessionIds).toEqual([imported.id])
+      expect(storedRecord(h.pool, workspace.id).sessionIds).toEqual([imported.id])
+      expect(h.open).not.toHaveBeenCalled()
+    } finally {
+      await h.fiber.dispose()
+    }
   })
 
   it('bootstraps once from list headers only, in workspace/session createdAt order', async ({ skip }) => {

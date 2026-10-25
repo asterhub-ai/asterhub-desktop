@@ -154,14 +154,14 @@ function resolveWorkdir(
   const agent = exec.agent
   let sessionCwd = policyWorkspaceRoot
   if (sessionCwd === undefined && agent !== undefined) {
-    const service = agent.ctx?.get?.('sessionCwd', false)
+    const service = agent.ctx.get('sessionCwd', false)
     if (service !== undefined) {
       sessionCwd = service.resolve(agent.session.header)
       if (sessionCwd === undefined) {
         throw new Error(`Session ${agent.session.id} has no current execution directory`)
       }
     } else {
-      sessionCwd = agent.options?.cwd ?? agent.session.header?.cwd
+      sessionCwd = agent.options.cwd ?? agent.session.header.cwd
     }
   }
   if (modelWorkdir === undefined) return sessionCwd

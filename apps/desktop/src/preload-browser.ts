@@ -10,7 +10,8 @@ import type {
   DesktopBrowserPageState,
   DesktopBrowserRef,
   DesktopBrowserSnapshotId,
-  DesktopBrowserTabAutomationHandler,
+  DesktopBrowserTabAutomationCancelHandler,
+  DesktopBrowserTabAutomationRequestHandler,
   DesktopBrowserTabCommand,
   DesktopBrowserViewport,
   SessionId,
@@ -157,10 +158,10 @@ export function createDesktopBrowserBridge(): DesktopBrowserBridge {
     ) {
       return ipcRenderer.invoke(DESKTOP_IPC.browserAccessibleAction, lease, snapshotId, ref, action)
     },
-    onAutomationRequest(handler: DesktopBrowserTabAutomationHandler) {
+    onAutomationRequest(handler: DesktopBrowserTabAutomationRequestHandler) {
       const listener = (_event: Electron.IpcRendererEvent, command: DesktopBrowserTabCommand): void => {
-        const controller = new AbortController()
-        void handler(command, controller.signal)
+        void Promise.resolve()
+          .then(() => handler(command))
           .then((result) => {
             ipcRenderer.send(DESKTOP_IPC.browserAutomationReply, { requestId: command.requestId, result })
           })
@@ -174,6 +175,15 @@ export function createDesktopBrowserBridge(): DesktopBrowserBridge {
       ipcRenderer.on(DESKTOP_IPC.browserAutomation, listener)
       return () => {
         ipcRenderer.off(DESKTOP_IPC.browserAutomation, listener)
+      }
+    },
+    onAutomationCancel(handler: DesktopBrowserTabAutomationCancelHandler) {
+      const listener = (_event: Electron.IpcRendererEvent, requestId: number): void => {
+        handler(requestId)
+      }
+      ipcRenderer.on(DESKTOP_IPC.browserAutomationCancel, listener)
+      return () => {
+        ipcRenderer.off(DESKTOP_IPC.browserAutomationCancel, listener)
       }
     },
   }

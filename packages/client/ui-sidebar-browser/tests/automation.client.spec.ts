@@ -226,4 +226,67 @@ describe('Desktop Browser Sidebar coordinator', () => {
     expect(whenSessionAdopted).not.toHaveBeenCalled()
     expect(closeTab).not.toHaveBeenCalled()
   })
+
+  it('safely reports stage distinction when openTab receives a schemeless URL', async () => {
+    const openTabs = createSnapshotStore<readonly SidebarRightOpenTab[]>([])
+    const controllers = new Map<SessionId, BrowserInjected>()
+    const handler = createDesktopBrowserAutomationHandler({
+      openTabs,
+      controllers,
+      sessionControllersChanged: createSnapshotStore(0),
+      retainSessionView: async () => () => {},
+      whenSessionAdopted: async () => {},
+      openTab: vi.fn(),
+      closeTab: vi.fn(),
+    })
+    const command: DesktopBrowserTabCommand = {
+      requestId: 102,
+      sessionId: SESSION_A,
+      operation: { kind: 'tabs.open', url: 'example.com', newTab: true },
+    }
+    const result = await handler(command, new AbortController().signal)
+    expect(result).toEqual({
+      status: 'error',
+      message: 'Browser tab operation failed: invalid URL "example.com"',
+    })
+  })
+
+  it('safely reports stage distinction when page navigation encounters a load failure', async () => {
+    const openTabs = createSnapshotStore<readonly SidebarRightOpenTab[]>([])
+    const stateStore = createSnapshotStore<BrowserControllerState>({
+      frame: { ...emptyBrowserFrame(), address: 'observed', loading: false, error: { code: -105, description: 'ERR_NAME_NOT_RESOLVED' } },
+      visible: true,
+      restoreTarget: undefined,
+      addressFailure: undefined,
+      addressRevision: 2,
+    })
+    const baseInjected = injected(TAB_A, stateStore.getSnapshot())
+    const controllers = new Map<SessionId, BrowserInjected>([
+      [SESSION_A, {
+        ...baseInjected,
+        keyedHooks: { browserState: key => (key === TAB_A ? stateStore : undefined) },
+      }],
+    ])
+    const handler = createDesktopBrowserAutomationHandler({
+      openTabs,
+      controllers,
+      sessionControllersChanged: createSnapshotStore(0),
+      retainSessionView: async () => () => {},
+      whenSessionAdopted: async () => {},
+      openTab: vi.fn(() => {
+        openTabs.set([{ sessionId: SESSION_A, tabId: TAB_A, kind: 'browser', contentId: 'sidebar://browser/smoke' }])
+      }),
+      closeTab: vi.fn(),
+    })
+    const command: DesktopBrowserTabCommand = {
+      requestId: 103,
+      sessionId: SESSION_A,
+      operation: { kind: 'tabs.open', url: 'https://example.com/', newTab: false },
+    }
+    const result = await handler(command, new AbortController().signal)
+    expect(result).toEqual({
+      status: 'error',
+      message: 'Browser page navigation failed: ERR_NAME_NOT_RESOLVED',
+    })
+  })
 })

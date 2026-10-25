@@ -43,3 +43,11 @@
         navigationTimeoutMs: 30000
         snapshotMaxChars: 50000
         readResultMaxChars: 50000
+
+    # Desktop computer-use capability: exclusive computer-use registry slot.
+    - id: computer-use
+      name: '@deepseek-ai/dsh-computer-use'
+
+    # Native Cua Driver computer-use provider.
+    - id: computer-use-cua-driver-native
+      name: '@deepseek-ai/dsh-experimental-computer-use-cua-driver-native'

@@ -522,6 +522,18 @@ describe('Schedule activation and shutdown', () => {
     expect(test.fiber.getEffects()).toEqual([])
   })
 
+  it('handles agent disposal without throwing TypeError on detach return value (D7)', async () => {
+    const test = await setup()
+    const agent = agentFor(test.ctx, 'd7-test-root')
+    const disposeAgent = await test.ctx.agents.register(agent)
+    expect(test.ctx.tools.get('schedule_create', agent)).toBeDefined()
+
+    // Disposing the agent triggers agent/disposed listener and invokes detach()
+    // It must settle cleanly without throwing TypeError: Cannot read properties of undefined (reading 'catch')
+    expect(() => disposeAgent()).not.toThrow()
+    expect(test.ctx.tools.get('schedule_create', agent)).toBeUndefined()
+  })
+
   it('rejects a missing creation selector at the shared service entry', async () => {
     const test = await setup()
     await expect(test.service.create(SessionId('caller'), { prompt: 'Missing schedule', title: 'Missing schedule' }))

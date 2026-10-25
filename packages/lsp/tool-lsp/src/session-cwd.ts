@@ -11,7 +11,7 @@ import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 export function sessionCwd(exec: ToolExecution): string | undefined {
   const agent = exec.agent
   if (agent === undefined) return undefined
-  const service = agent.ctx?.get?.('sessionCwd', false)
+  const service = agent.ctx.get('sessionCwd', false)
   if (service !== undefined) {
     const cwd = service.resolve(agent.session.header)
     if (cwd === undefined) {
@@ -19,5 +19,5 @@ export function sessionCwd(exec: ToolExecution): string | undefined {
     }
     return cwd
   }
-  return agent.options?.cwd ?? agent.session.header?.cwd
+  return agent.options.cwd ?? agent.session.header.cwd
 }

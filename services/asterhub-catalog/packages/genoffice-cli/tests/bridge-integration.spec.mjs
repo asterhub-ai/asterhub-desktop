@@ -46,7 +46,7 @@ async function setup(mode = 'workspace-write') {
   const cli = join(candidate, 'resources', 'cli', 'genoffice.cjs')
   assert.equal((await stat(cli)).isFile(), true, 'candidate install must include separately verified upstream CLI resources')
   assert.equal(await sha256File(archivePath), upstreamArchiveSha256,
-    'immutable .1 archive changed; re-verify resource provenance before staging')
+    'immutable .1 archive changed; re-verify resource source before staging')
   assert.equal(await sha256File(cli), upstreamCliSha256,
     'candidate CLI payload differs from the source-extracted immutable upstream payload')
 

@@ -41,6 +41,8 @@ For reused live and persisted Sessions, directory admission compares the request
 
 Client list refreshes retain unchanged row objects and reuse the items array when order and values match. Each row's `retainedBy` contains positive local reference-source counts; Host metadata refreshes cannot overwrite them. Cache membership checks use a per-refresh ID set, so reconciliation grows linearly with the current list and retained cache sizes. Host summary updates replace running and Agent availability; local create/fork responses only fill missing metadata on existing rows. Removed ordinary Sessions retain projection stores only when their catalogs contain children.
 
+An explicit `ClientSessions.refresh()` during an in-flight list request waits for that request to settle, then requests a fresh list; concurrent explicit refreshes share that follow-up. Project import therefore does not rely on an earlier startup response to discover imported Sessions.
+
 Background-job rows and observation streams belong to [`dsh-api-job-controller`](../job-controller/README.md); the control stream carries projections only.
 
 Projection reads retain loading and failure state independently of their values. Reconnect cancels reads from the previous connection and reloads previously requested projections; live membership updates arrive through the control stream. Parent availability comes from Host summaries and remains unknown until a summary or a successful list baseline establishes it. Address lookup resolves projected children without selecting them or creating scopes.

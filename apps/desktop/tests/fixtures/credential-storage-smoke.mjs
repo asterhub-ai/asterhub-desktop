@@ -4,6 +4,11 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+// This e2e only exercises safeStorage and never needs the GPU; in a GPU-less service context a failed GPU process makes Chromium FATAL-exit (0x80000003).
+app.disableHardwareAcceleration()
+// The service context cannot spawn a GPU subprocess at all (error_code=18), so run the GPU in-process to eliminate subprocess creation.
+app.commandLine.appendSwitch('in-process-gpu')
+
 async function main() {
   const [providerModule, root, phase] = process.argv.slice(2)
   app.setPath('userData', join(root, 'electron'))

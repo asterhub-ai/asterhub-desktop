@@ -143,6 +143,14 @@ export type DesktopBrowserTabAutomationHandler = (
   signal: AbortSignal,
 ) => Promise<DesktopBrowserTabCommandResult>
 
+/** Main-issued serializable request callback; cancellation is a separate request-id event. */
+export type DesktopBrowserTabAutomationRequestHandler = (
+  command: DesktopBrowserTabCommand,
+) => Promise<DesktopBrowserTabCommandResult>
+
+/** Renderer callback for Main's serializable cancellation request. */
+export type DesktopBrowserTabAutomationCancelHandler = (requestId: number) => void
+
 /** Origin-scoped operations; no Electron objects or arbitrary IPC cross this interface. */
 export interface DesktopBrowserBridge {
   /**
@@ -182,5 +190,7 @@ export interface DesktopBrowserBridge {
     action: DesktopBrowserAccessibleAction,
   ): Promise<void>
   /** @param handler - coordinator handling tab commands from main. @returns listener disposer. */
-  onAutomationRequest?(handler: DesktopBrowserTabAutomationHandler): () => void
+  onAutomationRequest?(handler: DesktopBrowserTabAutomationRequestHandler): () => void
+  /** @param handler - aborts one renderer-local operation by its Main-issued request id. */
+  onAutomationCancel?(handler: DesktopBrowserTabAutomationCancelHandler): () => void
 }

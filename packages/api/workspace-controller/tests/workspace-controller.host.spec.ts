@@ -1,9 +1,11 @@
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { cp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import SessionStore, { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { SESSION_FORMAT_VERSION, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
+import type { SessionHeader } from '@deepseek-ai/dsh-session'
 import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import { sessionDir } from '../../../session/session-persistence-jsonl/src/format.ts'
 import Storage from '@deepseek-ai/dsh-storage'
@@ -14,6 +16,7 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import WorkspaceController from '../src/index.ts'
 import { DEFAULT_WORKSPACE_DIRECTORY } from '../src/default-workspace.ts'
 import ProjectStorage from '@deepseek-ai/dsh-project-storage'
+import ProjectSessionPersistence from '@deepseek-ai/dsh-project-storage/persistence'
 import { WorkspaceFeed } from '../src/feed.ts'
 import type { WorkspaceFollowFrame } from '../src/types.ts'
 import { MemoryStorageBackend } from '../../../storage/storage-domain/tests/helpers/memory-backend.ts'
@@ -625,6 +628,72 @@ describe('project discovery and confirmed opening', () => {
     }, signal)
     expect(result.workspace.path).toBe(root)
   })
+  it('imports moved project history into a live Workspace without changing historical cwd', async () => {
+    const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-workspace-controller-import-')))
+    tempDirs.push(root)
+    const ctx = new Context()
+    roots.push(ctx)
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(Storage)
+    ctx.storage.backend.register('memory', new MemoryStorageBackend())
+    const storageDomain = new DomainFacility(ctx, { backend: 'memory', routes: {} })
+    ctx.storage.mount('domain', storageDomain)
+    ctx.provide('storageDomain', storageDomain)
+    await ctx.plugin(SessionCwd)
+    await ctx.plugin(ProjectStorage, {
+      sessionMode: 'project-local',
+      locatorPath: join(root, 'locator.json'),
+      legacySessionRoot: '',
+      metadataLimitBytes: 1024 * 1024,
+      lockDeadlineMs: 5000,
+    })
+    await ctx.plugin(ProjectSessionPersistence, { compression: 'none' })
+    await ctx.plugin(WorkspaceRegistry)
+    const controller = new WorkspaceController(ctx, { documentsDirectory: root })
+    const originalRoot = stageDir(root, 'original-project')
+    const movedRoot = stageDir(root, 'moved-project')
+    const sourceBinding = await ctx.projectStorage.open({ root: originalRoot, mode: 'new' })
+
+    const sessionId = SessionId('portable-prior-session')
+    const oldHeader: SessionHeader = {
+      version: SESSION_FORMAT_VERSION,
+      id: sessionId,
+      createdAt: 1000,
+      cwd: originalRoot,
+      isSeeded: false,
+      delegationDepth: 0,
+    }
+    const writer = await ctx.sessionPersistence.create(oldHeader)
+    await writer.append([
+      { type: 'turn/start', seq: SessionSeq(0), time: 1001, data: { turn: 1 } },
+      { type: 'turn/end', seq: SessionSeq(1), time: 1002, data: { turn: 1, reason: { kind: 'completed' as const } } },
+    ])
+    await writer.close()
+
+    await cp(join(originalRoot, '.aster'), join(movedRoot, '.aster'), { recursive: true })
+    await rm(originalRoot, { recursive: true, force: true })
+    const inspection = await ctx.projectStorage.inspect(movedRoot)
+    if (inspection.kind !== 'existing') throw new Error('expected copied project metadata')
+
+    const opened = await controller.openProject({
+      path: movedRoot,
+      mode: 'existing',
+      expectedId: sourceBinding.id,
+      expectedDigest: inspection.digest,
+    }, new AbortController().signal)
+    expect(opened.workspace.sessionIds).toEqual([sessionId])
+    expect((await ctx.sessionPersistence.list()).map(snapshot => snapshot.header.id)).toContain(sessionId)
+
+    const reader = await ctx.sessionPersistence.open(sessionId, 'read')
+    try {
+      expect(reader.header.cwd).toBe(originalRoot)
+      expect((await reader.read()).events.map(event => event.type)).toEqual(['turn/start', 'turn/end'])
+      expect(ctx.sessionCwd.resolve(reader.header)).toBe(movedRoot)
+    } finally {
+      await reader.close()
+    }
+  })
+
 
   it('openProject throws workspace/confirmation-mismatch when projectStorage rejects confirmation', async () => {
     const { controller, ctx, root } = await harness()

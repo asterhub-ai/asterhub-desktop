@@ -110,7 +110,7 @@
       name: '@deepseek-ai/dsh-credentials-local'
       config:
         encrypted: !!js "ctx.get('profileContext')?.name === 'desktop'"
-
+        migratePlaintext: !!js "ctx.get('profileContext')?.name === 'desktop'"
 
     - id: session-persistence-jsonl
       name: '@deepseek-ai/dsh-session-persistence-jsonl'

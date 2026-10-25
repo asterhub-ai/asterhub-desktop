@@ -42,7 +42,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Remote operations
 
-The Host exposes status, login/logout, quota, payment-method, top-up, redemption and usage operations. The Remote responses contain only fields used by account views; access tokens, saved auto-login passwords and model keys stay in Host credentials. Desktop's credential document uses Electron `safeStorage`, backed by the OS encryption service. Linux requires GNOME libsecret or KWallet; the app refuses the insecure `basic_text` backend. Checkout methods are identified by keys in `methods`; entries without an `available` field remain usable, while an explicit `available: false` is excluded.
+The Host exposes status, login/logout, quota, payment-method, top-up, redemption and usage operations. The Remote responses contain only fields used by account views; access tokens, saved auto-login passwords and model keys stay in Host credentials. Desktop's credential document uses Electron `safeStorage`, backed by the OS encryption service. Linux requires GNOME libsecret or KWallet; the app refuses the insecure `basic_text` backend. Checkout methods are identified by keys in `methods`; entries without an `available` field remain usable, while an explicit `available: false` is excluded. When an account reference is supplied read-only by the launching environment, login skips writing that reference; other writable account references and the account model-key record are still persisted normally. `getStatus` reports `credentialsFromEnv: true` while any account reference is environment-sourced. Environment values remain launch-scoped and are not copied into the account model-key record.
 
 Payment methods optionally carry verified recharge pricing from `payment/checkout-info`: a finite positive multiplier, validated bonus tiers and a bonus or discount mode. Invalid or missing pricing leaves legacy checkout usable without a preview; the Host does not infer a multiplier. Method limits accept only finite positive numbers. Currency codes are retained for payment rounding. The preview excludes payment-provider fees.
 
@@ -71,7 +71,7 @@ Account operations depend on the configured Sub2API control plane and enabled pa
 <a id="failure-behavior"></a>
 ### Failure behavior
 
-Invalid credentials produce an account error. Network, malformed-response, and unavailable-key-detail failures fail without creating a replacement key when the upstream account already has keys. A stale account session clears its active token and key record; a transient quota outage leaves the signed-in account available for retry.
+Invalid credentials retain the existing account error. Fetch timeouts and other connection failures receive distinct safe messages; the upstream timeout remains the existing request deadline and the client does not retry. Upstream HTTP failures remain generic unavailable errors, while the recognized `permission_denied` and `group_binding_forbidden` codes use the permission message; arbitrary 403 responses are not classified as permission errors. Malformed authentication responses produce a safe invalid-response error. If local credential persistence fails after authentication, the service attempts to remove partially written active credentials and reports a local-save failure without exposing provider errors or secret values. A stale account session clears its active token and key record; a transient quota outage leaves the signed-in account available for retry.
 
 <a id="dev-note"></a>
 ### Dev Note
