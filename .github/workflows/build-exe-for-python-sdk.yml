@@ -243,6 +243,7 @@ jobs:
           path: dist-python
 
 
+
       - name: Install local SDK and runtime wheels into a clean venv (Windows)
         id: smoke-venv-windows
         if: runner.os == 'Windows'
@@ -254,7 +255,7 @@ jobs:
           $venv = (& python -c 'import tempfile; print(tempfile.mkdtemp(prefix="dsh-sdk-smoke-"))').Trim()
           python -m venv $venv
           $smokePython = Join-Path $venv 'Scripts\python.exe'
-          & $smokePython -m pip install "dist-python/$env:SDK_WHEEL" "dist-python/$env:RUNTIME_WHEEL"
+          & $smokePython -m pip install "dist-python/$env:SDK_WHEEL" "dist-python/$env:RUNTIME_WHEEL" 'pytest>=8.0'
           if ($LASTEXITCODE -ne 0) { throw "Wheel installation failed with exit code $LASTEXITCODE" }
           "python=$smokePython" >> $env:GITHUB_OUTPUT
 
@@ -276,6 +277,12 @@ jobs:
       # AsterHub fork: the installed-wheel real DeepSeek API test was removed
       # (2026-11-03 user decision); the product signs in through its own
       # account system, and the upstream live-API smoke is not an adopted path.
+      - name: Run installed-wheel native command tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "${{ steps.smoke-venv-windows.outputs.python }}" -I "$env:GITHUB_WORKSPACE\python\sdk\tests\run_installed_commands.py"
+          if ($LASTEXITCODE -ne 0) { throw "Installed-wheel native command tests failed with exit code $LASTEXITCODE" }
 
       - uses: actions/upload-artifact@v7
         with:

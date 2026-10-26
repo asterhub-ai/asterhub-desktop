@@ -762,6 +762,23 @@ describe('Python release workflows', () => {
       },
     })
     expect(JSON.stringify(installedRealApiWindows)).toContain('--scenario sdk-live --installed-wheel')
+    it('runs native command regressions through the installed Windows wheel', () => {
+      const build = workflowJob(loadWorkflow('.github/workflows/build-exe-for-python-sdk.yml'), 'build')
+      if (!Array.isArray(build.steps)) throw new TypeError('Python wheel builder must define steps')
+      const steps = build.steps.filter(isRecord)
+      const installIndex = steps.findIndex(step => step.id === 'smoke-venv-windows')
+      const testIndex = steps.findIndex(step => step.name === 'Run installed-wheel native command tests (Windows)')
+      expect(installIndex).toBeGreaterThanOrEqual(0)
+      expect(testIndex).toBeGreaterThan(installIndex)
+      const install = steps[installIndex]
+      const test = steps[testIndex]
+      expect(install?.run).toContain('pytest>=8.0')
+      expect(test).toMatchObject({ if: "runner.os == 'Windows'", shell: 'pwsh' })
+      expect(test).not.toHaveProperty('continue-on-error')
+      expect(test?.run).toContain('"${{ steps.smoke-venv-windows.outputs.python }}" -I')
+      expect(test?.run).toContain('run_installed_commands.py')
+      expect(test?.run).toContain('if ($LASTEXITCODE -ne 0) { throw')
+    })
   })
 
   it('builds and black-box tests the Windows x64 wheel in GitLab', () => {
