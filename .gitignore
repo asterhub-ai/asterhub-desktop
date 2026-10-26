@@ -60,3 +60,8 @@ native/system/test/bin/
 *.key
 *.pfx
 *.p12
+
+# 临时测试与旧看板文档
+test-main-preload.cjs
+项目现状/
+项目现状.zip
