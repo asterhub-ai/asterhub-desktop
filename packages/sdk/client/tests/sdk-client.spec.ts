@@ -123,22 +123,19 @@ describe('DeepSeekHarness', () => {
       { method: 'session.status', params: { sessionId: 'owned', status: 'idle' } },
     ] as HarnessNotification[]
     let closed = false
-    const harness = {
-      start: () => Promise.resolve(),
-      client: {
-        prompt: () => Promise.resolve('accepted-message'),
-        subscribeSessionTree: () => ({
-          next: async () => {
-            const notification = notifications.shift()
-            if (notification === undefined) throw new Error('scripted notification queue exhausted')
-            return notification
-          },
-          tryNext: () => notifications.shift(),
-          close: () => { closed = true },
-          async * [Symbol.asyncIterator]() {},
-        }),
+    const harness = harnessWith()
+    vi.spyOn(harness, 'start').mockResolvedValue()
+    vi.spyOn(harness.client, 'prompt').mockResolvedValue('accepted-message')
+    vi.spyOn(harness.client, 'subscribeSessionTree').mockImplementation(() => ({
+      next: async () => {
+        const notification = notifications.shift()
+        if (notification === undefined) throw new Error('scripted notification queue exhausted')
+        return notification
       },
-    } as unknown as DeepSeekHarness
+      tryNext: () => notifications.shift(),
+      close: () => { closed = true },
+      async * [Symbol.asyncIterator]() {},
+    }))
 
     const result = await new HarnessSession(harness, 'owned').run('go')
 
@@ -215,22 +212,19 @@ describe('DeepSeekHarness', () => {
       { method: 'session.event', params: { sessionId: 'owned', event: ptcResult } },
       { method: 'session.status', params: { sessionId: 'owned', status: 'idle' } },
     ] as HarnessNotification[]
-    const harness = {
-      start: () => Promise.resolve(),
-      client: {
-        prompt: () => Promise.resolve('accepted-message'),
-        subscribeSessionTree: () => ({
-          next: async () => {
-            const notification = notifications.shift()
-            if (notification === undefined) throw new Error('scripted notification queue exhausted')
-            return notification
-          },
-          tryNext: () => notifications.shift(),
-          close: () => {},
-          async * [Symbol.asyncIterator]() {},
-        }),
+    const harness = harnessWith()
+    vi.spyOn(harness, 'start').mockResolvedValue()
+    vi.spyOn(harness.client, 'prompt').mockResolvedValue('accepted-message')
+    vi.spyOn(harness.client, 'subscribeSessionTree').mockImplementation(() => ({
+      next: async () => {
+        const notification = notifications.shift()
+        if (notification === undefined) throw new Error('scripted notification queue exhausted')
+        return notification
       },
-    } as unknown as DeepSeekHarness
+      tryNext: () => notifications.shift(),
+      close: () => {},
+      async * [Symbol.asyncIterator]() {},
+    }))
 
     const result = await new HarnessSession(harness, 'owned').run('go')
 
