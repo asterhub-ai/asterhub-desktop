@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Literal, overload
+from typing import Callable, Literal
 
 from .client import HarnessClient, HarnessConfig, NotificationSubscription
 from .errors import SdkProtocolError, TransportClosedError
@@ -175,7 +175,7 @@ class DeepSeekHarness:
         on_notification: Callable[[Notification], None] | None = None,
         delivery: Literal["queue", "steer"] = "queue",
     ) -> RunResult | CommandExecution:
-        """Run text or a native command on a fresh or named Session."""
+        """Run text or content blocks through native input routing on a fresh or named Session."""
         return self.start_session(session_id).run(input, on_notification=on_notification, delivery=delivery)
 
 
@@ -204,49 +204,45 @@ class Session:
         on_notification: Callable[[Notification], None] | None = None,
         delivery: Literal["queue", "steer"] = "queue",
     ) -> RunResult | CommandExecution:
-        """Run text through native input routing, or queue literal content blocks.
+        """Run text or content blocks through native input routing.
 
-        Text returns the prompt's receipt-to-idle RunResult or a settled
+        Input returns the prompt's receipt-to-idle RunResult or a settled
         CommandExecution; command completion does not wait for later model work.
-        Content blocks stay literal and accept only queue delivery. Notifications
-        retain wire order. Command callbacks replay Session-tree notifications
+        The first text block selects native commands. Matched commands require
+        one text block with only encoded images beside it; native handlers decide
+        which commands accept those images. Ordinary prompts retain block order
+        and use the requested queue or steer delivery. Notifications retain
+        wire order. Command callbacks replay Session-tree notifications
         from subscription through their own command/done after the response,
         including overlapping work. Handler errors remain command results;
         routing, transport and observer failures raise without rolling back work.
         """
         if delivery not in ("queue", "steer"):
             raise ValueError("run delivery must be queue or steer")
-        if not isinstance(input, str) and delivery != "queue":
-            raise ValueError("content-block input requires queue delivery")
         self.harness.start()
         with self.harness.client.subscribe_session_notifications(self.id) as subscription:
-            if isinstance(input, str):
-                response = self.harness.client._request_raw(
-                    "session/query", {"sessionId": self.id, "text": input, "delivery": delivery},
-                )
-                if not isinstance(response, dict):
-                    raise SdkProtocolError("session/query response must be a JSON object")
-                if response.get("kind") == "command":
-                    execution = CommandExecution.model_validate(response.get("execution"))
-                    while True:
-                        try:
-                            notification = subscription._next_queued()
-                        except TransportClosedError:
-                            break
-                        if notification is None:
-                            break
-                        if on_notification is not None:
-                            on_notification(notification)
-                        if _is_command_done(notification, self.id, execution.command_id):
-                            break
-                    return execution
-                if response.get("kind") != "prompt" or not isinstance(response.get("messageId"), str) or not response["messageId"]:
-                    raise SdkProtocolError("session/query requires a prompt messageId or command execution result")
-                message_id = response["messageId"]
-            else:
-                message_id = self.harness.client.session_prompt(
-                    self.id, input, notification_subscription=subscription,
-                )
+            response = self.harness.client._request_raw("session/query", {
+                "sessionId": self.id, "contentBlocks": normalize_input(input), "delivery": delivery,
+            })
+            if not isinstance(response, dict):
+                raise SdkProtocolError("session/query response must be a JSON object")
+            if response.get("kind") == "command":
+                execution = CommandExecution.model_validate(response.get("execution"))
+                while True:
+                    try:
+                        notification = subscription._next_queued()
+                    except TransportClosedError:
+                        break
+                    if notification is None:
+                        break
+                    if on_notification is not None:
+                        on_notification(notification)
+                    if _is_command_done(notification, self.id, execution.command_id):
+                        break
+                return execution
+            if response.get("kind") != "prompt" or not isinstance(response.get("messageId"), str) or not response["messageId"]:
+                raise SdkProtocolError("session/query requires a prompt messageId or command execution result")
+            message_id = response["messageId"]
             activity = _PromptActivity(self.id, message_id)
             while True:
                 notification = subscription.next()
