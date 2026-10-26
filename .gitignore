@@ -52,3 +52,11 @@ worktrees/
 .agents/worktrees/
 .typert-*/
 native/system/test/bin/
+.env.local
+.env.*.local
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.pfx
+*.p12

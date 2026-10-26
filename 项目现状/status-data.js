@@ -268,7 +268,7 @@ window.ASTERHUB_STATUS = {
     { id: 'W8', title: '插件信任与安装', status: 'verified', label: '本地限定通过', detail: '本地 HTTPS、签名目录、真实安装/禁用/卸载已验证；不等于生产目录验收。', evidence: '../.worktrees/architecture-consolidation/.local-workspace/architecture-consolidation/reports/W8-local-catalog-proof.txt' },
     { id: 'W9', title: '最终质量与功能汇总', status: 'issue', label: '未确认整体通过', detail: '保留候选 contracts failed 与 consumers observation-deadline；局部通过不能拼接成全绿。', evidence: '../.worktrees/architecture-consolidation/.local-workspace/architecture-consolidation/candidate-verification-1792733517/execution-results.json' },
     { id: 'W10', title: '精确产物与安装', status: 'partial', label: '限定验收通过', detail: 'r11 runtime 与隔离安装通过；探针级升级验证通过（凭据迁移），完整升级验收未做；完整桌面、签名和发布仍未关闭。' },
-    { id: 'W11', title: '主线集成与交付收口', status: 'pending', label: '未完成', detail: '重构分支未合并，工作区仍有未提交修复；未确认最终集成验收。' }
+    { id: 'W11', title: '主线集成与交付收口', status: 'pending', label: '未完成', detail: '重构分支未合并；T01–T16 修复已入提交历史 147214305b，工作区仅剩未跟踪构建产物；未确认最终集成验收。' }
   ],
   tasks: [
     { id: 'T01', title: '修正设置中的当前版本来源', category: '产品缺陷', priority: 'P1', status: 'verified', label: '已修复验证', detail: '已在 dshDesktop 载体注入真实 Electron 安装版本（app.getVersion()）；ui-settings-general 的 CurrentVersionRow 优先使用注入的 installedVersion（如 0.21.0），通用 Web 保持回退至 DSH_CLIENT_VERSION；组件与注入测试通过。', acceptance: '设置、关于与更新元数据对应实际安装版本；不写死 0.21.0，不批量改内部包版本。', source: '../.worktrees/architecture-consolidation/packages/client/ui-settings-general/src/client/CurrentVersionRow.tsx' },
