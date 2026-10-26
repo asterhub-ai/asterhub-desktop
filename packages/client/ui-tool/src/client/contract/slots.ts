@@ -4,7 +4,7 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteHostFacts } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
-  AssistantChatData, OpenFileOptions, PreparingToolCall, StartedToolCall,
+  AssistantChatData, ChatNodeOwnerProps, OpenFileOptions, PreparingToolCall, StartedToolCall,
   ToolResultNode, UseDisclosure,
 } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { MessageImageLoader, MessageImageSource } from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -14,9 +14,8 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /**
-     * Keyed Tool call view dispatched by wire Tool name. Any name is allowed,
-     * including tools registered by your package. Register with
-     * `key: '<tool name>'`; a typo never renders.
+     * Keyed Tool view dispatched by wire name, including custom tools.
+     * Register with `key: '<tool name>'`; a typo never renders.
      *
      * Registering an occupied key replaces its view; unclaimed keys use the
      * generic row. The owner supplies the call identity and frozen running
@@ -88,6 +87,8 @@ export interface ToolCallCommonProps {
   home?: string | undefined
   /** Open an argument path at its optional requested line. */
   openFile: (path: string, options?: OpenFileOptions) => void
+  /** Session-bound menu capability passed by the Chat owner. */
+  openContextMenu?: ChatNodeOwnerProps['openContextMenu']
   /** Chat-supplied, Gateway-authorized loader for durable images; Tool views do not manage attachment URLs. */
   loadImage: MessageImageLoader
   /** Inspect this call in the trajectory view when available. */

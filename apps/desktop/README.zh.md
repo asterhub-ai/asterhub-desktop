@@ -542,7 +542,8 @@ node apps/desktop/node_modules/pnpm/bin/pnpm.mjs --dir apps/desktop run test:upd
 
 未签名便携目录构建运行 `pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned --dir`。该产物使用较小的 `AsterHub.exe` 启动器，并将 Electron 运行时保留为同目录的 `AsterHub.Runtime.exe`，其旁边仍是 `resources/`。启动器会转发命令行参数，并从应用目录启动内置运行时；它只改变用户看到的启动入口，不会缩小安装内容。签名安装器仍使用现有可执行文件布局。
 
-原生原始文件操作仅接受可信应用页面。保存路径保留在主进程，窗口刷新或关闭后引用失效。远程图片读取不携带凭据，逐次校验重定向，拒绝应用 Host 及其回环别名，在主框架导航时终止，并使用 `DSH_DESKTOP_IMAGE_READ_TIMEOUT_MS`（30000 毫秒）与 `DSH_DESKTOP_IMAGE_READ_MAX_BYTES`（67108864 字节）。图片剪贴板输入使用相同的字节上限。其他可达的 HTTP(S) 目标遵循部署侧网络隔离。[文件操作](../../packages/client/ui-file-actions/README.zh.md) 定义保存和剪贴板行为。
+
+原生原始文件操作仅接受可信应用页面。保存路径保留在主进程，窗口刷新或关闭后引用失效。下载使用 Chromium URL 下载和原生保存对话框 API；`DSH_DESKTOP_FILE_DOWNLOAD_TIMEOUT_MS` 限定 Chromium 创建下载前的启动期限（300000 毫秒），不限制原生保存对话框的停留时间。仅剪贴板使用的远程图片读取不携带凭据，逐次校验重定向，拒绝应用 Host 及其回环别名，在主框架导航时终止，并使用 `DSH_DESKTOP_IMAGE_READ_TIMEOUT_MS`（30000 毫秒）与 `DSH_DESKTOP_IMAGE_READ_MAX_BYTES`（67108864 字节）。图片复制在转换为 PNG 后使用渲染进程的 Clipboard API。其他可达的 HTTP(S) 目标遵循部署侧网络隔离。[文件操作](../../packages/client/ui-file-actions/README.zh.md) 定义保存和剪贴板行为。
 
 <a id="low-level-development-overrides"></a>
 
