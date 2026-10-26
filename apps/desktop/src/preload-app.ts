@@ -27,7 +27,6 @@ function createProductApi(): DshDesktopProductApi {
     installedVersion,
     fileActions: {
       save: request => ipcRenderer.invoke(DESKTOP_IPC.fileSave, request) as Promise<FileSaveResult>,
-      reveal: id => ipcRenderer.invoke(DESKTOP_IPC.fileReveal, id) as Promise<void>,
       readClipboardImage: url => ipcRenderer.invoke(DESKTOP_IPC.clipboardImageRead, url) as
         Promise<{ bytes: Uint8Array; mediaType: string }>,
     },
