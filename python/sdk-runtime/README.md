@@ -44,7 +44,7 @@ Unsupported platforms and missing executables or sidecars raise `FileNotFoundErr
 
 The Python bootstrap resolves the Office kit from its adjacent directory so native helpers and URL Workers use real filesystem paths. The kit owns engine selection and validation; the Python bootstrap adds no runtime download or compilation. The Office smoke also retrieves CLI paths from the loaded skill and executes capabilities and DOCX conversion with an empty PATH.
 
-External profile management uses `dsh plugin --profile <name> ...`. That command requires `pnpm` on `PATH`; ordinary SDK/profile execution does not.
+External profile management uses `dsh plugin --profile <name> ...`. That command and the SDK `plugin_manager` tool's package install/remove actions require `pnpm` on `PATH`, or an explicit `plugin-manager.pnpmCommand`. The wheel does not automatically select pnpm from downloaded authoring resources. Ordinary SDK/profile execution and listing/toggling existing plugins do not require pnpm. Every model-facing management action still requires full access or a client approval responder; saved changes affect the shared SDK profile on subsequent launches.
 
 ## Build and distribution
 
