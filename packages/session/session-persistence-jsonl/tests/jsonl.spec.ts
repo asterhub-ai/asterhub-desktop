@@ -2708,12 +2708,14 @@ describe('JsonlSessionPersistence: edge cases', () => {
     ].join('\n')
     await writeFile(flatArtifact, original)
 
-    const [firstList, secondList] = await Promise.all([
+    const [firstList, secondList, opened] = await Promise.all([
       ctx.sessionPersistence.list(),
       ctx.sessionPersistence.list(),
+      readAll(ctx.sessionPersistence, m.id),
     ])
     expect(firstList.map(s => s.header.id)).toContain(m.id)
     expect(secondList.map(s => s.header.id)).toContain(m.id)
+    expect(opened.events).toEqual(oneTurnLog())
     const moved = join(sessionDir(root, m.cwd, m.id), generationLogFilename(SESSION_FORMAT_VERSION, 'none'))
     expect(await readFile(moved, 'utf8')).toBe(original)
     expect(await readdir(flatDir)).toEqual([])

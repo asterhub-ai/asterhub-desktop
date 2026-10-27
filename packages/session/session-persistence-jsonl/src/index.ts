@@ -1879,11 +1879,16 @@ class JsonlSessionPersistence extends SessionPersistence {
       .filter(item => item.isFile() && (item.name.endsWith('.jsonl') || item.name.endsWith('.jsonl.zstd')))
       .map(item => item.name)
     if (generationNames.length === 0) throw new Error(`legacy session directory "${legacyPath}" contains no supported generation files`)
-    let identity: { id: SessionId; cwd: string | undefined; version: number } | undefined
+    let identity: { id: SessionId; cwd: string | undefined } | undefined
     for (const name of generationNames) {
       signal?.throwIfAborted()
+      const compression = name.endsWith('.jsonl.zstd') ? 'zstd' : 'none'
+      if (compression !== this.compression) throw this.encodingMismatch(join(legacyPath, name))
+      const version = parseGenerationLogFilename(name, compression)
+      if (version === undefined) throw new Error(`legacy session artifact "${join(legacyPath, name)}" has a noncanonical generation filename; source was not changed`)
       const header = await this.peekLegacyHeader(join(legacyPath, name), signal)
       if (header === undefined) throw new Error(`legacy session artifact "${join(legacyPath, name)}" has no supported header; source was not changed`)
+      if (header.version !== version) throw new Error(`legacy session artifact "${join(legacyPath, name)}" filename version does not match its header; source was not changed`)
       if (encodeSegment(header.id) !== sourceName) throw new Error(`legacy session directory "${legacyPath}" does not match header id "${header.id}"; source was not changed`)
       if (identity === undefined) identity = header
       else if (identity.id !== header.id || identity.cwd !== header.cwd) throw new Error(`legacy session directory "${legacyPath}" contains conflicting generation identities; source was not changed`)
