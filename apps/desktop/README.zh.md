@@ -174,7 +174,9 @@ Desktop 在 Host 启动后、打开工作区前检查模型 API Key 引用是否
 
 每次 Desktop 打包前，都要与当前用户确认完整构建版本号。检查所选部署环境、Desktop 产品版本、保留的发布记录和已发布对象，再提出准确版本供用户确认。用户确认前不得启动打包；选择部署环境不等于认可版本号。
 
-`apps/desktop/package.json` 决定 AsterHub Desktop 产品和更新版本；仓库根目录 `package.json` 决定随包发布的 DSH runtime 版本。两者彼此独立。当前 Desktop 产品版本为 `0.21.0`；production 发布使用该版本本身。test 发布以 Desktop 版本为基础，保留预发布标识并追加 `.YYYYMMDD.index`；稳定版本则追加 `-test.YYYYMMDD.index`。
+`apps/desktop/package.json` 决定 AsterHub Desktop 产品和更新版本。使用 `主版本.次版本.修订号`：缺陷修复和小调整递增修订号，上游基线升级或重要功能更新递增次版本，重大不兼容变更或首个稳定发布递增主版本。递增主版本或次版本时，较低位归零。所选版本必须高于目标更新通道中所有已分发的版本，绝不覆盖已发布版本及其产物。
+
+production 发布使用 Desktop 产品版本本身。为下一个稳定产品版本构建测试包前，先将 Desktop 清单更新为目标版本；测试版在其后追加 `-test.YYYYMMDD.index`。预发布产品版本的测试版保留原预发布标识并追加 `.YYYYMMDD.index`。
 
 | Desktop 产品基础版本 | production Desktop | test Desktop 示例 |
 |---|---|---|
@@ -195,7 +197,7 @@ pnpm --dir apps/desktop run package:win:x64 --build-version 0.1.6-alpha.1.202609
 
 production 发布使用产品版本本身，不传 `--build-version`。其上传成功后会把打包所用 commit 打成 `desktop-v<版本>` 标签；来自有改动工作区的构建不打标签，打标签失败也只打印手工命令，不会让已完成的上传变成失败。test 与本地构建有意不留标签，而所有产物的清单都记录 `dshBuildCommit` 与 `dshBuildDirty`，直接分发的构建同样可溯源。
 
-版本派生不改变固定更新通道，也不改变 `nightly.yml` / `nightly-mac.yml` 文件名。SemVer 排序为 `0.1.6-alpha.1 < 0.1.6-alpha.1.20260916.1 < 0.1.6-alpha.2`，稳定基础版本的测试版低于该稳定版。客户端只接受更高版本：替换 feed 无法让已安装的较高版本更新到较低的纠正版。这类客户端需要手动安装；保持自动降级关闭。[版本决策](../../.agents/notes/implemented/architecture/2026-10-09-desktop-version-independence.zh.md)记录 Desktop 与 DSH 的独立版本归属。
+版本派生不改变固定更新通道，也不改变 `nightly.yml` / `nightly-mac.yml` 文件名。SemVer 排序为 `0.1.6-alpha.1 < 0.1.6-alpha.1.20260916.1 < 0.1.6-alpha.2`，稳定基础版本的测试版低于该稳定版。若测试包需要更新已安装的 `0.21.0`，必须以更高的产品版本为基础，例如 `0.21.1-test.20261027.1`。客户端只接受更高版本：替换 feed 无法让已安装的较高版本更新到较低的纠正版。这类客户端需要手动安装；保持自动降级关闭。[版本决策](../../.agents/notes/implemented/architecture/2026-10-09-desktop-version-independence.zh.md)记录独立的版本归属。
 
 打包、上传以及手动 macOS 签名检查使用 `apps/desktop/.env.windows` 或 `.env.macos`，由目标平台选择。复制对应的 [Windows 模板](.env.windows.example) 或 [macOS 模板](.env.macos.example)，填写本机配置；Git 忽略这两个本地文件，安装产物也不包含它们。发布字段只从目标文件读取，不回退到系统或 shell 中的同名变量；`PATH`、代理和构建工具环境仍保留。发布版本是命令参数而非发布字段，上传从打包写下的完成记录中读取它。文件使用 UTF-8，支持 BOM；相对证书、SignTool、Apple API Key 和钥匙串路径以 `apps/desktop` 为基准，变量值不做 shell 展开，包含 `#` 或空格的密码需要引号。CI 同样在运行前生成目标文件。
 

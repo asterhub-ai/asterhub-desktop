@@ -2,19 +2,19 @@
 window.ASTERHUB_STATUS = {
   meta: {
     title: 'AsterHub · 项目现状',
-    date: '2026-10-26',
-    productVersion: '0.21.0',
+    date: '2026-10-27',
+    productVersion: '0.21.2',
     frameworkVersion: '0.2.0-rc.3',
-    phase: '优先级修复 · v4 安装包与运行时全门禁验收通过',
-    verdict: 'v4 安装包与解包运行通过全部门禁验收，可作为后续交付候选',
-    summary: 'v4 官方全量打包生成 601.59 MiB 安装程序（SHA-256: 88A897CC...）；通过真实 Electron Main 探针 (0.21.0、safeStorage、加密迁移)、全新隔离沙箱静默安装、双快捷方式校验、注册表 DisplayName 核验与同步卸载清理（全退出码 0）。W7 提示词对照 100% 字节级一致收口。',
+    phase: '主线已合并 · Windows 0.21.2 unsigned 预发布',
+    verdict: '0.21.2 unsigned 安装包已发布；历史会话便携性仍待真实界面验收',
+    summary: '主线包含会话归属调整及导入后展开；0.21.2 预发布对应的合成测试和打包 runtime smoke 有证据，但未证明真实跨设备历史列表与续聊通过。',
     scope: '这是人工核对的离线快照，不是实时 CI、线上监控或自动同步任务系统。',
     source: '交接文档.md',
-    branch: 'refactor/architecture-consolidation',
+    branch: 'master（主目录；重构分支已合入）',
     mainBranch: 'master',
-    paused: '用户已授权按协议执行修复与验收；不操作真实用户数据，不自动合并、签名或发布。v4 候选安装程序 asterhub-0.21.0-win-x64-unsigned.exe (SHA-256: 88A897CC68B192E56EB8E6C597ABC2BCC4286F4FEAB88663229EC47D4287DCB8) 已完成安装包与解包全流程验收。'
+    paused: '用户已授权本次合并、推送、构建及发布 unsigned 预发布；后续签名、正式发布或操作真实用户数据仍须明确授权。'
   },
-  purpose: '辅助人工进度查看、问题收集与跨 Agent 交接；这是带更新时间的人维护快照，不是 AsterHub 产品功能、实时 CI/监控，也不替代源码与原始日志证据。',
+  purpose: '辅助人工进度查看、问题收集与跨 Agent 交接；这是人工维护快照，不是实时 CI/监控，也不替代源码与原始日志。下方 Agent 交接区的工作区、切片和验证是 2026-10-24 历史快照，当前占用与断点以认领台账为准。',
   usageRules: [
     '用户只用自然语言分派与询问；交接协议（claim/checkpoint/release/status/brief）由各 Agent 自动执行，用户不需要运行任何命令。',
     '接手先读交接、状态数据、收件箱 helper 与当前活跃任务；轻量核对正确 worktree、文件归属和作业状态。',
@@ -214,7 +214,7 @@ window.ASTERHUB_STATUS = {
       'Electron Main safeStorage/version/provider probe and exact installer install/uninstall already passed on v4 (.local-workspace/issue-remediation-20261024/v4-installer-acceptance-result.json); remaining real-machine desktop capability acceptance still pending.',
     ],
     doNot: [
-      'No merge, push, signing, release or publication.',
+      '未获明确授权不得再次合并、推送、签名或发布。',
       'No final packaging while fix-required tasks remain unclaimed or incomplete, unless the user explicitly requests it (run handoff.mjs status and record evidence first).',
       'No real user project, session, credential or desktop-data operations.',
       'Never rewrite immutable SessionHeader.cwd or session generations.',
@@ -237,27 +237,27 @@ window.ASTERHUB_STATUS = {
     }
   },
   release: {
-    name: 'AsterHub-Setup-0.21.0-win-x64-unsigned.exe',
-    path: 'C:/开发目录/AsterHub-Setup-0.21.0-win-x64-unsigned.exe',
-    bytes: 630816037,
-    size: '601.59 MiB',
-    sha256: '88A897CC68B192E56EB8E6C597ABC2BCC4286F4FEAB88663229EC47D4287DCB8',
-    status: 'Unsigned · v4 候选已全门禁验收',
-    build: 'asterhub-remediation-installer-imac-1792804886449',
-    acceptance: 'asterhub-v4-acceptance-1792812175766',
-    evidence: '../.local-workspace/issue-remediation-20261024/v4-installer-acceptance-result.json',
-    limitations: '已通过 Electron Main safeStorage 探针与 LocalSystem 隔离静默安装/快捷方式/注册表/同步卸载验收；线上发布与真实实机终端联调仍待进行。'
+    name: 'asterhub-0.21.2-win-x64-unsigned.exe',
+    path: '../.local-workspace/agent-workspace/releases/0.21.2/asterhub-0.21.2-win-x64-unsigned.exe',
+    bytes: 630823460,
+    size: '601.60 MiB',
+    sha256: '5D8ED63017F09FDFC500E21997BD81BA78111A3EAD6525E11D15B843C08BE483',
+    status: 'Unsigned · GitHub 预发布 (0.21.2)',
+    build: '5800 Windows x64 unsigned 0.21.2',
+    acceptance: 'packaged runtime smoke 通过；交互安装、升级及真实跨设备历史会话验收未完成',
+    evidence: '../.local-workspace/agent-workspace/current-release-0.21.2.json',
+    limitations: '未签名；0.21.2 包含会话归属与侧边栏展开调整，但不能由合成测试推断真实跨设备历史列表或续聊已通过。Release：https://github.com/asterhub-ai/asterhub-desktop/releases/tag/desktop-v0.21.2-unsigned'
   },
   checkpoints: [
-    { title: '最终产物已生成', status: 'verified', label: 'v4已核验', detail: 'v4 构建记录为 exit 0，未跳过 smoke；生成 601.59 MiB 安装包，SHA-256 校验一致。' },
-    { title: '打包运行时 smoke', status: 'verified', label: '限定项目通过', detail: '旧v4的原生组件、Office 转 PDF、workspace inspect、Session 创建及tmpdir检查通过；不代表T12浏览器或T16 Desktop产品验收通过。' },
-    { title: '隔离安装与卸载', status: 'verified', label: '安装检查通过', detail: '旧v4精确产物、真实快捷方式目标（桌面+开始菜单）、DisplayName 注册表与同步卸载清理通过；不覆盖当前修复源码。' },
+    { title: '最终产物已生成', status: 'verified', label: 'unsigned 预发布', detail: '0.21.2 构建完成，Nomad 作业退出码 0；完整 packaged smoke 通过，GitHub SHA-256 与本地一致。' },
+    { title: '打包运行时 smoke', status: 'verified', label: '限定项目通过', detail: '新包的原生组件、Office 转 PDF、workspace inspect 和 Session 创建通过；不代表完整交互安装或 T16 Shell 沙箱手测通过。' },
+    { title: '隔离安装与卸载', status: 'partial', label: '新包待验', detail: '旧 v4 的隔离安装、快捷方式、注册表和卸载已验证；不能套用于新发布的精确安装包。' },
     { title: '历史包源码标识', status: 'verified', label: '仅对应旧v4', detail: '旧v4源码归档SHA-256为9602D25C...，不是当前集成快照；不宣称包含后续全部修复。当前源码及门禁见handoff.snapshot与latestVerification。' },
     { title: '保留旧数据升级', status: 'verified', label: '真机探针通过', detail: '探针级升级验证通过（凭据迁移）：真实 Electron Main safeStorage 运行时探针中受控明文转加密迁移及重启读回全绿，不泄露凭据；完整升级验收未做。' },
-    { title: '完整账号与模型流程', status: 'verified', label: '用户实测通过', detail: '用户明确确认 T03 完整登录与模型流程手动测试通过；当前正在构建的新候选不据此自动通过。' }
+    { title: '完整账号与模型流程', status: 'verified', label: '历史用户实测通过', detail: '用户明确确认 T03 完整登录与模型流程手动测试通过；新发布的精确安装包不据此自动通过。' }
   ],
   stages: [
-    { id: 'W0', title: '冻结基线与验收定义', status: 'verified', label: '定义已建立', detail: '90 项验收定义、差异分类和冻结数据已建立；不是 90 项功能已通过。', evidence: '../.worktrees/architecture-consolidation/.superpowers/sdd/项目架构收拢重构实施计划/progress.md' },
+    { id: 'W0', title: '冻结基线与验收定义', status: 'verified', label: '定义已建立', detail: '90 项验收定义、差异分类和冻结数据已建立；不是 90 项功能已通过。', evidence: '../.local-workspace/worktree-preservation/architecture-consolidation/.superpowers/sdd/项目架构收拢重构实施计划/progress.md' },
     { id: 'W1', title: '持久化与历史格式', status: 'partial', label: '实现 / 定向验证', detail: '保留 V5、V4 迁移及历史世代；最终候选完整迁移重放覆盖仍须确认。' },
     { id: 'W2', title: 'Office 权限与运行', status: 'partial', label: '受控验证', detail: 'GenOffice .2 和实际受控运行已有记录；Desktop、真实用户 token 与完整安装体验仍有缺口。' },
     { id: 'W3', title: '产品组合收拢', status: 'partial', label: '主要实现已提交', detail: '共享产品、产品 Web、桌面 native 三层组合已实现；全 profile 产品等价未统一验收。' },
@@ -265,10 +265,10 @@ window.ASTERHUB_STATUS = {
     { id: 'W5', title: 'cwd 与附件消费者', status: 'partial', label: '多批定向验证', detail: '子代理、工具、附件与项目作用域已切换；不能用 837 项子代理测试代替全部资源验收。' },
     { id: 'W6', title: '受控模型路由', status: 'partial', label: '策略已实现', detail: '应用持有 provider、入口与凭据策略，用户选目录模型；真实模型请求另行验收。' },
     { id: 'W7', title: '身份与提示词等价', status: 'verified', label: '已核验证据', detail: '已在 Nomad 隔离环境完整捕获 冻结基线与候选快照 共 4 次实际 Web profile 预传输请求；工具列表（4/4）、人格设定、用户输入与系统指令 100% 字节级一致，双向复现与候选比对均为 true。', evidence: '../.local-workspace/issue-remediation-20261024/W7-parity-evidence.json' },
-    { id: 'W8', title: '插件信任与安装', status: 'verified', label: '本地限定通过', detail: '本地 HTTPS、签名目录、真实安装/禁用/卸载已验证；不等于生产目录验收。', evidence: '../.worktrees/architecture-consolidation/.local-workspace/architecture-consolidation/reports/W8-local-catalog-proof.txt' },
-    { id: 'W9', title: '最终质量与功能汇总', status: 'issue', label: '未确认整体通过', detail: '保留候选 contracts failed 与 consumers observation-deadline；局部通过不能拼接成全绿。', evidence: '../.worktrees/architecture-consolidation/.local-workspace/architecture-consolidation/candidate-verification-1792733517/execution-results.json' },
-    { id: 'W10', title: '精确产物与安装', status: 'partial', label: '限定验收通过', detail: 'r11 runtime 与隔离安装通过；探针级升级验证通过（凭据迁移），完整升级验收未做；完整桌面、签名和发布仍未关闭。' },
-    { id: 'W11', title: '主线集成与交付收口', status: 'pending', label: '未完成', detail: '重构分支未合并；T01–T16 的相关代码改动已提交于重构分支，工作区仅剩未跟踪构建产物；整体集成验收未完成。' }
+    { id: 'W8', title: '插件信任与安装', status: 'verified', label: '本地限定通过', detail: '本地 HTTPS、签名目录、真实安装/禁用/卸载已验证；不等于生产目录验收。', evidence: '../.local-workspace/worktree-preservation/architecture-consolidation/.local-workspace/architecture-consolidation/reports/W8-local-catalog-proof.txt' },
+    { id: 'W9', title: '最终质量与功能汇总', status: 'issue', label: '未确认整体通过', detail: '保留候选 contracts failed 与 consumers observation-deadline；局部通过不能拼接成全绿。', evidence: '../.local-workspace/worktree-preservation/architecture-consolidation/.local-workspace/architecture-consolidation/candidate-verification-1792733517/execution-results.json' },
+    { id: 'W10', title: '精确产物与安装', status: 'partial', label: '新包 smoke 通过 · 安装待验', detail: '新 unsigned 包的 packaged runtime smoke 与远端哈希核验通过；精确安装、完整升级与交互桌面验收未做。旧包验收不能替代新包。' },
+    { id: 'W11', title: '主线集成与交付收口', status: 'partial', label: '已合并 · 0.21.2预发布', detail: '会话归属与侧栏展开调整已合并推送至 master，pre-push 门禁通过；5800 打包与 runtime smoke 通过（退出码 0）；GitHub Release desktop-v0.21.2-unsigned 已发布且资产哈希一致。' }
   ],
   tasks: [
     { id: 'T01', title: '修正设置中的当前版本来源', category: '产品缺陷', priority: 'P1', status: 'verified', label: '已修复验证', detail: '已在 dshDesktop 载体注入真实 Electron 安装版本（app.getVersion()）；ui-settings-general 的 CurrentVersionRow 优先使用注入的 installedVersion（如 0.21.0），通用 Web 保持回退至 DSH_CLIENT_VERSION；组件与注入测试通过。', acceptance: '设置、关于与更新元数据对应实际安装版本；不写死 0.21.0，不批量改内部包版本。', source: '../.worktrees/architecture-consolidation/packages/client/ui-settings-general/src/client/CurrentVersionRow.tsx' },
@@ -276,7 +276,7 @@ window.ASTERHUB_STATUS = {
     { id: 'T03', title: '补验精确安装包完整登录与模型流程', category: '实机验收', priority: 'P0', status: 'verified', label: '用户实测通过', detail: '用户本轮明确反馈 T03 手动测试通过，完整登录与模型流程已按用户实测关闭；此前网络阻塞不再作为本项当前状态。正在构建的新候选仍需独立验收。', acceptance: '用户已确认本项手动测试通过；不将该结果自动迁移到后续新候选。' },
     { id: 'T04', title: '区分认证错误的实际失败环节', category: '产品缺陷', priority: 'P1', status: 'verified', label: '已修复验证', detail: 'account-sub2api 已区分连接超时、连接拒绝、权限拒绝、上游故障、非法响应及本地凭据保存失败；检查不泄露密码/Token/堆栈，定向回归5通过。', acceptance: '保留安全的阶段诊断，不盲目增加重试、超时或中继；T03用户已确认登录与模型流程通过，新候选另验。', source: '../.worktrees/architecture-consolidation/packages/account/account-sub2api/src/index.ts' },
     { id: 'T05', title: '补齐 W7 有效基线对照证据', category: '证据收口', priority: 'P0', status: 'verified', label: '已修复验证', detail: '已在 Nomad 隔离环境通过实际 Web profile 完整获取基线与候选快照 共 4 次预传输请求；工具（4/4）、人格、输入及指令在归一化控制 CWD 与检出根后 100% 字节级一致，双向复现一致性均为 true。', acceptance: '提供准确 baseline/candidate 输入、实际比较输出、重复运行及请求范围；验证通过。', source: '../.local-workspace/issue-remediation-20261024/W7-parity-evidence.json' },
-    { id: 'T06', title: '核实 W9 最终候选门禁终态', category: '证据收口', priority: 'P0', status: 'verified', label: '归档快照门禁已核实', detail: '归档快照 c2db13de7e01 的保留日志：consumer-tests 340文件通过/4跳过，12034用例通过/44跳过；desktop-paths 4文件33用例通过；oxlint 5256文件90规则0警告0错误。result.json记录Host构建及上述阶段exit 0；远端alloc查询现返回404，证据依赖保留日志与结果文件。后续定时任务等新修复不自动继承该快照的通过结论；历史failed/observation-deadline保留。', acceptance: '保留旧失败与新快照证据的区别；新源码修改执行相关检查，不将归档结果称为当前树全门禁通过。', source: '../.worktrees/architecture-consolidation/.local-workspace/architecture-consolidation/t06-lint-consumers-20261024/result.json' },
+    { id: 'T06', title: '核实 W9 最终候选门禁终态', category: '证据收口', priority: 'P0', status: 'verified', label: '归档快照门禁已核实', detail: '归档快照 c2db13de7e01 的保留日志：consumer-tests 340文件通过/4跳过，12034用例通过/44跳过；desktop-paths 4文件33用例通过；oxlint 5256文件90规则0警告0错误。result.json记录Host构建及上述阶段exit 0；远端alloc查询现返回404，证据依赖保留日志与结果文件。后续定时任务等新修复不自动继承该快照的通过结论；历史failed/observation-deadline保留。', acceptance: '保留旧失败与新快照证据的区别；新源码修改执行相关检查，不将归档结果称为当前树全门禁通过。', source: '../.local-workspace/worktree-preservation/architecture-consolidation/.local-workspace/architecture-consolidation/t06-lint-consumers-20261024/result.json' },
     { id: 'T07', title: '定位真实 Electron OS 加密 e2e 退出', category: '验证故障', priority: 'P1', status: 'verified', label: '环境根因已定性', detail: '已定性 0x80000003 退出码：底层崩溃签名为 base/message_loop/message_pump_win.cc:98 Failed to create message-only Window: 拒绝访问(0x5)，系由于本机云电脑管控/进程守卫拦截 Chromium 默认沙盒窗口创建所致，非产品与 credential-storage 缺陷；在禁用沙盒或 Node 模式下 Electron 正常运行。符合“区分运行环境与产品失败”验收标准。', acceptance: '区分运行环境与产品失败；不能由本机失败推断用户网络故障。定性证据已落盘。', source: '项目现状/journal/T07.jsonl' },
     { id: 'T08', title: '核对对外品牌与 crash 应用名', category: '产品缺陷', priority: 'P2', status: 'verified', label: '已修复验证', detail: '在 apps/desktop/src/main.ts 的 persistCrashReport 中显式指定 product name 为 AsterHub，不再输出内部包名 @deepseek-ai/dsh-desktop，且不破坏 Electron 默认 userData 路径计算。', acceptance: '对外显示 AsterHub，保留内部协议标识和第三方版权。', source: '../.worktrees/architecture-consolidation/apps/desktop/src/main.ts' },
     { id: 'T09', title: '完成其余真实桌面能力验收', category: '实机验收', priority: 'P1', status: 'verified', label: '实机闭环通过（沙箱留手测）', detail: '5800真实Desktop定时任务自动化17项全部通过（每日/每周创建、时区自适应、行高展开、暂停恢复、运行历史跳转、正文、activeRunId清零、点击删除、持久化墓碑及重载后列表为空，前后Main/client SHA不变）。环境登录与重启持久化闭环通过（job 1793030513814，alloc 5f31647a）：UI登录、凭据OS加密保存、正常退出重启后凭据解密恢复、模型选择绑定及合成Key认证发信两轮均pass（exit 0）。host-process cipher底层错误已暴露保护。Shell沙箱按用户要求留手测。', acceptance: '实际UI与持久化断言均需成立；自动化及环境登录重启均已闭环验证。Shell沙箱留用户手测。不合并、不打包、不push。', source: '../.local-workspace/t09-evidence/T09-current-desktop-acceptance.json', submissionIds: ['ISSUE-52404fd4-1209-40a5-bed3-58ea70557ebe', 'ISSUE-6d30ac7f-7c20-4514-82dd-a909a1570b45', 'ISSUE-4de7c244-60cc-4d02-8ca3-ee51f1c2f746'] },
@@ -286,7 +286,7 @@ window.ASTERHUB_STATUS = {
     { id: 'T13', title: '核实 Computer Use 能力的实现与集成', category: '手动测试', priority: '待定', status: 'verified', label: '已装配集成', detail: '已在 packages/bundle/asterhub-desktop-native/cordis.patch.yml 与 package.json 中完整挂载 @deepseek-ai/dsh-computer-use 与 @deepseek-ai/dsh-experimental-computer-use-cua-driver-native，并更新 pnpm-lock.yaml；桌面已拥有原生 Computer Use provider。', acceptance: '已完成官方 provider 依赖与 patch 装配，通过依赖锁文件校验。实机调用需依赖系统级无障碍/输入授权。', source: '../.worktrees/architecture-consolidation/packages/bundle/asterhub-desktop-native/cordis.patch.yml' },
     { id: 'T14', title: '排查手动打开浏览器后的无效标签列表结果', category: '手动测试', priority: '待定', status: 'verified', label: '已修复验证', detail: '原表 #3：apps/desktop/src/browser-guests.ts 中过滤未完成导航的 about:blank# 访客，仅将合规 HTTP(S) 标签页纳入 Session 清单，满足下游 wire validator；回归测试通过（12 passed）。', acceptance: '验证列表读取的实际返回及调用链；协议与列表过滤已修复。', source: '../.worktrees/architecture-consolidation/apps/desktop/src/browser-guests.ts' },
     { id: 'T15', title: '排查 Anima 反思读取与记忆保存失败', category: '手动测试', priority: 'P0', status: 'verified', label: '真实反思闭环通过 · 调度未测', detail: '5800真实Desktop全链路通过（最终run作业asterhub-t15-real-reflection-5800-1793055800046，alloc ff3deb95，构建1038包含当前修复源码）：采纳synthetic-project后活动会话正确绑定项目（BUG-ADOPT修复端到端实证）；新会话cwd=synthetic-project；模型真实读t15-fixture.txt并正确解答规则题；独立verifier对持久会话日志（132事件/64帧）判定全绿——实际read与预期内容关联、memory save written关联runId、非空反思关联runId、review/reflection请求=sub2api/gemini-3.8-flash-tiered。边界：daily/weekly调度未测；反思UI计数观察false但verifier以durable事件为准；验收流程修复三个基建缺陷（阶段包装器误报、readyHoldHours未赋值、种子布局过时）并暴露导入路径拒绝扁平布局的产品问题（见T16台账，合并门需决策）。', acceptance: '先核对最新失败会话与模型路由，禁止重复投递或把旧e1bc的反思证据记作本次通过；只认实际read、memory UID、同模型8192预算review/reflection及非空反思。daily/weekly调度未测，凭据不入日志、文档或Git。', source: '../.local-workspace/t15-online-acceptance/_1038c-verify-result.json' },
-    { id: 'T16', title: '修复导入旧工作目录后历史会话列表为空', category: '项目历史', priority: 'P0', status: 'partial', label: '无沙箱cwd探针通过 · 沙箱项转用户手测', detail: '真实UI历史导入、列表与正文显示及旧header.cwd保留已有证据；无沙箱cwd探针通过（run 1793057797815）：采纳切换、续聊历史会话绑定被采纳项目、read相对路径解析到新项目均由durable日志证实。两项导入边缘缺陷已在当前源码修复：list/open迁移可识别的扁平会话布局；Anima捕获使用SessionCwd解析续聊会话的当前项目。剩余仅为正常交互式Windows登录下的沙箱命令cwd手测，之前Nomad服务令牌缺logon SID，用户已要求不降低隔离并自行手测。', acceptance: '用户在正常交互式Windows登录下手测旧项目导入后原会话续聊，确认命令默认工作目录为新项目。不得降低沙箱隔离或将自动化跳过算通过。', source: '../.local-workspace/t15-online-acceptance/_t16probe-session/hist-session.v5.jsonl.zstd' },
+    { id: 'T16', title: '修复导入旧工作目录后历史会话列表为空', category: '项目历史', priority: 'P0', status: 'partial', label: '源码已调整 · 真实验收待完成', detail: '0.21.1 用户报告跨设备导入后计数异常或未分组；0.21.2 加入归属重试与侧栏展开，并有合成测试。现有测试未证明此前用户现象的具体根因，也未验证精确安装包在真实界面的跨设备历史列表、分组及续聊；扫描计数回退和相对目录记录仍有风险。', acceptance: '用隔离测试和用户授权的实际界面验证只恢复指定工作区会话、正确分组与续聊，不能修改原日志或混入其他项目。', source: 'packages/workspace/workspace/src/index.ts' },
     { id: 'BUG-ADOPT-WORKSPACE-SWITCH', title: '采纳工作区后活动会话未切换到被采纳项目', category: '产品缺陷', priority: 'P1', status: 'verified', label: 'Desktop端到端已验证', detail: 'connectWorkspace在工作区快照尚未刷新时订阅等待新工作区出现。真实Desktop T15重投证明采纳synthetic-project后活动会话切换成功并在该项目创建会话；聚焦回归2文件74项通过。', acceptance: '采纳已有项目后活动会话绑定项目路径；工作区列表刷新竞态有回归覆盖。', source: '../.worktrees/architecture-consolidation/packages/client/ui-workspace/src/client/navigation.ts' },
     { id: 'BUG-IMPORT-FLAT-LAYOUT-REJECT', title: '导入路径拒绝扁平布局历史会话且无迁移', category: '产品缺陷', priority: 'P1', status: 'verified', label: '迁移实现与回归通过', detail: 'list()遇到无法解读的扁平会话文件时，按header的Session id、cwd与格式版本迁移到projectKey(cwd)/encodedId/规范generation路径；open()的root编码检查和定向查找复用迁移。迁移不改日志字节；格式/压缩不匹配、header身份不一致或目标冲突时拒绝且不覆盖源。并发list对同一源路径共享single-flight。JSONL persistence全套191项回归通过。', acceptance: '未压缩与Zstandard扁平会话在list/open路径迁移成功；目标冲突保留源与目标；日志字节不变。', source: '../.worktrees/architecture-consolidation/packages/session/session-persistence-jsonl/src/index.ts' },
     { id: 'BUG-ANIMA-CONTINUED-IMPORT-SAVE', title: '续聊导入历史会话时 Anima 记忆保存按旧 cwd 解析失败', category: '产品缺陷', priority: 'P2', status: 'verified', label: 'SessionCwd动态解析已验证', detail: 'Anima capture facts使用ctx.sessionCwd.resolve(session.header)派生项目身份；未注册Session仍使用header cwd，resolver错误显式传播。聚焦capture/host 9项测试通过，相关包typecheck与lint通过。', acceptance: '续聊导入且旧cwd不存在时，Anima capture身份使用当前注册项目路径；未注册归属仍使用header cwd。', source: '../.worktrees/architecture-consolidation/packages/context/anima-memory/src/host.ts' },
@@ -301,14 +301,16 @@ window.ASTERHUB_STATUS = {
     { title: 'Computer Use 当前对话无法使用', severity: '待定', status: 'verified', label: '已装配集成', detail: '已在 asterhub-desktop-native 挂载官方原生 Cua Driver provider 并刷新锁文件，填补桌面端装配缺失。', task: 'T13' },
     { title: '手动打开后 browser_tabs 返回无效结果', severity: '待定', status: 'verified', label: '已修复验证', detail: '已过滤未完成导航的 about:blank 访客，消除下游协议校验失败。', task: 'T14' },
     { title: 'Anima 反思读取及保存均失败', severity: 'P0', status: 'partial', label: '真实反思已取证 · 修正版本待验', detail: '指定模型真实保存和非空反思有原始日志；撤除配置覆盖后的新版本仍待复验，现按用户要求暂停，见T15。', task: 'T15' },
-    { title: '导入旧工作目录后历史会话不可见', severity: 'P0', status: 'partial', label: '历史可见 · 续聊转用户手测', detail: '真实Desktop历史与字节前缀通过；需要沙箱的默认cwd命令验收按用户明确要求跳过，保留未通过状态，由用户后续手测，见T16。', task: 'T16' },
-    { title: '采纳工作区后消息落入旧工作区会话', severity: 'P1', status: 'verified', label: '已修复验证', detail: '已修复 navigation.ts 中 connectWorkspace 在采纳/打开已有项目后因快照异步通知竞态导致 unknown workspace 的问题；添加 waitForWorkspace 支持快照订阅异步等待，同步命中走直接创建，未匹配等待至多 500ms 刷新。回归测试（workspaces-service.client.spec.ts）已补并全过（71/71 通过），全套 12 文件 412 项测试通过，TypeScript 编译零错误。', task: 'BUG-ADOPT-WORKSPACE-SWITCH' },
+    { title: '导入旧工作目录后历史会话不可见', severity: 'P0', status: 'partial', label: '无沙箱续聊cwd通过 · 用户沙箱手测待做', detail: '真实历史导入/列表/正文与无沙箱历史续聊cwd探针通过；需正常交互式Windows登录的Shell沙箱默认cwd验证由用户手测，未标通过，见T16。扁平历史日志迁移已另由BUG-IMPORT-FLAT-LAYOUT-REJECT修复。', task: 'T16' },
+    { title: '采纳工作区后消息落入旧工作区会话', severity: 'P1', status: 'verified', label: 'Desktop端到端已验证', detail: 'connectWorkspace等待新工作区进入列表后再创建会话；真实Desktop T15重投证实采纳后活动会话绑定目标项目。', task: 'BUG-ADOPT-WORKSPACE-SWITCH' },
+    { title: '导入历史会话无法迁移旧平铺日志', severity: 'P1', status: 'verified', label: 'list/open自动迁移已验证', detail: '支持的平铺JSONL与Zstandard工件在list/open时按header身份迁入projectKey/session目录；冲突拒绝覆盖，durable字节保持。', task: 'BUG-IMPORT-FLAT-LAYOUT-REJECT' },
+    { title: '续聊导入历史会话时Anima记忆保存失败', severity: 'P2', status: 'verified', label: 'SessionCwd路径已验证', detail: 'Anima capture使用SessionCwd解析的当前项目路径；未注册Session使用历史header cwd，resolver错误传播。', task: 'BUG-ANIMA-CONTINUED-IMPORT-SAVE' },
   ],
   capabilities: [
     { title: '产品组合', state: '主要实现已提交', detail: 'asterhub-product / product-web / desktop-native 三层归属明确。' },
     { title: '模型与图像', state: 'T03 用户实测通过', detail: '用户确认完整登录与模型流程通过；受控目录与 Host-only Key 保持，新候选不自动继承验收。' },
     { title: '项目与历史', state: '桌面历史通过 · 续聊转用户手测', detail: '历史列表、正文与原字节前缀已验；需要沙箱的Desktop续聊目录验证按用户要求转手测，未标通过，见T16。' },
-    { title: '本地记忆', state: '真实反思有证据 · 修正版本待验', detail: '真实Neo4j、指定模型完成对话触发的保存与非空反思已取证；修正配置语义后未复验，不是日历自动调度验收，见T15。' },
+    { title: '本地记忆', state: '真实模型反思闭环通过', detail: 'T15真实Desktop记录证实memory写入written、非空反思及同模型review/reflection；daily/weekly日历调度尚未验收。' },
     { title: '浏览器 / 语音 / 任务', state: '浏览器与自动化闭环通过', detail: 'browser_open/tabs/close/tabs已验；定时任务配置、启停、历史会话导航、结算、删除墓碑与重载删除保持全过，登录及重启保持闭环通过（exit 0）。Shell沙箱转用户手测，语音不据此确认，见T09/T12。' },
     { title: 'Computer Use', state: '已装配集成', detail: '已在 asterhub-desktop-native 挂载官方原生 Cua Driver provider 并更新依赖锁文件。实机操作系统权限需桌面端交互授权。' },
     { title: 'Office / 搜索 / 账户', state: '分项证据', detail: '转换 smoke、本地插件安装与积分 ×100 已有实现；线上鉴权及支付不据此确认。' }
@@ -319,18 +321,17 @@ window.ASTERHUB_STATUS = {
     { title: '本轮问题修复实施计划（历史档案）', kind: '历史档案', href: 'archive-20261024/问题修复实施计划.md', detail: '已执行完毕的轮次章程；存留细节已并入交接文档，台账入口见其 §6。' },
     { title: '架构收拢实施计划（历史档案）', kind: '历史档案', href: 'archive-20261024/项目架构收拢重构实施计划.md', detail: 'W0–W11 设计与验收定义；当前判定见本看板 stages 区，合并硬条件存留见交接文档。' },
     { title: '架构盘点与收拢建议（历史档案）', kind: '历史档案', href: 'archive-20261024/项目架构盘点与收拢建议.md', detail: '2026-10-22 源码审计参考；建议已映射到已执行的 W1–W8。' },
-    { title: '执行台账', kind: '原始记录', href: '../.worktrees/architecture-consolidation/.superpowers/sdd/项目架构收拢重构实施计划/progress.md', detail: '保留原始执行过程；存在汇总与证据冲突，当前判定见交接。' },
-    { title: '最终交付依据', kind: '产物证据', href: '../.worktrees/architecture-consolidation/.local-workspace/architecture-consolidation/nomad/execution/final-delivery.json', detail: '精确产物哈希、构建作业与隔离安装验收范围。' },
-    { title: '当前产品模型路由', kind: '源码入口', href: '../.worktrees/architecture-consolidation/packages/bundle/asterhub-product/src/index.ts', detail: '产品冻结路由、目录选择、image 模态及 Host 凭据记录。' },
-    { title: '桌面开发说明', kind: '技术参考', href: '../.worktrees/architecture-consolidation/apps/desktop/README.zh.md', detail: '技术文档仍保留在模块所有者旁，不复制成另一份。' },
-    { title: '架构说明', kind: '技术参考', href: '../.worktrees/architecture-consolidation/docs/architecture.zh.md', detail: '通用运行结构，以重构工作区源码和 README 交叉确认。' }
+    { title: '执行台账', kind: '原始记录', href: '../.local-workspace/worktree-preservation/architecture-consolidation/.superpowers/sdd/项目架构收拢重构实施计划/progress.md', detail: '保留原始执行过程；存在汇总与证据冲突，当前判定见交接。' },
+    { title: '最终交付依据', kind: '产物证据', href: '../.local-workspace/worktree-preservation/architecture-consolidation/.local-workspace/architecture-consolidation/nomad/execution/final-delivery.json', detail: '精确产物哈希、构建作业与隔离安装验收范围。' },
+    { title: '当前产品模型路由', kind: '源码入口', href: '../packages/bundle/asterhub-product/src/index.ts', detail: '产品冻结路由、目录选择、image 模态及 Host 凭据记录。' },
+    { title: '桌面开发说明', kind: '技术参考', href: '../apps/desktop/README.zh.md', detail: '技术文档仍保留在模块所有者旁，不复制成另一份。' },
+    { title: '架构说明', kind: '技术参考', href: '../docs/architecture.zh.md', detail: '通用运行结构，以主目录源码和 README 交叉确认。' }
   ],
   next: [
-    'T09实机验收已完全闭环通过（自动化17项全过，环境登录与重启持久化全过）；BUG-ADOPT-WORKSPACE-SWITCH（采纳工作区切换会话）已修复并通过回归测试（71/71）。当前会话直接开发，不合并、不push、不打包。',
-    'T15 前置阻碍（会话工作区绑定与模型设置）已全部解决，下一步可在 5800 完整重投 T15 真实反思验收。',
-    'v4 已通过包级门禁，待实机验收；实机验收通过前不替换 r11 交付记录。存在未认领或未完成的修复任务期间不发起最终打包（用户特别要求除外）。',
-    'T16 源Web实际UI导入/列表/正文及受控模型续聊、新cwd工具执行已验；保留原历史字节前缀，下一步补Desktop与必要物理跨机验收，不重复已通过Web流程。',
-    '按精确候选完成可达的实际 smoke；缺账户、交互桌面或授权的项目明确列为阻塞。',
-    '每完成一项即更新状态及证据；保留旧失败与当前产物边界，不自动合并、签名或发布。'
+    'T09实机验收与 T15真实反思已有历史通过证据；T16 用户报告跨设备导入仍失败，须重新排查，不能按旧验证关闭。',
+    '重构分支已合并至 master；当时的 pre-push typecheck 通过。',
+    '会话归属与侧栏展开调整已推送 origin/master；实际用户场景仍须复验。',
+    '5800 的 0.21.2 unsigned 作业及 runtime smoke 通过（退出码 0）；GitHub Release desktop-v0.21.2-unsigned 已发布且资产哈希一致。',
+    '新安装包的交互安装、完整升级和数据保护仍待精确产物验收；签名与正式发布须另获授权。',
   ]
 };
