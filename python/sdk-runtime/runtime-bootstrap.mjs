@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /** Private entry owned by the Python single-file runtime packaging. */
 import { registerHooks } from 'node:module'
-import { dirname, join } from 'node:path'
-import { isSea } from 'node:sea'
+import { delimiter, dirname, isAbsolute, join } from 'node:path'import { isSea } from 'node:sea'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 if (isSea()) {
@@ -32,8 +31,18 @@ if (aclRunner !== undefined && process.argv[2] === aclRunner) {
     const platform = 'win'
     process.env.DSH_BUNDLED_PRIMARY_RUNTIME = join(dirname(process.execPath), `${platform}-${process.arch}`, 'primary-runtime')
   }
+  let packageManager
+  const primary = process.env.DSH_PRIMARY_RUNTIME ?? process.env.DSH_BUNDLED_PRIMARY_RUNTIME
+  if (primary !== undefined && primary !== '') {
+    const { resolvePrimaryRuntime } = await import('@deepseek-ai/dsh-tool-workspace-dependencies')
+    const { node, pnpm } = await resolvePrimaryRuntime(primary)
+    if (node !== undefined && pnpm !== undefined) {
+      packageManager = { command: node, args: [pnpm],
+        env: { PATH: `${dirname(node)}${delimiter}${process.env.PATH ?? ''}` } }
+    }
+  }
   const { runCli } = await import('@deepseek-ai/dsh/lib/bin.js')
-  await runCli()
+  await runCli({ packageManager })
 } else {
   Reflect.deleteProperty(process.env, selectorName)
   const { runSelectedSubprocessRunner } = await import('@deepseek-ai/dsh-subprocess-local/runner')
