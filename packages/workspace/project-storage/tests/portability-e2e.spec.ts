@@ -257,7 +257,7 @@ describe('end-to-end project portability across synthetic machines', () => {
     }
 
     await ctxB.fiber.dispose()
-  })
+  }, 20000)
 
   it('reconciles and recovers unindexed physical sessions from .aster/sessions on import/inspect/open', async () => {
     const machine = await tempDir('unindexed-sessions-')

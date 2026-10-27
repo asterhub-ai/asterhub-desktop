@@ -1322,6 +1322,7 @@ export function WorkspaceBrowser({
           side="right"
           onPick={(workspaceId) => {
             closeAddWorkspace()
+            actions.setGroupExpanded(workspaceId, true)
             startSession(workspaceId)
           }}
           onClose={() => { closeAddWorkspace() }}

@@ -694,6 +694,100 @@ describe('project discovery and confirmed opening', () => {
     }
   })
 
+  it('imports project across separate synthetic machines and binds historical session without ungrouped regression', async () => {
+    const machineA = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-machine-a-')))
+    const machineB = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-machine-b-')))
+    tempDirs.push(machineA, machineB)
+
+    // Machine A creates project and writes session
+    const ctxA = new Context()
+    roots.push(ctxA)
+    await ctxA.plugin(SessionStore)
+    await ctxA.plugin(Storage)
+    ctxA.storage.backend.register('memory', new MemoryStorageBackend())
+    const storageDomainA = new DomainFacility(ctxA, { backend: 'memory', routes: {} })
+    ctxA.storage.mount('domain', storageDomainA)
+    ctxA.provide('storageDomain', storageDomainA)
+    await ctxA.plugin(SessionCwd)
+    await ctxA.plugin(ProjectStorage, {
+      sessionMode: 'project-local',
+      locatorPath: join(machineA, 'locator.json'),
+      legacySessionRoot: '',
+      metadataLimitBytes: 1024 * 1024,
+      lockDeadlineMs: 5000,
+    })
+    await ctxA.plugin(ProjectSessionPersistence, { compression: 'none' })
+    await ctxA.plugin(WorkspaceRegistry)
+    const projectA = stageDir(machineA, 'my-project-a')
+    const bindingA = await ctxA.projectStorage.open({ root: projectA, mode: 'new' })
+
+    const sessId = SessionId('cross-machine-sess-1')
+    const headerA: SessionHeader = {
+      version: SESSION_FORMAT_VERSION,
+      id: sessId,
+      createdAt: 1000,
+      cwd: projectA,
+      isSeeded: false,
+      delegationDepth: 0,
+    }
+    const writer = await ctxA.sessionPersistence.create(headerA)
+    await writer.append([
+      { type: 'turn/start', seq: SessionSeq(0), time: 1001, data: { turn: 1 } },
+      { type: 'turn/end', seq: SessionSeq(1), time: 1002, data: { turn: 1, reason: { kind: 'completed' as const } } },
+    ])
+    await writer.close()
+    await ctxA.fiber.dispose()
+    const projectB = stageDir(machineB, 'my-imported-project-b')
+    await cp(join(projectA, '.aster'), join(projectB, '.aster'), { recursive: true })
+    await rm(projectA, { recursive: true, force: true })
+
+    const ctxB = new Context()
+    roots.push(ctxB)
+    await ctxB.plugin(SessionStore)
+    await ctxB.plugin(Storage)
+    ctxB.storage.backend.register('memory', new MemoryStorageBackend())
+    const storageDomainB = new DomainFacility(ctxB, { backend: 'memory', routes: {} })
+    ctxB.storage.mount('domain', storageDomainB)
+    ctxB.provide('storageDomain', storageDomainB)
+    await ctxB.plugin(SessionCwd)
+    await ctxB.plugin(ProjectStorage, {
+      sessionMode: 'project-local',
+      locatorPath: join(machineB, 'locator.json'),
+      legacySessionRoot: '',
+      metadataLimitBytes: 1024 * 1024,
+      lockDeadlineMs: 5000,
+    })
+    await ctxB.plugin(ProjectSessionPersistence, { compression: 'none' })
+    await ctxB.plugin(WorkspaceRegistry)
+    const controllerB = new WorkspaceController(ctxB, { documentsDirectory: machineB })
+
+    const inspection = await controllerB.inspect({ path: projectB }, new AbortController().signal)
+    expect(inspection.kind).toBe('existing')
+    if (inspection.kind !== 'existing') throw new Error('expected existing project')
+    expect(inspection.sessionCount).toBe(1)
+
+    const opened = await controllerB.openProject({
+      path: projectB,
+      mode: 'existing',
+      expectedId: bindingA.id,
+      expectedDigest: inspection.digest,
+    }, new AbortController().signal)
+    expect(opened.workspace.sessionIds).toEqual([sessId])
+    const listedB = await ctxB.sessionPersistence.list()
+    expect(listedB.map(s => s.header.id)).toEqual([sessId])
+    const entityB = ctxB.workspaceRegistry.get(opened.workspace.workspaceId)
+    expect(entityB?.sessionIds).toEqual([sessId])
+
+    const readerB = await ctxB.sessionPersistence.open(sessId, 'read')
+    try {
+      expect(readerB.header.cwd).toBe(projectA)
+      expect(ctxB.sessionCwd.resolve(readerB.header)).toBe(projectB)
+    } finally {
+      await readerB.close()
+    }
+    await ctxB.fiber.dispose()
+  })
+
 
   it('openProject throws workspace/confirmation-mismatch when projectStorage rejects confirmation', async () => {
     const { controller, ctx, root } = await harness()

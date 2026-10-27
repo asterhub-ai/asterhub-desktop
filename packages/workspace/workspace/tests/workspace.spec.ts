@@ -285,6 +285,27 @@ describe('WorkspaceRegistry lifecycle and bootstrap', () => {
     }
   })
 
+  it('attaches and projects sessions when projectStorage is present even if header.cwd is completely nonexistent on current machine', async () => {
+    const movedRoot = await makeDir('portable-target-project')
+    const nonexistentCwd = 'Z:\\nonexistent\\machine\\path\\never\\here'
+    const imported = header('cross-machine-session', nonexistentCwd, 100)
+    const h = await harness({
+      sessions: [],
+      projectLocations: new Map([[imported.id, movedRoot]]),
+    })
+    try {
+      const workspace = await h.registry.create(movedRoot)
+      h.setSessions([imported])
+
+      await h.registry.reconcileProjectSessions(movedRoot)
+
+      expect(workspace.sessionIds).toEqual([imported.id])
+      expect(storedRecord(h.pool, workspace.id).sessionIds).toEqual([imported.id])
+    } finally {
+      await h.fiber.dispose()
+    }
+  })
+
   it('bootstraps once from list headers only, in workspace/session createdAt order', async ({ skip }) => {
     const older = await makeDir('older')
     const newer = await makeDir('newer')

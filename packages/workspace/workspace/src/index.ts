@@ -306,8 +306,22 @@ export class WorkspaceRegistry extends Service {
       if (workspace === undefined) throw new Error(`workspace is not registered: ${canonical}`)
       const headers = await this.listStoredHeaders()
       await this.indexHeaders(headers)
+      const projectStorage = this.ctx.get('projectStorage') as ProjectStorageLocator | undefined
       for (const header of headers) {
-        if (this.sessionPaths.get(header.id) === canonical) await workspace.attachSession(header.id)
+        let matches = this.sessionPaths.get(header.id) === canonical
+        if (!matches && projectStorage !== undefined) {
+          const location = projectStorage.locateSession(header.id)
+          if (location !== undefined) {
+            try {
+              if (await realpathNormalize(location.projectRoot) === canonical) {
+                this.sessionPaths.set(header.id, canonical)
+                this.invalidSessionPaths.delete(header.id)
+                matches = true
+              }
+            } catch {}
+          }
+        }
+        if (matches) await workspace.attachSession(header.id)
       }
     })
   }
@@ -1017,7 +1031,7 @@ export class WorkspaceRegistry extends Service {
   private async indexHeader(header: SessionHeader): Promise<void> {
     this.headers.set(header.id, header)
     this.sessionPaths.delete(header.id)
-    const projectStorage = this.ctx.get('projectStorage', false) as ProjectStorageLocator | undefined
+    const projectStorage = this.ctx.get('projectStorage') as ProjectStorageLocator | undefined
     const location = projectStorage?.locateSession(header.id)
     if (location !== undefined) {
       try {
