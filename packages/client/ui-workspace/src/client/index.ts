@@ -130,6 +130,14 @@ export function apply(ctx: Context): void {
     if (!result.ok) throw new Error(result.error.message)
     return result.value
   }
+  const openProjectWorkspace: WorkspaceBrowserInjected['openProjectWorkspace'] = async (input, signal) => {
+    const workspace = await workspaces.openProject(input, signal)
+    await sessions.refresh()
+    return workspace
+  }
+
+  // Stable per-surface occupancy sources (the renderer's hook cache keys by
+  // source identity): true while the surface's directory-flow hole is filled.
   const flowSource = (hole: 'sidebar.workspaces.directoryFlow' | 'conversation.hero.workspace.directoryFlow'): HostObservable<boolean> => ({
     getSnapshot: () => ctx.slots.entries(hole).length > 0,
     subscribe: listener => ctx.slots.subscribe(hole, listener),
@@ -275,7 +283,7 @@ export function apply(ctx: Context): void {
     unarchiveSession: async (sessionId) => { await uiWorkspace.unarchiveSession(sessionId) },
     createWorkspace: input => workspaces.create(input),
     inspectWorkspace: (input, signal) => workspaces.inspect(input, signal),
-    openProjectWorkspace: (input, signal) => workspaces.openProject(input, signal),
+    openProjectWorkspace,
     requestSearch: shortcutControls.search,
     requestAddWorkspace: shortcutControls.add,
     closeAddWorkspace: shortcutControls.closeAdd,
@@ -286,7 +294,7 @@ export function apply(ctx: Context): void {
   const pickerInjected = (): WorkspacePickerInjected => ({
     createWorkspace: input => workspaces.create(input),
     inspectWorkspace: (input, signal) => workspaces.inspect(input, signal),
-    openProjectWorkspace: (input, signal) => workspaces.openProject(input, signal),
+    openProjectWorkspace,
     hooks: { directoryFlow: pickerFlowSource },
   })
   // Each registration declares its owned children in the same call; slot

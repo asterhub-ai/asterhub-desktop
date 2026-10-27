@@ -1,7 +1,7 @@
 /** Create/edit form for automation tasks. */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
-import { Button, Input, MenuSurface } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Input, MenuSurface, useDismissOnOutsidePointer } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type {
@@ -324,9 +324,29 @@ export function AutomationForm(props: AutomationFormProps) {
   const [timezoneSearch, setTimezoneSearch] = useState('')
   const [showTimezoneDropdown, setShowTimezoneDropdown] = useState(false)
   const [timezoneFocusedIndex, setTimezoneFocusedIndex] = useState<number>(-1)
-  const timezoneSearchRef = useRef<HTMLInputElement>(null)
   const timezoneDropdownRef = useRef<HTMLDivElement>(null)
+  const timezoneContainerRef = useRef<HTMLDivElement>(null)
 
+  useDismissOnOutsidePointer(timezoneContainerRef, showTimezoneDropdown, setShowTimezoneDropdown)
+  /**
+   * Commit a selected IANA timezone and dismiss the dropdown.
+   * Clears the active search filter, resets the keyboard-focused index,
+   * and updates form state with the chosen timezone ID.
+   */
+  const handleSelectTimezone = (tzId: string) => {
+    update('timeZone', tzId)
+    setTimezoneSearch('')
+    setShowTimezoneDropdown(false)
+    setTimezoneFocusedIndex(-1)
+  }
+
+  const selectedTz = useMemo(
+    () => COMMON_TIMEZONES.find(tz => tz.id === state.timeZone),
+    [state.timeZone],
+  )
+  const timezonePlaceholder = selectedTz
+    ? `${timeZoneLabel(selectedTz.id, t('time.locale'))} (${selectedTz.offset})`
+    : (state.timeZone || t('form.timezone.search'))
   // Filtered timezones for dropdown
   const filteredTimezones = useMemo(() =>
     COMMON_TIMEZONES.filter(tz =>
@@ -700,14 +720,23 @@ export function AutomationForm(props: AutomationFormProps) {
         {state.timingKind !== 'once' && state.timingKind !== 'delay' && (
           <div className={css.formField}>
             <label className={css.formLabel} htmlFor="automation-form-timezone">{t('form.timezone')}</label>
-            <div className={css.timezoneSearchContainer}>
+            <div className={css.timezoneSearchContainer} ref={timezoneContainerRef}>
               <Input
                 id="automation-form-timezone-search"
                 type="search"
-                placeholder={t('form.timezone.search')}
+                placeholder={timezonePlaceholder}
                 value={timezoneSearch}
                 onChange={(e) => { setTimezoneSearch(e.target.value); setShowTimezoneDropdown(true); setTimezoneFocusedIndex(-1) }}
-                onFocus={() => { setShowTimezoneDropdown(true); setTimezoneFocusedIndex(-1) }}
+                onFocus={() => {
+                  setShowTimezoneDropdown(true)
+                  setTimezoneFocusedIndex(-1)
+                }}
+                onClick={() => {
+                  if (!showTimezoneDropdown) {
+                    setShowTimezoneDropdown(true)
+                    setTimezoneFocusedIndex(-1)
+                  }
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') {
                     setShowTimezoneDropdown(false)
@@ -730,17 +759,13 @@ export function AutomationForm(props: AutomationFormProps) {
                   } else if (e.key === 'Enter' && timezoneFocusedIndex >= 0 && filteredTimezones[timezoneFocusedIndex]) {
                     e.preventDefault()
                     const tz = filteredTimezones[timezoneFocusedIndex]
-                    update('timeZone', tz.id)
-                    setTimezoneSearch('')
-                    setShowTimezoneDropdown(false)
-                    setTimezoneFocusedIndex(-1)
+                    handleSelectTimezone(tz.id)
                   }
                 }}
                 aria-label={t('form.timezone.search')}
                 aria-expanded={showTimezoneDropdown}
                 aria-controls="automation-form-timezone-listbox"
                 aria-activedescendant={timezoneFocusedIndex >= 0 && filteredTimezones[timezoneFocusedIndex] ? `tz-option-${filteredTimezones[timezoneFocusedIndex].id}` : undefined}
-                ref={timezoneSearchRef}
               />
               {showTimezoneDropdown && (
                 <MenuSurface
@@ -766,11 +791,7 @@ export function AutomationForm(props: AutomationFormProps) {
                           index === timezoneFocusedIndex && css.timezoneOptionFocused,
                         )}
                         onClick={() => {
-                          update('timeZone', tz.id)
-                          setTimezoneSearch('')
-                          setShowTimezoneDropdown(false)
-                          setTimezoneFocusedIndex(-1)
-                          timezoneSearchRef.current?.focus()
+                          handleSelectTimezone(tz.id)
                         }}
                         onMouseEnter={() => { setTimezoneFocusedIndex(index) }}
                       >

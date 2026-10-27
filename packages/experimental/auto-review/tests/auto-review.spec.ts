@@ -19,6 +19,7 @@ import PermissionPresetService, {
   AUTO_PRESET,
   type Config as PermissionConfig,
 } from '@deepseek-ai/dsh-permission-presets'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import SessionStore, {
   SessionId,
   SessionLogOffset,
@@ -99,9 +100,11 @@ const PRESETS = {
 } satisfies NonNullable<PermissionConfig['presets']>
 
 const contexts: Context[] = []
+const cwdOverrides = new Map<string, string | undefined>()
 
 afterEach(async () => {
   vi.restoreAllMocks()
+  cwdOverrides.clear()
   while (contexts.length > 0) await contexts.pop()!.fiber.dispose()
 })
 
@@ -132,10 +135,10 @@ async function harness(
 ): Promise<{ ctx: Context; adapter: RecordingAdapter; auto: PluginFiber }> {
   const ctx = new Context()
   contexts.push(ctx)
-  await ctx.plugin(LlmRuntime)
+  await ctx.plugin(SessionCwd)
+  ctx.sessionCwd.registerResolver(header => cwdOverrides.has(header.id) ? cwdOverrides.get(header.id) : header.cwd)
   await ctx.plugin(SessionStore)
   await ctx.plugin(SessionProjectionRegistry)
-  await ctx.plugin(SystemPrompt, {})
   await ctx.plugin(ToolRuntime)
   ctx.provide('shell', {
     sandboxMode: 'workspace-write',
@@ -151,10 +154,11 @@ async function harness(
   return { ctx, adapter, auto }
 }
 
-function agentFor(session: Session): Agent {
+function agentFor(ctx: Context, session: Session): Agent {
   return {
     id: session.id,
     session,
+    ctx,
     options: { provider: 'review', model: 'same-model' },
   } as Agent
 }
@@ -162,7 +166,7 @@ function agentFor(session: Session): Agent {
 function autoSession(ctx: Context, id: string, cwd = '/workspace'): { session: Session; agent: Agent } {
   const session = ctx.sessions.create(SessionId(id), { meta: { cwd } })
   ctx.permissionPresets.set(session, AUTO_PRESET)
-  return { session, agent: agentFor(session) }
+  return { session, agent: agentFor(ctx, session) }
 }
 
 function appendHeader(
@@ -265,6 +269,8 @@ describe('native review request', () => {
     ])
     const probe = registerProbe(ctx)
     const { session, agent } = autoSession(ctx, 'native-sections', '/workspace/project')
+    cwdOverrides.set(session.id, '/moved/workspace/project')
+    expect(session.header.cwd).toBe('/workspace/project')
     const oldCallId = ToolCallId('old-call')
     const outerCallId = ToolCallId('outer-call')
     const historicalInnerId = ToolCallId('outer-call:code:0')
@@ -396,7 +402,7 @@ describe('native review request', () => {
     expect(Object.isFrozen(request)).toBe(true)
 
     const sections = requestSections(request)
-    expect(sections.ENVIRONMENT).toEqual({ cwd: '/workspace/project' })
+    expect(sections.ENVIRONMENT).toEqual({ cwd: '/moved/workspace/project' })
     expect(sections.PROJECT_INSTRUCTIONS).toEqual([
       expect.objectContaining({
         kind: 'user-message',
@@ -546,7 +552,7 @@ describe('native review request', () => {
     })
     ctx.permissionPresets.set(session, AUTO_PRESET)
     setApprovalPolicy(session, 'never')
-    const agent = agentFor(session)
+    const agent = agentFor(ctx, session)
     appendHeader(session, [{ name: 'probe', description: 'probe', parameters: { type: 'object' } }])
     session.append('subagent/descriptor', snapshotSubagentDescriptor({
       mode: 'one-shot',
@@ -608,7 +614,7 @@ describe('native review request', () => {
       callId: incompleteCallId,
       name: 'probe',
       arguments: {},
-      agent: agentFor(incomplete),
+      agent: agentFor(ctx, incomplete),
     })
     expect(requestSections(adapter.requests[1]!).FILTERED_HISTORY).toEqual([
       expect.objectContaining({
@@ -1166,7 +1172,7 @@ describe('PTC and bypass semantics', () => {
     const { ctx, adapter } = await harness([])
     const probe = registerProbe(ctx)
     const ordinary = ctx.sessions.create(SessionId('ordinary'), { meta: { cwd: '/workspace' } })
-    const ordinaryAgent = agentFor(ordinary)
+    const ordinaryAgent = agentFor(ctx, ordinary)
     const auto = autoSession(ctx, 'outer-run-code')
 
     await expect(ctx.tools.execute({
@@ -1704,7 +1710,7 @@ describe('logged-fact failures', () => {
       callId: missingCwdId,
       name: 'probe',
       arguments: {},
-      agent: agentFor(missingCwd),
+      agent: agentFor(ctx, missingCwd),
     }), 'auto-review: the session has no working directory')
 
     expect(probe.runs()).toBe(0)

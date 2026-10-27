@@ -14,7 +14,7 @@
 import { FiberState } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { isAbsolute, sep } from 'node:path'
+import { isAbsolute, resolve as resolvePath } from 'node:path'
 import { defineTool, TOOL_ABORTED } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, TerminalCallView, ToolDefinition, ToolExecution, ToolResult, ToolResultView } from '@deepseek-ai/dsh-tools'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
@@ -143,20 +143,30 @@ function presentBashResult(args: unknown, result: ToolResult): ToolResultView | 
 
 /**
  * Resolve an explicit workdir first, making a relative one session-workspace-relative;
- * otherwise use the filesystem identity of the session cwd and leave executor
- * defaulting as the fallback. A resolved sandbox-policy root wins so workdir
- * and confinement use the exact same per-call identity.
+ * otherwise use the authoritative current cwd and leave executor defaulting as the fallback.
+ * A resolved sandbox-policy root wins over the historical header value.
  */
 function resolveWorkdir(
   modelWorkdir: string | undefined,
   exec: { agent?: Agent },
   policyWorkspaceRoot?: string,
 ): string | undefined {
-  const headerCwd = exec.agent?.session.header.cwd
-  const sessionCwd = policyWorkspaceRoot ?? headerCwd
+  const agent = exec.agent
+  let sessionCwd = policyWorkspaceRoot
+  if (sessionCwd === undefined && agent !== undefined) {
+    const service = agent.ctx.get('sessionCwd', false)
+    if (service !== undefined) {
+      sessionCwd = service.resolve(agent.session.header)
+      if (sessionCwd === undefined) {
+        throw new Error(`Session ${agent.session.id} has no current execution directory`)
+      }
+    } else {
+      sessionCwd = agent.options.cwd ?? agent.session.header.cwd
+    }
+  }
   if (modelWorkdir === undefined) return sessionCwd
   if (sessionCwd !== undefined && !isAbsolute(modelWorkdir)) {
-    return `${sessionCwd}${sep}${modelWorkdir}`
+    return resolvePath(sessionCwd, modelWorkdir)
   }
   return modelWorkdir
 }

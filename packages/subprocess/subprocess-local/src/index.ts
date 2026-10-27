@@ -275,6 +275,7 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
     const options: IPtyForkOptions | IWindowsPtyForkOptions = {
       name: spec.terminalType,
       rows: spec.rows,
+      cwd: spec.cwd,
       // Windows 10 LTSC 19044's inbox conhost rewrites prompt trailing spaces as CSI;
       // use node-pty's bundled OpenConsole to preserve the readiness tail.
       ...(platform === 'win32' ? { useConptyDll: true } : {}),

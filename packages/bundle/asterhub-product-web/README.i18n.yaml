@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/bundle/asterhub-product-web/README.md
+/:
+  en: e2936bed8d0ee79f
+  zh: a0a76f4dbd0178a3
+/deepseek-ai-dsh-asterhub-product-web:
+  en: ad9223b4acd4c0f5
+  zh: a013dd5cf122bcf1
+/deepseek-ai-dsh-asterhub-product-web/summary:
+  en: af8fcb8e9799fd78
+  zh: 2b70bbdace7db6ff
+/deepseek-ai-dsh-asterhub-product-web/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-asterhub-product-web/use-this-package:
+  en: 523f6df95782aa6c
+  zh: dffe167c6ddb7b6e
+/deepseek-ai-dsh-asterhub-product-web/use-this-package/optional-desktop-analytics:
+  en: 17a250d59d2572cf
+  zh: e8db0fdd42d811e9
+/deepseek-ai-dsh-asterhub-product-web/understand-the-implementation:
+  en: caf8097add382938
+  zh: ac972f3bb46a6197
+/deepseek-ai-dsh-asterhub-product-web/understand-the-implementation/source-map:
+  en: ec6cfd566fc78da3
+  zh: 9ea7f444a6ecec5a
+/deepseek-ai-dsh-asterhub-product-web/further-exploration:
+  en: 852fe88afd265e84
+  zh: d650666b8f33b484
+/deepseek-ai-dsh-asterhub-product-web/model-experience:
+  en: afd2044aee2b515f
+  zh: c2b7cb0d189a9d74
+/deepseek-ai-dsh-asterhub-product-web/model-experience/kv-cache-effect:
+  en: 33efa4da90593ee4
+  zh: f291b8734abe2f4b
+/deepseek-ai-dsh-asterhub-product-web/known-limitations-and-deferred-work:
+  en: 78ecbbd5ddfaeacb
+  zh: a925fe5153a2a784
+/deepseek-ai-dsh-asterhub-product-web/known-limitations-and-deferred-work/dev-note:
+  en: 8c26b6639391eee1
+  zh: f9d27a22866e89e1

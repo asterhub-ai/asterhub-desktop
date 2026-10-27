@@ -5,6 +5,7 @@
  * @module @deepseek-ai/dsh-session-reference
  */
 
+import { relative } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
@@ -12,6 +13,7 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { createUserMessage, freezeMessage, LlmError } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, LlmResolvedModelInfo, UserMessage } from '@deepseek-ai/dsh-llm'
 import type { SessionId } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-session/cwd'
 // Type-only: the `title` projection key plus the live registry and durable
 // cache Context merges — the two projection faces discovery labels from.
 import type { ProjectionSnapshot } from '@deepseek-ai/dsh-session-projection'
@@ -177,11 +179,13 @@ export class SessionReferenceResolver extends TypertRemoteService {
   }
 
   /**
-   * List reference candidates, ranked by working-directory affinity.
+   * List reference candidates ranked by current execution-directory affinity.
    *
    * Discovery runs at keystroke rate, so titles and subagent labels only ever
    * come from projection reads; sessions without either fall back to their id.
-   * @param agent - target agent; self is excluded and its cwd drives ranking.
+   * Candidate cwd metadata remains historical, while workspace affinity uses
+   * each Session's current execution directory.
+   * @param agent - target agent; self is excluded and its current cwd drives ranking.
    * @param query - optional case-insensitive session-id/cwd/title/display-title substring.
    * @param limit - optional positive result cap.
    * @param signal - optional cancellation boundary for host autocomplete teardown.
@@ -197,27 +201,32 @@ export class SessionReferenceResolver extends TypertRemoteService {
       throw new SessionReferenceError('candidate limit must be a positive safe integer', 'SESSION_REFERENCE_INVALID_REFERENCE')
     }
     const needle = query.toLocaleLowerCase()
-    const targetCwd = agent.session.header.cwd
+    const sessionCwd = this.ctx.get('sessionCwd', false)
+    const targetCwd = sessionCwd ? sessionCwd.resolve(agent.session.header) : agent.session.header.cwd
     assertNotCancelled(signal)
     const records = (await settleWithCancellation(this.ctx.sessionQuery.listSessions(signal), signal))
       .filter(record => record.header.id !== agent.id)
-      .map((record, index) => ({ record, index }))
-    const labelled = records.map(({ record, index }) => ({ record, index, ...this.projectedLabels(record) }))
+      .map((record, index) => ({
+        record,
+        index,
+        cwd: sessionCwd ? sessionCwd.resolve(record.header) : record.header.cwd,
+      }))
+    const labelled = records.map(({ record, index, cwd }) => ({ record, index, cwd, ...this.projectedLabels(record) }))
     return labelled.filter(({ record, label, displayTitle }) => {
       if (needle === '') return true
       return record.header.id.toLocaleLowerCase().includes(needle)
         || record.header.cwd?.toLocaleLowerCase().includes(needle) === true
         || label.toLocaleLowerCase().includes(needle)
         || displayTitle.toLocaleLowerCase().includes(needle)
-    }).sort((a, b) => candidateRank(a.record.header.cwd, targetCwd) - candidateRank(b.record.header.cwd, targetCwd)
+    }).sort((a, b) => candidateRank(a.cwd, targetCwd) - candidateRank(b.cwd, targetCwd)
       || a.index - b.index)
       .slice(0, limit)
-      .map(({ record, label, displayTitle }) => ({
+      .map(({ record, label, displayTitle, cwd }) => ({
         sessionId: record.header.id,
         label,
         displayTitle,
         ...record.header.cwd === undefined ? {} : { cwd: record.header.cwd },
-        sameWorkspace: record.header.cwd !== undefined && record.header.cwd === targetCwd,
+        sameWorkspace: sameExecutionDirectory(cwd, targetCwd),
         createdAt: record.header.createdAt,
       }))
   }
@@ -437,9 +446,13 @@ function titleOf(snapshot: ProjectionSnapshot | undefined): string | undefined {
 }
 
 function candidateRank(candidateCwd: string | undefined, targetCwd: string | undefined): number {
-  if (candidateCwd !== undefined && targetCwd !== undefined && candidateCwd === targetCwd) return 0
+  if (sameExecutionDirectory(candidateCwd, targetCwd)) return 0
   if (candidateCwd === undefined) return 1
   return 2
+}
+
+function sameExecutionDirectory(left: string | undefined, right: string | undefined): boolean {
+  return left !== undefined && right !== undefined && relative(left, right) === ''
 }
 
 function assertNotCancelled(signal: AbortSignal | undefined): void {

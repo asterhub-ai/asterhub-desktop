@@ -65,7 +65,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### How hooks run and fail
 
-- Hooks run in your project directory — the agent's session workspace — so `pwd` and relative paths in your hooks refer to your project, not the server's launch directory.
+- Hooks run in your project directory — resolved from the authoritative current execution root (`SessionCwd`), never falling back to the immutable session header or server launch cwd for an agent run — so `pwd` and relative paths in your hooks refer to your project, not the server's launch directory.
 - `${CLAUDE_PLUGIN_ROOT}` and `${CLAUDE_PROJECT_DIR}` in command strings are replaced from your config, and `CLAUDE_PROJECT_DIR` is set for every hook process.
 - One config applies to the whole process: it is read once at startup, and a relative `configPath` resolves from the directory that launched the process.
 - Hooks on the same event run one after another, in config order.

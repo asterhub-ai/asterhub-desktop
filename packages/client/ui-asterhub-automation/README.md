@@ -28,6 +28,12 @@ The desktop-native bundle mounts this panel and the automation Host together. Th
 
 The Host owns task validation, account authorization, mutation receipts, and execution. The panel prepares each change, presents confirmation when required, then commits using the same request and confirmation IDs. Account and task notifications trigger fresh Host reads; browser state is not the durable task store.
 
+After a connection reset, the panel discards records from the previous connection and reads the catalog again under the new connection identity.
+
+Normal task lists exclude soft-deleted records, and the panel closes the selected task's details when the Host marks it deleted. A failed deletion displays an error and leaves the task listed.
+
+Settled operations and run state changes surface through one app-wide `shell.overlay` notice, so a finished run stays visible outside the panel; a succeeded run reports run-succeeded copy, never run-started. Each list row shows the most recent run's state with its relative finish time on one line, and a row whose recent run or origin binding resolves a Session carries a View-session entry. The client refreshes the Session list before opening an uncached historical Session and reports an error if that Session is still unavailable after refresh.
+
 ## Further Exploration
 
 - [Automation Host](../../schedule/asterhub-automation/README.md)

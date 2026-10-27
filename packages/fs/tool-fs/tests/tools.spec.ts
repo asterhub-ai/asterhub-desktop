@@ -10,8 +10,9 @@ import { createScope, type Scope } from '@deepseek-ai/dsh-scope'
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
-import { turnBoundaryProjectionDefinition } from '@deepseek-ai/dsh-agent-loop'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import { turnBoundaryProjectionDefinition } from '@deepseek-ai/dsh-agent-loop'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolResult } from '@deepseek-ai/dsh-tools'
 import { FileSystem, FsError, FsTargetKey, FsVersion } from '@deepseek-ai/dsh-fs'
@@ -34,7 +35,9 @@ import { sessionCwd } from '../src/session-cwd.ts'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import SandboxPolicyService from '@deepseek-ai/dsh-sandbox-policy'
-import { SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
+import { createTestAgent, createTestSession } from './agent-fixture.ts'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 
 const testToolSignal = new AbortController().signal
@@ -119,13 +122,13 @@ async function setup() {
 }
 
 let callCounter = 0
-function call(ctx: Context, name: string, args: unknown, agent?: object) {
+function call(ctx: Context, name: string, args: unknown, agent?: Agent) {
   return ctx.tools.execute({
     signal: testToolSignal,
     callId: ToolCallId(`call-${++callCounter}`),
     name,
     arguments: args,
-    ...agent ? { agent: agent as never } : {},
+    ...agent === undefined ? {} : { agent },
   })
 }
 
@@ -134,27 +137,87 @@ function text(result: { content: { type: string; text?: string }[] }): string {
 }
 
 describe('session cwd resolution', () => {
-  const execution = (cwd?: string) => cwd === undefined
-    ? {}
-    : { agent: { session: { header: { cwd } } } }
 
-  it('preserves cwd spelling so the filesystem provider resolves parent traversal', () => {
-    const cwd = process.cwd()
-    const throughParent = `${cwd}${sep}..`
-    expect(sessionCwd(execution() as never)).toBeUndefined()
-    expect(sessionCwd(execution(cwd) as never)).toBe(cwd)
-    expect(sessionCwd(execution(throughParent) as never)).toBe(throughParent)
+  it('uses the typed SessionCwd service when composed and falls back only without it', async () => {
+    const { ctx } = await setup()
+    await ctx.plugin(SessionCwd)
+    let current = process.cwd()
+    let available = true
+    ctx.sessionCwd.registerResolver(() => available ? current : undefined)
+    let observed: string | undefined
+    let resolutionError: unknown
+    ctx.on('tools/pre-execute', (exec, next) => {
+      try {
+        observed = sessionCwd(exec)
+      } catch (error: unknown) {
+        resolutionError = error
+      }
+      return next()
+    })
 
+    const currentAgent = createTestAgent(ctx, createTestSession(`${current}${sep}..`))
+    await ctx.tools.execute({
+      signal: testToolSignal,
+      callId: ToolCallId('session-cwd-current'),
+      name: 'read',
+      arguments: { file_path: 'missing.txt' },
+      agent: currentAgent,
+    })
+    expect(observed).toBe(current)
+    observed = current
+    await ctx.tools.execute({
+      signal: testToolSignal,
+      callId: ToolCallId('session-cwd-agentless'),
+      name: 'read',
+      arguments: { file_path: 'missing.txt' },
+    })
+    expect(observed).toBeUndefined()
+
+    const fallbackCtx = new Context()
+    const throughParent = `${current}${sep}..`
+    const fallbackAgent = createTestAgent(fallbackCtx, createTestSession(throughParent))
+    observed = undefined
+    await ctx.tools.execute({
+      signal: testToolSignal,
+      callId: ToolCallId('session-cwd-fallback'),
+      name: 'read',
+      arguments: { file_path: 'missing.txt' },
+      agent: fallbackAgent,
+    })
+    expect(observed).toBe(throughParent)
     const root = mkdtempSync(join(tmpdir(), 'dsh-tool-fs-session-cwd-'))
     const physical = join(root, 'physical')
     const link = join(root, 'link')
     try {
       mkdirSync(physical)
       symlinkSync(physical, link, process.platform === 'win32' ? 'junction' : 'dir')
-      expect(sessionCwd(execution(link) as never)).toBe(link)
+      current = link
+      observed = undefined
+      await ctx.tools.execute({
+        signal: testToolSignal,
+        callId: ToolCallId('session-cwd-symlink'),
+        name: 'read',
+        arguments: { file_path: 'missing.txt' },
+        agent: currentAgent,
+      })
+      expect(observed).toBe(link)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
+
+    available = false
+    observed = undefined
+    resolutionError = undefined
+    await ctx.tools.execute({
+      signal: testToolSignal,
+      callId: ToolCallId('session-cwd-unresolved'),
+      name: 'read',
+      arguments: { file_path: 'missing.txt' },
+      agent: currentAgent,
+    })
+    expect(observed).toBeUndefined()
+    expect(resolutionError).toBeInstanceOf(Error)
+    if (resolutionError instanceof Error) expect(resolutionError.message).toMatch(/no current execution directory/)
   })
 })
 
@@ -192,7 +255,7 @@ describe('registration', () => {
 
   it('unregisters everything on fiber disposal (HMR safety)', async () => {
     const ctx = new Context()
-    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(SystemPrompt, { harnessIdentity: '你是 AsterHub 的 AI 助手。' })
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(FakeFs)
     await ctx.plugin(FsPolicy)
@@ -284,10 +347,10 @@ describe('read tool', () => {
 
   it('records observed state so a follow-up edit by the same session is authorized', async () => {
     const { ctx, fs } = await setup()
-    const session = { header: {} }
+    const owner = createTestAgent(ctx, createTestSession())
     fs.files.set('key:a.txt', 'hello')
-    expect((await call(ctx, 'read', { file_path: 'a.txt' }, { session })).isError).toBe(false)
-    const edited = await call(ctx, 'edit', { file_path: 'a.txt', old_string: 'hello', new_string: 'bye' }, { session })
+    expect((await call(ctx, 'read', { file_path: 'a.txt' }, owner)).isError).toBe(false)
+    const edited = await call(ctx, 'edit', { file_path: 'a.txt', old_string: 'hello', new_string: 'bye' }, owner)
     expect(edited.isError).toBe(false)
     expect(fs.editIntents).toEqual([{ version: 'v1' }])
   })
@@ -402,7 +465,8 @@ describe('formatReadOutput footer variants', () => {
 describe('write tool', () => {
   it('formats a create result and uses createIfAbsent (unobserved, with the gate)', async () => {
     const { ctx, fs } = await setup()
-    const result = await call(ctx, 'write', { file_path: 'a.txt', content: 'hi' }, { session: { header: {} } })
+    const owner = createTestAgent(ctx, createTestSession())
+    const result = await call(ctx, 'write', { file_path: 'a.txt', content: 'hi' }, owner)
     expect(result.isError).toBe(false)
     if (result.isError) throw new Error('expected write success')
     expect(result.value).toEqual({ path: '/abs/a.txt', operation: 'create', before: null, after: 'hi' })
@@ -430,10 +494,10 @@ describe('write tool', () => {
 describe('edit tool', () => {
   it('formats a single-replacement success after a read', async () => {
     const { ctx, fs } = await setup()
-    const session = { header: {} }
+    const owner = createTestAgent(ctx, createTestSession())
     fs.files.set('key:a.txt', 'a')
-    await call(ctx, 'read', { file_path: 'a.txt' }, { session })
-    const result = await call(ctx, 'edit', { file_path: 'a.txt', old_string: 'a', new_string: 'b' }, { session })
+    await call(ctx, 'read', { file_path: 'a.txt' }, owner)
+    const result = await call(ctx, 'edit', { file_path: 'a.txt', old_string: 'a', new_string: 'b' }, owner)
     if (result.isError) throw new Error('expected edit success')
     expect(result.value).toEqual({ path: '/abs/a.txt', before: 'a', after: 'b' })
     expect(text(result)).toBe('The file /abs/a.txt has been updated successfully.')
@@ -441,10 +505,10 @@ describe('edit tool', () => {
 
   it('formats the replace_all success message distinctly', async () => {
     const { ctx, fs } = await setup()
-    const session = { header: {} }
+    const owner = createTestAgent(ctx, createTestSession())
     fs.files.set('key:a.txt', 'a a a')
-    await call(ctx, 'read', { file_path: 'a.txt' }, { session })
-    const result = await call(ctx, 'edit', { file_path: 'a.txt', old_string: 'a', new_string: 'b', replace_all: true }, { session })
+    await call(ctx, 'read', { file_path: 'a.txt' }, owner)
+    const result = await call(ctx, 'edit', { file_path: 'a.txt', old_string: 'a', new_string: 'b', replace_all: true }, owner)
     expect(text(result)).toBe('The file /abs/a.txt has been updated. All occurrences were successfully replaced.')
   })
 
@@ -471,8 +535,9 @@ describe('edit tool', () => {
 
   it('propagates FS_NOT_OBSERVED when the file was never read (the gate decides)', async () => {
     const { ctx, fs } = await setup()
+    const owner = createTestAgent(ctx, createTestSession())
     fs.files.set('key:a.txt', 'hello')
-    const result = await call(ctx, 'edit', { file_path: 'a.txt', old_string: 'a', new_string: 'b' }, { session: { header: {} } })
+    const result = await call(ctx, 'edit', { file_path: 'a.txt', old_string: 'a', new_string: 'b' }, owner)
     expect(result.isError).toBe(true)
     expect(result.error).toMatchObject({ info: { code: 'FS_NOT_OBSERVED' } })
   })
@@ -611,10 +676,10 @@ describe('result-time contextual diff (meta + presentResult)', () => {
 
   it('edit: execute attaches the applied hunk as meta { diffs }', async () => {
     const { ctx, fs } = await setup()
-    const session = { header: {} }
+    const owner = createTestAgent(ctx, createTestSession())
     fs.files.set('key:a.txt', withContext)
-    await call(ctx, 'read', { file_path: 'a.txt' }, { session })
-    const result = await call(ctx, 'edit', { file_path: 'a.txt', old_string: 'OLD', new_string: 'NEW' }, { session })
+    await call(ctx, 'read', { file_path: 'a.txt' }, owner)
+    const result = await call(ctx, 'edit', { file_path: 'a.txt', old_string: 'OLD', new_string: 'NEW' }, owner)
     expect(result.isError).toBe(false)
     expect(result.meta).toEqual({
       diffs: [{ path: 'a.txt', oldText: 'a\nb\nc\nOLD\nd\ne\nf', newText: 'a\nb\nc\nNEW\nd\ne\nf' }],
@@ -623,10 +688,10 @@ describe('result-time contextual diff (meta + presentResult)', () => {
 
   it('edit: presentResult turns the meta into a diff result card', async () => {
     const { ctx, fs } = await setup()
-    const session = { header: {} }
+    const owner = createTestAgent(ctx, createTestSession())
     fs.files.set('key:a.txt', withContext)
-    await call(ctx, 'read', { file_path: 'a.txt' }, { session })
-    const result = await call(ctx, 'edit', { file_path: 'a.txt', old_string: 'OLD', new_string: 'NEW' }, { session })
+    await call(ctx, 'read', { file_path: 'a.txt' }, owner)
+    const result = await call(ctx, 'edit', { file_path: 'a.txt', old_string: 'OLD', new_string: 'NEW' }, owner)
     const view = ctx.tools.get('edit')?.presentResult?.({ file_path: 'a.txt', old_string: 'OLD', new_string: 'NEW' }, result)
     expect(view).toEqual({
       card: 'diff', title: 'Edit a.txt',
@@ -636,10 +701,10 @@ describe('result-time contextual diff (meta + presentResult)', () => {
 
   it('write OVERWRITE: execute attaches a contextual hunk; presentResult renders a diff card', async () => {
     const { ctx, fs } = await setup()
-    const session = { header: {} }
+    const owner = createTestAgent(ctx, createTestSession())
     fs.files.set('key:a.txt', withContext)
-    await call(ctx, 'read', { file_path: 'a.txt' }, { session })
-    const result = await call(ctx, 'write', { file_path: 'a.txt', content: 'a\nb\nc\nNEW\nd\ne\nf\n' }, { session })
+    await call(ctx, 'read', { file_path: 'a.txt' }, owner)
+    const result = await call(ctx, 'write', { file_path: 'a.txt', content: 'a\nb\nc\nNEW\nd\ne\nf\n' }, owner)
     expect(result.isError).toBe(false)
     expect(result.meta).toEqual({ operation: 'update', diffs: [{ path: 'a.txt', oldText: 'a\nb\nc\nOLD\nd\ne\nf', newText: 'a\nb\nc\nNEW\nd\ne\nf' }] })
     const view = ctx.tools.get('write')?.presentResult?.({ file_path: 'a.txt', content: 'x' }, result)
@@ -650,8 +715,8 @@ describe('result-time contextual diff (meta + presentResult)', () => {
     // A create has no prior content, yet the completed replacement view must
     // remain a diff instead of clobbering the pending new-file diff with text.
     const { ctx } = await setup()
-    const session = { header: {} }
-    const result = await call(ctx, 'write', { file_path: 'new.txt', content: 'fresh\n' }, { session })
+    const owner = createTestAgent(ctx, createTestSession())
+    const result = await call(ctx, 'write', { file_path: 'new.txt', content: 'fresh\n' }, owner)
     expect(result.isError).toBe(false)
     expect(result.meta).toEqual({ operation: 'create', diffs: [] })
     const view = ctx.tools.get('write')?.presentResult?.({ file_path: 'new.txt', content: 'fresh\n' }, result)
@@ -660,10 +725,10 @@ describe('result-time contextual diff (meta + presentResult)', () => {
 
   it('write OVERWRITE with identical content: an empty applied-diff projection falls back to a whole-file diff', async () => {
     const { ctx, fs } = await setup()
-    const session = { header: {} }
+    const owner = createTestAgent(ctx, createTestSession())
     fs.files.set('key:a.txt', 'same\n')
-    await call(ctx, 'read', { file_path: 'a.txt' }, { session })
-    const result = await call(ctx, 'write', { file_path: 'a.txt', content: 'same\n' }, { session })
+    await call(ctx, 'read', { file_path: 'a.txt' }, owner)
+    const result = await call(ctx, 'write', { file_path: 'a.txt', content: 'same\n' }, owner)
     expect(result.isError).toBe(false)
     // The operation lets a consumer tell this unchanged overwrite from a create with the same empty hunk list.
     expect(result.meta).toEqual({ operation: 'update', diffs: [] })
@@ -803,6 +868,8 @@ describe('sandbox escalation API (write/edit)', () => {
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(SessionProjectionRegistry)
     ctx.sessionProjections.register(turnBoundaryProjectionDefinition)
+    await ctx.plugin(SessionCwd)
+    ctx.sessionCwd.registerResolver(header => header.cwd)
     await ctx.plugin(SandboxPolicyService, { mode: 'workspace-write' })
     await ctx.plugin(SandboxingFakeFs)
     await ctx.plugin(FsPolicy)
@@ -811,48 +878,11 @@ describe('sandbox escalation API (write/edit)', () => {
     return { ctx, fs: ctx.fs as SandboxingFakeFs }
   }
 
-  /** A fake agent whose session records appends (the approval audit trail), mid-turn, carrying the given events for the fold. */
-  function escalationAgent(records: Array<{ type: string; data?: Record<string, unknown> }> = []): object {
-    const id = SessionId('sess-fs-esc')
-    const events: Array<{
-      type: string
-      seq: ReturnType<typeof SessionSeq>
-      time: number
-      data: Record<string, unknown>
-    }> = [
-      { type: 'turn/start', seq: SessionSeq(0), time: 0, data: { turn: 1 } },
-      ...records.map((record, index) => ({
-        type: record.type,
-        seq: SessionSeq(index + 1),
-        time: index + 1,
-        data: record.data ?? {},
-      })),
-    ]
-    return {
-      id,
-      session: {
-        id,
-        header: { version: 0, id, createdAt: 0, cwd: '/session-project', isSeeded: false },
-        inheritedEventCount: SessionLogOffset(0),
-        firstLiveSeq: SessionLogOffset(0),
-        get seq() { return SessionLogOffset(events.length) },
-        eventAt: (seq: ReturnType<typeof SessionSeq>) => events[seq],
-        snapshotEvents: (
-          fromSeq = SessionLogOffset(0),
-          toSeqExclusive = SessionLogOffset(events.length),
-        ) => events.slice(fromSeq, toSeqExclusive),
-        append: (type: string, data: Record<string, unknown>) => {
-          const event = {
-            type,
-            seq: SessionSeq(events.length),
-            time: events.length,
-            data,
-          }
-          events.push(event)
-          return event
-        },
-      },
-    }
+  function escalationAgent(ctx: Context, mode?: SandboxMode): Agent {
+    const session = createTestSession('/session-project', 'sess-fs-esc')
+    session.append('turn/start', { turn: 1 })
+    if (mode !== undefined) session.append('sandbox/mode', { mode })
+    return createTestAgent(ctx, session)
   }
 
   function fsSchema(ctx: Context, name: 'write' | 'edit') {
@@ -890,7 +920,7 @@ describe('sandbox escalation API (write/edit)', () => {
 
   it('a plain write stamps the default mode with the calling session root', async () => {
     const { ctx, fs } = await setupConfining()
-    await call(ctx, 'write', { file_path: 'a.txt', content: 'x' }, escalationAgent())
+    await call(ctx, 'write', { file_path: 'a.txt', content: 'x' }, escalationAgent(ctx))
     expect(fs.stamped).toEqual([{
       mode: 'workspace-write',
       workspaceRoot: '/session-project',
@@ -900,7 +930,7 @@ describe('sandbox escalation API (write/edit)', () => {
 
   it('a standing session override folds onto the stamp', async () => {
     const { ctx, fs } = await setupConfining()
-    await call(ctx, 'write', { file_path: 'a.txt', content: 'x' }, escalationAgent([{ type: 'sandbox/mode', data: { mode: 'read-only' } }]))
+    await call(ctx, 'write', { file_path: 'a.txt', content: 'x' }, escalationAgent(ctx, 'read-only'))
     expect(fs.stamped).toEqual([{
       mode: 'read-only',
       workspaceRoot: '/session-project',
@@ -911,7 +941,7 @@ describe('sandbox escalation API (write/edit)', () => {
   it('a denied write maps to the shared marker plus the escalation hint (isError)', async () => {
     const { ctx, fs } = await setupConfining()
     fs.rejectWith = new FsError('denied', 'FS_SANDBOX_DENIED')
-    const result = await call(ctx, 'write', { file_path: 'a.txt', content: 'x' }, escalationAgent())
+    const result = await call(ctx, 'write', { file_path: 'a.txt', content: 'x' }, escalationAgent(ctx))
     expect(result.isError).toBe(true)
     expect(text(result)).toContain('[sandbox: file access denied under workspace-write mode]')
     expect(text(result)).toContain('retry this exact operation once with sandbox_permissions')
@@ -920,7 +950,7 @@ describe('sandbox escalation API (write/edit)', () => {
   it('a non-FS_SANDBOX_DENIED provider error passes through unchanged', async () => {
     const { ctx, fs } = await setupConfining()
     fs.rejectWith = new FsError('boom', 'FS_IO_ERROR')
-    const result = await call(ctx, 'write', { file_path: 'a.txt', content: 'x' }, escalationAgent())
+    const result = await call(ctx, 'write', { file_path: 'a.txt', content: 'x' }, escalationAgent(ctx))
     expect(result.isError).toBe(true)
     expect(text(result)).toContain('boom')
     expect(text(result)).not.toContain('[sandbox:')
@@ -935,7 +965,7 @@ describe('sandbox escalation API (write/edit)', () => {
       callId: ToolCallId('call-fs-esc-grant'),
       name: 'write',
       arguments: { file_path: 'a.txt', content: 'x', sandbox_permissions: 'danger-full-access', justification: 'the test needs it' },
-      agent: escalationAgent() as never,
+      agent: escalationAgent(ctx),
       signal: new AbortController().signal,
     })
     expect(fs.stamped).toEqual([{
@@ -949,7 +979,7 @@ describe('sandbox escalation API (write/edit)', () => {
     const { ctx, fs } = await setupConfining()
     const result = await call(ctx, 'write', {
       file_path: 'a.txt', content: 'x', sandbox_permissions: mode, justification: 'use the current permissions',
-    }, escalationAgent([{ type: 'sandbox/mode', data: { mode } }]))
+    }, escalationAgent(ctx, mode))
     expect(result.isError).toBe(false)
     expect(fs.stamped).toEqual([{
       mode, workspaceRoot: '/session-project', sessionId: SessionId('sess-fs-esc'),
@@ -959,7 +989,7 @@ describe('sandbox escalation API (write/edit)', () => {
   it('a rejected escalation fails closed with its own text and never mutates', async () => {
     const { ctx, fs } = await setupConfining({ approval: true })
     ctx.on('approval/request', () => Promise.resolve('rejected' as const))
-    const result = await call(ctx, 'edit', { file_path: 'a.txt', old_string: 'x', new_string: 'y', sandbox_permissions: 'danger-full-access', justification: 'the test needs it' }, escalationAgent())
+    const result = await call(ctx, 'edit', { file_path: 'a.txt', old_string: 'x', new_string: 'y', sandbox_permissions: 'danger-full-access', justification: 'the test needs it' }, escalationAgent(ctx))
     expect(result.isError).toBe(true)
     expect(text(result)).toContain('the user rejected escalating this operation to "danger-full-access"')
     expect(fs.stamped).toEqual([])
@@ -967,7 +997,7 @@ describe('sandbox escalation API (write/edit)', () => {
 
   it('escalation without an approval service fails closed', async () => {
     const { ctx } = await setupConfining()
-    const result = await call(ctx, 'write', { file_path: 'a.txt', content: 'x', sandbox_permissions: 'danger-full-access', justification: 'why' }, escalationAgent())
+    const result = await call(ctx, 'write', { file_path: 'a.txt', content: 'x', sandbox_permissions: 'danger-full-access', justification: 'why' }, escalationAgent(ctx))
     expect(result.isError).toBe(true)
     expect(text(result)).toContain('no approval service is composed')
   })
@@ -981,14 +1011,14 @@ describe('sandbox escalation API (write/edit)', () => {
 
   it('rejects the escalation argument pairing (one field without the other)', async () => {
     const { ctx } = await setupConfining()
-    const missing = await call(ctx, 'write', { file_path: 'a.txt', content: 'x', sandbox_permissions: 'workspace-write' }, escalationAgent())
+    const missing = await call(ctx, 'write', { file_path: 'a.txt', content: 'x', sandbox_permissions: 'workspace-write' }, escalationAgent(ctx))
     expect(missing.isError).toBe(true)
     expect(text(missing)).toContain('sandbox_permissions requires a justification')
   })
 
   it('sandbox_permissions under a non-confining backend fails closed (unadvertised field still reaches execute)', async () => {
     const { ctx } = await setup()
-    const result = await call(ctx, 'write', { file_path: 'a.txt', content: 'x', sandbox_permissions: 'workspace-write', justification: 'why' }, escalationAgent())
+    const result = await call(ctx, 'write', { file_path: 'a.txt', content: 'x', sandbox_permissions: 'workspace-write', justification: 'why' }, escalationAgent(ctx))
     expect(result.isError).toBe(true)
     expect(text(result)).toContain('not available in this composition')
   })
@@ -996,7 +1026,7 @@ describe('sandbox escalation API (write/edit)', () => {
 
 /** Create a real per-agent scope over the mounted tool plugins. */
 async function guidanceScope(ctx: Context) {
-  const key = {}
+  const key = createTestAgent(ctx, createTestSession())
   let scope!: Scope
   await ctx.plugin(Object.assign((inner: Context) => { scope = createScope(inner, key) },
     { inject: ['tools', 'systemPrompt'] }))

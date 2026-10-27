@@ -20,7 +20,6 @@ import { isImageAdmissionError } from '@deepseek-ai/dsh-attachment'
 import type { AttachmentStore, ImageAttachmentRef, ImageMediaType, SaveImageAttachment } from '@deepseek-ai/dsh-attachment'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { ToolDefinition, ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
-import { resolveProjectAttachmentScope } from '@deepseek-ai/dsh-project-storage'
 import { assertSupportedJsonSchema } from '@deepseek-ai/dsh-tools'
 import type { JsonSchemaNode } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
@@ -423,9 +422,7 @@ async function prepareImageProjection(
   }
 
   try {
-    const scope = exec.agent === undefined
-      ? undefined
-      : resolveProjectAttachmentScope(ctx, exec.agent.session.id)
+    const scope = exec.agent === undefined ? undefined : { sessionId: exec.agent.session.id }
     const refs = await attachments.saveImages(decoded, scope)
     const byIndex = new Map(imageIndexes.map((index, offset) => [index, refs[offset] as ImageAttachmentRef] as const))
     return projectContent(content, toolName, (_block, index) => ({

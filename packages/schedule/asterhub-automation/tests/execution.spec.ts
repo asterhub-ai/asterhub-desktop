@@ -131,4 +131,33 @@ describe('native execution interval', () => {
     expect(terminal.sessionCreated).toBe(true)
     expect(fixture.ctx.agents.roots()).toEqual([])
   })
+
+  it('returns terminal state without hanging when teardown flush throws or fails (D1)', async () => {
+    const fixture = await executionFixture()
+    const adapter = new CatalogAdapter([textResponse('not-reached')])
+    fixture.ctx.llm.registerAdapter(['fixture'], adapter)
+
+    const flushAttempts: string[] = []
+    const originalFlush = fixture.ctx.sessions.flush.bind(fixture.ctx.sessions)
+    fixture.ctx.sessions.flush = async (session) => {
+      flushAttempts.push(String(session.id))
+      throw new Error(`simulated flush failure for session ${session.id}`)
+    }
+
+    const reserved = fixture.reserve()
+    const terminal = await executeRun(fixture.host, reserved.task, reserved.run.id, fixture.identity, new AbortController().signal)
+
+    // Both input flush (line 280) and teardown flush (line 307) must be attempted
+    expect(flushAttempts).toEqual([String(reserved.run.sessionId), String(reserved.run.sessionId)])
+    expect(terminal.sessionCreated).toBe(true)
+    expect(terminal.sessionId).toBe(reserved.run.sessionId)
+    expect(terminal.state).toBe('blocked')
+    expect(terminal.reason?.code).toBe('execution_failed')
+
+    // Verify task state settlement releases activeRunId
+    fixture.settle(terminal)
+    expect(fixture.host.tasks()[0]?.activeRunId).toBeNull()
+
+    fixture.ctx.sessions.flush = originalFlush
+  })
 })

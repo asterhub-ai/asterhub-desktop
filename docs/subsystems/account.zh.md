@@ -42,6 +42,14 @@ interface AccountStatus {
   readonly rememberedUsername?: string
   /** Whether the Host may use its saved password to renew an expired session. */
   readonly autoLogin?: boolean
+  /**
+   * Whether part of the account credentials is supplied by the read-only
+   * launching environment instead of persisted by this installation. Sign-in
+   * succeeds, but writing such references is skipped — the provider rejects a
+   * write an environment value would shadow — so their effective values stay
+   * the environment's until it stops supplying them.
+   */
+  readonly credentialsFromEnv?: boolean
 }
 ```
 
@@ -214,7 +222,7 @@ registerAutomationLease(identity: AccountAutomationIdentity, stop: () => Promise
 
 /** Sign in and bind one reusable model key to this account.
  * @param input - account credentials and local sign-in preferences.
- * @returns current account state after credentials are stored.
+ * @returns current account state after the credential transition completes; environment-supplied references are skipped, not stored.
  */
 @Remote async login(input: AccountLoginInput): Promise<AccountStatus>
 

@@ -33,7 +33,6 @@ import type { Volatile } from '@deepseek-ai/cordis'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-attachment'
-import { resolveProjectAttachmentScope } from '@deepseek-ai/dsh-project-storage'
 import { scopeTarget } from '@deepseek-ai/dsh-scope'
 import type { Scoped } from '@deepseek-ai/dsh-scope'
 import { assertObjectJsonSchema } from '@deepseek-ai/dsh-tools'
@@ -215,7 +214,7 @@ export class SubagentRuntime extends TypertRemoteService {
   constructor(ctx: Context, private config: Config) {
     super(ctx, 'subagents')
     this.emitLifecycle = createLifecycleEmitter(this.ctx, parent => scopeTarget(this, parent))
-    ctx.inject(['agents'], (childCtx: Context) => {
+    ctx.inject(['agents', 'sessionCwd'], (childCtx: Context) => {
       const manager = new SubagentContinuationManager(childCtx, {
         prepareContinuable: (name, request) => this.prepareContinuable(name, request),
         observeActivation: (provider, childId, parent) => this.observeActivation(provider, childId, parent),
@@ -449,7 +448,7 @@ export class SubagentRuntime extends TypertRemoteService {
       } else {
         const attachments = this.ctx.get('attachments')
         if (attachments === undefined) throw new Error('subagent image prompt requires an attachment store')
-        const attachmentScope = resolveProjectAttachmentScope(this.ctx, childSessionId)
+        const attachmentScope = { sessionId: childSessionId }
         content = await attachments.admitPromptContent(request.content, attachmentScope)
       }
       return {

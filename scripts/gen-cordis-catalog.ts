@@ -117,6 +117,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   sessionController: 'session.md',
   sessionSkillCatalog: 'skills.md',
   sessions: 'session.md',
+  sessionCwd: 'session.md',
   settings: 'settings.md',
   sessionTitle: 'session-title.md',
   skills: 'skills.md',

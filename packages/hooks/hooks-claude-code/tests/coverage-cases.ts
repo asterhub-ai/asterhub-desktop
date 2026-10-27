@@ -151,9 +151,11 @@ export function defineCoverageCases(group: CoverageGroup): void {
       expect(events(agent).some(e => e.type === 'user/message' && e.data.source.kind !== 'user')).toBe(false)
     })
 
-    it('a PreToolUse hook fires for a no-agent direct tool call (no session/turn to record into)', async () => {
+    it('a PreToolUse hook keeps the no-agent runtime cwd fallback and reports process.cwd()', async () => {
       const d = dir()
-      const s = sh(d, 'deny.sh', '#!/usr/bin/env bash\necho "no" >&2\nexit 2\n')
+      const payloadPath = join(d, 'payload')
+      const wherePath = join(d, 'where')
+      const s = sh(d, 'deny.sh', `#!/usr/bin/env bash\ncat > "${payloadPath}"\npwd > "${wherePath}"\necho "no" >&2\nexit 2\n`)
       const path = hooks(d, { PreToolUse: [{ hooks: [{ type: 'command', command: s }] }] })
       const ctx = await harness(path, new MockAdapter([]))
       let ran = false
@@ -162,6 +164,8 @@ export function defineCoverageCases(group: CoverageGroup): void {
       const result = await ctx.tools.execute({ signal: testToolSignal, callId: ToolCallId('c1'), name: 'echo', arguments: {} })
       expect(ran).toBe(false)
       expect(result.isError).toBe(true)
+      expect(JSON.parse(readFileSync(payloadPath, 'utf8'))).toMatchObject({ cwd: process.cwd() })
+      expect(readFileSync(wherePath, 'utf8').trim()).toBe(process.cwd())
     })
 
     it('a long stderr is truncated in the hook/result summary', async () => {
@@ -666,37 +670,36 @@ export function defineCoverageCases(group: CoverageGroup): void {
   })
 
   if (group === 'stop') describe('hooks-claude-code coverage — hook runs in the session cwd, not the server cwd', () => {
-    it('runs an agent-scoped hook in the session workspace even when the executor default differs', async () => {
-    // The server launch directory and session cwd deliberately differ. The marker proves the
-    // bridge passes `session/new.cwd` instead of falling back to the executor default.
+    it('runs from the moved execution root and emits that same cwd in JSON', async () => {
       const serverDir = dir()
-      const sessionDir = dir()
-      const marker = join(sessionDir, 'where')
-      // The hook is invoked with cwd = session dir, so a relative marker path lands there.
-      hooks(serverDir, { PreToolUse: [{ hooks: [{ type: 'command', command: 'pwd > where' }] }] })
+      const historicalDir = dir()
+      const currentDir = dir()
+      const marker = join(currentDir, 'where')
+      const payloadPath = join(currentDir, 'payload')
+      hooks(serverDir, { PreToolUse: [{ hooks: [{ type: 'command', command: 'cat > payload; pwd > where' }] }] })
       const adapter = new MockAdapter([toolCallResponse('c1', 'echo', {}), textResponse('done')])
       const ctx = new Context()
       await mountAgentLoopTestDependencies(ctx)
       await ctx.plugin(AgentLoop, { agents: [] })
-      // Executor default cwd = serverDir (deliberately NOT the session cwd).
       await ctx.plugin(LocalSubprocessRuntime)
       await ctx.plugin(LocalBashExecutor, { timeoutMs: 10_000, cwd: serverDir })
       await ctx.plugin(HooksClaude, { configPath: join(serverDir, 'hooks.json') })
       ctx.llm.registerAdapter(['mock'], adapter)
       ctx.tools.register(defineContentToolFixture({ name: 'echo', description: 'e', parameters: {}, async execute() { return [{ type: 'text', text: 'ok' }] } }))
 
-      const { SessionId } = await import('@deepseek-ai/dsh-session')
-      const handle = await ctx.agents.create({ sessionId: SessionId('s1'), meta: { cwd: sessionDir }, agentOptions: { provider: 'mock', model: 'mock' } })
+      const handle = await ctx.agents.create({ sessionId: SessionId('s1'), meta: { cwd: historicalDir }, agentOptions: { provider: 'mock', model: 'mock' } })
+      ctx.sessionCwd.registerResolver(() => currentDir)
       handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
       await waitForIdle(ctx, handle.agent)
 
-      expect(existsSync(marker)).toBe(true) // the marker landed in the SESSION dir
-      const { readFileSync } = await import('node:fs')
-      const where = readFileSync(marker, 'utf8').trim()
-      // `pwd` may resolve symlinks (/var → /private/var etc.), so compare basenames.
-      expect(where.endsWith(sessionDir.split('/').pop()!)).toBe(true)
+      expect(existsSync(marker)).toBe(true)
+      expect(readFileSync(marker, 'utf8').trim().endsWith(currentDir.split('/').pop()!)).toBe(true)
+      expect(JSON.parse(readFileSync(payloadPath, 'utf8'))).toMatchObject({ cwd: currentDir })
+      expect(handle.agent.session.header.cwd).toBe(historicalDir)
       await handle.dispose()
     })
+
+
 
     it('runs a SubagentStop hook in the CHILD session workspace, not the server cwd', async () => {
       const serverDir = dir()
@@ -731,6 +734,24 @@ export function defineCoverageCases(group: CoverageGroup): void {
       // `pwd` may resolve symlinks (/var → /private/var etc.), so compare basenames.
       expect(where.endsWith(childDir.split('/').pop()!)).toBe(true)
       expect(input).toMatchObject({ cwd: childDir, session_id: childHandle.agent.id })
+    })
+  })
+
+  if (group === 'stop') describe('hooks-claude-code coverage — missing execution root', () => {
+    it.each(['missing', 'disposed'])('does not fall back when the cwd provider is %s', async (state) => {
+      const serverDir = dir()
+      const historicalDir = dir()
+      const marker = join(serverDir, 'ran')
+      hooks(serverDir, { PreToolUse: [{ hooks: [{ type: 'command', command: `touch "${marker}"` }] }] })
+      const ctx = await harness(serverDir, new MockAdapter([toolCallResponse('c1', 'echo', {}), textResponse('done')]))
+      const handle = await ctx.agents.create({ sessionId: SessionId('missing-root'), meta: { cwd: historicalDir }, agentOptions: { provider: 'mock', model: 'mock' } })
+      const unbind = ctx.sessionCwd.registerResolver(() => state === 'missing' ? undefined : '/current')
+      if (state === 'disposed') unbind()
+      ctx.tools.register(defineContentToolFixture({ name: 'echo', description: 'e', parameters: {}, async execute() { return [{ type: 'text', text: 'ok' }] } }))
+      handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+      await waitForIdle(ctx, handle.agent)
+      expect(existsSync(marker)).toBe(false)
+      await handle.dispose()
     })
   })
 

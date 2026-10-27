@@ -1,9 +1,7 @@
 /**
- * Centralize the non-secret product identity every provider request sends as `User-Agent`, keeping
- * adapters from drifting. See
- * `.agents/notes/implemented/architecture/2026-06-21-mandatory-app-attribution-headers.md`.
+ * Centralize the non-secret application identity every provider request sends
+ * as `User-Agent`, keeping adapters from drifting.
  *
- * App-attribution vocabulary for provider requests.
  * @module @deepseek-ai/dsh-llm/attribution
  */
 
@@ -32,15 +30,14 @@ export interface AppIdentity {
 }
 
 /**
- * The harness's own identity: the default every adapter sends. Deployments
- * that need a white-label identity pass their own {@link AppIdentity} to
- * {@link attributionHeaders} — omission falls back to this default; nothing
- * can suppress attribution entirely.
+ * Provider-neutral library identity. Product compositions that require
+ * product-specific attribution pass their own {@link AppIdentity} to
+ * {@link attributionHeaders}; omission uses this generic identity.
  */
 export const APP_IDENTITY: AppIdentity = {
-  product: 'asterhub',
+  product: 'deepseek-harness',
   version,
-  url: 'https://github.com/asterhub-ai/asterhub-desktop',
+  url: 'https://github.com/deepseek-ai/deepseek-harness',
 }
 
 /**

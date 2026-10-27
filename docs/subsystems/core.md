@@ -199,6 +199,8 @@ interface AgentOptions {
   provider?: string
   /** Model id interpreted by the selected provider adapter. */
   model?: string
+  /** Current trusted execution directory; never persisted into Session metadata. */
+  cwd?: string
   /** Adapter-owned reasoning effort for the selected provider/model route. */
   reasoningEffort?: ReasoningEffortId
   /** Maximum output tokens for each conversation-model request. */

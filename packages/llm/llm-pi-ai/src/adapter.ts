@@ -26,24 +26,15 @@
  * @module dsh-llm-pi-ai/adapter
  */
 
-import type {
-  Api,
-  AuthContext,
-  CredentialStore,
-  Model,
-  Models,
-  ModelThinkingLevel,
-  MutableModels,
-  SimpleStreamOptions,
-  ThinkingLevel,
-} from '@earendil-works/pi-ai'
 import {
+  APP_IDENTITY,
   attributionHeaders,
   contentHasImage,
   LlmAdapter,
   LlmError,
   ReasoningEffortId,
 } from '@deepseek-ai/dsh-llm'
+import type { AppIdentity } from '@deepseek-ai/dsh-llm'
 import type {
   GenerateOptions,
   ImageAttachmentAccess,
@@ -59,13 +50,23 @@ import type {
   ToolSchema,
 } from '@deepseek-ai/dsh-llm'
 import type { AttachmentScope, AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import type { SessionId } from '@deepseek-ai/dsh-session'
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ResolvedPiAiProviderProfile } from './config.ts'
 import { toPiContext } from './context.ts'
 import { conversationUpdates, createModels, getSupportedThinkingLevels } from './models.ts'
 import { toStreamChunks } from './stream.ts'
 
+import type {
+  Api,
+  AuthContext,
+  CredentialStore,
+  Model,
+  ModelThinkingLevel,
+  Models,
+  MutableModels,
+  SimpleStreamOptions,
+  ThinkingLevel,
+} from '@earendil-works/pi-ai'
 /**
  * Initially active declaration added to an Anthropic request whose projected
  * tools are all deferred, because Anthropic rejects a tool list without one.
@@ -84,8 +85,10 @@ interface PiAiSnapshot {
   models: Models
 }
 
-/** Constructor options for {@link PiAiAdapter}: the two resolution hooks the plugin owns. */
+/** Constructor options for {@link PiAiAdapter}: provider ownership hooks. */
 export interface PiAiAdapterOptions {
+  /** Provider request attribution identity; omission uses the generic library identity. */
+  appIdentity?: Pick<AppIdentity, 'product' | 'url'>
   /** Current validated profiles by provider route; called once per operation. */
   profiles: () => ReadonlyMap<string, ResolvedPiAiProviderProfile>
   /** Read the current upstream catalog for deployment-locked application routes. */
@@ -110,8 +113,6 @@ export interface PiAiAdapterOptions {
   auth: PiAiAuthInjection
   /** Resolve the optional durable attachment service at request time. */
   resolveAttachments?: () => AttachmentStore | undefined
-  /** Resolve the registered project scope for a trusted Session address. */
-  resolveAttachmentScope?: (sessionId: SessionId) => AttachmentScope | undefined
   /** Bridge one attachment reference into the current model-tool execution world. */
   resolveImageAccess?: (attachments: AttachmentStore, ref: ImageAttachmentRef, scope?: AttachmentScope) => ImageAttachmentAccess | undefined
   /**
@@ -220,8 +221,11 @@ function reasoningInfo(
 }
 
 /** Merge deployment headers while removing case-insensitive attribution collisions. */
-function requestHeaders(headers: Readonly<Record<string, string>> | undefined): Record<string, string> {
-  const attribution = attributionHeaders()
+function requestHeaders(
+  headers: Readonly<Record<string, string>> | undefined,
+  identity: AppIdentity,
+): Record<string, string> {
+  const attribution = attributionHeaders(identity)
   const reserved = new Set(Object.keys(attribution).map(name => name.toLowerCase()))
   return {
     ...Object.fromEntries(Object.entries(headers ?? {}).filter(([name]) => !reserved.has(name.toLowerCase()))),
@@ -235,6 +239,7 @@ function requestHeaders(headers: Readonly<Record<string, string>> | undefined): 
  * restart; model descriptors come from the collection those profiles built.
  */
 export class PiAiAdapter extends LlmAdapter {
+  private readonly identity: AppIdentity
   private snapshot: PiAiSnapshot | undefined
   private readonly dynamicCatalogs = new Map<string, {
     models: readonly Model<Api>[]
@@ -244,6 +249,7 @@ export class PiAiAdapter extends LlmAdapter {
 
   constructor(private readonly config: PiAiAdapterOptions) {
     super()
+    this.identity = { ...APP_IDENTITY, ...config.appIdentity }
   }
 
   /** Invalidate cached upstream model lists after the account credential changes.
@@ -371,7 +377,7 @@ export class PiAiAdapter extends LlmAdapter {
     const snapshot = this.current()
     const profile = this.profileOf(snapshot, provider)
     await this.syncModelCatalog(profile)
-    return this.snapshotOf(snapshot.profiles).models.getModels(provider).map(model => ({
+    return this.snapshotOf(snapshot.profiles).models.getModels(provider).map((model: Model<Api>) => ({
       provider,
       id: model.id,
       name: model.name,
@@ -471,10 +477,10 @@ export class PiAiAdapter extends LlmAdapter {
       const onReplayDegrade = (reason: string): void => {
         this.config.onReplayDegrade?.({ provider: options.provider, model: options.model, reason })
       }
-      const scope = options.sessionId === undefined ? undefined : this.config.resolveAttachmentScope?.(options.sessionId)
+      const scope = options.sessionId === undefined ? undefined : { sessionId: options.sessionId }
       const resolveImageAccess: ImageAttachmentAccessResolver = (ref) => {
         if (attachments === undefined) return undefined
-        if (scope === undefined && this.config.resolveAttachmentScope !== undefined) return undefined
+        if (scope === undefined && attachments.modelImageSessionRequired) return undefined
         return this.config.resolveImageAccess?.(attachments, ref, scope)
       }
       const context = attachments === undefined
@@ -497,7 +503,7 @@ export class PiAiAdapter extends LlmAdapter {
         signal: watchdog.signal,
         // Profile headers are deployment-owned; attribution names are
         // Harness-owned and therefore win collisions.
-        headers: requestHeaders(profile.headers),
+        headers: requestHeaders(profile.headers, this.identity),
       })
       const iterator = toStreamChunks(events, model.contextWindow, options.signal, model.id)[Symbol.asyncIterator]()
       let exhausted = false

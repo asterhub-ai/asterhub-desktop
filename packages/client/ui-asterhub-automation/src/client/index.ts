@@ -24,11 +24,13 @@ import type {
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import automationRemote from '@deepseek-ai/dsh-asterhub-automation/remote'
 import type {} from '@deepseek-ai/dsh-asterhub-automation/remote'
+import { openAutomationSession } from './session-navigation.ts'
 import { AutomationPanelIcon } from './AutomationPanelIcon.tsx'
 import { AutomationPanel, type AutomationPanelInjected } from './AutomationPanel.tsx'
 import type { AutomationDetailInjected, ManagementOutcome } from './AutomationDetail.tsx'
 import { createCatalogSource } from './catalog-source.ts'
-import { createToastSource } from './toast-source.ts'
+import { createToastSource, runStateToastKind } from './toast-source.ts'
+import { AutomationToast, type AutomationToastInjected } from './AutomationToast.tsx'
 import { en, zh, NS, type AutomationKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -41,10 +43,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** Required services for the automation panel. */
 export const inject = ['remote', 'slots', 'locale', 'uiWorkspace', 'sessions', 'workspaces']
 
-/**
- * Register the native automation panel.
- * @param ctx - browser services used by these contributions.
- */
+/** Register the native automation panel. */
 export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
   const disposeRemote = await ctx.remote.$mount(automationRemote)
   const ui = ctx.inject(['remote.automation', 'slots', 'locale', 'uiWorkspace', 'sessions', 'workspaces'], registerUi)
@@ -127,8 +126,24 @@ function registerUi(ctx: ClientContext): void {
   // Toast source for notifications
   const toast = createToastSource()
 
+  // One `shell.overlay` entry renders the toast queue app-wide, so a settled
+  // operation or background run completion stays visible after leaving the panel.
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay', id: 'asterhub-automation.toast', locale: NS,
+    inject: (): AutomationToastInjected => ({
+      hooks: { toasts: toast.hooks.toasts },
+      dismiss: toast.dismiss,
+    }),
+  }, AutomationToast))
+
   // Diff cache for run state notifications
-  let lastRunSnapshot = new Map<string, { state: string; runId: string | null }>()
+  let lastRunSnapshot = new Map<string, { state: AutomationRun['state']; runId: AutomationRunId | null }>()
+  // Register before the catalog subscription so its reset read uses the new identity.
+  ctx.on('connection/reset', () => {
+    lastRunSnapshot = new Map()
+    toast.clearAll()
+    manager.resetIdentity()
+  })
 
   // Subscribe to settled catalog snapshots for run state notifications
   // NOT on the initial-history notification: wait for ready status
@@ -140,7 +155,7 @@ function registerUi(ctx: ClientContext): void {
   manager.hooks.catalog.subscribe(() => {
     const snapshot = manager.hooks.catalog.getSnapshot()
     if (snapshot.status !== 'ready') return
-    const currentSnapshot = new Map<string, { state: string; runId: string | null }>()
+    const currentSnapshot = new Map<string, { state: AutomationRun['state']; runId: AutomationRunId | null }>()
     for (const task of snapshot.records) {
       const activeRun = task.activeRunId ? task.runs.find(r => r.id === task.activeRunId) : undefined
       const lastRun = task.runs[task.runs.length - 1]
@@ -154,10 +169,8 @@ function registerUi(ctx: ClientContext): void {
       const previous = lastRunSnapshot.get(taskId)
       if (previous && previous.runId === current.runId && previous.state === current.state) continue
       // New run or state change
-      if (current.state === 'succeeded' || current.state === 'failed' || current.state === 'waiting-approval') {
-        const kind = current.state === 'succeeded' ? 'runStarted' :
-          current.state === 'failed' ? 'error' :
-            'runStarted'
+      const kind = runStateToastKind(current.state)
+      if (kind !== null) {
         toast.report({ kind, taskId })
       }
     }
@@ -176,13 +189,6 @@ function registerUi(ctx: ClientContext): void {
     void manager.onRetry()
   })
 
-  // Subscribe to connection/reset: reset identity and clear caches
-  ctx.on('connection/reset', () => {
-    lastRunSnapshot = new Map()
-    toast.clearAll()
-    manager.resetIdentity()
-  })
-
   const refreshCatalog = async (): Promise<void> => {
     await manager.onRetry()
   }
@@ -194,6 +200,7 @@ function registerUi(ctx: ClientContext): void {
   const reportError = (): void => {
     toast.report({ kind: 'error', message: t('toast.error') })
   }
+
 
   const loadRuns = async (
     id: AutomationTaskId,
@@ -207,7 +214,7 @@ function registerUi(ctx: ClientContext): void {
   }
 
   const openSession = (id: SessionId): void => {
-    ctx.uiWorkspace.openSession(id)
+    void openAutomationSession(id, ctx.sessions, sessionId => ctx.uiWorkspace.openSession(sessionId), reportError)
   }
 
   const getChoices = async (): Promise<AutomationChoices> => {

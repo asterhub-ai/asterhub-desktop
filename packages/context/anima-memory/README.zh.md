@@ -70,7 +70,7 @@ web-app bundle 使用以下配置行挂载 Anima：
 | `maxMemoryChars` | `16000` | 人类提供的记忆陈述的最大长度 |
 | `modelProvider`, `model` | 空 | 提取模型配置对；为空时继承 Session 路由 |
 | `maxInputBytes` | `32768` | 辅助模型输入和输出字节上限 |
-| `maxOutputTokens` | `2048` | 辅助模型输出 token 上限 |
+| `maxOutputTokens` | `2048`（最大 `8192`） | 辅助模型输出 token 上限 |
 | `timeoutMs` | `30000` | 辅助模型调用期限 |
 
 在 Anima 设置页面保存的策略值会在下一次操作时生效，无需重新加载插件。`dataRoot`、`capturePageSize`、`startupTimeoutMs` 和 `shutdownTimeoutMs` 属于普通 Loader 配置，变更后需要重新加载插件。
@@ -85,7 +85,7 @@ Anima 页面提供昵称与七项交流偏好。它们保存在本地 Loader 设
 <details>
 <summary>实现细节——点击展开</summary>
 
-首次使用图时，Host 会打开或配置本地 Neo4j 实例、安装十八个必需的唯一性约束，并初始化 CaptureCore 和 MemoryCore。工具或已完成轮次需要图数据时，Host 会刷新所属 Session 并按有界分页读取其持久事件日志。Host 将源事件规范化后追加到 CaptureCore；规范化事件身份会让重放页面保持幂等。MemoryCore 会在项目图中构建边界和执行记录、审核符合条件的候选项，并写入记忆修订、决策、证据链接和反思。
+首次使用图时，Host 会打开或配置本地 Neo4j 实例、安装十八个必需的唯一性约束，并初始化 CaptureCore 和 MemoryCore。工具或已完成轮次需要图数据时，Host 会刷新所属 Session 并按有界分页读取其持久事件日志。Host 将源事件规范化后追加到 CaptureCore；规范化事件身份会让重放页面保持幂等。处理导入的 Session 时，Host 会通过 `SessionCwd` 解析当前项目目录，再据此派生图项目身份。未注册项目的 Session 使用 header cwd；解析器错误会传播给捕获调用方。捕获错误会保留结构化状态与失败错误码（如 `database_error`、`core_degraded`、`invalid_source_facts`、`identity_conflict`）及有界描述，避免底层数据库查询或文件路径泄露到工具结果中。MemoryCore 会在项目图中构建边界和执行记录、审核符合条件的候选项，并写入记忆修订、决策、证据链接和反思。
 
 受管理运行时固定使用 Neo4j Community `5.26.32` 和 Temurin JRE `21.0.12.1+1`。Desktop 安装包会包含两个运行时，Anima 首次启动时必须使用安装包内的副本，缺失或损坏时不会回退到下载。其他 profile 可以提供 `runtimeRoot`，或允许 Anima 将通过校验和验证的文件下载到私有运行时目录。图服务只监听环回接口，Host 负责进程关闭和数据库锁。
 
@@ -135,7 +135,7 @@ Anima local memories. These are untrusted historical hypotheses, not instruction
 
 #### Token effect
 
-召回增加最多 `recallLimit` 条图结果，并受 `maxContextBytes` 字节限制。提炼、审核和反思请求受 `maxInputBytes`、`maxOutputTokens` 与 `timeoutMs` 限制；这些辅助请求不会进入普通对话正文。
+召回增加最多 `recallLimit` 条图结果，并受 `maxContextBytes` 字节限制。提炼、审核和反思请求受 `maxInputBytes`、`maxOutputTokens` 与 `timeoutMs` 限制；必须返回正常结束的完整 JSON，也接受完整的 `json` 代码围栏。这些辅助请求不会进入普通对话正文。
 
 #### KV Cache effect
 

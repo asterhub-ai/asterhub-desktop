@@ -32,6 +32,10 @@
     },
     "./src/*": "./src/*",
     "./package.json": "./package.json",
+    "./cwd": {
+      "types": "./lib/types/cwd.d.ts",
+      "default": "./lib/cwd.js"
+    },
     "./surface": {
       "types": "./lib/types/surface.d.ts",
       "default": "./lib/types/surface.js"
@@ -40,6 +44,7 @@
   "files": [
     "lib/index.js",
     "lib/invariant.js",
+    "lib/cwd.js",
     "lib/types/**/*.js",
     "lib/types/**/*.d.ts"
   ],

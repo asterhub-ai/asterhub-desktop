@@ -1,6 +1,6 @@
 /** Profile patch edits and credential updates reach the next real adapter request. */
 
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -9,11 +9,14 @@ import { Context } from '@deepseek-ai/cordis'
 import Loader, { type ModuleLoaderV2 } from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import LlmRuntime, { createMessage, createUserMessage, userAgent } from '@deepseek-ai/dsh-llm'
+import type { PiAiProviderProfile } from '../src/config.ts'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
 import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import ProjectStorage from '@deepseek-ai/dsh-project-storage'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import { profileComposition } from '../../../settings/settings/tests/profile-composition.ts'
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
+import { APPLICATION_MODEL_ROUTE } from '../../../bundle/asterhub-product/src/index.ts'
 import { assemble } from './assemble.ts'
 import { closeMockServers, mockServer, textEvents } from './mock-server.ts'
 
@@ -53,6 +56,8 @@ async function loadComposition(withProjectStorage = false): Promise<{ ctx: Conte
     `    path: ${JSON.stringify(join(root, '.credentials.yaml'))}`,
     '    debounceMs: 10',
     ...withProjectStorage ? [
+      '- id: session-cwd',
+      "  name: '@deepseek-ai/dsh-session/cwd'",
       '- id: project-storage',
       "  name: '@deepseek-ai/dsh-project-storage'",
       '  config:',
@@ -76,7 +81,10 @@ async function loadComposition(withProjectStorage = false): Promise<{ ctx: Conte
     ['test-llm-service', LlmRuntime],
     ['@deepseek-ai/dsh-credentials-local', LocalCredentialProvider],
     ['@deepseek-ai/dsh-llm-pi-ai', LlmPiAi],
-    ...withProjectStorage ? [['@deepseek-ai/dsh-project-storage', ProjectStorage] as const] : [],
+    ...withProjectStorage ? [
+      ['@deepseek-ai/dsh-session/cwd', SessionCwd] as const,
+      ['@deepseek-ai/dsh-project-storage', ProjectStorage] as const,
+    ] : [],
   ])
   const internal: ModuleLoaderV2 = {
     version: 'v2',
@@ -96,6 +104,37 @@ async function loadComposition(withProjectStorage = false): Promise<{ ctx: Conte
 }
 
 describe('llm-pi-ai real dormant composition', () => {
+  it('clones and loads the frozen application PiAI profile without dropping off:null', async () => {
+    root = await mkdtemp(join(tmpdir(), 'dsh-pi-application-profile-'))
+    const credentialPath = join(root, '.credentials.yaml')
+    await writeFile(credentialPath, 'version: 1\nrefs:\n  ASTERHUB_ROUTE_KEY: isolated-test-key\n', { mode: 0o600 })
+    const ctx = new Context()
+    context = ctx
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(LocalCredentialProvider, { path: credentialPath, debounceMs: 10 })
+
+    const patch = await readFile(new URL('../../../bundle/asterhub-product/cordis.patch.yml', import.meta.url), 'utf8')
+    expect(patch).toContain('providers: !!js')
+    expect(patch).toContain('structuredClone')
+    const profiles: Record<string, PiAiProviderProfile> = {
+      sub2api: structuredClone(APPLICATION_MODEL_ROUTE.profile as PiAiProviderProfile),
+    }
+
+    await ctx.plugin(LlmPiAi, {
+      appIdentity: { product: 'asterhub', url: 'https://github.com/asterhub-ai/asterhub-desktop' },
+      deploymentLocked: true,
+      providers: profiles,
+    })
+    expect(Object.isFrozen(APPLICATION_MODEL_ROUTE.profile)).toBe(true)
+    expect(Object.isFrozen(profiles[APPLICATION_MODEL_ROUTE.provider])).toBe(false)
+    const model = profiles[APPLICATION_MODEL_ROUTE.provider]?.models?.[0]
+    const reasoningEfforts = typeof model?.reasoningEfforts === 'object' && model.reasoningEfforts !== null
+      ? model.reasoningEfforts
+      : undefined
+    expect(reasoningEfforts?.off).toBeNull()
+    expect(ctx.llm.listProviders().map(provider => provider.id)).toEqual([APPLICATION_MODEL_ROUTE.provider])
+  })
+
   it('resolves an optional project attachment service from a real Loader composition', { timeout: 30_000 }, async () => {
     vi.stubEnv('PI_COMPOSITION_KEY', '')
     const server = await mockServer([{ events: textEvents }])

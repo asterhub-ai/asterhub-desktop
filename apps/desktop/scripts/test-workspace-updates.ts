@@ -1,21 +1,20 @@
 /** Run the compiled Electron main entry in a private app with local update delivery and real Host IPC. */
 import { execFileSync, spawn } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
-import { cp, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
+import { randomUUID } from 'node:crypto'
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createDevelopmentProjectMetadata, createPluginProfile } from '../src/project-manager.ts'
 import { removeOwnedDirectory } from '../src/owned-directory.ts'
 import { DESKTOP_HOST_PROTOCOL_VERSION } from '../src/host-protocol.ts'
-import { desktopTargetPlatform, developmentRuntimeDirectory, resolveDesktopBuildTarget } from './desktop-build-paths.mjs'
+import { desktopTargetPlatform, developmentRuntimeDirectory, resolveDesktopBuildTarget, resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
 
 const repo = resolve(import.meta.dirname, '../../..')
 const interactive = process.argv.includes('--interactive')
 if (process.argv.slice(2).some(argument => argument !== '--interactive')) throw new Error('Expected only --interactive')
-const evidence = join(repo, 'apps/desktop/.desktop-build/qualification')
-await mkdir(evidence, { recursive: true })
-const root = await mkdtemp(join(evidence, 'electron-workspace-updates-'))
+const root = await mkdtemp(join(tmpdir(), 'dsh-ws-updates-'))
 const application = join(root, 'app')
 const project = join(application, '.desktop-build/development/project')
 const profile = join(root, 'home/profiles/desktop')
@@ -45,9 +44,10 @@ try {
   for (const owner of [application, project]) {
     await symlink(join(repo, 'node_modules/.pnpm/node_modules'), join(owner, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir')
   }
+  const targetPaths = resolveDesktopTargetBuildPaths(process.env)
   const targetRoot = join(application, '.desktop-build/targets', target)
   await mkdir(targetRoot, { recursive: true })
-  await symlink(join(repo, 'apps/desktop/.desktop-build/targets', target, 'runtime'), join(targetRoot, 'runtime'),
+  await symlink(join(targetPaths.runtime), join(targetRoot, 'runtime'),
     process.platform === 'win32' ? 'junction' : 'dir')
   await writeFile(join(profile, 'cordis.patch.yml'), JSON.stringify([
     { id: 'webserver', config: { host: '127.0.0.1', port: 0 } },
@@ -74,8 +74,11 @@ try {
       child.once('close', (code, signal) => { done({ code, signal }) })
     })
     if (timedOut || result.signal !== null || result.code !== 0) {
-      throw new Error(`Workspace qualification failed: timeout=${String(timedOut)}, signal=${String(result.signal)}, exit=${String(result.code)}; evidence=${root}`)
+      throw new Error(`Workspace qualification failed: timeout=${String(timedOut)}, signal=${String(result.signal)}, exit=${String(result.code)}`)
     }
-    console.log(`Electron workspace evidence: ${root}`)
+    console.log('Electron workspace qualification passed')
   } finally { clearTimeout(timer) }
-} finally { removeOwnedDirectory(application) }
+} finally {
+  removeOwnedDirectory(application)
+  await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+}

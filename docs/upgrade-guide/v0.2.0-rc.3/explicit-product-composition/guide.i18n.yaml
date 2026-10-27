@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.0-rc.3/explicit-product-composition/guide.md
+/:
+  en: 5fa449a34fd05777
+  zh: 87d96034761ddca0
+/explicit-asterhub-product-composition:
+  en: 84deff750ca63c59
+  zh: 8b2afd19785ff894
+/explicit-asterhub-product-composition/change:
+  en: 7e932fb73d784b31
+  zh: f59cc9bfbcb6fd25
+/explicit-asterhub-product-composition/migration:
+  en: 6a9aeda51af045eb
+  zh: ea9241789e32fc46

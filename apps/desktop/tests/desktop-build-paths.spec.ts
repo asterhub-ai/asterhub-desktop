@@ -7,6 +7,7 @@ import {
   developmentRuntimeDirectory,
   resolveDesktopBuildRoot,
   resolveDesktopBuildTarget,
+  resolveDesktopTargetBuildPaths,
 } from '../scripts/desktop-build-paths.mjs'
 
 describe('desktop build paths', () => {
@@ -75,6 +76,27 @@ describe('desktop build paths', () => {
       .toThrow(/must not be empty/u)
     expect(desktopTargetBuildPaths('mac-arm64').root).toContain(join('targets', 'mac-arm64'))
     expect(DESKTOP_BUILD_ROOT).toBe(resolveDesktopBuildRoot())
+  })
+  it('resolves compact custom-root paths for script consumers and rejects invalid overrides', () => {
+    const repository = resolve(import.meta.dirname, '../../..')
+    const env = {
+      DSH_DESKTOP_BUILD_ROOT: join(repository, '.short-build'),
+      DSH_DESKTOP_BUILD_LAYOUT: 'compact',
+      DSH_DESKTOP_TARGET_PLATFORM: 'win32',
+      DSH_DESKTOP_TARGET_ARCH: 'x64',
+    }
+    const paths = resolveDesktopTargetBuildPaths(env, 'darwin', 'arm64')
+    expect(paths.root).toBe(join(repository, '.short-build', 'w64'))
+    expect(paths.dsh).toBe(join(repository, '.short-build', 'w64', 'dsh'))
+    expect(paths.runtime).toBe(join(repository, '.short-build', 'w64', 'runtime'))
+    expect(paths.unsignedArtifacts).toBe(join(repository, '.short-build', 'w64', 'u'))
+    expect(paths.artifacts).toBe(join(repository, '.short-build', 'w64', 'a'))
+    expect(() => resolveDesktopTargetBuildPaths({
+      ...env, DSH_DESKTOP_BUILD_ROOT: join(repository, '..', 'outside'),
+    }, 'darwin', 'arm64')).toThrow(/must stay inside the repository/u)
+    expect(() => resolveDesktopTargetBuildPaths({
+      ...env, DSH_DESKTOP_BUILD_LAYOUT: 'compressed',
+    }, 'darwin', 'arm64')).toThrow(/must be standard or compact/u)
   })
 
   it('resolves environment overrides and rejects unsupported targets', () => {

@@ -118,9 +118,18 @@ export class TerminalController extends TypertRemoteService {
   environment(agent: Agent, signal: AbortSignal): TerminalEnvironment {
     signal.throwIfAborted()
     const { sandboxPolicy } = this.execution(agent)
-    return { cwd: agent.session.header.cwd ?? sandboxPolicy.workspaceRoot,
-      maxInputBytes: this.config.maxInputBytes, maxBufferedBytes: this.config.maxBufferedBytes, maxCols: this.config.maxCols,
-      maxRows: this.config.maxRows, scrollback: this.config.scrollback }
+    const sessionCwd = agent.ctx.get('sessionCwd', false)
+    const cwd = sessionCwd !== undefined
+      ? sessionCwd.resolve(agent.session.header)
+      : (agent.session.header.cwd ?? sandboxPolicy.workspaceRoot)
+    return {
+      cwd: cwd ?? sandboxPolicy.workspaceRoot,
+      maxInputBytes: this.config.maxInputBytes,
+      maxBufferedBytes: this.config.maxBufferedBytes,
+      maxCols: this.config.maxCols,
+      maxRows: this.config.maxRows,
+      scrollback: this.config.scrollback,
+    }
   }
 
   /**

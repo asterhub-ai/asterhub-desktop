@@ -1274,7 +1274,7 @@ describe('addHarnessSourceSection', () => {
   it('distinguishes the source path from the current workdir after reusable instructions', async () => {
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt, { personaPrefix: 'You are a coding agent.' })
+      await ctx.plugin(SystemPrompt, { harnessIdentity: '你是 AsterHub 的 AI 助手。', personaPrefix: 'You are a coding agent.' })
       ctx.systemPrompt.section({
         name: 'tools:sdk', order: ctx.systemPrompt.getSectionOrder('TOOLS_SDK'), text: 'Reusable tool SDK.',
       })

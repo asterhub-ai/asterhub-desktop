@@ -1,6 +1,7 @@
 import z from '@deepseek-ai/schemastery'
 import { Context, Service } from '@deepseek-ai/cordis'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session/types'
+import type {} from '@deepseek-ai/dsh-session/cwd'
 import type {
   LegacySourceProvider, OpenProjectRequest, PortableProjectManifest, ProjectBinding,
   ProjectId, ProjectInspection, ProjectLegacyAdopter, ProjectSessionLocation, ProjectStorage, ProjectStorageChanged, ProjectStorageOptions,
@@ -9,6 +10,7 @@ import { ProjectStorageRegistry } from './registry.ts'
 
 /** Host-facing Cordis service. Register at startup independently of Workspace and Session persistence. */
 export class ProjectStorageService extends Service implements ProjectStorage {
+  static inject = ['sessionCwd']
   private registry: ProjectStorageRegistry | undefined
   static Config: z<ProjectStorageOptions> = z.object({
     sessionMode: z.union(['grouped', 'project-local'] as const).required(),
@@ -25,7 +27,11 @@ export class ProjectStorageService extends Service implements ProjectStorage {
   protected async [Service.init](): Promise<void> {
     this.registry = await ProjectStorageRegistry.create(this.options)
     const registry = this.registry
-    this.ctx.effect(() => registry.onChanged((change) =>{  this.ctx.emit('project-storage/changed', change) }), 'projectStorage.changed')
+    this.ctx.effect(() => registry.onChanged((change) => { this.ctx.emit('project-storage/changed', change) }), 'projectStorage.changed')
+    this.ctx.effect(
+      () => this.ctx.sessionCwd.registerResolver(header => this.executionCwd(header)),
+      'projectStorage.sessionCwd',
+    )
   }
 
   /**
@@ -164,7 +170,6 @@ declare module '@deepseek-ai/cordis' {
 export { ProjectId, ProjectBindingRevision, createManifest, decodeManifest, manifestDigest, validateRelativeCwd } from './manifest.ts'
 export { ProjectMigrationUnavailableError } from './registry.ts'
 export { ensureProjectGitExclusion } from './git-exclusion.ts'
-export { resolveProjectAttachmentScope } from './attachments.ts'
 export { createLegacyAdopter, type LegacyAdoptionOptions } from './legacy-sessions.ts'
 export type * from './types.ts'
 export default ProjectStorageService

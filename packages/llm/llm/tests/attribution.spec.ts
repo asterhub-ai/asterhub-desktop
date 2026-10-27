@@ -19,9 +19,9 @@ describe('APP_IDENTITY', () => {
 
   it('carries only static public product facts', () => {
     expect(APP_IDENTITY).toEqual({
-      product: 'asterhub',
+      product: 'deepseek-harness',
       version: manifest.version,
-      url: 'https://github.com/asterhub-ai/asterhub-desktop',
+      url: 'https://github.com/deepseek-ai/deepseek-harness',
     })
   })
 })
@@ -29,7 +29,7 @@ describe('APP_IDENTITY', () => {
 describe('userAgent', () => {
   it('renders product/version with the +url comment', () => {
     expect(userAgent()).toBe(
-      `asterhub/${manifest.version} (+https://github.com/asterhub-ai/asterhub-desktop)`,
+      `deepseek-harness/${manifest.version} (+https://github.com/deepseek-ai/deepseek-harness)`,
     )
   })
 

@@ -209,6 +209,7 @@ describe('ui-settings-general apply', () => {
     const check = vi.fn<DesktopUpdateBridge['check']>().mockResolvedValue(undefined)
     const mockDesktop = {
       protocolVersion: 1,
+      installedVersion: '0.21.0',
       updates: {
         check,
         status: vi.fn<DesktopUpdateBridge['status']>().mockResolvedValue({ phase: 'idle' }),
@@ -224,9 +225,10 @@ describe('ui-settings-general apply', () => {
       const currentVersionRow = c.ctx.slots.entries('settings.general.item').find(row => row.options.id === 'current-version')
       expect(currentVersionRow).toBeDefined()
       expect(currentVersionRow?.locale).toBe(NS)
-      // The row should have inject that returns checkUpdates when Desktop bridge is present
       const injected = currentVersionRow?.inject as () => CurrentVersionRowInjected
       const props = injected?.()
+      // The Desktop bridge supplies the actual shell version, separate from DSH_CLIENT_VERSION.
+      expect((props as CurrentVersionRowInjected & { installedVersion?: string }).installedVersion).toBe('0.21.0')
       expect(props?.checkUpdates).toBeDefined()
       // Verify the checkUpdates function is bound to the bridge
       await props?.checkUpdates?.()

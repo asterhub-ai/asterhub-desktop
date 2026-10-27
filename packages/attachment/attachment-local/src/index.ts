@@ -176,12 +176,17 @@ export class LocalAttachmentStore extends AttachmentStore {
   private readonly compression: CompressionLimiter
   private readonly requestInflight = new Map<string, SharedRequest<RequestImageAttachment>>()
   private readonly projectLocal: boolean
+  private projectStorageObserved: boolean
 
   constructor(ctx: Context, config: Config) {
     super(ctx)
     const dshHome = resolveDshHome(config.dshHome)
-    this.projectLocal = config.projectLocal ?? false
     this.root = join(dshHome, 'attachments', 'v1')
+    this.projectLocal = config.projectLocal ?? false
+    this.projectStorageObserved = this.projectLocal || ctx.get('projectStorage', false) !== undefined
+    ctx.on('internal/service', () => {
+      if (ctx.get('projectStorage', false) !== undefined) this.projectStorageObserved = true
+    })
     this.cacheRoot = dshCachePath({ dshHome }, 'attachments')
     this.imageLimits = Object.freeze({
       maxImageBytes: config.maxImageBytes ?? DEFAULT_MAX_IMAGE_BYTES,
@@ -206,6 +211,12 @@ export class LocalAttachmentStore extends AttachmentStore {
     }
     this.imageCompressionConcurrency = compressionConcurrency
     this.compression = new CompressionLimiter(compressionConcurrency)
+  }
+
+  /** Grouped storage is also session-addressed while project ownership is mounted. */
+  override get modelImageSessionRequired(): boolean {
+    if (this.ctx.get('projectStorage', false) !== undefined) this.projectStorageObserved = true
+    return this.projectStorageObserved
   }
 
   async validateImage(input: SaveImageAttachment): Promise<void> {
@@ -310,20 +321,32 @@ export class LocalAttachmentStore extends AttachmentStore {
   }
 
   private locationForScope(scope?: AttachmentScope): ProjectSessionLocation | undefined {
+    const storage = this.ctx.get('projectStorage', false)
+    if (storage !== undefined) this.projectStorageObserved = true
     if (scope === undefined) {
-      if (this.projectLocal) throw new AttachmentError('A project Session scope is required.', 'ATTACHMENT_SCOPE_REQUIRED')
+      if (this.modelImageSessionRequired) {
+        throw new AttachmentError('A project Session scope is required.', 'ATTACHMENT_SCOPE_REQUIRED')
+      }
       return undefined
     }
-    const storage = this.ctx.get('projectStorage', false)
-    if (storage === undefined) throw new AttachmentError('Project storage is unavailable for this attachment scope.', 'ATTACHMENT_SCOPE_UNAVAILABLE')
+    if (storage === undefined) {
+      if (this.projectStorageObserved) {
+        throw new AttachmentError('Project storage is unavailable for this attachment scope.', 'ATTACHMENT_SCOPE_UNAVAILABLE')
+      }
+      if (this.projectLocal) {
+        throw new AttachmentError('Project storage is unavailable for this attachment scope.', 'ATTACHMENT_SCOPE_UNAVAILABLE')
+      }
+      return undefined
+    }
     let location: ProjectSessionLocation | undefined
     try {
       location = storage.locateSession(scope.sessionId)
-    } catch (error) {
-      throw new AttachmentError('Project attachment ownership is unavailable.', 'ATTACHMENT_SCOPE_UNAVAILABLE', { cause: error })
+    } catch (error: unknown) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
+      throw new AttachmentError('Project storage is unavailable for this attachment scope.', 'ATTACHMENT_SCOPE_UNAVAILABLE', { cause: error })
     }
-    if (location === undefined || String(location.projectId) !== scope.projectId) {
-      throw new AttachmentError(`Session ${scope.sessionId} has no matching project attachment owner.`, 'ATTACHMENT_SCOPE_UNAVAILABLE')
+    if (location === undefined) {
+      throw new Error(`Session ${scope.sessionId} has no registered project attachment owner.`)
     }
     return location
   }

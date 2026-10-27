@@ -72,15 +72,16 @@ export interface Config {
   /** File-sandbox mode a session starts from (default: `read-only`). */
   mode?: SandboxMode
   /**
-   * Absolute fallback root for agentless calls and sessions without a cwd (default:
-   * `process.cwd()`). Normal agent calls use their session cwd instead.
+   * Absolute fallback root for agentless calls (default: `process.cwd()`).
+   * Session calls use the authoritative current execution cwd from SessionCwd;
+   * a missing or removed provider does not fall back to this root.
    */
   workspaceRoot?: string
 }
 
 /** Inputs that select the sandbox policy for one capability call. */
 export interface SandboxPolicyRequest {
-  /** Calling session; its immutable cwd becomes the workspace boundary. */
+  /** Calling session; its current execution cwd is resolved from its immutable header. */
   session?: Session
   /** Explicit approved mode override, which outranks session policy. */
   mode?: SandboxMode
@@ -105,7 +106,7 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
  * The sandbox-policy service (`ctx.sandboxPolicy`). Owns the deployment
  * default mode, fallback workspace root, and current request-time policy
  * section. Tool layers call {@link resolve} for each execution so a session's
- * mode log and immutable cwd travel together to every enforcing capability.
+ * mode log and SessionCwd-resolved execution cwd travel together to every enforcing capability.
  */
 export class SandboxPolicyService extends Service {
   // Inline schema call: the config catalog walks `static Config` statically.
@@ -120,7 +121,7 @@ export class SandboxPolicyService extends Service {
 
   /** The deployment default mode — the fallback beneath a session override. */
   readonly defaultMode: SandboxMode
-  /** The absolute `workspace-write` fallback root for calls without a session cwd. */
+  /** The absolute `workspace-write` fallback root for agentless calls. */
   readonly workspaceRoot: string
   constructor(ctx: Context, config: Config) {
     super(ctx, 'sandboxPolicy')
@@ -155,21 +156,28 @@ export class SandboxPolicyService extends Service {
   /**
    * Resolve the complete policy for one capability call. An approved explicit
    * mode outranks the session's last `sandbox/mode` event, which outranks the
-   * deployment default. A session cwd is its workspace-write boundary; the
-   * configured root is the fallback for agentless calls and sessions without a
-   * cwd.
+   * deployment default. A session uses the authoritative cwd resolved by
+   * `ctx.sessionCwd`; an undefined result or removed provider is an error, not
+   * a reason to use the configured workspace root. Agentless calls use that
+   * configured root.
    * @param request - optional session and approved mode override.
    * @returns the fully resolved per-call mode and absolute workspace root.
    */
   resolve(request: SandboxPolicyRequest = {}): SandboxExecutionPolicy {
     const { session } = request
+    const sessionCwd = this.ctx.get('sessionCwd', false)
+    const currentCwd = session === undefined
+      ? undefined
+      : (sessionCwd !== undefined ? sessionCwd.resolve(session.header) : session.header.cwd)
+    if (session !== undefined && sessionCwd !== undefined && currentCwd === undefined) {
+      throw new Error(`Session ${session.id} has no current execution directory`)
+    }
     return {
       mode: request.mode ?? (session === undefined ? undefined : this.overrideOf(session)) ?? this.defaultMode,
-      workspaceRoot: resolveWorkspaceRoot(session?.header.cwd ?? this.workspaceRoot),
+      workspaceRoot: resolveWorkspaceRoot(currentCwd ?? this.workspaceRoot),
       ...session === undefined ? {} : { sessionId: session.id },
     }
   }
-
   /**
    * Read the session override without applying the deployment default.
    * @param session - session whose log supplies the override.

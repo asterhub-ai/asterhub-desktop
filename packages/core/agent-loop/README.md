@@ -153,7 +153,7 @@ The package-level contract is enough for most consumers; read these when you nee
 
 #### What the model sees
 
-For each step, the loop sends the session's derived messages and visible tool schemas. Non-empty `system/message` nodes carry the prompt, with the latest as the effective version; an empty rendering clears all prompt versions from derived history. It supplies `provider`, `model`, and `cwd` variable values but no additional fixed prose. The request header always records active tools. Comparing their names with the preceding header emits one `developer/message` for additions and removals, independently of model capability; additions reference the new header. Requests also carry `Session.toolHistory()` for the LLM runtime to construct provider declarations.
+For each step, the loop sends the session's derived messages and visible tool schemas. Non-empty `system/message` nodes carry the prompt, with the latest as the effective version; an empty rendering clears all prompt versions from derived history. It supplies `provider`, `model`, and `cwd` variable values but no additional fixed prose. When `SessionCwd` is mounted, `cwd` comes from its current execution-root resolver; an absent provider result is not replaced by historical `header.cwd` or the process directory. A generic composition without that service retains the historical header value. The request header always records active tools. Comparing their names with the preceding header emits one `developer/message` for additions and removals, independently of model capability; additions reference the new header. Requests also carry `Session.toolHistory()` for the LLM runtime to construct provider declarations.
 
 #### Token effect
 

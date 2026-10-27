@@ -3,7 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, vi } from 'vitest'
 import type { SessionId } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SessionReference } from '../src/client/contract/sessions.ts'
-import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
+import { RemoteError, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { LlmAttemptId } from '@deepseek-ai/dsh-llm'
 import { RemoteStreamCarrierError } from '@deepseek-ai/dsh-api-gateway/client'
 import { SESSION_FORMAT_VERSION, SessionSeq } from '@deepseek-ai/dsh-session/types'
@@ -12,7 +12,7 @@ import { createClientTest, webApp } from '@deepseek-ai/dsh-client-test-runtime/s
 import { ClientSessions, SessionCreateError, SessionForkError } from '../src/client/sessions/service.ts'
 import { scopeOf } from '../src/client/scope.ts'
 import type {
-  SessionAssistantStreamBaseline, SessionFollowFrame, SessionFollowRequest,
+  SessionAssistantStreamBaseline, SessionFollowFrame, SessionFollowRequest, SessionListValue,
 } from '../src/types.ts'
 import { FOLLOW, err, followScript, sessionWorld } from './remote/session.client.ts'
 
@@ -79,6 +79,22 @@ async function feedList(b: Bench, rows: FeedRow[]): Promise<void> {
 }
 
 describe('list store projection', () => {
+  it('performs a fresh list request when project import refresh arrives during the initial list', async ({ bench }) => {
+    const b = bench()
+    const initial = Promise.withResolvers<RemoteResult<SessionListValue>>()
+    b.mock.remote.session.list.mockReturnValueOnce(initial.promise).mockResolvedValueOnce(ok({
+      items: [{ agentAvailable: true, sessionId: sid('imported'), updatedAt: 2, running: false, blank: false }],
+    }))
+    const startupRefresh = b.svc.refresh()
+    expect(b.mock.remote.session.list).toHaveBeenCalledOnce()
+    const importRefresh = b.svc.refresh()
+    initial.resolve(ok({ items: [] }))
+
+    await Promise.all([startupRefresh, importRefresh])
+
+    expect(b.mock.remote.session.list).toHaveBeenCalledTimes(2)
+    expect(b.svc.list.getSnapshot().ids).toContain(sid('imported'))
+  }, COLD_BOOT_TIMEOUT_MS)
   it('projects durable titles separately from cwd/id display fallbacks and parent links', async ({ bench }) => {
     const b = bench()
     b.svc.handleControlFrame({

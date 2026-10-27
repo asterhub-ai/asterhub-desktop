@@ -9,11 +9,11 @@ const CONTENT_SCHEMA_ID = 'anima.content-part/v1.0' as const
 const ADAPTER_VERSION = '1.0.0'
 
 /**
- * Maps one durable Session event to Anima's canonical source facts. Events that do not represent
- * conversation content or a durable turn/checkpoint boundary return undefined.
+ * Maps durable Session content and turn/checkpoint boundaries to Anima source facts. Assistant
+ * messages containing only tool calls do not form source messages.
  * @param sessionId - Stable AsterHub Session identifier used in the source event.
  * @param event - Persisted event from the Session log.
- * @returns Canonical source facts, or undefined for an event outside the capture vocabulary.
+ * @returns Canonical source facts, or undefined for empty messages and events outside the capture vocabulary.
  */
 export function mapSessionEvent(sessionId: SessionId, event: SessionEvent): SourceEventFacts | undefined {
   const nativePayload = {
@@ -43,9 +43,11 @@ export function mapSessionEvent(sessionId: SessionId, event: SessionEvent): Sour
       return facts
     }
     case 'assistant/message': {
+      const retained = event.data.message.content.filter(block => block.type !== 'tool-call')
+      if (retained.length === 0) return undefined
       const facts = base('message', 'assistant_message')
       facts.role = 'assistant'
-      applyContent(facts, event.data.message.content)
+      applyContent(facts, retained)
       return facts
     }
     case 'tool/call': {
@@ -127,11 +129,19 @@ export function mapSessionEvents(sessionId: SessionId, event: SessionEvent): Sou
  * @param installationUid - Persistent installation identity supplied by the capture owner.
  * @param session - Session whose durable header supplies project and source identity.
  * @param profileName - Active AsterHub profile name.
+ * @param cwdOverride - Execution directory that overrides the durable header cwd; callers owning
+ *   cwd resolution (workspace adoption) pass the dynamically resolved directory so imported
+ *   sessions whose historical cwd no longer exists still capture into the adopted project.
  * @returns Facts consumed by Anima CaptureCore when opening a capture session.
- * @throws If the Session working directory cannot be resolved to a real path.
+ * @throws If the effective working directory cannot be resolved to a real path.
  */
-export function createCaptureFacts(installationUid: string, session: Session, profileName: string): CaptureSessionFacts {
-  const cwd = session.header.cwd
+export function createCaptureFacts(
+  installationUid: string,
+  session: Session,
+  profileName: string,
+  cwdOverride?: string,
+): CaptureSessionFacts {
+  const cwd = cwdOverride ?? session.header.cwd
   const normalizedPath = cwd === undefined ? undefined : normalizeProjectPath(cwd)
   return {
     installation_uid: installationUid,

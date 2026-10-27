@@ -20,7 +20,7 @@ import { credentialKey, credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { resolveRetryPolicy, RetryPolicySchema } from '@deepseek-ai/dsh-llm'
-import type { ResolvedRetryPolicy, RetryPolicyConfig } from '@deepseek-ai/dsh-llm'
+import type { AppIdentity, ResolvedRetryPolicy, RetryPolicyConfig } from '@deepseek-ai/dsh-llm'
 import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 import {
   CACHE_CONTROL_FORMATS,
@@ -234,10 +234,12 @@ export interface Config {
   providers: Volatile<Record<string, PiAiProviderProfile>>
   /** Whether user settings, model discovery, and provider-login surfaces may alter routes. */
   deploymentLocked: Volatile<boolean>
+  /** Deployment attribution identity for outgoing provider requests. */
+  appIdentity: Volatile<Pick<AppIdentity, 'product' | 'url'> | undefined>
 }
 
 /** Plain options accepted by the provider resolver. */
-export type Options = { [K in keyof Config]?: Config[K] extends Volatile<infer T> ? T : never }
+export type Options = { [K in keyof Config]?: Config[K] extends Volatile<infer T> ? Exclude<T, undefined> : never }
 
 const thinkingBudgets = z.object({
   minimal: z.number(),
@@ -358,10 +360,16 @@ const profile = z.object({
   retryPolicy: RetryPolicySchema,
 })
 
+const appIdentitySchema: z<Pick<AppIdentity, 'product' | 'url'>> = z.object({
+  product: z.string(),
+  url: z.string(),
+})
+
 /** Runtime schema for {@link Config}. */
 export const Config = z.object({
   providers: z.dict(profile).default({}).volatile(),
   deploymentLocked: z.boolean().default(false).volatile(),
+  appIdentity: appIdentitySchema.volatile(),
 })
 
 /**

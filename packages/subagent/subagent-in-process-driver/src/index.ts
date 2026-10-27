@@ -18,6 +18,7 @@ import { foldConsumedWork } from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionId, SessionLogOffset as SessionLogOffsetType, TurnEndReason } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-session/cwd'
 import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
 import {
   appendDelegatedPolicyOverrides,
@@ -104,6 +105,7 @@ function attachDescriptorAppend(childCtx: Context, descriptor: SubagentDescripto
 export async function startInProcessRun(
   request: ResolvedSubagentStartRequest,
   options: InProcessRunOptions,
+  sessionCwd: Context['sessionCwd'],
 ): Promise<SubagentRun> {
   assertSubagentMaxDepth(request.maxDepth)
   if (request.signal.aborted) throw prePublicationAbort()
@@ -113,6 +115,11 @@ export async function startInProcessRun(
   const childId = brandString<SessionId>(randomUUID())
   const seed = options.seed
   const activationBoundary = SessionLogOffset(seed?.length ?? 0)
+  const agentOptions = resolveChildAgentOptions(parent, request.agentOptions, childDepth, sessionCwd)
+  const childMeta = {
+    ...childSessionMeta(parent, childDepth, seed !== undefined, sessionCwd),
+    ...agentOptions.cwd === undefined ? {} : { cwd: agentOptions.cwd },
+  }
 
   // Capture before the first await: a later parent switch belongs to the
   // parent's future.
@@ -121,6 +128,7 @@ export async function startInProcessRun(
   let structured: StructuredAttachment | undefined
   const setup = (childCtx: Context, child: Agent): void => {
     appendDelegatedPolicyOverrides(child.session, inherited)
+    Object.defineProperty(child.ctx, 'sessionCwd', { value: sessionCwd, configurable: true, writable: true })
     applyChildComposition(childCtx, parent, {
       persona: request.persona,
       toolFilter: request.toolFilter,
@@ -134,10 +142,10 @@ export async function startInProcessRun(
   const handle = await parent.ctx.agents.create({
     sessionId: childId,
     parentAgent: parent,
-    meta: childSessionMeta(parent, childDepth, seed !== undefined),
+    meta: childMeta,
     ...seed !== undefined ? { seed } : {},
     ...seed === undefined ? {} : { inheritedEventCount: activationBoundary },
-    agentOptions: resolveChildAgentOptions(parent, request.agentOptions, childDepth),
+    agentOptions,
     signal: request.signal,
     setup,
   })

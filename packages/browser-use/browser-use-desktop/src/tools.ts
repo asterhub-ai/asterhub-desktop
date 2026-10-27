@@ -4,7 +4,6 @@ import { brandNumber, brandString } from '@deepseek-ai/dsh-brand'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
-import { resolveProjectAttachmentScope } from '@deepseek-ai/dsh-project-storage'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import {
@@ -268,7 +267,7 @@ export function createDesktopBrowserTools(
     }
     return exec.agent
   }
-  const attachmentScopeFor = (agent: Agent) => resolveProjectAttachmentScope(ctx, agent.session.id)
+  const attachmentScopeFor = (agent: Agent) => ({ sessionId: agent.session.id })
 
   // 1. browser_tabs
   const browserTabs = defineTool({

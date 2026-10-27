@@ -8,6 +8,7 @@ import type {
 
 export {
   isDesktopBrowserCancelMessage,
+  isDesktopBrowserHttpUrl,
   isDesktopBrowserRequestMessage,
   isDesktopBrowserResultMessage,
 } from '@deepseek-ai/dsh-browser-use-desktop/protocol'

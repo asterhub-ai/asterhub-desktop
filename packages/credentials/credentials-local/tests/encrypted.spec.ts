@@ -1,14 +1,42 @@
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { credentialRef, type CredentialCipher } from '@deepseek-ai/dsh-credentials'
+import type { WriteFileAtomicOptions } from '@deepseek-ai/dsh-atomic-write'
+import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { LocalCredentialProvider } from '../src/index.ts'
 
+type AtomicWriteModule = {
+  writeFileAtomic(filename: string, content: string, options: WriteFileAtomicOptions): Promise<void>
+}
+
+const atomicWriteHarness = vi.hoisted(() => ({ error: undefined as Error | undefined }))
+
+vi.mock('@deepseek-ai/dsh-atomic-write', async (importOriginal) => {
+  const actual = await importOriginal() as AtomicWriteModule
+  return {
+    ...actual,
+    writeFileAtomic: async (filename: string, content: string, options: WriteFileAtomicOptions) => {
+      const error = atomicWriteHarness.error
+      if (error !== undefined) {
+        atomicWriteHarness.error = undefined
+        throw error
+      }
+      return actual.writeFileAtomic(filename, content, options)
+    },
+  }
+})
+
+const ENCRYPTED_PREFIX = 'asterhub-credentials:v1:'
+
 const cleanups: Array<() => Promise<void>> = []
-afterEach(async () => { while (cleanups.length) await cleanups.pop()!() })
+afterEach(async () => {
+  atomicWriteHarness.error = undefined
+  while (cleanups.length) await cleanups.pop()!()
+})
 
 function cipher(): CredentialCipher {
   const key = randomBytes(32)
@@ -33,10 +61,16 @@ async function setup() {
   cleanups.push(() => rm(dir, { recursive: true, force: true }))
   const path = join(dir, '.credentials.yaml')
   const encryption = cipher()
-  const boot = async (service: CredentialCipher = encryption) => {
+  const boot = async (service: CredentialCipher = encryption, watch = false, migratePlaintext = false) => {
     const ctx = new Context()
     ctx.provide('credentialCipher', service)
-    const fiber = ctx.plugin(LocalCredentialProvider, { path, encrypted: true, watch: false })
+    const config = {
+      path,
+      encrypted: true,
+      watch,
+      ...(migratePlaintext ? { migratePlaintext } : {}),
+    } as ConstructorParameters<typeof LocalCredentialProvider>[1]
+    const fiber = ctx.plugin(LocalCredentialProvider, config)
     cleanups.push(async () => { await fiber.dispose() })
     await fiber
     return ctx
@@ -58,11 +92,11 @@ it('persists ciphertext and reads references after restart', async () => {
   expect(await restarted.credentials.resolve(ref)).toBeUndefined()
 })
 
-it('refuses plaintext without rewriting it', async () => {
+it('retains generic refusal for plaintext when Desktop migration is not enabled', async () => {
   const { path, boot } = await setup()
   const text = 'version: 1\nrefs:\n  TEST_KEY: secret\n'
   await writeFile(path, text, { mode: 0o600 })
-  await expect(boot()).rejects.toThrow('not encrypted')
+  await expect(boot()).rejects.toThrow()
   expect(await readFile(path, 'utf8')).toBe(text)
 })
 
@@ -70,5 +104,126 @@ it('does not publish a document when encryption fails', async () => {
   const { path, boot, encryption } = await setup()
   const ctx = await boot({ ...encryption, async encrypt() { throw new Error('cipher unavailable') } })
   await expect(ctx.credentials.set(credentialRef('ASTERHUB_ENCRYPTED_TEST'), 'secret')).rejects.toThrow('cipher unavailable')
+  await expect(readFile(path)).rejects.toMatchObject({ code: 'ENOENT' })
+})
+it('encrypts and round-trips a recognized flat document during Desktop boot', async () => {
+  const { path, boot, encryption } = await setup()
+  const text = 'LEGACY_CRED: preserved value\n'
+  await writeFile(path, text, { mode: 0o600 })
+
+  const ctx = await boot(encryption, false, true)
+  const stored = await readFile(path, 'utf8')
+  expect(stored).toMatch(new RegExp(`^${ENCRYPTED_PREFIX}`))
+  expect(stored).not.toContain('preserved value')
+  expect(await encryption.decrypt(stored.slice(ENCRYPTED_PREFIX.length))).toBe(
+    'version: 1\nrefs:\n  LEGACY_CRED: preserved value\n',
+  )
+  expect(await ctx.credentials.resolve(credentialRef('LEGACY_CRED')))
+    .toEqual({ value: 'preserved value', source: 'file' })
+
+  const restarted = await boot(encryption, false, true)
+  expect(await restarted.credentials.resolve(credentialRef('LEGACY_CRED')))
+    .toEqual({ value: 'preserved value', source: 'file' })
+})
+
+it('encrypts a valid versioned plaintext document without changing its values', async () => {
+  const { path, boot, encryption } = await setup()
+  const text = 'version: 1\nrefs:\n  VERSIONED_CRED: preserved\nrecords: {}\n'
+  await writeFile(path, text, { mode: 0o600 })
+
+  const ctx = await boot(encryption, false, true)
+  const stored = await readFile(path, 'utf8')
+  expect(stored).toMatch(new RegExp(`^${ENCRYPTED_PREFIX}`))
+  expect(await encryption.decrypt(stored.slice(ENCRYPTED_PREFIX.length))).toBe(text)
+  expect(await ctx.credentials.resolve(credentialRef('VERSIONED_CRED')))
+    .toEqual({ value: 'preserved', source: 'file' })
+})
+
+it('preserves invalid plaintext when credential document validation fails', async () => {
+  const { path, boot, encryption } = await setup()
+  const text = 'version: 1\nrefs:\n  VALID_CRED: preserved\nextra: unsupported\n'
+  await writeFile(path, text, { mode: 0o600 })
+
+  await expect(boot(encryption, false, true)).rejects.toThrow('unknown top-level key')
+  expect(await readFile(path, 'utf8')).toBe(text)
+})
+
+it('preserves recognized plaintext when the cipher fails before commit', async () => {
+  const { path, boot, encryption } = await setup()
+  const text = 'version: 1\nrefs:\n  CIPHER_FAIL_CRED: secret\n'
+  await writeFile(path, text, { mode: 0o600 })
+
+  await expect(boot({ ...encryption, async encrypt() { throw new Error('migration cipher failed') } }, false, true))
+    .rejects.toThrow('migration cipher failed')
+  expect(await readFile(path, 'utf8')).toBe(text)
+})
+
+it('preserves recognized plaintext when atomic ciphertext publication fails', async () => {
+  const { path, boot, encryption } = await setup()
+  const text = 'version: 1\nrefs:\n  WRITE_FAIL_CRED: secret\n'
+  await writeFile(path, text, { mode: 0o600 })
+  atomicWriteHarness.error = new Error('migration write failed')
+
+  await expect(boot(encryption, false, true)).rejects.toThrow('migration write failed')
+  expect(await readFile(path, 'utf8')).toBe(text)
+})
+
+it('re-reads a concurrent encrypted winner under the migration lock', async () => {
+  const { path, boot, encryption } = await setup()
+  await writeFile(path, 'version: 1\nrefs:\n  CONCURRENT_CRED: stale\n', { mode: 0o600 })
+  const { promise: held, resolve: release } = Promise.withResolvers<undefined>()
+  const { promise: holding, resolve: acquired } = Promise.withResolvers<undefined>()
+  const holder = withFileLock(path, async () => {
+    acquired(undefined)
+    await held
+  })
+  await holding
+  try {
+    const booting = boot(encryption, false, true)
+    booting.catch(() => {})
+    await new Promise(resolve => setTimeout(resolve, 50))
+    const winnerText = 'version: 1\nrefs:\n  CONCURRENT_CRED: winner\n'
+    const winner = `${ENCRYPTED_PREFIX}${await encryption.encrypt(winnerText)}`
+    await writeFile(path, winner, { mode: 0o600 })
+    release(undefined)
+    await holder
+
+    const ctx = await booting
+    expect(await readFile(path, 'utf8')).toBe(winner)
+    expect(await ctx.credentials.resolve(credentialRef('CONCURRENT_CRED')))
+      .toEqual({ value: 'winner', source: 'file' })
+  } finally {
+    release(undefined)
+    await holder.catch(() => {})
+  }
+})
+it('keeps the last good encrypted snapshot when plaintext is restored live', async () => {
+  const { path, boot } = await setup()
+  const ctx = await boot(undefined, true)
+  await ctx.credentials.set(credentialRef('LIVE_CRED'), 'encrypted value')
+
+  await writeFile(path, 'version: 1\nrefs:\n  LIVE_CRED: plaintext downgrade\n', { mode: 0o600 })
+  await new Promise(resolve => setTimeout(resolve, 150))
+  expect(await ctx.credentials.resolve(credentialRef('LIVE_CRED')))
+    .toEqual({ value: 'encrypted value', source: 'file' })
+})
+
+it('refuses corrupted ciphertext at boot without rewriting or disclosing its contents', async () => {
+  const { path, boot, encryption } = await setup()
+  const ciphertext = await encryption.encrypt('version: 1\nrefs:\n  TEST_KEY: private-test-value\n')
+  const damaged = `${ciphertext.slice(0, -2)}${ciphertext.endsWith('A') ? 'B' : 'A'}=`
+  const stored = `asterhub-credentials:v1:${damaged}`
+  await writeFile(path, stored, { mode: 0o600 })
+
+  await expect(boot()).rejects.toThrow()
+  expect(await readFile(path, 'utf8')).toBe(stored)
+  expect(stored).not.toContain('private-test-value')
+})
+
+it('refuses encrypted storage when the host has not provided a cipher', async () => {
+  const { path } = await setup()
+  const ctx = new Context()
+  await expect(ctx.plugin(LocalCredentialProvider, { path, encrypted: true, watch: false }))
+    .rejects.toThrow('encrypted storage requires the credentialCipher service')
   await expect(readFile(path)).rejects.toMatchObject({ code: 'ENOENT' })
 })

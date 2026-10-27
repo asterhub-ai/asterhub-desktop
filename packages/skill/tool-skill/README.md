@@ -25,7 +25,7 @@ Agents can discover and load skills during a session. Before the first request, 
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin alongside the skill registry to give agents a session skill catalog and the `skill` loader tool. It requires `ctx.agents`, `ctx.tools`, and `ctx.skills`.
+Mount the plugin alongside the skill registry to give agents a session skill catalog and the `skill` loader tool. It requires `ctx.agents`, `ctx.tools`, `ctx.skills`, and `ctx.sessionCwd`; while that provider is composed, catalog discovery, explicit invocation, and tool loading all use its current execution root and fail closed when it has no binding.
 
 ### When to choose it
 

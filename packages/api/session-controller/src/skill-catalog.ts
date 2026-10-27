@@ -7,6 +7,7 @@ import { isUserInvocable } from '@deepseek-ai/dsh-skill'
 import type { ScopeKey } from '@deepseek-ai/dsh-scope'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { SkillListRequest, SkillListValue } from './types.ts'
+import type {} from '@deepseek-ai/dsh-session/cwd'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -15,9 +16,9 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** Host service backing `ctx.remote.skills` without activating a cold Agent. */
+/** Host service backing `ctx.remote.skills`; cold catalog discovery resolves the Session's current execution root. */
 export class SessionSkillCatalog extends TypertRemoteService {
-  static inject = ['agents', 'sessionQuery', 'typert']
+  static inject = ['agents', 'sessionQuery', 'typert', 'sessionCwd']
 
   /** @param ctx - Host context carrying Session reads and optional skill/preset services. */
   constructor(ctx: Context) {
@@ -42,7 +43,7 @@ export class SessionSkillCatalog extends TypertRemoteService {
       if (observation.projections === undefined) {
         throw new Error('skill catalog requires a projected Session observation')
       }
-      cwd = observation.header.cwd
+      cwd = this.ctx.sessionCwd.resolve(observation.header)
       agentPreset = observation.projections.values.agentPreset ?? undefined
     } catch (error: unknown) {
       if (error instanceof SessionQueryError

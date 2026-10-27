@@ -70,7 +70,7 @@ The first successful registration records its identity durably. Repeated calls r
 
 ### Grouping sessions under a project
 
-A session joins the project of the directory it runs in: create a session in a project's directory and it appears under that project, newest first. A session can only belong to one project. A session whose directory cannot be validated — no recorded directory, or a moved or deleted folder — cannot join and stays ungrouped.
+A session joins the project of the directory it runs in: create a session in a project's directory and it appears under that project, newest first. When a project with portable Session history is opened, the registry reconciles its stored Sessions against their project-relative locations, so a moved project keeps its Sessions without changing historical headers. A session can only belong to one project. A session whose directory cannot be validated stays ungrouped.
 
 ### Hiding and restoring sessions, and removing projects
 
@@ -117,7 +117,7 @@ The registry opens the `workspace` domain (version 2): a `workspaces` table keye
 
 ### Lifecycle
 
-On start, the registry opens the domain, completes a marked mutation if one is pending, validates stored state — duplicate paths, duplicate session accounts, and order drift all fail loud — and, when not yet initialized, bootstraps history from persisted headers before writing the initialized marker last, so an interrupted bootstrap resumes safely. A fresh empty registry is real once initialized; it never re-bootstraps.
+On start, the registry opens the domain, completes a marked mutation if one is pending, validates stored state — duplicate paths, duplicate session accounts, and order drift all fail loud — and, when not yet initialized, bootstraps history from persisted headers before writing the initialized marker last, so an interrupted bootstrap resumes safely. Opening a project after startup also reconciles its persisted Session headers against the project-storage locator before exposing the Workspace; project-relative membership supplies the current directory while each historical header remains unchanged. A fresh empty registry is real once initialized; it never re-bootstraps.
 
 ### Failure and recovery
 

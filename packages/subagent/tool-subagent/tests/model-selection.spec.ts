@@ -34,7 +34,7 @@ function parentWithRoute(
   },
 ): Agent {
   const id = SessionId('parent-with-route')
-  return { id, options, session: Session.create(id) } as unknown as Agent
+  return { id, ctx: new Context(), options, session: Session.create(id) } as unknown as Agent
 }
 
 describe('dsh-tool-subagent model selection', () => {

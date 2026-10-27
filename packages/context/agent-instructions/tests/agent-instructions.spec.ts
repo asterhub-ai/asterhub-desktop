@@ -7,7 +7,8 @@ import Loader from '@deepseek-ai/cordis-plugin-loader'
 import * as AgentInstructions from '@deepseek-ai/dsh-agent-instructions'
 import LlmRuntime, { createUserMessage, ToolCallId, type Message, type MessageSource, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
-import SessionStore, { SessionId, SessionSeq, type SessionEvent, type SurfaceIntent, type UserMessage } from '@deepseek-ai/dsh-session'
+import SessionStore, { Session, SessionId, SessionSeq, type SessionEvent, type SurfaceIntent, type UserMessage } from '@deepseek-ai/dsh-session'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import AgentRegistry, { agentEvents, type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop, { turnBoundaryProjectionDefinition } from '@deepseek-ai/dsh-agent-loop'
@@ -211,6 +212,7 @@ class BlockingReadFileSystem extends RecordingFileSystem {
 }
 
 async function mountAgentInstructionsPlugin(ctx: Context, config: AgentInstructions.Config): Promise<Awaited<ReturnType<Context['plugin']>>> {
+  if (ctx.get('sessionCwd') === undefined) await ctx.plugin(SessionCwd)
   if (ctx.get('sessionProjections') === undefined) await ctx.plugin(SessionProjectionRegistry)
   ctx.sessionProjections.register(turnBoundaryProjectionDefinition)
   return ctx.plugin(AgentInstructions, config)
@@ -1133,6 +1135,56 @@ describe('workspace context request injection', () => {
     } finally {
       await rm(root, { recursive: true, force: true })
       await rm(home, { recursive: true, force: true })
+    }
+  })
+
+  it('projects moved-root instructions without rereading or rewriting historical Session identity', async () => {
+    const originalRoot = await tempRepo()
+    const movedRoot = await tempRepo()
+    const home = await tempRepo()
+    const ctx = new Context()
+    try {
+      await mkdir(join(originalRoot, '.git'), { recursive: true })
+      await mkdir(join(movedRoot, '.git'), { recursive: true })
+      await write(join(originalRoot, 'AGENTS.md'), 'instructions from the original path')
+      await write(join(movedRoot, 'AGENTS.md'), 'instructions from the moved path')
+      await mountAgentInstructions(ctx, { dshHome: home, maxBytes: 65536 })
+      let currentRoot: string | undefined = originalRoot
+      const unbind = ctx.sessionCwd.registerResolver(() => currentRoot)
+      const agent = await stubAgent(originalRoot)
+
+      await composeBaselinePrefix(ctx, agent)
+      const originalEvent = baselineEvents(agent)[0]
+      const originalEventBytes = JSON.stringify(originalEvent)
+      expect(derivedText(agent)).toContain('instructions from the original path')
+
+      currentRoot = movedRoot
+      await composeBaselinePrefix(ctx, agent)
+
+      expect(agent.session.header.cwd).toBe(originalRoot)
+      expect(blocksText(agent.session.deriveMessages().at(-1)?.content)).toContain('instructions from the moved path')
+      expect(blocksText(agent.session.deriveMessages().at(-1)?.content)).not.toContain('instructions from the original path')
+      expect(baselineEvents(agent)).toContain(originalEvent)
+      expect(JSON.stringify(originalEvent)).toBe(originalEventBytes)
+      const eventsBeforeUnbound = agent.session.snapshotEvents()
+      const replayId = SessionId('moved-root-replay')
+      const replayed = Session.create(replayId, eventsBeforeUnbound, {
+        ...agent.session.header,
+        id: replayId,
+      })
+      expect(replayed.header.cwd).toBe(originalRoot)
+      expect(replayed.deriveMessages()).toEqual(agent.session.deriveMessages())
+
+      currentRoot = undefined
+      await composeBaselinePrefix(ctx, agent)
+      expect(agent.session.snapshotEvents()).toEqual(eventsBeforeUnbound)
+
+      unbind()
+      await expect(composeBaselinePrefix(ctx, agent)).rejects.toThrow('Session cwd provider is unavailable')
+      expect(agent.session.header.cwd).toBe(originalRoot)
+    } finally {
+      await ctx.fiber.dispose()
+      await Promise.all([originalRoot, movedRoot, home].map(root => rm(root, { recursive: true, force: true })))
     }
   })
 
@@ -3270,6 +3322,7 @@ describe('dynamic nested workspace context injection', () => {
             })],
             touchedPaths: [],
             includeBaselineScopes: false,
+            cwd: agent.session.header.cwd!,
             signal: testToolSignal,
           }
 
@@ -3319,6 +3372,7 @@ describe('dynamic nested workspace context injection', () => {
         scopeMessages: [],
         touchedPaths: [],
         includeBaselineScopes: false,
+        cwd: agent.session.header.cwd!,
         signal: testToolSignal,
       }
 
@@ -3362,6 +3416,7 @@ describe('dynamic nested workspace context injection', () => {
         scopeMessages: [],
         touchedPaths: [],
         includeBaselineScopes: false,
+        cwd: agent.session.header.cwd!,
         signal: testToolSignal,
       })
 
@@ -3394,9 +3449,10 @@ describe('dynamic nested workspace context injection', () => {
         scopeMessages: [],
         touchedPaths: [],
         includeBaselineScopes: true,
+        cwd: agent.session.header.cwd!,
         signal: testToolSignal,
-      })
 
+      })
       expect(result?.context.source).toMatchObject({
         changes: [{ action: 'set', scope: sk(USER_GLOBAL_DIRECTORY, USER_GLOBAL_FILE) }],
       })

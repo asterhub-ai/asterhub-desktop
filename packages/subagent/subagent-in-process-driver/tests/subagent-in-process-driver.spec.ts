@@ -13,7 +13,7 @@ import * as AgentLoopInvariant from '@deepseek-ai/dsh-agent-loop/invariant'
 import SubagentRuntime, { snapshotSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
 import { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import { maxTokensResponse, MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
-import { startInProcessRun } from '../src/index.ts'
+import { startInProcessRun as startInProcessRunWithCwd } from '../src/index.ts'
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
@@ -22,6 +22,15 @@ declare module '@deepseek-ai/dsh-llm' {
 }
 
 type Script = ConstructorParameters<typeof MockAdapter>[0]
+import type {} from '@deepseek-ai/dsh-session/cwd'
+let sessionCwdForTest: Context['sessionCwd'] | undefined
+function startInProcessRun(
+  request: Parameters<typeof startInProcessRunWithCwd>[0],
+  options: Parameters<typeof startInProcessRunWithCwd>[1],
+) {
+  if (sessionCwdForTest === undefined) throw new Error('test SessionCwd is not mounted')
+  return startInProcessRunWithCwd(request, options, sessionCwdForTest)
+}
 
 async function mountInvariants(ctx: Context): Promise<void> {
   await ctx.plugin(InvariantRegistry)
@@ -39,6 +48,7 @@ async function setup(script: Script, parentOptions: Partial<AgentOptions> = {}) 
   const adapter = new MockAdapter(script)
   ctx.llm.registerAdapter(['mock'], adapter)
   const parent = await ctx.agentLoop.create(SessionId('parent'), { provider: 'mock', model: 'mock', ...parentOptions })
+  sessionCwdForTest = ctx.sessionCwd
   return { ctx, parent, adapter }
 }
 
@@ -87,6 +97,28 @@ describe('startInProcessRun', () => {
     expect(child.session.header.cwd).toBe('/workspace')
     await expect(run.result).resolves.toMatchObject({ stopReason: 'completed' })
     await run.dispose()
+  })
+
+  it('creates a child at the current root without rewriting the parent header', async () => {
+    const { ctx } = await setup([textResponse('moved child')])
+    const parent = await ctx.agentLoop.create(
+      SessionId('moved-parent'),
+      { provider: 'mock', model: 'mock', cwd: '/historical/project' },
+      { cwd: '/historical/project' },
+    )
+    const dispose = ctx.sessionCwd.registerResolver(() => '/moved/project')
+    try {
+      const run = await startInProcessRun(request(parent), {})
+      const child = ctx.agents.get(run.id)!
+      expect(child.options.cwd).toBe('/moved/project')
+      expect(child.session.header.cwd).toBe('/moved/project')
+      expect(parent.session.header.cwd).toBe('/historical/project')
+      await expect(run.result).resolves.toMatchObject({ stopReason: 'completed' })
+      await run.dispose()
+    } finally {
+      dispose()
+      await ctx.fiber.dispose()
+    }
   })
 
   it('reports a prompt a pre-step rejection discarded as refusal, not completion', async () => {

@@ -22,6 +22,7 @@ import { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import type { SubprocessCollectedOutputs, SubprocessHandle, SubprocessOutcome, SubprocessOutputRead, SubprocessOutputReader, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { rgPath } from '@vscode/ripgrep'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import { SpillLocator, SpillStore } from '@deepseek-ai/dsh-spill'
 import type { SaveTextSpill, SpillRef } from '@deepseek-ai/dsh-spill'
 import * as ToolFsSearch from '@deepseek-ai/dsh-tool-fs-search'
@@ -196,23 +197,33 @@ interface SetupOptions {
 
 const DEFAULT_CONFIG = { sampleOverCapGlobResults: true } satisfies ToolFsSearch.Config
 
+let testContext: Context
+let overrideRoot = false
+let trustedRoot: string | undefined
 async function setup(options: SetupOptions = {}) {
   const ctx = new Context()
+  testContext = ctx
+  overrideRoot = false
+  trustedRoot = undefined
   const warnings: string[] = []
   ctx.logger.warn = ((message: unknown) => { warnings.push(String(message)) }) as typeof ctx.logger.warn
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(SessionCwd)
+  ctx.sessionCwd.registerResolver(header => overrideRoot ? trustedRoot : header.cwd)
   await ctx.plugin(FakeSubprocess)
   const subprocess = ctx.subprocess as FakeSubprocess
   if (options.spill === true) await ctx.plugin(FakeSpill)
   const fiber = await ctx.plugin(ToolFsSearch, { ...DEFAULT_CONFIG, ...options.config })
   const spill = options.spill === true ? ctx.get('spillStore') as FakeSpill : undefined
-  return { ctx, subprocess, spill, fiber, warnings }
+  return {
+    ctx, subprocess, spill, fiber, warnings,
+    setCurrentRoot: (root: string | undefined) => { trustedRoot = root; overrideRoot = true },
+  }
 }
 
-/** A stand-in agent whose session header carries the given cwd (and a stable id). */
-const agent = (cwd?: string) => ({ session: { header: { id: 'session-1', ...cwd !== undefined ? { cwd } : {} } } })
-
+/** A stand-in agent whose trusted resolver—not its immutable header—sets cwd. */
+const agent = (cwd?: string) => ({ session: { header: { id: 'session-1', ...cwd !== undefined ? { cwd } : {} } }, ctx: testContext })
 let callCounter = 0
 function call(
   ctx: Context,
@@ -390,14 +401,22 @@ describe('workdir derivation and signal forwarding', () => {
     expect(subprocess.spawns[0]?.cwd).toBe('/sessions/s1')
   })
 
-  it('defaults the spawn cwd to process.cwd() without a session cwd', async () => {
+  it('fails closed for an unavailable agent root but retains process cwd without an agent', async () => {
     const { ctx, subprocess } = await setup()
     subprocess.handler = () => runResult('a.ts\n')
-    await call(ctx, 'glob', { pattern: '*' }, { agent: agent() })
-    expect(subprocess.spawns[0]?.cwd).toBe(process.cwd())
-    // A non-agent caller takes the same default.
+    expect((await call(ctx, 'glob', { pattern: '*' }, { agent: agent() })).isError).toBe(true)
+    expect(subprocess.spawns).toHaveLength(0)
     await call(ctx, 'grep', { pattern: 'x' })
-    expect(subprocess.spawns[1]?.cwd).toBe(process.cwd())
+    expect(subprocess.spawns[0]?.cwd).toBe(process.cwd())
+  })
+
+  it('resolves a moved current root on every subprocess call', async () => {
+    const { ctx, subprocess, setCurrentRoot } = await setup()
+    subprocess.handler = () => runResult('a.ts\n')
+    await call(ctx, 'glob', { pattern: '*' }, { agent: agent('/old-root') })
+    setCurrentRoot('/moved-root')
+    await call(ctx, 'glob', { pattern: '*' }, { agent: agent('/old-root') })
+    expect(subprocess.spawns.map(spawn => spawn.cwd)).toEqual(['/old-root', '/moved-root'])
   })
 
   it('spawns the packaged ripgrep binary with --no-config, the fixed argv, and budgeted collect streams', async () => {

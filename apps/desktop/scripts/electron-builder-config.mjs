@@ -1,7 +1,7 @@
 import { officePackageDirectories } from '../../../scripts/libreoffice-packages.mjs'
 import { X509Certificate } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFile } from 'node:child_process'
@@ -23,7 +23,7 @@ import { resolveDesktopAutoUpdateConfig } from './desktop-auto-update-environmen
 import { resolveDesktopBuildCommit } from './desktop-build-commit.mjs'
 import { resolveDesktopBuildVersion } from './desktop-build-version.mjs'
 import { resolveDesktopPolicyEnvironment } from './desktop-policy-environment.mjs'
-import { desktopTargetBuildPaths, resolveDesktopBuildTarget } from './desktop-build-paths.mjs'
+import { resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { installWindowsDirectoryInstaller } from './windows-directory-installer.mjs'
 import { preserveWindowsRuntimeSignature, signWindowsCode } from './windows-runtime-signature.mjs'
 import { prepareWindowsAsarUnpack, verifyWindowsAsarUnpack } from './windows-asar-unpack.mjs'
@@ -33,6 +33,10 @@ import {
   verifyMacOSAppUpdateConfig,
   writeMacOSAppUpdateConfig,
 } from './macos-app-update-config.mjs'
+
+function escapeNsisPath(path) {
+  return path.replaceAll('$', () => '$$').replaceAll('"', () => '$\\"')
+}
 
 /**
  * Create electron-builder configuration from one release environment.
@@ -66,8 +70,9 @@ export function createElectronBuilderConfig(
   if (resolvedPlatform === 'win32' && !directoryBuild) installWindowsDirectoryInstaller()
   const macOSSigning = packagesMacOS ? resolveMacOSSigningEnvironment(env) : undefined
   if (packagesMacOS) resolveMacOSNotarizationEnvironment(env)
-  const buildPaths = desktopTargetBuildPaths(resolveDesktopBuildTarget(env, hostPlatform, hostArch))
+  const buildPaths = resolveDesktopTargetBuildPaths(env, hostPlatform, hostArch)
   let primaryRuntimeDestination
+  const installerInclude = join(buildPaths.root, 'installer-ui', 'installer-custom.nsh')
   let dshDestination
   let windowsCode = []
   const unpack = ['**/*.{node,dylib,dll,so,exe,onnx}', '**/*.so.*', '**/spawn-helper', '**/@vscode/ripgrep-*/bin/rg',
@@ -116,14 +121,18 @@ export function createElectronBuilderConfig(
     electronFuses: { runAsNode: true },
     beforeBuild: async () => {
       if (resolvedPlatform !== 'win32' || directoryBuild) return true
+      const installerUiDir = join(buildPaths.root, 'installer-ui')
       await promisify(execFile)('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
         fileURLToPath(new URL('./prepare-windows-installer.ps1', import.meta.url)),
-        '-OutputDirectory', join(buildPaths.root, 'installer-ui')], {
+        '-OutputDirectory', installerUiDir], {
         env: scrubWindowsSigningEnvironment(env), windowsHide: true,
       })
       if (windowsSigner !== undefined) {
-        await windowsSigner({ path: join(buildPaths.root, 'installer-ui', 'window-frame.dll'), hash: 'sha256', isNest: false })
+        await windowsSigner({ path: join(installerUiDir, 'window-frame.dll'), hash: 'sha256', isNest: false })
       }
+      await mkdir(installerUiDir, { recursive: true })
+      const sourceNsh = fileURLToPath(new URL('./installer.nsh', import.meta.url))
+      await writeFile(installerInclude, `!define INSTALLER_BUILD_DIR "${escapeNsisPath(installerUiDir)}"\n!include "${escapeNsisPath(sourceNsh)}"\n`)
       // A falsy result tells electron-builder to omit its production node_modules collection.
       return true
     },
@@ -244,7 +253,7 @@ export function createElectronBuilderConfig(
     nsis: {
       installerSidebar: join(buildPaths.root, 'installer-ui', 'uninstaller-sidebar.bmp'),
       uninstallerSidebar: join(buildPaths.root, 'installer-ui', 'uninstaller-sidebar.bmp'),
-      include: fileURLToPath(new URL('./installer.nsh', import.meta.url)),
+      include: installerInclude,
       oneClick: false,
       perMachine: false,
       allowElevation: false,

@@ -14,16 +14,19 @@ import { Context } from '@deepseek-ai/cordis'
 import { PtcRuntime } from '@deepseek-ai/dsh-ptc-runtime'
 import type { PtcRunRequest, PtcRunResult } from '@deepseek-ai/dsh-ptc-runtime'
 import { ToolCallId, LlmAdapter, LlmRuntime } from '@deepseek-ai/dsh-llm'
-import type { GenerateOptions, LlmModelInfo, LlmResolvedModelInfo, Message, StreamChunk } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, LlmModelInfo, LlmResolvedModelInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
 import type { Config as ToolConfig } from '@deepseek-ai/dsh-tools'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import * as FsPolicy from '@deepseek-ai/dsh-fs-observation-policy'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import LocalAttachmentStore from '@deepseek-ai/dsh-attachment-local'
 import { AttachmentError, AttachmentId, AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentLimits, ImageAttachmentRef, SaveImageAttachment, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import { createTestAgent, createTestSession } from './agent-fixture.ts'
 import {
   applyReadImageTool,
   formatImageReadOutput,
@@ -84,6 +87,7 @@ class FakeRuntime extends PtcRuntime {
 
 let dir: string
 let home: string
+let fixtureContext = new Context()
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'dsh-read-image-'))
@@ -112,6 +116,8 @@ async function setup(options: SetupOptions = {}) {
   }
   await ctx.plugin(LocalFileSystem, { cwd: dir })
   await ctx.plugin(FsPolicy)
+  await ctx.plugin(SessionCwd)
+  ctx.sessionCwd.registerResolver(header => header.cwd)
   if (options.attachments !== false) {
     await ctx.plugin(LocalAttachmentStore, { dshHome: home, ...options.storeConfig })
   }
@@ -124,36 +130,33 @@ async function setup(options: SetupOptions = {}) {
     ], options.resolvedModels))
   }
   await ctx.plugin(ToolFs)
+  fixtureContext = ctx
   return ctx
 }
 
-/** A fake calling agent pinned to one routed provider/model. */
-function agentOn(model: string | undefined, provider = 'visual', messages: readonly Message[] = []): object {
-  return {
-    options: {},
-    session: {
-      header: { cwd: dir },
-      requestHeader: () => (model === undefined ? undefined : { config: { provider, model } }),
-      deriveMessages: () => [...messages],
-      append: () => undefined,
-    },
-  }
+/** A typed calling agent pinned to one routed provider/model. */
+function agentOn(model: string | undefined, provider = 'visual'): Agent {
+  return createTestAgent(fixtureContext, createTestSession(dir), {
+    provider,
+    ...(model === undefined ? {} : { model }),
+  })
 }
 
 let callCounter = 0
-function call(ctx: Context, name: string, args: unknown, agent?: object) {
+function call(ctx: Context, name: string, args: unknown, agent?: Agent) {
   return ctx.tools.execute({
     signal: testToolSignal,
     callId: ToolCallId(`img-call-${++callCounter}`),
     name,
     arguments: args,
-    ...agent ? { agent: agent as never } : {},
+    ...agent === undefined ? {} : { agent },
   })
 }
 
-function readImage(ctx: Context, args: unknown, agent?: object) {
+function readImage(ctx: Context, args: unknown, agent?: Agent) {
   return call(ctx, 'read_image', args, agent)
 }
+
 
 function text(result: { content: { type: string; text?: string }[] }): string {
   return result.content.filter(b => b.type === 'text').map(b => b.text).join('')
@@ -279,10 +282,7 @@ describe('read_image happy path', () => {
   it('falls back to agent options when no request header exists yet', async () => {
     await writeFile(join(dir, 'red.png'), PNG_1X1)
     const ctx = await setup()
-    const agent = {
-      options: { provider: 'visual', model: 'vision-model' },
-      session: { header: { cwd: dir }, requestHeader: () => undefined },
-    }
+    const agent = createTestAgent(ctx, createTestSession(dir), { provider: 'visual', model: 'vision-model' })
     const result = await readImage(ctx, { file_path: 'red.png' }, agent)
     expect(result.isError).toBe(false)
   })

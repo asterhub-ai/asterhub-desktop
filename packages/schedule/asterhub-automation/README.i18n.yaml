@@ -3,23 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/schedule/asterhub-automation/README.md
 /:
-  en: e02d53ccfefef076
-  zh: 031dd8760011c1ac
+  en: b5dc0adf09a9b78f
+  zh: 02074605165ad681
 /deepseek-ai-dsh-asterhub-automation:
   en: 217c73ff3a11321d
   zh: 04713c025fefbd78
 /deepseek-ai-dsh-asterhub-automation/summary:
-  en: 92583890a72b164a
-  zh: 33015fe382e5b5e3
+  en: f7d2f2b839ac07ba
+  zh: c94dd5b4bd054712
 /deepseek-ai-dsh-asterhub-automation/table-of-contents:
   en: 65663b0d5dfa1600
   zh: dc8dd4f5941b9f74
 /deepseek-ai-dsh-asterhub-automation/use-this-package:
-  en: d4e70b233d0dd828
-  zh: d5d2fff678f4f276
+  en: 65b63a9593f79529
+  zh: 2e96b2f92184f8c0
 /deepseek-ai-dsh-asterhub-automation/understand-the-implementation:
-  en: f42d1b19fe7e97f9
-  zh: a1c097314c651c0f
+  en: 4964f24d666cbfb8
+  zh: 2c648ff625dc3fe0
 /deepseek-ai-dsh-asterhub-automation/further-exploration:
   en: 0776c99b44783ca0
   zh: 3de942e2bd01a1ec
@@ -30,17 +30,17 @@
   en: bb5f212dffab0661
   zh: cd7f81ec6fb01d2f
 /deepseek-ai-dsh-asterhub-automation/model-experience/scheduled-task-authoring-and-execution/what-the-model-sees:
-  en: 9d130c21f9a341a4
-  zh: 24eadd26b74f78f4
+  en: 5f5e1841e70c23b3
+  zh: a2176a41c887ede4
 /deepseek-ai-dsh-asterhub-automation/model-experience/scheduled-task-authoring-and-execution/token-effect:
   en: ae5a462457692376
   zh: 1eb3b05d72f29b36
 /deepseek-ai-dsh-asterhub-automation/model-experience/scheduled-task-authoring-and-execution/kv-cache-effect:
-  en: 23247b2b9689679c
-  zh: 7f099885ae33d418
+  en: 21e69a6fbb6c4133
+  zh: 81ed8bb30ee90765
 /deepseek-ai-dsh-asterhub-automation/known-limitations-and-deferred-work:
-  en: f252167d983ee0d2
-  zh: 9997d0aea402312b
+  en: e9d9a961946bff19
+  zh: d9f1625920d82a84
 /deepseek-ai-dsh-asterhub-automation/known-limitations-and-deferred-work/dev-note:
   en: 389640b63de48a64
   zh: 5fddb15bb1b3c3d1

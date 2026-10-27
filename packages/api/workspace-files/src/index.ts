@@ -212,10 +212,10 @@ export class WorkspaceFiles extends TypertRemoteService {
             : undefined
           const header = live ?? stored?.header
           if (header === undefined) return undefined
-          return {
-            sessionId,
-            workspaceRoot: header.cwd ?? scope.sandboxPolicy.workspaceRoot,
-          }
+          const sessionCwd = scope.get('sessionCwd', false)
+          const workspaceRoot = sessionCwd ? sessionCwd.resolve(header) : header.cwd
+          if (workspaceRoot === undefined) throw new Error(`Session ${sessionId} has no current execution directory`)
+          return { sessionId, workspaceRoot }
         },
       })
     })

@@ -19,7 +19,6 @@ import { buildForkSeed } from '@deepseek-ai/dsh-session/fork'
 import { SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
-import { resolveProjectAttachmentScope } from '@deepseek-ai/dsh-project-storage'
 import { SessionTitleInvalidError } from '@deepseek-ai/dsh-session-title'
 import { canonicalClientTimeZone } from '@deepseek-ai/dsh-util-time'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
@@ -360,9 +359,7 @@ export class SessionCommandController {
           request.content,
           receiptId => this.ctx.fileUploads.resolve(agent, receiptId),
         )
-        const attachmentScope = hasImage && this.ctx.get('projectStorage', false) !== undefined
-          ? resolveProjectAttachmentScope(this.ctx, agent.session.id)
-          : undefined
+        const attachmentScope = hasImage ? { sessionId: agent.session.id } : undefined
         const content = await this.ctx.attachments.admitPromptContent(admission.content, attachmentScope)
         const message: UserMessage = createUserMessage({ content, source })
         if (this.ctx.agents.get(agent.id) !== agent) {
@@ -397,7 +394,7 @@ export class SessionCommandController {
 
   /**
    * Read one durable image after proving the Session log references it.
-   * When ProjectStorage is mounted, use the Session's project attachment scope.
+   * The trusted Session ID is passed to the attachment provider for ownership routing.
    * @param request - Session and attachment identities used for authorization.
    * @returns the durable attachment reference and base64-encoded bytes.
    */
@@ -424,14 +421,7 @@ export class SessionCommandController {
       )
     }
     try {
-      const storage = this.ctx.get('projectStorage', false)
-      const stored = storage === undefined
-        ? await this.ctx.attachments.readImage(ref)
-        : await this.ctx.attachments.readImage(
-          ref,
-          undefined,
-          resolveProjectAttachmentScope(this.ctx, request.sessionId),
-        )
+      const stored = await this.ctx.attachments.readImage(ref, undefined, { sessionId: request.sessionId })
       return {
         attachment: stored.ref,
         data: Buffer.from(stored.data).toString('base64'),

@@ -34,6 +34,7 @@
     },
     {
       "path": "../../packages/credentials/credentials"
-    }
+    },
+    { "path": "../../packages/bundle/asterhub-product" }
   ]
 }

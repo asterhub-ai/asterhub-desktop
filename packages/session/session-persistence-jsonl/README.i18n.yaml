@@ -24,8 +24,8 @@
   en: ec988540e592ec56
   zh: d8664641ff169bc2
 /deepseek-ai-dsh-session-persistence-jsonl/use-this-package/on-disk-layout:
-  en: 49968e913b4e462f
-  zh: 1391b72295df4685
+  en: 322efe2b0354923e
+  zh: 3df4f55e88ca02af
 /deepseek-ai-dsh-session-persistence-jsonl/use-this-package/durability-and-crash-semantics:
   en: efd0891dd5f7e16a
   zh: 6813052e2f368429
@@ -63,8 +63,8 @@
   en: 53ce4da7ce68d21c
   zh: 10f40bc354100f77
 /deepseek-ai-dsh-session-persistence-jsonl/known-limitations-and-deferred-work:
-  en: 17f720984a9e98e9
-  zh: 484385e985a849a7
+  en: 50e116023cafa2e5
+  zh: 7c8e53acf5e744bb
 /deepseek-ai-dsh-session-persistence-jsonl/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 3bb0c20c93f16f98

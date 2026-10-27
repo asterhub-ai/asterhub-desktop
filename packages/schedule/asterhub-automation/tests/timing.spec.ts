@@ -1,6 +1,7 @@
 /** Calendar, missed-occurrence and pause semantics visible to native task consumers. */
 import { describe, expect, it } from 'vitest'
 import { normalizeTiming, previewTiming, resolveOccurrence, nextOccurrence, reanchorTiming, TimingInputError } from '../src/timing.ts'
+import { validateTaskAggregate } from '../src/schema.ts'
 
 const now = Date.parse('2026-10-05T00:00:00Z')
 
@@ -60,5 +61,68 @@ describe('native task timing', () => {
     expect(() => normalizeTiming({ kind: 'once', at: '2026-10-06T08:00:00' }, now)).toThrow(TimingInputError)
     expect(() => normalizeTiming({ kind: 'interval', seconds: 60, firstAt: '2026-10-04T08:00:00Z' }, now)).toThrow(TimingInputError)
     expect(() => normalizeTiming({ kind: 'interval', seconds: 59 }, now)).toThrow(TimingInputError)
+  })
+
+  it('normalizes daily and weekly time to HH:mm:ss.SSS and passes task aggregate validation (D2)', () => {
+    const daily = normalizeTiming({ kind: 'daily', time: '08:30:00', timeZone: 'Asia/Shanghai' }, now)
+    if (daily.kind !== 'daily') throw new Error('daily input must normalize to the daily variant')
+    expect(daily.time).toBe('08:30:00.000')
+
+    const weekly = normalizeTiming({ kind: 'weekly', time: '09:15:00', timeZone: 'UTC', weekdays: [1, 3] }, now)
+    if (weekly.kind !== 'weekly') throw new Error('weekly input must normalize to the weekly variant')
+    expect(weekly.time).toBe('09:15:00.000')
+
+    const baseTask = {
+      id: 'task-d2',
+      ownerAccountId: 'acc-1',
+      revision: 1,
+      recordVersion: 1,
+      authorizationRevision: 1,
+      consentRevision: 1,
+      ruleRevision: 1,
+      definition: {
+        name: 'Daily Task',
+        instruction: 'Do something daily',
+        workspaceId: 'ws-1',
+        modelId: 'model-1',
+        reasoningEffort: null,
+        timing: daily,
+      },
+      enabled: true,
+      deletedAt: null,
+      nextOccurrenceAt: '2026-10-06T00:30:00.000Z',
+      occurrenceWatermark: null,
+      pendingOccurrence: null,
+      activeRunId: null,
+      runs: [],
+      requestReceipts: [],
+      creationRequest: { requestId: 'req-1', digest: 'dig-1' },
+      historyPruned: false,
+      skippedRange: null,
+      createdAt: '2026-10-05T00:00:00.000Z',
+      updatedAt: '2026-10-05T00:00:00.000Z',
+    }
+
+    // Both normalized HH:mm:ss.SSS and raw HH:mm:ss must be accepted by schema
+    expect(() => validateTaskAggregate(baseTask)).not.toThrow()
+
+    const weeklyTask = {
+      ...baseTask,
+      definition: {
+        ...baseTask.definition,
+        name: 'Weekly Task',
+        timing: weekly,
+      },
+    }
+    expect(() => validateTaskAggregate(weeklyTask)).not.toThrow()
+
+    const rawDailyTask = {
+      ...baseTask,
+      definition: {
+        ...baseTask.definition,
+        timing: { kind: 'daily', time: '08:30:00', timeZone: 'Asia/Shanghai' },
+      },
+    }
+    expect(() => validateTaskAggregate(rawDailyTask)).not.toThrow()
   })
 })

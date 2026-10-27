@@ -74,6 +74,11 @@ export interface Config {
   debounceMs?: number
   /** Store the complete document using the OS-backed credential cipher. */
   encrypted?: boolean
+  /**
+   * Migrate recognized valid plaintext documents to encrypted storage on initial load;
+   * defaults to false.
+   */
+  migratePlaintext?: boolean
 }
 
 /** Fully resolved provider parameters; defaulting happens here, never inline. */
@@ -521,10 +526,12 @@ export class LocalCredentialProvider extends CredentialProvider {
     watch: z.boolean().default(true),
     debounceMs: z.number().min(0).default(100),
     encrypted: z.boolean().default(false),
+    migratePlaintext: z.boolean().default(false),
   })
 
   private readonly spec: ResolvedSpec
   private readonly encrypted: boolean
+  private readonly migratePlaintext: boolean
   private readonly cipher: CredentialCipher | undefined
   /**
    * Raw text of the last read or persisted document; `undefined` while the
@@ -558,6 +565,7 @@ export class LocalCredentialProvider extends CredentialProvider {
     // the same defaults in one explicit step either way.
     this.spec = resolveSpec(config)
     this.encrypted = config.encrypted ?? false
+    this.migratePlaintext = config.migratePlaintext ?? false
     this.cipher = this.encrypted ? ctx.get('credentialCipher', false) : undefined
     if (this.encrypted && this.cipher === undefined) {
       throw new Error('credentials-local: encrypted storage requires the credentialCipher service')
@@ -838,12 +846,60 @@ export class LocalCredentialProvider extends CredentialProvider {
       if (isENOENT(error)) return
       throw error
     }
+    if (this.migratePlaintext && !stored.startsWith(ENCRYPTED_DOCUMENT_PREFIX)) {
+      const migrated = await this.migratePlaintextDocument()
+      this.values = migrated.document.refs
+      this.records = migrated.document.records
+      this.text = migrated.text
+      this.diskText = migrated.diskText
+      return
+    }
     const text = await this.decodeDocument(stored)
     const document = parseCredentialsDocument(text, this.spec.filename)
     this.values = document.refs
     this.records = document.records
     this.text = text
     this.diskText = stored
+  }
+
+  /**
+   * One-shot boot upgrade of a recognized plaintext document to encrypted storage
+   * when {@link Config.migratePlaintext} is enabled. Re-reads and parses under the
+   * writer lock, validates the full document first, verifies cipher encryption and
+   * decryption round-trip, and atomically writes the ciphertext before committing.
+   * If validation, cipher operations, or atomic publication fail, the on-disk file
+   * is untouched. Live reloads never migrate and continue to reject plaintext.
+   */
+  private async migratePlaintextDocument(): Promise<{
+    document: CredentialsDocument
+    text: string
+    diskText: string
+  }> {
+    return withFileLock(this.spec.filename, async () => {
+      const current = await readFile(this.spec.filename, 'utf8')
+      if (current.startsWith(ENCRYPTED_DOCUMENT_PREFIX)) {
+        const text = await this.decodeDocument(current)
+        const document = parseCredentialsDocument(text, this.spec.filename)
+        return { document, text, diskText: current }
+      }
+      const flatMigration = renderFlatLayoutMigration(current)
+      const canonicalText = flatMigration !== undefined ? flatMigration : current
+      const document = parseCredentialsDocument(canonicalText, this.spec.filename)
+      const cipher = this.cipher
+      if (cipher === undefined) throw new Error('credentials-local: credential cipher is unavailable')
+      const ciphertext = await cipher.encrypt(canonicalText)
+      const verified = await cipher.decrypt(ciphertext)
+      if (verified !== canonicalText) {
+        throw new Error(`credentials-local: cipher roundtrip mismatch during migration of ${this.spec.filename}`)
+      }
+      const storedCiphertext = `${ENCRYPTED_DOCUMENT_PREFIX}${ciphertext}`
+      await writeFileAtomic(this.spec.filename, storedCiphertext, { mode: 0o600, dirMode: 0o700 })
+      this.ctx.logger.info(
+        'credentials-local: migrated plaintext %s to encrypted storage; values are unchanged',
+        this.spec.filename,
+      )
+      return { document, text: canonicalText, diskText: storedCiphertext }
+    }, { waitMs: DOCUMENT_LOCK_WAIT_MS })
   }
 
   /** Reject unencrypted documents when encryption is required. */

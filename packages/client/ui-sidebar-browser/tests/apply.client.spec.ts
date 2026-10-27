@@ -6,6 +6,7 @@ import type { ShortcutCommand, ShortcutPlatform } from '@deepseek-ai/dsh-client-
 import { Context } from '@deepseek-ai/cordis'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
+import type { SidebarRightOpenTab } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { BrowserBody } from '../src/client/view/BrowserBody.tsx'
 import { BrowserTitle } from '../src/client/view/BrowserTitle.tsx'
 import type { BrowserInjected } from '../src/client/browser/BrowserController.ts'
@@ -14,10 +15,11 @@ import { apply, inject } from '../src/client/index.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { createBrowserStore } from '../src/client/browser/store.ts'
 import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
-  DesktopBrowserBridge, DesktopBrowserLeaseId, DesktopBrowserTabAutomationHandler, DesktopBrowserTabCommand,
+  DesktopBrowserBridge, DesktopBrowserLeaseId, DesktopBrowserTabAutomationCancelHandler,
+  DesktopBrowserTabAutomationRequestHandler, DesktopBrowserTabCommand,
 } from '../src/types.ts'
-
 const contexts: Context[] = []
 
 afterEach(async () => {
@@ -55,11 +57,26 @@ async function boot(platform: ShortcutPlatform = 'macos', runtime: 'desktop' | '
       return () => { dictionaries.delete(namespace) }
     }),
   }
-  const openTabs = createSnapshotStore<readonly { sessionId: string; tabId: TabId }[]>([])
-  const target = { sessionId: 'session', paneId: 'pane' }
-  const sidebar = { openTabs, commandTarget: vi.fn<() => typeof target | undefined>(() => target),
-    openTabFromTarget: vi.fn(), retainSessionView: vi.fn(async () => () => {}),
-    whenSessionAdopted: vi.fn(async () => {}) }
+  const openTabs = createSnapshotStore<readonly SidebarRightOpenTab[]>([])
+  const target = { sessionId: 'session' as SessionId, paneId: 'pane' }
+  const sidebar = {
+    openTabs,
+    commandTarget: vi.fn<() => typeof target | undefined>(() => target),
+    openTabFromTarget: vi.fn(),
+    openTabIn: vi.fn((sessionId: SessionId, kind: string) => {
+      openTabs.set([...openTabs.getSnapshot(), {
+        sessionId,
+        tabId: 'browser-tab' as TabId,
+        kind,
+        contentId: 'browser-tab',
+      }])
+    }),
+    closeIn: vi.fn((sessionId: SessionId, tabId: TabId) => {
+      openTabs.set(openTabs.getSnapshot().filter(tab => tab.sessionId !== sessionId || tab.tabId !== tabId))
+    }),
+    retainSessionView: vi.fn(async (_sessionId: SessionId, _signal: AbortSignal) => () => {}),
+    whenSessionAdopted: vi.fn(async (_sessionId: SessionId, _signal: AbortSignal) => {}),
+  }
   const registry = new ShortcutRegistry(runtime, platform)
   ctx.provide('sidebarRight', sidebar as never)
   ctx.provide('shortcuts', { register: (command: ShortcutCommand) => registry.register(command) } as never)
@@ -84,11 +101,12 @@ describe('ui-sidebar-browser apply', () => {
     const h = await boot()
     expect(h.tabs.get(BROWSER_KIND)?.keepMounted).toBe(protocolVersion === 1)
     const injectFace = h.registered.find(entry => entry.name === 'sidebar.right.pane.tab')!.inject as
-      (sessionId: string, actions: Parameters<BrowserInjected['rebind']>[0]) => BrowserInjected
+      (sessionId: SessionId, actions: Parameters<BrowserInjected['rebind']>[0]) => BrowserInjected
+    const sessionId = 'session' as SessionId
     const firstStore = createBrowserStore().create(`apply-first-${protocolVersion}`)
     const replacementStore = createBrowserStore().create(`apply-replacement-${protocolVersion}`)
-    const controller = injectFace('session', firstStore.actions)
-    expect(injectFace('session', replacementStore.actions)).toBe(controller)
+    const controller = injectFace(sessionId, firstStore.actions)
+    expect(injectFace(sessionId, replacementStore.actions)).toBe(controller)
     const host = document.createElement('div')
     host.id = `browser-apply-${protocolVersion}`
     document.body.append(host)
@@ -99,15 +117,18 @@ describe('ui-sidebar-browser apply', () => {
         initial: undefined, initialUrl: 'https://example.test/', openTab: vi.fn() })
       expect(replacementStore.getSnapshot().byTab[tabId]).toBeDefined()
       expect(firstStore.getSnapshot().byTab[tabId]).toBeUndefined()
-      if (protocolVersion === 1) await vi.waitFor(() => { expect(acquire).toHaveBeenCalledWith('session:session', 'session', tabId) })
+      if (protocolVersion === 1) await vi.waitFor(() => { expect(acquire).toHaveBeenCalledWith('session:session', sessionId, tabId) })
       else expect(host.querySelector('iframe')).not.toBeNull()
-      h.openTabs.set([{ sessionId: 'other', tabId }, { sessionId: 'session', tabId: 'other-tab' as TabId }])
+      h.openTabs.set([
+        { sessionId: 'other' as SessionId, tabId, kind: BROWSER_KIND, contentId: 'sidebar://browser/other' },
+        { sessionId, tabId: 'other-tab' as TabId, kind: BROWSER_KIND, contentId: 'sidebar://browser/retained' },
+      ])
       signal.abort()
       expect(replacementStore.getSnapshot().byTab[tabId]).toBeUndefined()
       const reopened = new AbortController()
       controller.mount({ tabId, signal: reopened.signal, viewportId: host.id, applicationOrigin: 'https://dsh.example',
         initial: undefined, initialUrl: 'https://retained.example/', openTab: vi.fn() })
-      h.openTabs.set([{ sessionId: 'session', tabId }])
+      h.openTabs.set([{ sessionId, tabId, kind: BROWSER_KIND, contentId: 'sidebar://browser/retained' }])
       reopened.abort()
       expect(replacementStore.getSnapshot().byTab[tabId]).toBeDefined()
       const active = new AbortController()
@@ -170,30 +191,64 @@ describe('ui-sidebar-browser apply', () => {
     finally { await h.fiber.dispose() }
   })
 
-  it('registers the main-issued automation handler and removes it on disposal', async () => {
-    let captured: DesktopBrowserTabAutomationHandler | undefined
-    const unregister = vi.fn()
+  it('handles Main cancellation in the renderer-local controller and unregisters both listeners', async () => {
+    let request: DesktopBrowserTabAutomationRequestHandler | undefined
+    let cancel: DesktopBrowserTabAutomationCancelHandler | undefined
+    const unregisterRequest = vi.fn()
+    const unregisterCancel = vi.fn()
     const bridge: DesktopBrowserBridge = {
       acquire: vi.fn(async () => ({ lease: 'test-lease' as DesktopBrowserLeaseId, partition: 'test-partition' })),
       release: vi.fn(async () => {}),
       onOpenRequested: vi.fn(() => () => {}),
-      onAutomationRequest: vi.fn((handler: DesktopBrowserTabAutomationHandler) => {
-        captured = handler
-        return unregister
+      onAutomationRequest: vi.fn((handler: DesktopBrowserTabAutomationRequestHandler) => {
+        request = handler
+        return unregisterRequest
+      }),
+      onAutomationCancel: vi.fn((handler: DesktopBrowserTabAutomationCancelHandler) => {
+        cancel = handler
+        return unregisterCancel
       }),
     }
     vi.stubGlobal('dshDesktop', { protocolVersion: 1, browser: bridge })
     const h = await boot()
-    expect(captured).toBeDefined()
     const command: DesktopBrowserTabCommand = {
-      requestId: 1, sessionId: 'session' as DesktopBrowserTabCommand['sessionId'],
-      operation: { kind: 'tabs.list', limit: 8 },
+      requestId: 17, sessionId: 'session' as DesktopBrowserTabCommand['sessionId'],
+      operation: { kind: 'tabs.open', url: 'http://127.0.0.1/', newTab: true },
     }
-    await expect(captured!(command, new AbortController().signal)).resolves.toEqual({
-      status: 'success', value: { kind: 'tabs', tabs: [], truncated: false },
-    })
+    const result = request!(command)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const signal = h.sidebar.retainSessionView.mock.calls[0]?.[1] as AbortSignal
+    expect(signal).toBeInstanceOf(AbortSignal)
+    expect(typeof signal.addEventListener).toBe('function')
+    cancel!(command.requestId)
+    await expect(result).resolves.toEqual({ status: 'error', message: 'Browser command was cancelled' })
     await h.fiber.dispose()
-    expect(unregister).toHaveBeenCalledOnce()
+    expect(unregisterRequest).toHaveBeenCalledOnce()
+    expect(unregisterCancel).toHaveBeenCalledOnce()
+  })
+
+  it('aborts outstanding automation when the browser client scope is disposed', async () => {
+    let request: DesktopBrowserTabAutomationRequestHandler | undefined
+    const bridge: DesktopBrowserBridge = {
+      acquire: vi.fn(async () => ({ lease: 'test-lease' as DesktopBrowserLeaseId, partition: 'test-partition' })),
+      release: vi.fn(async () => {}),
+      onOpenRequested: vi.fn(() => () => {}),
+      onAutomationRequest: vi.fn((handler: DesktopBrowserTabAutomationRequestHandler) => { request = handler; return () => {} }),
+      onAutomationCancel: vi.fn(() => () => {}),
+    }
+    vi.stubGlobal('dshDesktop', { protocolVersion: 1, browser: bridge })
+    const h = await boot()
+    const command: DesktopBrowserTabCommand = {
+      requestId: 18, sessionId: 'session' as DesktopBrowserTabCommand['sessionId'],
+      operation: { kind: 'tabs.open', url: 'http://127.0.0.1/', newTab: true },
+    }
+    const result = request!(command)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const signal = h.sidebar.retainSessionView.mock.calls[0]?.[1] as AbortSignal
+    expect(signal).toBeInstanceOf(AbortSignal)
+    await h.fiber.dispose()
+    expect(signal.aborted).toBe(true)
+    await expect(result).resolves.toEqual({ status: 'error', message: 'Browser command was cancelled' })
   })
 
   it('removes every registration when the plugin is disposed', async () => {

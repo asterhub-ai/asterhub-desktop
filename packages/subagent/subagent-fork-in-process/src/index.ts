@@ -9,6 +9,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import type {} from '@deepseek-ai/dsh-session/cwd'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {
@@ -25,7 +26,7 @@ export const name = 'subagent-fork-in-process'
 // per-run structured runtime gates its capture-tool registration on `tools`
 // itself, so this backend's apply timing (and the delegation tool's position
 // in the model-visible tool list) is unchanged by structured output.
-export const inject = ['subagents']
+export const inject = ['sessionCwd', 'subagents']
 
 /** Config: the registry name to register the provider under. */
 export interface Config {
@@ -71,7 +72,7 @@ class ForkInProcessProvider implements SubagentProvider {
   // Context contract: a forked child IS seeded with the parent's completed-turn prefix.
   readonly inheritsParentContext = true
 
-  constructor(readonly name: string) {}
+  constructor(readonly name: string, readonly sessionCwd: Context['sessionCwd']) {}
 
   start(request: ResolvedSubagentStartRequest) {
     const seed = completedTurnPrefix(request.parent)
@@ -79,7 +80,7 @@ class ForkInProcessProvider implements SubagentProvider {
       // Only pass a seed when there's a completed turn to inherit; an empty seed
       // is equivalent to a fresh child, so omit it to keep the session unseeded.
       ...seed.length > 0 ? { seed } : {},
-    })
+    }, this.sessionCwd)
   }
 
   prepareContinuable(request: ContinuableCreateRequest): Promise<ContinuableCreateSpec> {
@@ -92,5 +93,5 @@ class ForkInProcessProvider implements SubagentProvider {
 }
 
 export function apply(ctx: Context, config: Config): void {
-  ctx.subagents.registerProvider(new ForkInProcessProvider(config.providerName))
+  ctx.subagents.registerProvider(new ForkInProcessProvider(config.providerName, ctx.sessionCwd))
 }

@@ -12,6 +12,7 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import { SessionHistoryController } from '@deepseek-ai/dsh-api-session-controller/src/history.ts'
 import { subagentIdentityProjectionDefinition } from '@deepseek-ai/dsh-subagent/src/projection.ts'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import { createUserMessage, MessageId } from '@deepseek-ai/dsh-llm'
 import { snapshotSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
 import { createInboxStub, mountAgentLoopTestDependencies, mountAgentLoopTestHarness } from '@deepseek-ai/dsh-agent-loop-testkit'
@@ -363,6 +364,8 @@ describe('Remote Agent and Session lookup policy', () => {
     const ctx = new Context()
     await ctx.plugin(TypertRegistry)
     await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionCwd)
+    ctx.sessionCwd.registerResolver(header => header.cwd)
     await ctx.plugin(AgentRegistry)
     const sessionId = sid('session-remote-cold')
     const meta = header(sessionId, 1000)
@@ -403,6 +406,8 @@ describe('Remote Agent and Session lookup policy', () => {
     const ctx = new Context()
     await ctx.plugin(TypertRegistry)
     await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionCwd)
+    ctx.sessionCwd.registerResolver(header => header.cwd)
     await ctx.plugin(AgentRegistry)
     const coldId = sid('session-remote-cold-child')
     const coldMeta = header(coldId, 1000, {
@@ -447,6 +452,8 @@ describe('Remote Agent and Session lookup policy', () => {
     const ctx = new Context()
     await ctx.plugin(TypertRegistry)
     await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionCwd)
+    ctx.sessionCwd.registerResolver(header => header.cwd)
     await ctx.plugin(AgentRegistry)
     const sessionId = sid('session-remote-resumed-child')
     const meta = header(sessionId, 1000)
@@ -560,6 +567,8 @@ describe('subagent ownership fence', () => {
   it('no longer treats a descriptor-only cold child without origin as subagent-owned', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionCwd)
+    ctx.sessionCwd.registerResolver(header => header.cwd)
     await ctx.plugin(AgentRegistry)
     const sessionId = sid('session-legacy-child')
     const meta = header('session-legacy-child', 1000, {

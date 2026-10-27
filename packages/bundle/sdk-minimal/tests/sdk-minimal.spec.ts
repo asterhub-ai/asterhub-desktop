@@ -42,6 +42,7 @@ describe('dsh-sdk-minimal bundle', () => {
       ['timer', '@deepseek-ai/cordis-plugin-timer'],
       ['llm', '@deepseek-ai/dsh-llm'],
       ['session', '@deepseek-ai/dsh-session'],
+      ['session-cwd', '@deepseek-ai/dsh-session/cwd'],
       ['session-title', '@deepseek-ai/dsh-session-title'],
       ['system-prompt', '@deepseek-ai/dsh-system-prompt'],
       ['tools', '@deepseek-ai/dsh-tools'],
@@ -70,7 +71,6 @@ describe('dsh-sdk-minimal bundle', () => {
       streamIdleTimeoutMs: 172800000,
     })
     expect(rows.find(row => row.id === 'system-prompt')?.config).toEqual({
-      includeHarnessIdentity: false,
       includeRuntimeContext: false,
       personaPrefix: { __jsExpr: "process.env.DSH_SYSTEM_PROMPT ?? 'You are a helpful software engineer assistant.'" },
     })

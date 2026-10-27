@@ -6,6 +6,7 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { agentPresetProjectionDefinition } from '@deepseek-ai/dsh-agent-preset-registry'
 import SessionStore, { SESSION_FORMAT_VERSION, SessionLogOffset, SessionId } from '@deepseek-ai/dsh-session'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import type { SessionHeader } from '@deepseek-ai/dsh-session'
 import { SessionAlreadyOwnedError } from '@deepseek-ai/dsh-session-persistence'
 import type { SessionObservation } from '@deepseek-ai/dsh-session-query'
@@ -34,6 +35,7 @@ async function harness(): Promise<{ ctx: Context; agents: ApiSessionAgentControl
   const ctx = new Context()
   roots.push(ctx)
   await ctx.plugin(TypertRegistry)
+  await ctx.plugin(SessionCwd)
   await ctx.plugin(SessionStore)
   await ctx.plugin(AgentRegistry)
   installSessionReadTestServices(ctx)
@@ -65,14 +67,6 @@ function agent(ctx: Context, meta: SessionHeader): Agent {
   return { id: meta.id, session, status: 'idle', ctx } as Agent
 }
 
-function unpublishedAgent(ctx: Context, meta: SessionHeader): Agent {
-  return {
-    id: meta.id,
-    session: { id: meta.id, header: meta, events: [] },
-    status: 'idle',
-    ctx,
-  } as unknown as Agent
-}
 
 describe('ApiSession identity failures', () => {
   it('describes cwd conflicts with and without a recorded cwd', () => {
@@ -142,7 +136,7 @@ describe('ApiSession Agent lookup and recovery', () => {
   it('resumes directly from a retained observation and rejects an invalid observed header', async () => {
     const { ctx, agents } = await harness()
     const meta = header('observed-resume')
-    const resumed = unpublishedAgent(ctx, meta)
+    const resumed = agent(ctx, meta)
     const resume = vi.spyOn(ctx.agents, 'resume').mockResolvedValue({
       agent: resumed,
       dispose: () => Promise.resolve(),
@@ -312,13 +306,55 @@ describe('ApiSession Agent lookup and recovery', () => {
     const dispose = vi.fn(async () => { ctx.emit('agent/disposed', { agent: first }) })
     vi.spyOn(ctx.agents, 'create').mockResolvedValue({ agent: first, dispose })
     const created = await agents.createSession({ cwd: '/workspace', reusable: () => false })
-    const resumed = unpublishedAgent(ctx, meta)
+    const resumed = first
     vi.spyOn(ctx.agents, 'resume').mockResolvedValue({ agent: resumed, dispose: vi.fn(async () => {}) })
 
     await dispose()
 
     const result = await agents.resolveAgent(created.agent.id)
     expect('agent' in result && result.agent === resumed).toBe(true)
+  })
+  it('uses the current execution root for live and cold Session reuse admission', async () => {
+    const { ctx, agents } = await harness()
+    const liveMeta = header('moved-live', '/old/live')
+    const live = agent(ctx, liveMeta)
+    await ctx.agents.register(live)
+    ctx.sessionCwd.registerResolver(header => header.id === liveMeta.id ? '/current/live' : '/current/cold')
+
+    const liveResult = await agents.createSession({
+      sessionId: live.id,
+      cwd: '/current/live',
+      reusable: () => true,
+    })
+    expect(liveResult.agent.id).toBe(live.id)
+    await expect(agents.createSession({
+      sessionId: live.id,
+      cwd: '/wrong/live',
+      reusable: () => true,
+    })).rejects.toBeInstanceOf(ApiSessionCwdConflict)
+
+    const coldMeta = header('moved-cold', '/old/cold')
+    const observation = {
+      header: coldMeta,
+      events: [],
+      projections: { values: {} },
+      [Symbol.dispose]() {},
+    } as unknown as SessionObservation
+    vi.spyOn(ctx.sessionQuery, 'observeSession').mockResolvedValue(observation)
+    const resumed = agent(ctx, coldMeta)
+    const resume = vi.spyOn(ctx.agents, 'resume').mockResolvedValue({
+      agent: resumed,
+      dispose: vi.fn(async () => {}),
+    })
+
+    await agents.createSession({
+      sessionId: coldMeta.id,
+      cwd: '/current/cold',
+      reusable: () => true,
+    })
+
+    expect(resume.mock.calls[0]?.[0]?.resumeSessionId).toBe(coldMeta.id)
+    expect(resume.mock.calls[0]?.[0]?.agentOptions?.cwd).toBe('/current/cold')
   })
 })
 

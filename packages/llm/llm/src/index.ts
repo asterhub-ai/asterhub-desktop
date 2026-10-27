@@ -57,16 +57,13 @@ export type { LlmCallConfig, LlmCallConfigAdapterDefaults } from './call-config.
 declare module '@deepseek-ai/cordis' {
   interface Context {
     llm: LlmRuntime
+    /** Trusted application-owned route ceiling and optional adapter profile. */
     applicationModelRoute?: Readonly<{
       provider: string
       model: string
       selectableModels?: boolean
-      syncModels?: boolean
-      baseURL?: string
-      api?: string
-      credentialRecord?: string
-      contextWindow?: number
-      maxTokens?: number
+      appIdentity?: Readonly<{ product: string; version: string; url: string }>
+      profile?: Readonly<Record<string, unknown>>
     }>
   }
 

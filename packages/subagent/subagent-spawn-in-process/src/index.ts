@@ -8,6 +8,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import type {} from '@deepseek-ai/dsh-session/cwd'
 import type {
   ContinuableCreateSpec,
   ResolvedSubagentStartRequest,
@@ -19,7 +20,7 @@ import { startInProcessRun } from '@deepseek-ai/dsh-subagent-in-process-driver'
 export const name = 'subagent-spawn-in-process'
 // `tools` is deliberately not injected: the child factory already provides it during setup,
 // and adding it here would unnecessarily change this provider's apply timing.
-export const inject = ['subagents']
+export const inject = ['sessionCwd', 'subagents']
 
 /** Config: the registry name to register the provider under. */
 export interface Config {
@@ -49,13 +50,13 @@ class SpawnInProcessProvider implements SubagentProvider {
   // Context contract: a spawned child starts fresh — it never sees the parent conversation.
   readonly inheritsParentContext = false
 
-  constructor(readonly name: string) {}
+  constructor(readonly name: string, readonly sessionCwd: Context['sessionCwd']) {}
 
   start(request: ResolvedSubagentStartRequest) {
     // Fresh child: no seed. The shared driver mints ids, stamps cwd/lineage/
     // depth, drives the one-shot (including the structured capture when the
     // request carries an outputSchema), and maps the result.
-    return startInProcessRun(request, {})
+    return startInProcessRun(request, {}, this.sessionCwd)
   }
 
   prepareContinuable(): Promise<ContinuableCreateSpec> {
@@ -66,5 +67,5 @@ class SpawnInProcessProvider implements SubagentProvider {
 }
 
 export function apply(ctx: Context, config: Config): void {
-  ctx.subagents.registerProvider(new SpawnInProcessProvider(config.providerName))
+  ctx.subagents.registerProvider(new SpawnInProcessProvider(config.providerName, ctx.sessionCwd))
 }

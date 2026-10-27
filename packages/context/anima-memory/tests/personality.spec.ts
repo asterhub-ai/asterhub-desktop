@@ -36,4 +36,11 @@ describe('Anima personality preferences', () => {
     expect(config.nickname.get()).toBe('小琦')
     expect(personalityContext(config)).toContain('Use a friendly, professional tone.')
   })
+  it('keeps auxiliary model limits within the original profile policy', () => {
+    expect(() => Config({ dataRoot: 'test-data', maxOutputTokens: 8193 })).toThrow()
+
+    const configured = Config({ dataRoot: 'test-data', maxOutputTokens: 8192, timeoutMs: 60000 })
+    expect(configured.maxOutputTokens.get()).toBe(8192)
+    expect(configured.timeoutMs.get()).toBe(60000)
+  })
 })

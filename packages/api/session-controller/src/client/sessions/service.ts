@@ -347,11 +347,11 @@ export class ClientSessions implements ISessions {
   }
 
   /**
-   * Refresh the real Session baseline, reusing an in-flight pull.
-   * @returns completion of the current or newly started baseline pull.
+   * Refresh the Session baseline, forcing one follow-up pull when another request is already in flight.
+   * @returns completion of the current or newly required baseline pull.
    */
   refresh(): Promise<void> {
-    return this.manager.refreshList()
+    return this.manager.refreshListAfterCurrent()
   }
 
   /**

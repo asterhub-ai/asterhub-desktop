@@ -7,15 +7,13 @@ kind: "package-bundle"
 
 English | [中文](README.zh.md)
 
-Desktop analytics mounts only when `DSH_PRODUCT_ANALYTICS_OTLP_URL` is explicitly configured, and the exporter sends to that endpoint. The Web profile mounts neither service.
+The AsterHub product-Web layer mounts Desktop analytics only when `DSH_PRODUCT_ANALYTICS_OTLP_URL` is explicitly configured. It is composed after this generic Web surface by the shipped Web and Desktop profiles.
 
-Desktop analytics schedules partial batches every 30 seconds, with a 15-second exporter timeout and a 20-second processor timeout. Shutdown allows 2 seconds to drain, then cancels pending requests and retry waits so telemetry does not keep the Host alive. Pending events may be lost on exit.
+Desktop analytics batches partial records every 30 seconds, with 15-second exporter and 20-second processor timeouts. Shutdown allows 2 seconds to drain before cancelling pending requests; pending events may be lost.
 
 ## Summary
 
-Desktop sessions include [local Anima memory](../../context/anima-memory/README.md), configured on its dedicated Settings page. Records and evidence stay locally; extraction can use a separate provider and model.
-
-Run `dsh --profile web` for chat, model/settings management, and Session history. It shares desktop models, tools, and safety defaults. Startup prints an authenticated URL and opens the default browser. Configure the port and allowed hosts; all-interface binds are refused. Project-local Sessions store images in their project's attachment store.
+The shipped Web and Desktop profiles layer in AsterHub's [local Anima memory](../../context/anima-memory/README.md), account, voice input, and project-local session storage. The product layer also registers four presets: `standard` (default), `ptc`, `minimal`, and `cordis`. These product services are not part of this generic browser-surface bundle.
 
 The Host mounts the subagent model-selection settings provider required by the shipped presets. Model selection remains disabled until enabled with an allowed route list.
 
@@ -44,9 +42,7 @@ dsh --profile web --no-open --port 8080
 
 After startup you see a `dsh web:` line whose root URL carries a fresh process token. Unless `--no-open` or an SSH session suppresses it, the default browser opens that URL, receives a signed cookie, and redirects to the same directory without the token. You know it worked when the page loads and you can chat with the agent. Two failures to expect: if the frontend is not built, startup stops with a build hint (`pnpm run build` in a checkout); if the browser cannot be opened, a credential-free diagnostic prints to stderr while the server keeps running — open the printed startup URL yourself.
 
-**Settings → Models** displays **DeepSeek**, using `DEEPSEEK_API_KEY`. The default is `deepseek-official` / `deepseek-flash` (DeepSeek-V41-Flash). The [DeepSeek plugin](../../llm/llm-deepseek/README.md#endpoint-and-wire-format) uses the Messages API.
-
-Saved model selections override the composition default. The settings card accepts a Messages-compatible API address and a credential reference.
+The shipped AsterHub product-Web layer supplies the authenticated account route and its model catalog in **Settings → Models**. Provider and endpoint configuration stays deployment-locked; users select only models available from their account.
 
 ### Configuration
 
@@ -81,11 +77,11 @@ Each browser session selects a shipped preset (`standard` by default). The Agent
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The bundle is one patch layer of five files plus one runtime glue plugin: `cordis.patch.yml` carries the host rows and the preset registry, and each `presets/<id>.patch.yml` inserts one shipped preset declaration, applied in the order `dsh.bundle.patch` lists them. The storage stack and projection cache come from `dsh-base`; the web overlay's workspace and message-feedback rows consume that shared `storageDomain` service. The patch restates the surface-specific values the base deliberately omits, inserts the web-only host rows and browser roster, then moves the agent plane behind presets. The glue plugin owns dist serving, trust sampling, prompt sections, the bash variable, and the readiness announcements. The `office-to-pdf` row mounts one lazy [Office conversion provider](../../document/office-to-pdf/README.md) for Host consumers, including Desktop compositions using this bundle. The conversion service's Remote methods authorize preview reads, while Document Preview owns the Office viewer and Client cache.
+This generic Web bundle carries the browser host rows, transport, and browser roster plus the runtime glue plugin. The AsterHub product-Web bundle owns the shipped preset registry and preset declarations, as well as product-only account, storage, memory, voice, and analytics defaults. The storage stack and projection cache come from `dsh-base`; the Web overlay's workspace and message-feedback rows consume that shared `storageDomain` service. The glue plugin owns dist serving, trust sampling, prompt sections, the bash variable, and readiness announcements. The `office-to-pdf` row mounts one lazy [Office conversion provider](../../document/office-to-pdf/README.md) for Host consumers, including Desktop compositions using this bundle. The conversion service's Remote methods authorize preview reads, while Document Preview owns the Office viewer and Client cache.
 
 ### Patch semantics
 
-A patch replaces the targeted row's whole `config`, so each web row restates every key it owns: the persona prefix and suffix templates, the `DSH_TOOLS_MODE` PTC mode opt-in, and the `session-query-sqlite` values on the base rows, then `insert` adds the web host rows, transport, and browser roster. The per-agent tool rows the base mounts process-wide are disabled here and the preset roster takes over; the reasoning for each host-plane versus preset-plane decision is inline in the patch.
+Patch rows replace the targeted row's whole `config`. This layer owns Web invocation settings and the `session-query-sqlite` override; product personas, preset composition, and private services are supplied by later product layers. The Web surface inserts host rows, transport, and browser roster, then moves the agent plane behind product-owned presets.
 
 ### Readiness
 
@@ -101,8 +97,8 @@ The URL line and browser handoff are readiness signals: supervisors RPC as soon 
 |---|---|
 | [`src/index.ts`](src/index.ts) | The `web-app` glue plugin: dist resolution, LAN trust sampling, prompt sections, bash variable, URL line, browser handoff |
 | [`src/startup.ts`](src/startup.ts) | The `web-startup` provider: `--host`, `--port`, `--trusted-host`, `--no-open`, `--help` |
-| [`cordis.patch.yml`](cordis.patch.yml) | The web patch: restated base values, web host rows, browser roster, preset registry |
-| [`presets/`](presets) | One `@deepseek-ai/dsh-agent-preset` declaration per shipped preset (`standard`, `ptc`, `minimal`, `cordis`), each its own patch file |
+| [`cordis.patch.yml`](cordis.patch.yml) | Generic Web host rows, browser roster, and surface values |
+| — | Shipped AsterHub presets and the product registry are in [`asterhub-product-web`](../asterhub-product-web/README.md) |
 | — | No runtime invariant companion is published; every contribution (frontend-static child plugin, prompt section, bashEnv registration) is registry-disposed with the fiber, and each owning registry's package carries that relation's invariant; the package holds no mutable state of its own to audit. |
 | [`tests/web-app.spec.ts`](tests/web-app.spec.ts) | Dist resolution, fallback seat, prompt sections, readiness |
 | [`tests/startup.spec.ts`](tests/startup.spec.ts) | Command-line parsing over a real Loader tree |
@@ -171,4 +167,4 @@ None.
 
 </details>
 
-The Web composition includes the account Remote controller and Account settings section.
+The shipped Web and Desktop profiles compose the separate `@deepseek-ai/dsh-asterhub-product-web` bundle after this generic Web layer; account, Anima, project-local storage, speech, model selection, and product analytics defaults are owned there.

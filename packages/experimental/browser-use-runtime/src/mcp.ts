@@ -94,7 +94,7 @@ interface ClientState {
  * Await one MCP client during each future Agent's creation.
  * A busy attachment leaves that activation without browser tools; its other turns continue.
  * Calls are serialized per Session; unload closes every server before releasing registration.
- * @param ctx - provider context supplying browser use, Agents, tools, and prompt assembly.
+ * @param ctx - provider context supplying browser use, Agents, tools, prompt assembly, and SessionCwd.
  * @param options - provider identity, attachment exclusivity, and executable configuration.
  */
 export function mountSessionMcp(ctx: Context, options: SessionMcpOptions): void {
@@ -141,13 +141,17 @@ export function mountSessionMcp(ctx: Context, options: SessionMcpOptions): void 
             }
             return next()
           })
+          const sessionCwd = agent.ctx.sessionCwd.resolve(agent.session.header)
+          if (sessionCwd === undefined || sessionCwd.length === 0) {
+            throw new Error(`${options.name}: session has no current execution directory`)
+          }
           await scope.ctx.plugin(McpClient, McpClient.Config({
             transport: 'stdio',
             serverName: options.name,
             command: options.command,
             args: options.args,
             ...options.env === undefined ? {} : { env: options.env },
-            ...agent.session.header.cwd === undefined ? {} : { cwd: agent.session.header.cwd },
+            cwd: sessionCwd,
             ...options.toolCallTimeoutMs === undefined ? {} : { toolCallTimeoutMs: options.toolCallTimeoutMs },
             failOnStartupError: true,
             reconnect: { enabled: false },

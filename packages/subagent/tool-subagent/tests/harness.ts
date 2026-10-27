@@ -18,7 +18,7 @@ export const testToolSignal = new AbortController().signal
 /** Build the minimal parent Agent owned by the package-local scripted provider. */
 export function fakeAgent(id = 'parent-1'): Agent {
   const sessionId = SessionId(id)
-  return { id: sessionId, options: {}, session: Session.create(sessionId) } as unknown as Agent
+  return { id: sessionId, ctx: new Context(), options: {}, session: Session.create(sessionId) } as unknown as Agent
 }
 
 /** Mount the real tool and service stack around one scripted subagent provider. */

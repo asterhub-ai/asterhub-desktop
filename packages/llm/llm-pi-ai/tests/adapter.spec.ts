@@ -9,7 +9,7 @@ import type {
   SaveImageAttachment,
   StoredImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
-import LlmRuntime, { createToolResultMessage, createUserMessage, CONTEXT_WINDOW_EXCEEDED_CODE, LlmError, ReasoningEffortId, userAgent } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { APP_IDENTITY, createToolResultMessage, createUserMessage, CONTEXT_WINDOW_EXCEEDED_CODE, LlmError, ReasoningEffortId, userAgent } from '@deepseek-ai/dsh-llm'
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
 import { PiAiAdapter } from '@deepseek-ai/dsh-llm-pi-ai'
 import type { PiAiAdapterOptions } from '../src/adapter.ts'
@@ -46,11 +46,16 @@ class MappedFileSystem extends Service {
   }
 }
 
-async function harness(baseURL: string, overrides: Record<string, unknown> = {}): Promise<Context> {
+async function harness(
+  baseURL: string,
+  overrides: Record<string, unknown> = {},
+  appIdentity?: { product: string; url: string },
+): Promise<Context> {
   vi.stubEnv('PI_TEST_KEY', 'test-key')
   const ctx = new Context()
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(LlmPiAi, {
+    ...(appIdentity === undefined ? {} : { appIdentity }),
     providers: { deepseek: { apiKeyEnv: 'PI_TEST_KEY', baseURL, ...overrides } },
   })
   return ctx
@@ -115,14 +120,15 @@ describe('PiAiAdapter provider routing', () => {
     expect(second.requests).toHaveLength(0)
   })
 
-  it('merges profile headers with Harness attribution winning', async () => {
+  it('sends the configured product identity on the final provider request', async () => {
     const server = await mockServer([{ events: textEvents }])
+    const identity = { product: 'asterhub', url: 'https://github.com/asterhub-ai/asterhub-desktop' }
     const ctx = await harness(server.url, {
       headers: { 'x-company': 'private', 'User-Agent': 'wrong' },
-    })
+    }, identity)
     await assemble(ctx, { model: 'deepseek-flash', messages: [] })
     expect(server.headers[0]?.['x-company']).toBe('private')
-    expect(server.headers[0]?.['user-agent']).toBe(userAgent())
+    expect(server.headers[0]?.['user-agent']).toBe(userAgent({ ...APP_IDENTITY, ...identity }))
   })
 
   it('forwards common stream options and profile reasoning', async () => {

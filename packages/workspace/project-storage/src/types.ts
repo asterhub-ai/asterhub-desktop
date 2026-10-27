@@ -50,11 +50,6 @@ export interface ProjectSessionLocation {
 }
 
 
-/** Trusted project and Session identity used to route original attachments. */
-export interface ProjectAttachmentScope {
-  readonly projectId: ProjectId
-  readonly sessionId: SessionId
-}
 /**
  * Read-only legacy history proposed for explicit project adoption.
  */

@@ -107,7 +107,7 @@ describe('dsh-tool-subagent', () => {
     const parentId = SessionId('sess-off')
     const parent = {
       id: parentId,
-      inject: () => {},
+      ctx,
       options: {},
       session: Session.create(parentId),
     } as unknown as Agent

@@ -25,7 +25,6 @@ function preparePnpm(): string {
   cpSync(packageDir, destination, { recursive: true })
   return manifest.version
 }
-
 async function main(): Promise<void> {
   const { values } = parseArgs({ options: { 'defer-primary-runtime-smoke': { type: 'boolean', default: false } } })
   const target = resolveDesktopBuildTarget()

@@ -16,7 +16,7 @@ import SubagentRuntime, {
 import type { Config as ToolConfig, ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import { defineContentToolFixture, RUN_CODE_NAME } from '@deepseek-ai/dsh-tools'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
-import { startInProcessRun } from '../src/index.ts'
+import { startInProcessRun as startInProcessRunWithCwd } from '../src/index.ts'
 import {
   STRUCTURED_OUTPUT_INSTRUCTION,
   STRUCTURED_OUTPUT_TOOL,
@@ -25,6 +25,15 @@ import {
 const testToolSignal = new AbortController().signal
 
 type Script = ConstructorParameters<typeof MockAdapter>[0]
+import type {} from '@deepseek-ai/dsh-session/cwd'
+let sessionCwdForTest: Context['sessionCwd'] | undefined
+function startInProcessRun(
+  request: Parameters<typeof startInProcessRunWithCwd>[0],
+  options: Parameters<typeof startInProcessRunWithCwd>[1],
+) {
+  if (sessionCwdForTest === undefined) throw new Error('test SessionCwd is not mounted')
+  return startInProcessRunWithCwd(request, options, sessionCwdForTest)
+}
 
 async function mountInvariants(ctx: Context): Promise<void> {
   await ctx.plugin(InvariantRegistry)
@@ -59,6 +68,7 @@ async function setup(script: Script, options: SetupOptions = {}) {
   await mountAgentLoopTestDependencies(ctx, {
     tools: { mode: options.toolMode ?? 'native' },
   })
+  sessionCwdForTest = ctx.sessionCwd
   if (options.toolMode === 'ptc' || options.toolMode === 'both') {
     ctx.provide('ptcRuntime', {
       language: 'typescript',
@@ -77,7 +87,11 @@ async function setup(script: Script, options: SetupOptions = {}) {
     start: (request: ResolvedSubagentStartRequest) => startInProcessRun(request, {}),
   })
   ctx.llm.registerAdapter(['mock'], adapter)
-  const parent = await ctx.agentLoop.create(SessionId('parent'), { provider: 'mock', model: 'mock' })
+  const parent = await ctx.agentLoop.create(
+    SessionId('parent'),
+    { provider: 'mock', model: 'mock', cwd: process.cwd() },
+    { cwd: process.cwd() },
+  )
   return { ctx, parent, adapter, disposeProvider }
 }
 
@@ -477,6 +491,7 @@ describe('in-process structured output', () => {
       textResponse('parent answer'),
       toolCallResponse('c1', STRUCTURED_OUTPUT_TOOL, { answer: 1 }),
     ])
+    ctx.systemPrompt.section({ name: 'test:identity', order: 0, text: 'You are a test assistant.' })
     parent.followup(createUserMessage({ content: [{ type: 'text', text: 'hello' }], source: { kind: 'user' } }))
     await parent.whenIdle()
     expect(requestSystem(adapter.requests[0]!)).not.toContain(STRUCTURED_OUTPUT_INSTRUCTION)
