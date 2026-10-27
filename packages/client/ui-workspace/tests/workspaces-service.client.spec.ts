@@ -646,6 +646,17 @@ describe('UiWorkspaceService', () => {
     await expect(b.uiWorkspace.connectWorkspace(wid('missing'))).rejects.toThrow('unknown workspace')
     expect(b.sessions.retain).not.toHaveBeenCalled()
   })
+  it('waits for a newly adopted workspace to appear in the snapshot before connecting', async () => {
+    const b = bench({
+      workspaces: workspaceState([workspace('a')]),
+      sessions: sessionState(),
+    })
+    const connection = b.uiWorkspace.connectWorkspace(wid('adopted'))
+    b.workspaces.list.set(workspaceState([workspace('a'), workspace('adopted')]))
+    await expect(connection).resolves.toBe(sid('created-adopted'))
+    expect(b.sessions.create).toHaveBeenCalledWith({ workspaceId: wid('adopted') })
+  })
+
 
   it('reports a refused explicit Session creation through the Workspace notice', async () => {
     const b = bench({ workspaces: workspaceState([workspace('a')]), sessions: sessionState() })

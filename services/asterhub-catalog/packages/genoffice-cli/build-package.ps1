@@ -39,6 +39,7 @@ New-Item -ItemType Directory -Path $output -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $source 'package.json') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $source 'cordis.patch.yml') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $source 'index.mjs') -Destination $stage
+Copy-Item -LiteralPath (Join-Path $source 'session-root.mjs') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $source 'UPSTREAM.md') -Destination $stage
 foreach ($file in @('LICENSE', 'NOTICE', 'LICENSE-UNICODE.txt')) {
   Copy-Item -LiteralPath (Join-Path $source $file) -Destination $stage
@@ -67,7 +68,9 @@ try {
 }
 finally { Pop-Location }
 
-Get-ChildItem -LiteralPath $output -Filter 'asterhub-genoffice-cli-0.11.0-asterhub.1.tgz' | Select-Object FullName,Length
+$manifest = Get-Content -LiteralPath (Join-Path $stage 'package.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$archiveName = "$($manifest.name.TrimStart('@').Replace('/', '-'))-$($manifest.version).tgz"
+Get-Item -LiteralPath (Join-Path $output $archiveName) | Select-Object FullName,Length
 }
 finally {
   if (Test-Path -LiteralPath $stageFullPath) { Remove-Item -LiteralPath $stageFullPath -Recurse -Force }

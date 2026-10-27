@@ -10,11 +10,15 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { TOOL_ABORTED_BEFORE_DISPATCH } from '@deepseek-ai/dsh-tools'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import * as FsPolicy from '@deepseek-ai/dsh-fs-observation-policy'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
+import { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
+import { createTestAgent } from './agent-fixture.ts'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 
 const testToolSignal = new AbortController().signal
@@ -22,17 +26,39 @@ const testToolSignal = new AbortController().signal
 let dir: string
 let ctx: Context
 let fiber: Awaited<ReturnType<Context['plugin']>>
-// No header cwd: sessionCwd returns undefined and the provider's configured test dir applies.
-const session = { header: {} }
+let trustedRoot: string | undefined
+let session: Session
+let owner: Agent
+let sessionCounter = 0
+const agents = new WeakMap<Session, Agent>()
+
+function createSession(cwd: string): Session {
+  const id = SessionId(`tool-fs-integration-${++sessionCounter}`)
+  return Session.create(id, [], { version: SESSION_FORMAT_VERSION, id, createdAt: 0, cwd, isSeeded: false })
+}
+
+function agentFor(session: Session): Agent {
+  const existing = agents.get(session)
+  if (existing !== undefined) return existing
+  const agent = createTestAgent(ctx, session)
+  agents.set(session, agent)
+  return agent
+}
 
 let callCounter = 0
+async function installSessionCwd(root: string) {
+  trustedRoot = root
+  await ctx.plugin(SessionCwd)
+  ctx.sessionCwd.registerResolver(() => trustedRoot)
+}
+
 function call(name: string, args: unknown) {
   return ctx.tools.execute({
     signal: testToolSignal,
     callId: ToolCallId(`call-${++callCounter}`),
     name,
     arguments: args,
-    agent: { session } as never,
+    agent: owner,
   })
 }
 
@@ -59,6 +85,9 @@ describe('default deployment (with dsh-fs-observation-policy)', () => {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(LocalFileSystem, { cwd: dir })
+    await installSessionCwd(dir)
+    session = createSession(dir)
+    owner = agentFor(session)
     await ctx.plugin(FsPolicy)
     fiber = await ctx.plugin(ToolFs)
   })
@@ -317,6 +346,9 @@ describe('bare provider (no dsh-fs-observation-policy)', () => {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(LocalFileSystem, { cwd: dir })
+    await installSessionCwd(dir)
+    session = createSession(dir)
+    owner = agentFor(session)
     fiber = await ctx.plugin(ToolFs)
   })
 
@@ -373,9 +405,8 @@ describe('bare provider (no dsh-fs-observation-policy)', () => {
   })
 })
 
-// Per-session cwd: a relative file_path resolves against the calling session's workspace
-// (`exec.agent.session.header.cwd`), not the backend's config.cwd, so the
-// caller-selected session workspace wins, matching dsh-tool-bash.
+// Per-session cwd: relative paths resolve through the current trusted execution root, not a
+// historical Session header or the filesystem backend's configured startup cwd.
 describe('per-session cwd', () => {
   let sessionDir: string
   beforeEach(async () => {
@@ -385,22 +416,25 @@ describe('per-session cwd', () => {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(LocalFileSystem, { cwd: dir }) // config.cwd = dir, NOT sessionDir
+    await installSessionCwd(sessionDir)
+    session = createSession(sessionDir)
+    owner = agentFor(session)
     await ctx.plugin(FsPolicy)
     fiber = await ctx.plugin(ToolFs)
   })
   afterEach(async () => { await rm(sessionDir, { recursive: true, force: true }) })
 
-  const callIn = (sessionObj: object, name: string, args: unknown) =>
+  const callIn = (sessionObj: Session, name: string, args: unknown) =>
     ctx.tools.execute({
       signal: testToolSignal,
       callId: ToolCallId(`call-${++callCounter}`),
       name,
       arguments: args,
-      agent: { session: sessionObj } as never,
+      agent: agentFor(sessionObj),
     })
 
   it('writes a relative path into the SESSION cwd, not config.cwd', async () => {
-    const result = await callIn({ header: { cwd: sessionDir } }, 'write', { file_path: 'note.txt', content: 'hi' })
+    const result = await callIn(createSession(sessionDir), 'write', { file_path: 'note.txt', content: 'hi' })
     expect(result.isError).toBe(false)
     // Verify the WORLD: the file is in the session dir, and NOT in config.cwd.
     expect(await readFile(join(sessionDir, 'note.txt'), 'utf8')).toBe('hi')
@@ -410,12 +444,32 @@ describe('per-session cwd', () => {
   it('read + edit both resolve against the session cwd (end-to-end)', async () => {
     // ONE session object across both calls — observed-state keys by owner
     // identity, so read must record under the same owner the edit reads.
-    const session = { header: { cwd: sessionDir } }
+    const session = createSession(sessionDir)
     await writeFile(join(sessionDir, 'code.txt'), 'alpha')
     expect((await callIn(session, 'read', { file_path: 'code.txt' })).isError).toBe(false)
     const edited = await callIn(session, 'edit', { file_path: 'code.txt', old_string: 'alpha', new_string: 'beta' })
     expect(edited.isError).toBe(false)
     expect(await readFile(join(sessionDir, 'code.txt'), 'utf8')).toBe('beta')
+  })
+  it('writes against the live root after relocation and refuses an unavailable provider', async () => {
+    const moved = await mkdtemp(join(tmpdir(), 'dsh-tool-fs-moved-'))
+    try {
+      const historicalHeader = createSession(sessionDir)
+      trustedRoot = moved
+      expect((await callIn(historicalHeader, 'write', { file_path: 'moved.txt', content: 'new root' })).isError).toBe(false)
+      expect(await readFile(join(moved, 'moved.txt'), 'utf8')).toBe('new root')
+      await expect(readFile(join(sessionDir, 'moved.txt'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+
+      await rm(sessionDir, { recursive: true, force: true })
+      expect((await callIn(historicalHeader, 'write', { file_path: 'after-old-root-removal.txt', content: 'still moved' })).isError).toBe(false)
+      expect(await readFile(join(moved, 'after-old-root-removal.txt'), 'utf8')).toBe('still moved')
+
+      trustedRoot = undefined
+      expect((await callIn(historicalHeader, 'write', { file_path: 'must-not-fallback.txt', content: 'no' })).isError).toBe(true)
+      await expect(readFile(join(moved, 'must-not-fallback.txt'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    } finally {
+      await rm(moved, { recursive: true, force: true })
+    }
   })
 })
 
@@ -430,15 +484,17 @@ describe('signal, concurrency, and the fs/observed contract', () => {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(LocalFileSystem, { cwd: dir })
+    await installSessionCwd(dir)
+    session = createSession(dir)
+    owner = agentFor(session)
     await ctx.plugin(FsPolicy)
     fiber = await ctx.plugin(ToolFs)
   })
 
-  const session = { header: {} }
   const callSig = (signal: AbortSignal, name: string, args: unknown) =>
-    ctx.tools.execute({ callId: ToolCallId(`c-${++callCounter}`), name, arguments: args, agent: { session } as never, signal })
+    ctx.tools.execute({ callId: ToolCallId(`c-${++callCounter}`), name, arguments: args, agent: owner, signal })
   const callOwned = (name: string, args: unknown) =>
-    ctx.tools.execute({ signal: testToolSignal, callId: ToolCallId(`c-${++callCounter}`), name, arguments: args, agent: { session } as never })
+    ctx.tools.execute({ signal: testToolSignal, callId: ToolCallId(`c-${++callCounter}`), name, arguments: args, agent: owner })
 
   it('a pre-aborted registry call skips read/write/edit with ABORTED_BEFORE_DISPATCH', async () => {
     await writeFile(join(dir, 'a.txt'), 'hello')
@@ -492,7 +548,7 @@ describe('signal, concurrency, and the fs/observed contract', () => {
     expect((await callOwned('read', { file_path: 'a.txt' })).isError).toBe(false)
 
     // Reproduce an older concurrent read winning the observation race.
-    ctx.emit('fs/observed', target, { kind: 'present', version: firstInfo.version }, { agent: { session } })
+    ctx.emit('fs/observed', target, { kind: 'present', version: firstInfo.version }, { agent: owner })
 
     const edit = await callOwned('edit', {
       file_path: 'a.txt',

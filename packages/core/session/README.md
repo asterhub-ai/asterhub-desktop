@@ -37,6 +37,10 @@ ctx.sessions.get(sessionId)      // the live session
 ctx.sessions.list()              // every live session, in creation order
 ```
 
+### Resolve the current execution directory
+
+`@deepseek-ai/dsh-session/cwd` provides `ctx.sessionCwd`, a narrow capability for resolving the trusted current execution directory from an immutable Session header. Before a project resolver binds, it returns the historical `header.cwd`; after binding, the provider's result (including `undefined` or an error) is authoritative. The active provider registers once and owns an idempotent disposer; after removal the capability fails closed until another provider registers. ProjectStorage owns its resolver, so consumers do not depend on Workspace indexing.
+
 ### Append and derive
 
 `session.append(type, data, opts?)` commits one typed event — it snapshots and freezes the payload, validates it as lossless JSON, and notifies observers. `session.deriveMessages()` projects the log into the `Message[]` the model sees, incrementally and cached:
@@ -96,6 +100,7 @@ The package is built on event sourcing: a `Session` is an append-only log of typ
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Plugin entry: `SessionStore` service, store lifecycle, `fork`, `flush` |
+| [`src/cwd.ts`](src/cwd.ts) | Execution-directory service bundled as the `@deepseek-ai/dsh-session/cwd` plugin entry |
 | [`src/types.ts`](src/types.ts) | `SessionEventMap`, `SessionEvent`, `UserMessage`, `SessionHeader`, `TurnEndReasonMap` |
 | [`src/surface.ts`](src/surface.ts) | Ordered surface projection, replacement validation, `deriveEventMessage` |
 | [`src/request-header.ts`](src/request-header.ts) | `request/header` folding and reconstruction |

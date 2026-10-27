@@ -3,9 +3,25 @@
  */
 
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
+import type { AutomationRun } from '@deepseek-ai/dsh-asterhub-automation/client'
 
 /** Toast kind. */
-export type ToastKind = 'created' | 'updated' | 'deleted' | 'paused' | 'resumed' | 'runStarted' | 'stopped' | 'error' | 'conflict'
+export type ToastKind = 'created' | 'updated' | 'deleted' | 'paused' | 'resumed' | 'runStarted' | 'runSucceeded' | 'stopped' | 'error' | 'conflict'
+
+/**
+ * Map a run state transition to its notification kind.
+ * @param state - the run state the catalog snapshot settled on.
+ * @returns the toast kind announcing that state, or null when the state is
+ * not user-visible progress (reserved, running, stopping, terminal cleanup).
+ */
+export function runStateToastKind(state: AutomationRun['state']): ToastKind | null {
+  switch (state) {
+    case 'succeeded': return 'runSucceeded'
+    case 'failed': return 'error'
+    case 'waiting-approval': return 'runStarted'
+    default: return null
+  }
+}
 
 /** One toast entry. */
 export interface ToastEntry {

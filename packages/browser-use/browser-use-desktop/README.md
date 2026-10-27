@@ -58,10 +58,11 @@ The plugin injects `browserUse`, `tools`, `agents`, `desktopBrowserTransport`, a
 
 The provider serializes operations per live Session through an in-memory queue. It derives trusted caller identities from the calling Agent and Host metadata, never accepting caller or Session identities from model arguments. Renderer tab commands expire after 15 seconds without a reply; cancellation, window teardown, and send failures remove their pending entries and timers, so a stale renderer cannot leave a request waiting indefinitely.
 
+Tab discovery (`tabs.list`) intersects reported Sidebar tabs with live Main-process Session guests, filtering out uncommitted guests (such as initial `about:blank#leaseId` states) to strictly enforce the public HTTP(S) URL wire protocol contract and prevent invalid IPC reply results. Tab open requests (`tabs.open`) cleanly delineate failure stages (URL validation, view retention, store adoption, and navigation failure descriptions) instead of collapsing all underlying errors into a generic failure message.
+
 When capturing screenshots, the tool verifies model image capability before requesting pixels. Stored screenshot bytes are committed through `ctx.attachments.saveImage()` under the caller Agent's Session scope when ProjectStorage is mounted.
 
 Text outputs are capped by `snapshotMaxChars` and `readResultMaxChars` within the 1,000,000-character transport ceiling, explicitly reporting truncation when truncated.
-
 </details>
 
 -----

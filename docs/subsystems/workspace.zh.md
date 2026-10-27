@@ -783,6 +783,13 @@ Durable workspace registry. Startup waits for `sessionPersistence`, builds one c
 async create(path: string, title?: string): Promise<Workspace>
 
 /**
+ * Attach stored Sessions whose authoritative project location matches an opened Workspace.
+ * @param path - Existing Workspace directory.
+ * @returns completion after the Session membership records are durable.
+ */
+async reconcileProjectSessions(path: string): Promise<void>
+
+/**
  * Initialize the default Workspace only while both the registry and Session
  * history are empty. Repeated requests reuse its durable identity; deleting
  * that registration permanently disables automatic creation.

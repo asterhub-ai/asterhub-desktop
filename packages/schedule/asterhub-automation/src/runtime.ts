@@ -31,11 +31,13 @@ export function reserveAutomationRun(
     || task.deletedAt !== null
     || (trigger !== 'manual' && !task.enabled)) throw new Error('automation: task cannot be reserved')
   if (task.consentRevision !== task.authorizationRevision) throw new Error('automation: task needs confirmation')
+  // Bound tasks dispatch into their authoring conversation; unbound tasks
+  // (GUI-created) mint a fresh independent Session identity per occurrence.
   const run: AutomationRun = {
     id: brandString<AutomationRunId>(`run-${randomUUID()}`), taskId: task.id, trigger,
     scheduledAt: trigger === 'manual' ? null : occurrenceAt, requestedAt: new Date(now).toISOString(), requestId,
     definitionRevision: task.revision, snapshot: task.definition,
-    sessionId: brandString<SessionId>(`automation-${randomUUID()}`), sessionCreated: false,
+    sessionId: task.originSessionId ?? brandString<SessionId>(`automation-${randomUUID()}`), sessionCreated: false,
     state: 'reserved', startedAt: null, finishedAt: null, reason: null, ownerRuntimeId: runtimeId,
     inputMessageId: null, startLogOffset: null, endLogOffset: null, terminalTurn: null, interactionIds: [], humanIntervened: false,
   }

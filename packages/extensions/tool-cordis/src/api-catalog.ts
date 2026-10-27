@@ -133,7 +133,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: '@Remote async login(input: AccountLoginInput): Promise<AccountStatus>',
         description: 'Sign in and bind one reusable model key to this account.',
         parameters: [{ name: 'input', description: 'account credentials and local sign-in preferences.' }],
-        returns: 'current account state after credentials are stored.',
+        returns: 'current account state after the credential transition completes; environment-supplied references are skipped, not stored.',
       },
       {
         signature: '@Remote async logout(): Promise<void>',
@@ -628,20 +628,20 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       {
         signature: 'async saveImages(inputs: readonly SaveImageAttachment[], scope?: AttachmentScope): Promise<readonly ImageAttachmentRef[]>',
         description: 'Validate and durably commit one ordered image batch.',
-        parameters: [{ name: 'inputs', description: 'encoded images in owning-message order.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
+        parameters: [{ name: 'inputs', description: 'encoded images in owning-message order.' }, { name: 'scope', description: 'trusted Session address; required in project-local mode and whenever ProjectStorage is mounted, with ownership resolved by the provider.' }],
         returns: 'durable normalized attachment references in the same order after every member succeeds.',
       },
       {
         signature: 'async admitPromptContent( content: readonly AttachmentAdmissionPart[], scope?: AttachmentScope, ): Promise<AdmittedPromptContentPart[]>',
         description: 'Admit one Host prompt and replace each uploaded image with its durable reference. Text and durable file references pass through unchanged. A prompt without image parts performs no storage operation.',
-        parameters: [{ name: 'content', description: 'prompt parts in message order after file receipt resolution.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
+        parameters: [{ name: 'content', description: 'prompt parts in message order after file receipt resolution.' }, { name: 'scope', description: 'trusted Session address; required in project-local mode and whenever ProjectStorage is mounted, with ownership resolved by the provider.' }],
         returns: 'admitted prompt parts in the same order as `content`.',
         throws: ['AttachmentError when the image batch is refused.'],
       },
       {
         signature: 'admitEncodedFile(input: EncodedFileAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef>',
         description: 'Decode and durably commit one canonical base64 file upload.',
-        parameters: [{ name: 'input', description: 'canonical base64 bytes and optional display name.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
+        parameters: [{ name: 'input', description: 'canonical base64 bytes and optional display name.' }, { name: 'scope', description: 'trusted Session address; required in project-local mode and whenever ProjectStorage is mounted, with ownership resolved by the provider.' }],
         returns: 'the durable content-addressed file reference.',
         throws: ['AttachmentError when the encoding or storage operation is refused.'],
       },
@@ -654,52 +654,52 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       {
         signature: 'abstract saveImage(input: SaveImageAttachment, scope?: AttachmentScope): Promise<ImageAttachmentRef>',
         description: 'Validate and durably commit one image before its owning session event is appended. The returned reference describes the persisted normalized image. When normalization reduces the raster, its `originalDimensions` records the orientation-applied input dimensions.',
-        parameters: [{ name: 'input', description: 'encoded bytes, declared media type, and optional display name.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
+        parameters: [{ name: 'input', description: 'encoded bytes, declared media type, and optional display name.' }, { name: 'scope', description: 'trusted Session address; required in project-local mode and whenever ProjectStorage is mounted, with ownership resolved by the provider.' }],
         returns: 'the durable content-addressed normalized image reference.',
       },
       {
         signature: 'abstract readImage(ref: ImageAttachmentRef, signal?: AbortSignal, scope?: AttachmentScope): Promise<StoredImageAttachment>',
         description: 'Read one image and verify that bytes still match the recorded reference.',
-        parameters: [{ name: 'ref', description: 'durable reference from the session log.' }, { name: 'signal', description: 'optional cancellation for backend read and verification work.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
+        parameters: [{ name: 'ref', description: 'durable reference from the session log.' }, { name: 'signal', description: 'optional cancellation for backend read and verification work.' }, { name: 'scope', description: 'trusted Session address; required in project-local mode and whenever ProjectStorage is mounted, with ownership resolved by the provider.' }],
         returns: 'the verified bytes and normalized attachment reference.',
         throws: ['the signal reason when aborted, or a storage error when verification fails.'],
       },
       {
         signature: 'imageHostPath(ref: ImageAttachmentRef, scope?: AttachmentScope): string | undefined',
         description: 'Locate the provider-owned normalized object in the harness host filesystem.',
-        parameters: [{ name: 'ref', description: 'durable normalized attachment reference.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
+        parameters: [{ name: 'ref', description: 'durable normalized attachment reference.' }, { name: 'scope', description: 'trusted Session address; required in project-local mode and whenever ProjectStorage is mounted, with ownership resolved by the provider.' }],
         returns: 'an absolute host path, or undefined when this backend is not host-file-backed.',
         throws: ['an AttachmentError when the durable reference or scope is invalid.'],
       },
       {
         signature: 'saveFile(input: SaveFileAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef>',
         description: 'Durably commit one file byte-for-byte before its owning session event is appended. Files carry no admission limits: any byte content and length is accepted, and the stored object is the exact submitted bytes. Backends without verbatim file storage keep this default rejection.',
-        parameters: [{ name: 'input', description: 'exact bytes and optional display name.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
+        parameters: [{ name: 'input', description: 'exact bytes and optional display name.' }, { name: 'scope', description: 'trusted Session address; required in project-local mode and whenever ProjectStorage is mounted, with ownership resolved by the provider.' }],
         returns: 'the durable content-addressed file reference.',
       },
       {
         signature: 'saveFileStream(input: SaveFileStreamAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef>',
         description: 'Durably commit one file byte-for-byte from bounded chunks. Providers must apply backpressure and must not collect the complete file in memory. Backends without streamed verbatim storage keep this default rejection.',
-        parameters: [{ name: 'input', description: 'ordered exact bytes, optional cancellation, and display name.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
+        parameters: [{ name: 'input', description: 'ordered exact bytes, optional cancellation, and display name.' }, { name: 'scope', description: 'trusted Session address; required in project-local mode and whenever ProjectStorage is mounted, with ownership resolved by the provider.' }],
         returns: 'the durable content-addressed file reference.',
       },
       {
         signature: 'async *readFileStream( ref: FileAttachmentRef, signal?: AbortSignal, scope?: AttachmentScope, ): AsyncIterable<Uint8Array>',
         description: 'Read and verify one verbatim stored file as bounded chunks. Providers must not collect the complete file in memory. Backends without verbatim file reads keep this default rejection.',
-        parameters: [{ name: 'ref', description: 'durable reference from the session log.' }, { name: 'signal', description: 'optional cancellation for backend reads and verification work.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
+        parameters: [{ name: 'ref', description: 'durable reference from the session log.' }, { name: 'signal', description: 'optional cancellation for backend reads and verification work.' }, { name: 'scope', description: 'trusted Session address; required in project-local mode and whenever ProjectStorage is mounted, with ownership resolved by the provider.' }],
         returns: 'exact file bytes in order; integrity failures reject the iteration.',
       },
       {
         signature: 'fileHostPath(ref: FileAttachmentRef, scope?: AttachmentScope): string | undefined',
         description: 'Resolve an original file attachment to a host-local path when the backend supports it.',
-        parameters: [{ name: 'ref', description: 'durable file reference.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
+        parameters: [{ name: 'ref', description: 'durable file reference.' }, { name: 'scope', description: 'trusted Session address; required in project-local mode and whenever ProjectStorage is mounted, with ownership resolved by the provider.' }],
         returns: 'an absolute host path, or undefined when this backend is not host-file-backed.',
         throws: ['an AttachmentError when the durable reference or scope is invalid.'],
       },
       {
         signature: 'readImageRequest( ref: ImageAttachmentRef, target: ImageRequestTarget, signal?: AbortSignal, scope?: AttachmentScope, ): Promise<RequestImageAttachment>',
         description: 'Generate or read one deterministic model-request version from the stored normalized image.',
-        parameters: [{ name: 'ref', description: 'durable provider-independent normalized attachment reference.' }, { name: 'target', description: 'route-chosen dimensions and byte target; an unmet byte target yields the smallest ladder output.' }, { name: 'signal', description: 'optional cancellation.' }, { name: 'scope', description: 'trusted project Session scope; required by project-local providers.' }],
+        parameters: [{ name: 'ref', description: 'durable provider-independent normalized attachment reference.' }, { name: 'target', description: 'route-chosen dimensions and byte target; an unmet byte target yields the smallest ladder output.' }, { name: 'signal', description: 'optional cancellation.' }, { name: 'scope', description: 'trusted Session address; required in project-local mode and whenever ProjectStorage is mounted, with ownership resolved by the provider.' }],
         returns: 'request bytes and the cache/upload identity covering every transform input.',
       },
     ],
@@ -2189,7 +2189,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   {
     key: 'sandboxPolicy',
     summary: 'The sandbox-policy service (`ctx.sandboxPolicy`).',
-    description: 'The sandbox-policy service (`ctx.sandboxPolicy`). Owns the deployment default mode, fallback workspace root, and current request-time policy section. Tool layers call resolve for each execution so a session\'s mode log and immutable cwd travel together to every enforcing capability.',
+    description: 'The sandbox-policy service (`ctx.sandboxPolicy`). Owns the deployment default mode, fallback workspace root, and current request-time policy section. Tool layers call resolve for each execution so a session\'s mode log and SessionCwd-resolved execution cwd travel together to every enforcing capability.',
     methods: [
       {
         signature: 'readonly defaultMode: SandboxMode',
@@ -2198,12 +2198,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'readonly workspaceRoot: string',
-        description: 'The absolute `workspace-write` fallback root for calls without a session cwd.',
+        description: 'The absolute `workspace-write` fallback root for agentless calls.',
         parameters: [],
       },
       {
         signature: 'resolve(request: SandboxPolicyRequest = {}): SandboxExecutionPolicy',
-        description: 'Resolve the complete policy for one capability call. An approved explicit mode outranks the session\'s last `sandbox/mode` event, which outranks the deployment default. A session cwd is its workspace-write boundary; the configured root is the fallback for agentless calls and sessions without a cwd.',
+        description: 'Resolve the complete policy for one capability call. An approved explicit mode outranks the session\'s last `sandbox/mode` event, which outranks the deployment default. A session uses the authoritative cwd resolved by `ctx.sessionCwd`; an undefined result or removed provider is an error, not a reason to use the configured workspace root. Agentless calls use that configured root.',
         parameters: [{ name: 'request', description: 'optional session and approved mode override.' }],
         returns: 'the fully resolved per-call mode and absolute workspace root.',
       },
@@ -2404,6 +2404,25 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Stream a complete live-control baseline followed by replacement frames.',
         parameters: [{ name: 'signal', description: 'cancellation owned by the Remote stream carrier.' }],
         returns: 'one complete baseline followed by live replacement frames.',
+      },
+    ],
+  },
+  {
+    key: 'sessionCwd',
+    summary: 'Resolves the trusted, current execution directory for an immutable Session header.',
+    description: 'Resolves the trusted, current execution directory for an immutable Session header.',
+    methods: [
+      {
+        signature: 'resolve(header: SessionHeader): string | undefined',
+        description: 'Resolve the current directory; a registered provider\'s absence or error is authoritative. After provider disposal, resolution fails until another provider registers.',
+        parameters: [{ name: 'header', description: 'Immutable Session header identifying the execution resource.' }],
+        returns: 'The provider\'s directory, or the historical cwd before any provider registers.',
+      },
+      {
+        signature: 'registerResolver(resolver: (header: SessionHeader) => string | undefined): () => void',
+        description: 'Register the single authoritative resolver; its disposer cannot clear a later provider.',
+        parameters: [{ name: 'resolver', description: 'Directory lookup owned by the current persistence composition.' }],
+        returns: 'An idempotent disposer that removes only this registration.',
       },
     ],
   },
@@ -2696,8 +2715,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     methods: [
       {
         signature: 'async listCandidates( agent: Agent, query: string = \'\', limit: number = this.config.candidateLimit, signal?: AbortSignal, ): Promise<SessionReferenceCandidate[]>',
-        description: 'List reference candidates, ranked by working-directory affinity.\n\nDiscovery runs at keystroke rate, so titles and subagent labels only ever come from projection reads; sessions without either fall back to their id.',
-        parameters: [{ name: 'agent', description: 'target agent; self is excluded and its cwd drives ranking.' }, { name: 'query', description: 'optional case-insensitive session-id/cwd/title/display-title substring.' }, { name: 'limit', description: 'optional positive result cap.' }, { name: 'signal', description: 'optional cancellation boundary for host autocomplete teardown.' }],
+        description: 'List reference candidates ranked by current execution-directory affinity.\n\nDiscovery runs at keystroke rate, so titles and subagent labels only ever come from projection reads; sessions without either fall back to their id. Candidate cwd metadata remains historical, while workspace affinity uses each Session\'s current execution directory.',
+        parameters: [{ name: 'agent', description: 'target agent; self is excluded and its current cwd drives ranking.' }, { name: 'query', description: 'optional case-insensitive session-id/cwd/title/display-title substring.' }, { name: 'limit', description: 'optional positive result cap.' }, { name: 'signal', description: 'optional cancellation boundary for host autocomplete teardown.' }],
         returns: 'candidates with canonical mention labels and presentation titles.',
       },
       {
@@ -2782,8 +2801,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   },
   {
     key: 'sessionSkillCatalog',
-    summary: 'Host service backing `ctx.remote.skills` without activating a cold Agent.',
-    description: 'Host service backing `ctx.remote.skills` without activating a cold Agent.',
+    summary: 'Host service backing `ctx.remote.skills`; cold catalog discovery resolves the Session\'s current execution root.',
+    description: 'Host service backing `ctx.remote.skills`; cold catalog discovery resolves the Session\'s current execution root.',
     methods: [
       {
         signature: '@Remote async list(request: SkillListRequest, signal: AbortSignal): Promise<SkillListValue>',
@@ -4079,6 +4098,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the existing or newly durable workspace.',
       },
       {
+        signature: 'async reconcileProjectSessions(path: string): Promise<void>',
+        description: 'Attach stored Sessions whose authoritative project location matches an opened Workspace.',
+        parameters: [{ name: 'path', description: 'Existing Workspace directory.' }],
+        returns: 'completion after the Session membership records are durable.',
+      },
+      {
         signature: 'initializeDefault(resolveDirectory: () => Promise<string>): Promise<Workspace | undefined>',
         description: 'Initialize the default Workspace only while both the registry and Session history are empty. Repeated requests reuse its durable identity; deleting that registration permanently disables automatic creation.',
         parameters: [{ name: 'resolveDirectory', description: 'resolve the absolute directory; called only for eligible creation, inside the registry mutation queue. Missing directories are created recursively before registration, and the initial title is the requested directory\'s own final segment — not the canonical one, so a symlink at that path does not retitle the Workspace after its target. After resolution, caller cancellation does not roll back creation or registration.' }],
@@ -4916,7 +4941,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AccountStatus',
-    declaration: 'export interface AccountStatus {\n    readonly loggedIn: boolean;\n    readonly keyBound: boolean;\n    readonly user?: AccountUser;\n    readonly balance?: number;\n    readonly rememberedUsername?: string;\n    readonly autoLogin?: boolean;\n}',
+    declaration: 'export interface AccountStatus {\n    readonly loggedIn: boolean;\n    readonly keyBound: boolean;\n    readonly user?: AccountUser;\n    readonly balance?: number;\n    readonly rememberedUsername?: string;\n    readonly autoLogin?: boolean;\n    readonly credentialsFromEnv?: boolean;\n}',
   },
   {
     name: 'AccountUsageSnapshot',
@@ -4968,7 +4993,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AgentOptions',
-    declaration: 'export interface AgentOptions {\n    provider?: string;\n    model?: string;\n    reasoningEffort?: ReasoningEffortId;\n    maxTokens?: number;\n}',
+    declaration: 'export interface AgentOptions {\n    provider?: string;\n    model?: string;\n    cwd?: string;\n    reasoningEffort?: ReasoningEffortId;\n    maxTokens?: number;\n}',
   },
   {
     name: 'AgentPresetComposition',
@@ -5124,7 +5149,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AttachmentScope',
-    declaration: 'export interface AttachmentScope {\n    readonly projectId: string;\n    readonly sessionId: Branded<\'SessionId\'>;\n}',
+    declaration: 'export interface AttachmentScope {\n    readonly sessionId: Branded<\'SessionId\'>;\n}',
   },
   {
     name: 'AuthorizationEntry',
@@ -5212,7 +5237,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AutomationOperation',
-    declaration: 'export type AutomationOperation = {\n    readonly action: \'create\';\n    readonly draft: AutomationDraft;\n} | {\n    readonly action: \'update\';\n    readonly id: AutomationTaskId;\n    readonly expectedRevision: number;\n    readonly draft: AutomationDraft;\n} | {\n    readonly action: \'pause\' | \'resume\' | \'remove\' | \'purgeDeleted\';\n    readonly id: AutomationTaskId;\n    readonly expectedRevision: number;\n} | {\n    readonly action: \'run\';\n    readonly id: AutomationTaskId;\n    readonly expectedRevision: number;\n} | {\n    readonly action: \'stop\';\n    readonly id: AutomationTaskId;\n    readonly runId: AutomationRunId;\n};',
+    declaration: 'export type AutomationOperation = {\n    readonly action: \'create\';\n    readonly draft: AutomationDraft;\n    readonly originSessionId?: SessionId;\n} | {\n    readonly action: \'update\';\n    readonly id: AutomationTaskId;\n    readonly expectedRevision: number;\n    readonly draft: AutomationDraft;\n} | {\n    readonly action: \'pause\' | \'resume\' | \'remove\' | \'purgeDeleted\';\n    readonly id: AutomationTaskId;\n    readonly expectedRevision: number;\n} | {\n    readonly action: \'run\';\n    readonly id: AutomationTaskId;\n    readonly expectedRevision: number;\n} | {\n    readonly action: \'stop\';\n    readonly id: AutomationTaskId;\n    readonly runId: AutomationRunId;\n};',
   },
   {
     name: 'AutomationPreparedOperation',
@@ -5256,7 +5281,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AutomationTask',
-    declaration: 'export interface AutomationTask {\n    readonly id: AutomationTaskId;\n    readonly ownerAccountId: string;\n    readonly revision: number;\n    readonly recordVersion: number;\n    readonly authorizationRevision: number;\n    readonly consentRevision: number;\n    readonly ruleRevision: number;\n    readonly definition: AutomationSnapshot;\n    readonly enabled: boolean;\n    readonly deletedAt: string | null;\n    readonly nextOccurrenceAt: string | null;\n    readonly occurrenceWatermark: {\n        readonly ruleRevision: number;\n        readonly at: string;\n    } | null;\n    readonly pendingOccurrence: {\n        readonly at: string;\n        readonly from: string;\n        readonly ruleRevision: number;\n    } | null;\n    readonly activeRunId: AutomationRunId | null;\n    readonly runs: readonly AutomationRun[];\n    readonly requestReceipts: readonly AutomationReceipt[];\n    readonly creationRequest: {\n        readonly requestId: string;\n        readonly digest: string;\n    };\n    readonly historyPruned: boolean;\n    readonly skippedRange: {\n        readonly from: string;\n        readonly through: string;\n        readonly reason: string;\n    } | null;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
+    declaration: 'export interface AutomationTask {\n    readonly id: AutomationTaskId;\n    readonly ownerAccountId: string;\n    readonly originSessionId?: SessionId | undefined;\n    readonly revision: number;\n    readonly recordVersion: number;\n    readonly authorizationRevision: number;\n    readonly consentRevision: number;\n    readonly ruleRevision: number;\n    readonly definition: AutomationSnapshot;\n    readonly enabled: boolean;\n    readonly deletedAt: string | null;\n    readonly nextOccurrenceAt: string | null;\n    readonly occurrenceWatermark: {\n        readonly ruleRevision: number;\n        readonly at: string;\n    } | null;\n    readonly pendingOccurrence: {\n        readonly at: string;\n        readonly from: string;\n        readonly ruleRevision: number;\n    } | null;\n    readonly activeRunId: AutomationRunId | null;\n    readonly runs: readonly AutomationRun[];\n    readonly requestReceipts: readonly AutomationReceipt[];\n    readonly creationRequest: {\n        readonly requestId: string;\n        readonly digest: string;\n    };\n    readonly historyPruned: boolean;\n    readonly skippedRange: {\n        readonly from: string;\n        readonly through: string;\n        readonly reason: string;\n    } | null;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
   },
   {
     name: 'AutomationTaskId',

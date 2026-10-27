@@ -67,7 +67,7 @@ function resultValue(value: unknown): {
 export function registerAutomationTools(rootCtx: Context, toolCtx: Context, agent: Agent): () => void {
   return toolCtx.tools.register(defineTool({
     name: 'automation_manage',
-    description: 'Manage native scheduled tasks in AsterHub. Use a complete, self-contained instruction, registered workspace and current-account model. Creation and execution changes wait for an explicit human confirmation; never supply a confirmation flag or ticket. Every run creates a fresh conversation while the application remains running, consumes model credits, and retains ordinary sensitive-operation approvals.',
+    description: 'Manage native scheduled tasks in AsterHub. Use a complete, self-contained instruction, registered workspace and current-account model. Creation and execution changes wait for an explicit human confirmation; never supply a confirmation flag or ticket. A task created here is bound to this conversation: each run resumes this conversation and appends its turn here, and one conversation can bind at most one task. Tasks created in the desktop form instead run in fresh independent conversations. Every run requires the application to remain running, consumes model credits, and retains ordinary sensitive-operation approvals.',
     parameters: {
       operation: {
         required: true,
@@ -103,7 +103,12 @@ export function registerAutomationTools(rootCtx: Context, toolCtx: Context, agen
         if (action === 'create' || action === 'preview' || action === 'update') {
           const draft: AutomationDraft = { ...request.draft, workspaceId: brandString<WorkspaceId>(request.draft.workspaceId) }
           if (action === 'preview') return resultValue({ action, success: true, preview: await rootCtx.asterhubAutomation.preview(draft) })
-          operation = action === 'create' ? { action, draft } : { action, draft, id: brandString<AutomationTaskId>(request.id), expectedRevision: request.expectedRevision }
+          // Tool-created tasks bind the authoring conversation; the agent guard
+          // above already rejected scheduled-run scopes, so this session id is
+          // always an interactive root conversation.
+          operation = action === 'create'
+            ? { action, draft, originSessionId: agent.session.id }
+            : { action, draft, id: brandString<AutomationTaskId>(request.id), expectedRevision: request.expectedRevision }
         } else if (action === 'stop') {
           operation = { action, id: brandString<AutomationTaskId>(request.id), runId: brandString<AutomationRunId>(request.runId) }
         } else {

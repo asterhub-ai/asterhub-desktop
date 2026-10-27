@@ -76,15 +76,22 @@ export function apply(ctx: ClientContext): void {
   }, DeveloperToolsRow))
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-settings-general: dictionaries')
   const connection = ctx.get('connection') as ConnectionHandle
-  const carrier = (globalThis as typeof globalThis & { dshDesktop?: { protocolVersion: number; updates?: DesktopUpdateBridge } }).dshDesktop
+  const carrier = (globalThis as typeof globalThis & {
+    dshDesktop?: { protocolVersion: number; installedVersion?: string; updates?: DesktopUpdateBridge }
+  }).dshDesktop
   const desktopBridge = carrier?.protocolVersion === 1 ? carrier.updates : undefined
+  const installedVersion = carrier?.protocolVersion === 1 && typeof carrier.installedVersion === 'string'
+    ? carrier.installedVersion : undefined
   const desktopUpdate = new DesktopUpdateSource(desktopBridge)
   ctx.effect(() => () => { desktopUpdate.dispose() }, 'ui-settings-general: desktop update carrier')
   // Version information follows the core preferences; on Desktop with a bridge
   // the row also binds the manual check-and-consent operation.
   ctx.slots.inject('settings.general.item', () => ctx.slots.register({
     name: 'settings.general.item', id: 'current-version', order: 100, locale: NS,
-    inject: () => (desktopBridge === undefined ? {} : { checkUpdates: desktopUpdate.check.bind(desktopUpdate) }),
+    inject: () => ({
+      ...(installedVersion !== undefined ? { installedVersion } : {}),
+      ...(desktopBridge !== undefined ? { checkUpdates: desktopUpdate.check.bind(desktopUpdate) } : {}),
+    }),
   }, CurrentVersionRow))
   ctx.slots.inject('sidebar.toggle.badge', () => ctx.slots.register({
     name: 'sidebar.toggle.badge', locale: NS,

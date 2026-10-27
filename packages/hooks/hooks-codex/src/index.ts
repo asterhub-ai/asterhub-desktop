@@ -44,7 +44,7 @@ import { parseCodexConfig, type CodexHookConfig } from './config.ts'
 /* jscpd:ignore-end */
 
 export const name = 'hooks-codex'
-export const inject = ['shell', 'sessionProjections']
+export const inject = ['shell', 'sessionProjections', 'sessionCwd']
 
 /** Plugin config: where the Codex hooks.json lives + the model name for payloads. */
 export interface Config {
@@ -119,7 +119,7 @@ export function apply(ctx: Context, config: Config): void {
   async function runPoint(
     point: string,
     matchQuery: string,
-    payload: unknown,
+    payload: (cwd: string) => unknown,
     opts: {
       agent?: Agent
       turn?: number
@@ -129,9 +129,10 @@ export function apply(ctx: Context, config: Config): void {
   ): Promise<MergedHookOutcome> {
     const groups: MatcherGroup[] = parsed[point] ?? []
     const outputs: HookOutput[] = []
-    // Run hooks in the agent's session workspace so relative paths address the
-    // user's project rather than the server launch directory.
-    const workdir = opts.agent?.session.header.cwd
+    // A missing or failed provider is authoritative; never use the immutable header or server cwd for an Agent.
+    const cwd = opts.agent === undefined ? process.cwd() : requireExecutionCwd(opts.agent)
+    const workdir = opts.agent === undefined ? undefined : cwd
+    const hookPayload = payload(cwd)
     for (const group of groups) {
       // Codex always interprets matchers as regexes; it has no literal fast path.
       if (!matchesMatcher(group.matcher, matchQuery, 'codex')) continue
@@ -145,7 +146,7 @@ export function apply(ctx: Context, config: Config): void {
           })
         }
         const { output, durationMs } = await runHook(ctx.shell, hook, {
-          payload,
+          payload: hookPayload,
           defaultTimeoutMs,
           ...workdir !== undefined ? { cwd: workdir } : {},
           signal: opts.signal,
@@ -190,7 +191,7 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.on('agent/created', async ({ agent, source, signal }) => {
     const ownerSignal = signal === undefined ? detached.signal : AbortSignal.any([signal, detached.signal])
-    const run = runPoint('SessionStart', source, { ...base(agent, 'SessionStart', model), source }, { agent, plainStdoutAsContext: true, signal: ownerSignal })
+    const run = runPoint('SessionStart', source, cwd => ({ ...base(agent, 'SessionStart', model, cwd), source }), { agent, plainStdoutAsContext: true, signal: ownerSignal })
       .then((merged) => {
         const context = contextFrom(merged)
         if (context) agent.inject(context)
@@ -204,12 +205,11 @@ export function apply(ctx: Context, config: Config): void {
   // UserPromptSubmit → PreStepDecision. Codex supports reject, not rewrite or ask.
   ctx.on('agent/pre-step', async ({ agent, messages, turn, signal }, next): Promise<PreStepDecision> => {
     if (messages.length === 0) return next()
-    const payload = {
-      ...base(agent, 'UserPromptSubmit', model),
+    const merged = await runPoint('UserPromptSubmit', '', cwd => ({
+      ...base(agent, 'UserPromptSubmit', model, cwd),
       turn_id: String(turn),
       prompt: blocksToText(messages.flatMap(message => message.content)),
-    }
-    const merged = await runPoint('UserPromptSubmit', '', payload, {
+    }), {
       agent, turn, plainStdoutAsContext: true, signal,
     })
     /* jscpd:ignore-start */
@@ -230,7 +230,7 @@ export function apply(ctx: Context, config: Config): void {
   // PreToolUse → PreToolDecision. Codex blocks only (no allow/ask honored).
   ctx.on('tools/pre-execute', async (exec, next): Promise<PreToolDecision> => {
     const turn = lastTurn(ctx, exec.agent)
-    const merged = await runPoint('PreToolUse', exec.name, preToolPayload(ctx, exec, model), { ...exec.agent ? { agent: exec.agent } : {}, turn, signal: exec.signal })
+    const merged = await runPoint('PreToolUse', exec.name, cwd => preToolPayload(ctx, exec, model, cwd), { ...exec.agent ? { agent: exec.agent } : {}, turn, signal: exec.signal })
     /* jscpd:ignore-end */
     if (merged.decision === 'deny') return { kind: 'deny', reason: merged.reason ?? 'blocked by PreToolUse hook' }
     return next()
@@ -240,7 +240,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.on('tools/post-execute', async (exec, result, next): Promise<PostToolDecision> => {
     const turn = lastTurn(ctx, exec.agent)
     /* jscpd:ignore-start */
-    const merged = await runPoint('PostToolUse', exec.name, postToolPayload(ctx, exec, result, model), { ...exec.agent ? { agent: exec.agent } : {}, turn, signal: exec.signal })
+    const merged = await runPoint('PostToolUse', exec.name, cwd => postToolPayload(ctx, exec, result, model, cwd), { ...exec.agent ? { agent: exec.agent } : {}, turn, signal: exec.signal })
     const context = contextFrom(merged)
     if (merged.decision === 'deny') {
       return { kind: 'block', feedback: [{ type: 'text', text: merged.reason ?? 'blocked by PostToolUse hook' }], ...context ? { additionalContexts: [context] } : {} }
@@ -264,7 +264,7 @@ export function apply(ctx: Context, config: Config): void {
   // avoid continuing the same turn indefinitely. It is always false here, so an
   // unconditionally blocking hook force-continues every step until it self-limits.
   ctx.on('agent/turn-stopping', async ({ agent, turn, signal }): Promise<void> => {
-    const merged = await runPoint('Stop', '', { ...turnBase(ctx, agent, 'Stop', model), stop_hook_active: false, last_assistant_message: null }, { agent, turn, signal })
+    const merged = await runPoint('Stop', '', cwd => ({ ...turnBase(ctx, agent, 'Stop', model, cwd), stop_hook_active: false, last_assistant_message: null }), { agent, turn, signal })
     /* jscpd:ignore-end */
     if (merged.decision === 'deny') {
       // A blocking Stop hook forces continuation; a block with no reason (exit 2,
@@ -293,14 +293,23 @@ function blocksToText(content: ContentBlock[]): string {
 }
 /* jscpd:ignore-end */
 
+function requireExecutionCwd(agent: Agent): string {
+  const service = agent.ctx.get('sessionCwd', false)
+  const cwd = service !== undefined
+    ? service.resolve(agent.session.header)
+    : (agent.options.cwd ?? agent.session.header.cwd)
+  if (cwd === undefined) throw new Error(`Session ${agent.session.header.id} has no current execution directory`)
+  return cwd
+}
+
 /** Base fields on every Codex payload (no turn_id). */
-function base(agent: Agent | undefined, event: string, model: string): Record<string, unknown> {
+function base(agent: Agent | undefined, event: string, model: string, cwd: string): Record<string, unknown> {
   return {
     session_id: agent?.session.header.id ?? '',
     // The persistence seam exposes no artifact path; the field stays null
     // (a durable consumer gap recorded in this package's README).
     transcript_path: null,
-    cwd: agent?.session.header.cwd ?? process.cwd(),
+    cwd,
     hook_event_name: event,
     model,
     permission_mode: 'default',
@@ -308,8 +317,8 @@ function base(agent: Agent | undefined, event: string, model: string): Record<st
 }
 
 /** Base + turn_id, for the turn-scoped events (PreToolUse/PostToolUse/UserPromptSubmit/Stop). */
-function turnBase(ctx: Context, agent: Agent | undefined, event: string, model: string): Record<string, unknown> {
-  return { ...base(agent, event, model), turn_id: String(lastTurn(ctx, agent)) }
+function turnBase(ctx: Context, agent: Agent | undefined, event: string, model: string, cwd: string): Record<string, unknown> {
+  return { ...base(agent, event, model, cwd), turn_id: String(lastTurn(ctx, agent)) }
 }
 
 /** Extract a `command` string from a tool call's parsed arguments, else ''. */
@@ -321,14 +330,26 @@ function commandOf(args: unknown): string {
   return ''
 }
 
-function preToolPayload(ctx: Context, exec: ToolExecution, model: string): Record<string, unknown> {
+function preToolPayload(ctx: Context, exec: ToolExecution, model: string, cwd: string): Record<string, unknown> {
   // `tool_name` is the REAL tool name (matching the `exec.name` matcher subject);
   // a hardcoded constant would disagree with what the matcher tests and make a
   // config's tool matcher never fire. `tool_input` keeps Codex's `{ command }`
   // shape (its shell payload), derived from the call's `command` arg when present.
-  return { ...turnBase(ctx, exec.agent, 'PreToolUse', model), tool_name: exec.name, tool_input: { command: commandOf(exec.arguments) }, tool_use_id: exec.callId }
+  return { ...turnBase(ctx, exec.agent, 'PreToolUse', model, cwd), tool_name: exec.name, tool_input: { command: commandOf(exec.arguments) }, tool_use_id: exec.callId }
 }
 
-function postToolPayload(ctx: Context, exec: ToolExecution, result: ToolExecutionResult, model: string): Record<string, unknown> {
-  return { ...turnBase(ctx, exec.agent, 'PostToolUse', model), tool_name: exec.name, tool_input: { command: commandOf(exec.arguments) }, tool_use_id: exec.callId, tool_response: blocksToText(result.content) }
+function postToolPayload(
+  ctx: Context,
+  exec: ToolExecution,
+  result: ToolExecutionResult,
+  model: string,
+  cwd: string,
+): Record<string, unknown> {
+  return {
+    ...turnBase(ctx, exec.agent, 'PostToolUse', model, cwd),
+    tool_name: exec.name,
+    tool_input: { command: commandOf(exec.arguments) },
+    tool_use_id: exec.callId,
+    tool_response: blocksToText(result.content),
+  }
 }

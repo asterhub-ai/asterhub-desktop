@@ -105,6 +105,7 @@ export class SessionManager {
   private listPhase: SessionListPhase = 'pending'
   private listError: RemoteFailure | null = null
   private listInflight: Promise<void> | null = null
+  private listRefreshAfterCurrent: Promise<void> | null = null
   /** Active list request's mutation log; its identity also fences completion after reconnect. */
   private listMutations: SessionListMutation[] | null = null
   private readonly addresses = new Map<SessionId, SubagentAddress>()
@@ -454,6 +455,24 @@ export class SessionManager {
       }
     })()
     return this.listInflight
+  }
+
+  /**
+   * Ensure an explicit refresh observes state created while the current list pull was in flight.
+   * @returns completion of the follow-up pull, coalesced with other explicit refreshes.
+   */
+  refreshListAfterCurrent(): Promise<void> {
+    if (this.listInflight === null) return this.refreshList()
+    if (this.listRefreshAfterCurrent !== null) return this.listRefreshAfterCurrent
+    const current = this.listInflight
+    const followUp: Promise<void> = current.catch(() => undefined).then(() => {
+      if (this.listRefreshAfterCurrent !== followUp) return
+      this.listRefreshAfterCurrent = null
+      if (this.disposed) return
+      return this.refreshList()
+    })
+    this.listRefreshAfterCurrent = followUp
+    return followUp
   }
 
   /**

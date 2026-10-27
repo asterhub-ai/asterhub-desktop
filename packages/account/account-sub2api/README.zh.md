@@ -42,7 +42,7 @@ Desktop Web profile 将本服务与 `credentials-local`、账户 Client 插件�
 
 ### Remote 操作
 
-Host 提供状态、登录/退出、额度、支付方式、充值、兑换和用量操作。Remote 响应只包含账户视图所需字段；access token、自动登录密码和模型 key 均保留在 Host credentials。Desktop 凭据文档使用 Electron `safeStorage`，由 OS 加密服务保护。Linux 需要 GNOME libsecret 或 KWallet；应用拒绝不安全的 `basic_text` 后端。结算方式由 `methods` 的键标识；未提供 `available` 字段的方式仍可使用，只有明确标记 `available: false` 的方式会被排除。
+Host 提供状态、登录/退出、额度、支付方式、充值、兑换和用量操作。Remote 响应只包含账户视图所需字段；access token、自动登录密码和模型 key 均保留在 Host credentials。Desktop 凭据文档使用 Electron `safeStorage`，由 OS 加密服务保护。Linux 需要 GNOME libsecret 或 KWallet；应用拒绝不安全的 `basic_text` 后端。结算方式由 `methods` 的键标识；未提供 `available` 字段的方式仍可使用，只有明确标记 `available: false` 的方式会被排除。若账户引用由启动环境以只读方式提供，登录会跳过该引用的写入；其他可写账户引用及账户模型 key record 仍会照常持久化。只要存在环境来源的账户引用，`getStatus` 就会返回 `credentialsFromEnv: true`。环境值仅在启动期间生效，不会复制到账户模型 key record。
 
 支付方式可附带从 `payment/checkout-info` 验证的充值定价：有限正倍率、已校验的奖励阶梯以及奖励或折扣模式。定价缺失或无效时，旧版结算仍可使用，但不提供预览；Host 不推测倍率。支付限额只接受有限正数。币种代码用于支付金额舍入。预览不含支付服务商手续费。
 
@@ -71,7 +71,7 @@ Host 提供状态、登录/退出、额度、支付方式、充值、兑换和�
 <a id="failure-behavior"></a>
 ### 失败行为
 
-凭据错误会返回账户错误。网络、响应格式错误或无法读取现有 key 详情时，只要上游账户已有 key，服务就会失败而不创建替代 key。会话过期会清除活动 token 和 key record；临时额度查询失败则保留已登录账户，供之后重试。
+无效凭据仍返回原账户错误。Fetch 超时与其他连接失败会返回不同的安全提示；上游超时沿用原有请求时限，客户端不增加重试。上游 HTTP 故障仍统一提示服务暂不可用；只有识别到 `permission_denied` 或 `group_binding_forbidden` 时才返回权限提示，不会把任意 403 响应分类为权限错误。格式错误的认证响应会返回安全的无效响应提示。认证成功后若本地凭据保存失败，服务会尝试清理部分写入的活动凭据，并返回本地保存失败提示，不暴露 provider 错误或密钥内容。会话过期会清除活动 token 和 key record；临时额度查询失败则保留已登录账户，供之后重试。
 
 <a id="dev-note"></a>
 ### 开发备注

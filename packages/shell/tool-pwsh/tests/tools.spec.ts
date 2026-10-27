@@ -297,6 +297,7 @@ async function registerFakeAgent(ctx: Context, sessionId: string): Promise<Agent
   const agent = {
     id,
     ctx: scopeFiber.ctx,
+    options: {},
     session: {
       id,
       header: { version: SESSION_FORMAT_VERSION, id, createdAt: 0, isSeeded: false },

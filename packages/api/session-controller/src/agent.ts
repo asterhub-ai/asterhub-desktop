@@ -2,6 +2,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
+import { relative } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type {
@@ -13,7 +14,8 @@ import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-workspace'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import type { Session, SessionId } from '@deepseek-ai/dsh-session'
+import type { Session, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-session/cwd'
 import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { RemoteError, remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
@@ -31,7 +33,7 @@ export class ApiSessionSubagentOwnership extends Error {
   }
 }
 
-/** Explicit-id creation attempted to adopt a Session under another cwd. */
+/** Explicit-id creation attempted to adopt a Session under another resolved execution root. */
 export class ApiSessionCwdConflict extends Error {
   constructor(
     readonly sessionId: SessionId,
@@ -329,7 +331,7 @@ export class ApiSessionAgentController {
    * Session's directory and ownership before resolving the preset.
    * @param request - optional Session to reuse, directory, preset, placement rule, and attachment commit.
    * @returns the reused or created Session and the preset it ran when this request finished.
-   * @throws ApiSessionCwdConflict when the named Session belongs to another directory.
+   * @throws ApiSessionCwdConflict when the named Session's current execution root differs from the request.
    * @throws ApiSessionSubagentOwnership when subagent routing owns the named Session.
    * @throws RemoteError `agent-preset/not-found` or `agent-preset/invalid` for the requested or default preset.
    * @throws ApiSessionPresetConflict when no roster is composed and the request names a preset for a reused Session.
@@ -513,7 +515,7 @@ export class ApiSessionAgentController {
     }
     return this.ownHandle(await this.ctx.agents.resume({
       resumeSessionId: sessionId,
-      agentOptions: this.agentOptions(),
+      agentOptions: this.agentOptions(this.executionCwd(observation.header)),
       setup: composition.setup,
     }))
   }
@@ -537,8 +539,9 @@ export class ApiSessionAgentController {
       throw new ApiSessionSubagentOwnership(sessionId)
     }
     if (live !== undefined) {
-      if (live.session.header.cwd !== request.cwd) {
-        throw new ApiSessionCwdConflict(live.id, request.cwd, live.session.header.cwd)
+      const cwd = this.executionCwd(live.session.header)
+      if (relative(cwd, request.cwd) !== '') {
+        throw new ApiSessionCwdConflict(live.id, request.cwd, cwd)
       }
       const composition = await this.composeAgent(request.agentPreset)
       return await this.reuseLive(live, request, composition) ?? this.createMinted(request.cwd, composition)
@@ -556,8 +559,9 @@ export class ApiSessionAgentController {
       if (hasApiSessionSubagentOwner(this.ctx, { header: observed.header }, undefined)) {
         throw new ApiSessionSubagentOwnership(sessionId)
       }
-      if (observed.header.cwd !== request.cwd) {
-        throw new ApiSessionCwdConflict(sessionId, request.cwd, observed.header.cwd)
+      const cwd = this.executionCwd(observed.header)
+      if (relative(cwd, request.cwd) !== '') {
+        throw new ApiSessionCwdConflict(sessionId, request.cwd, cwd)
       }
       reusable = request.reusable(sessionId) && !observed.events.some(event => event.type === 'turn/start')
     }
@@ -567,7 +571,7 @@ export class ApiSessionAgentController {
     try {
       return this.ownHandle(await this.ctx.agents.resume({
         resumeSessionId: sessionId,
-        agentOptions: this.agentOptions(),
+        agentOptions: this.agentOptions(this.executionCwd(observation.header)),
         setup: this.reuseSetup(composition),
       }))
     } catch (error: unknown) {
@@ -651,7 +655,7 @@ export class ApiSessionAgentController {
     }
     return this.ownHandle(await this.ctx.agents.create({
       sessionId,
-      agentOptions: this.agentOptions(),
+      agentOptions: this.agentOptions(cwd),
       meta: {
         cwd,
         ...(composition.agentPreset === undefined ? {} : { agentPreset: composition.agentPreset }),
@@ -660,9 +664,15 @@ export class ApiSessionAgentController {
     }))
   }
 
-  private agentOptions(): AgentOptions {
+  private agentOptions(cwd?: string): AgentOptions {
     const { provider, model } = this.ctx.agentDefaultModel.currentSelection()
-    return { provider, model }
+    return { provider, model, ...cwd === undefined ? {} : { cwd } }
+  }
+
+  private executionCwd(header: SessionHeader): string {
+    const cwd = this.ctx.sessionCwd.resolve(header)
+    if (cwd === undefined) throw new Error(`Session ${header.id} has no current execution directory`)
+    return cwd
   }
 
   private installSelection(agent: Agent): void {

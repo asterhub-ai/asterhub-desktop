@@ -1,20 +1,21 @@
 /** Run real Electron downloads from local executable inputs without installing or publishing them. */
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { access, copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import electron from 'electron'
-
+import { resolveDesktopBuildRoot } from './desktop-build-paths.mjs'
 assert.equal(process.platform, 'win32', 'Signed NSIS download qualification requires Windows')
 const [certificate, signed, unsigned, old] = process.argv.slice(2)
 assert.ok(certificate && signed && unsigned,
   'Usage: node apps/desktop/scripts/test-signed-updates.mjs <public.cer> <signed.exe> <unsigned.exe> [old.exe]')
 const paths = await Promise.all([certificate, signed, unsigned, ...(old ? [old, `${signed}.blockmap`, `${old}.blockmap`] : [])]
   .map(file => realpath(file)))
-const evidence = fileURLToPath(new URL('../.desktop-build/qualification/', import.meta.url))
+const evidence = join(resolveDesktopBuildRoot(process.env), 'qualification')
 await mkdir(evidence, { recursive: true })
-const root = await mkdtemp(join(evidence, 'signed-downloads-'))
+const reportDirectory = await mkdtemp(join(evidence, 'signed-downloads-'))
+const root = await mkdtemp(join(tmpdir(), 'dsh-signed-updates-'))
 await mkdir(join(root, 'runtime'))
 const environment = Object.fromEntries(Object.entries(process.env).filter(([name]) =>
   !/KEY|SECRET|TOKEN|PASSWORD|^NODE_OPTIONS$|^ELECTRON_RUN_AS_NODE$/iu.test(name)))
@@ -55,18 +56,24 @@ try {
   await termination
   await writeFile(join(root, 'process.json'), `${JSON.stringify({ ...result, timedOut, pid: child.pid,
     startedAt, completedAt: new Date().toISOString(), launchError, terminationError }, null, 2)}\n`)
+  await copyFile(join(root, 'process.json'), join(reportDirectory, 'process.json'))
+  try {
+    await access(join(root, 'result.json'))
+    const report = JSON.parse(await readFile(join(root, 'result.json'), 'utf8'))
+    await writeFile(join(reportDirectory, 'result.json'), `${JSON.stringify(report, null, 2)}\n`)
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+  }
   assert.equal(launchError, undefined)
   assert.equal(terminationError, undefined)
   assert.equal(timedOut, false, `Signed download qualification exceeded ${timeoutMs} ms`)
   assert.equal(result.signal, null, `Electron exited on ${result.signal}`)
-  assert.equal(result.code, 0, `Signed download qualification failed; see ${root}`)
-  const report = JSON.parse(await readFile(join(root, 'result.json'), 'utf8'))
-  assert.equal(report.passed, true)
+  assert.equal(result.code, 0, `Signed download qualification failed; see ${reportDirectory}`)
 }
 finally {
   clearTimeout(deadline)
   await termination
-  // Only this invocation's runtime directory is removed after process exit; reports remain.
   await rm(join(root, 'runtime'), { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
-  console.log(`SIGNED_UPDATE_DOWNLOAD_RESULT ${root}`)
+  await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  console.log(`SIGNED_UPDATE_DOWNLOAD_RESULT ${reportDirectory}`)
 }

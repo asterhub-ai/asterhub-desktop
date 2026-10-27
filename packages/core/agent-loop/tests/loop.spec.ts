@@ -4,6 +4,7 @@ import LlmRuntime, { createUserMessage, ToolCallId, LlmError, ReasoningEffortId,
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId, TurnEndReason } from '@deepseek-ai/dsh-session'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import AgentRegistry, { type Agent, type AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
@@ -32,8 +33,9 @@ async function harness(adapter: MockAdapter, persona = '') {
   const ctx = new Context()
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(SessionStore)
+  await ctx.plugin(SessionCwd)
   await ctx.plugin(SessionProjectionRegistry)
-  await ctx.plugin(SystemPrompt, { personaPrefix: persona })
+  await ctx.plugin(SystemPrompt, { harnessIdentity: '你是 AsterHub 的 AI 助手。', personaPrefix: persona })
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
@@ -549,20 +551,22 @@ describe('agent loop', () => {
     expect(request!.tools?.map(t => t.name)).toEqual(['noop'])
   })
 
-  it('resolves {{cwd}} from the agent session workspace (factory create with meta.cwd)', async () => {
+  it('resolves {{cwd}} from SessionCwd while preserving the historical header', async () => {
     const adapter = new MockAdapter([textResponse('ok')])
     const ctx = await harness(adapter, 'Working in {{cwd}}.')
     const handle = await ctx.agents.create({
       sessionId: SessionId('s-cwd'),
-      meta: { cwd: '/work/space' },
+      meta: { cwd: '/old/workspace' },
       agentOptions: { provider: 'mock', model: 'mock' },
     })
+    ctx.sessionCwd.registerResolver(() => '/current/workspace')
 
     const agent = handle.agent
     send(agent, 'hi')
     await waitForIdle(ctx, agent)
 
-    expect(systemOf(adapter.requests[0])).toContain('Working in /work/space.')
+    expect(agent.session.header.cwd).toBe('/old/workspace')
+    expect(systemOf(adapter.requests[0])).toContain('Working in /current/workspace.')
   })
 
   it('contains a strict-variable render failure: the turn errors, the loop keeps serving turns', async () => {

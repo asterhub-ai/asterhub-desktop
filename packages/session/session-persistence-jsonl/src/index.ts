@@ -15,7 +15,7 @@ import {
 } from '@deepseek-ai/dsh-session-format-catalog'
 import { releasedV4SessionFormatCodec } from '@deepseek-ai/dsh-session-format-v3-to-v4'
 import { readdirSync, type Dirent } from 'node:fs'
-import { open, mkdir, readdir, realpath, link, rm, stat, truncate, type FileHandle } from 'node:fs/promises'
+import { open, mkdir, readdir, realpath, rename, link, rm, stat, truncate, type FileHandle } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { scheduler } from 'node:timers/promises'
@@ -349,6 +349,19 @@ function waitWithAbort<T>(operation: Promise<T>, signal?: AbortSignal): Promise<
   })
 }
 
+class LegacyFlatLayoutError extends Error {
+  readonly code = 'LEGACY_FLAT_LAYOUT'
+  constructor(readonly path: string) {
+    super(`session artifact "${path}" uses the unsupported flat-file layout; use a separate root or move it into a project/session directory before loading`)
+  }
+}
+
+function isLegacyFlatLayoutError(error: unknown): error is LegacyFlatLayoutError {
+  return typeof error === 'object' && error !== null
+    && 'code' in error && error.code === 'LEGACY_FLAT_LAYOUT'
+    && 'path' in error && typeof error.path === 'string'
+}
+
 /**
  * Concrete SessionPersistence service implementation storing logs as canonical JSONL.
  *
@@ -373,6 +386,7 @@ class JsonlSessionPersistence extends SessionPersistence {
    */
   private readonly listLimit: LimitFunction
   private rootEncodingCheck: Promise<void> | undefined
+  private readonly legacyMigrations = new Map<string, Promise<void>>()
   private readonly generationFormat: Omit<JsonlGenerationFormatAdapter, 'createRestore'>
   /** Reader catalog capped at the migration target; normal persistence uses the generated current catalog. */
   private readonly formatCatalog: typeof sessionFormatCatalog
@@ -632,7 +646,15 @@ class JsonlSessionPersistence extends SessionPersistence {
     // append lands mid-scan is then still in this snapshot (its artifact may
     // predate the scan), so create-to-list visibility never has a hole.
     const pending = [...this.tracker.pendingEntries()]
-    const artifacts = await this.listArtifacts(signal)
+    let artifacts: Awaited<ReturnType<JsonlSessionPersistence['listArtifacts']>>
+    try {
+      artifacts = await this.listArtifacts(signal)
+    } catch (error: unknown) {
+      if (!isLegacyFlatLayoutError(error)) throw error
+      await this.migrateLegacyDirectoryOnce(error.path, signal)
+      this.rootEncodingCheck = undefined
+      artifacts = await this.listArtifacts(signal)
+    }
     const corpusRevision = artifacts.some(artifact => artifact.sourceVersion < this.targetVersion)
       ? await this.historicalCorpusRevision(signal) : undefined
     const statted = settledValues(await settleLimited(this.listLimit, artifacts, async (artifact) => {
@@ -1806,6 +1828,101 @@ class JsonlSessionPersistence extends SessionPersistence {
     }
   }
 
+  private migrateLegacyDirectoryOnce(path: string, signal?: AbortSignal): Promise<void> {
+    let migration = this.legacyMigrations.get(path)
+    if (migration === undefined) {
+      migration = this.migrateLegacyDirectory(path, signal)
+      this.legacyMigrations.set(path, migration)
+      const cleanup = (): void => {
+        if (this.legacyMigrations.get(path) === migration) this.legacyMigrations.delete(path)
+      }
+      void migration.then(cleanup, cleanup)
+    }
+    return migration
+  }
+
+  /**
+   * Move one legacy flat artifact into its project-keyed session directory. File-valued flat
+   * artifacts and directory-valued legacy buckets are supported; header identity and target
+   * absence are checked first, and source bytes are moved without rewriting.
+   */
+  private async migrateLegacyDirectory(legacyPath: string, signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted()
+    const info = await stat(legacyPath)
+    if (info.isFile()) {
+      const compression = legacyPath.endsWith('.jsonl.zstd') ? 'zstd' : legacyPath.endsWith('.jsonl') ? 'none' : undefined
+      if (compression === undefined) throw new Error(`legacy session artifact "${legacyPath}" has an unsupported suffix; source was not changed`)
+      if (compression !== this.compression) throw this.encodingMismatch(legacyPath)
+      const identity = await this.peekLegacyHeader(legacyPath, signal)
+      if (identity === undefined) throw new Error(`legacy session artifact "${legacyPath}" has no supported header; source was not changed`)
+      const sourceName = legacyPath.slice(dirname(legacyPath).length + 1)
+      const legacyIdName = `${encodeSegment(identity.id)}${compression === 'zstd' ? '.jsonl.zstd' : '.jsonl'}`
+      const generationVersion = parseGenerationLogFilename(sourceName, compression)
+      if (sourceName !== legacyIdName && generationVersion === undefined) {
+        throw new Error(`legacy session artifact "${legacyPath}" does not match a supported flat filename; source was not changed`)
+      }
+      if (generationVersion !== undefined && generationVersion !== identity.version) {
+        throw new Error(`legacy session artifact "${legacyPath}" filename version does not match its header; source was not changed`)
+      }
+      const targetDir = sessionDir(this.root, identity.cwd, identity.id)
+      const target = join(targetDir, generationLogFilename(identity.version, this.compression))
+      if (await this.exists(target)) throw new Error(`legacy layout migration target "${target}" already exists; source was not changed`)
+      await mkdir(targetDir, { recursive: true })
+      await rename(legacyPath, target)
+      return
+    }
+    if (!info.isDirectory()) throw new Error(`legacy session artifact "${legacyPath}" is not a regular file or directory`)
+    const parent = dirname(legacyPath)
+    const sourceName = legacyPath.slice(parent.length + 1)
+    const inner = await readdir(legacyPath, { withFileTypes: true })
+    const generationNames = inner
+      .filter(item => item.isFile() && (item.name.endsWith('.jsonl') || item.name.endsWith('.jsonl.zstd')))
+      .map(item => item.name)
+    if (generationNames.length === 0) throw new Error(`legacy session directory "${legacyPath}" contains no supported generation files`)
+    let identity: { id: SessionId; cwd: string | undefined } | undefined
+    for (const name of generationNames) {
+      signal?.throwIfAborted()
+      const compression = name.endsWith('.jsonl.zstd') ? 'zstd' : 'none'
+      if (compression !== this.compression) throw this.encodingMismatch(join(legacyPath, name))
+      const version = parseGenerationLogFilename(name, compression)
+      if (version === undefined) throw new Error(`legacy session artifact "${join(legacyPath, name)}" has a noncanonical generation filename; source was not changed`)
+      const header = await this.peekLegacyHeader(join(legacyPath, name), signal)
+      if (header === undefined) throw new Error(`legacy session artifact "${join(legacyPath, name)}" has no supported header; source was not changed`)
+      if (header.version !== version) throw new Error(`legacy session artifact "${join(legacyPath, name)}" filename version does not match its header; source was not changed`)
+      if (encodeSegment(header.id) !== sourceName) throw new Error(`legacy session directory "${legacyPath}" does not match header id "${header.id}"; source was not changed`)
+      if (identity === undefined) identity = header
+      else if (identity.id !== header.id || identity.cwd !== header.cwd) throw new Error(`legacy session directory "${legacyPath}" contains conflicting generation identities; source was not changed`)
+    }
+    if (identity === undefined) return
+    const targetDir = sessionDir(this.root, identity.cwd, identity.id)
+    if (resolve(targetDir) === resolve(legacyPath)) return
+    if (await this.exists(targetDir)) throw new Error(`legacy layout migration target "${targetDir}" already exists; source was not changed`)
+    signal?.throwIfAborted()
+    await mkdir(dirname(targetDir), { recursive: true })
+    await rename(legacyPath, targetDir)
+  }
+
+
+  private async peekLegacyHeader(
+    path: string,
+    signal?: AbortSignal,
+  ): Promise<{ id: SessionId; cwd: string | undefined; version: number } | undefined> {
+    const first = path.endsWith('.jsonl.zstd')
+      ? await this.readFirstZstdLine(path, signal)
+      : await this.readFirstLine(path, signal)
+    if (first === undefined) return undefined
+    let value: unknown
+    try {
+      value = JSON.parse(first)
+    } catch {
+      return undefined
+    }
+    assertNoRetiredHeaderFields(value)
+    const decoded = this.formatCatalog.readHeader(value)
+    if (decoded.status !== 'current' && decoded.status !== 'migration-required') return undefined
+    return { id: makeSessionId(decoded.header.id), cwd: decoded.header.cwd, version: decoded.storedVersion }
+  }
+
   /** List session-owned directories and reject the obsolete flat-file layout. */
   private async listSessionDirs(project: string, signal?: AbortSignal): Promise<string[]> {
     signal?.throwIfAborted()
@@ -1819,7 +1936,17 @@ class JsonlSessionPersistence extends SessionPersistence {
 
   /** Reject a root that already belongs to the other physical encoding. */
   private ensureRootEncoding(): Promise<void> {
-    this.rootEncodingCheck ??= this.checkRootEncoding()
+    if (this.rootEncodingCheck === undefined) {
+      const check = this.checkRootEncoding().catch(async (error: unknown) => {
+        if (!isLegacyFlatLayoutError(error)) throw error
+        await this.migrateLegacyDirectoryOnce(error.path)
+        await this.checkRootEncoding()
+      })
+      this.rootEncodingCheck = check
+      void check.catch(() => {
+        if (this.rootEncodingCheck === check) this.rootEncodingCheck = undefined
+      })
+    }
     return this.rootEncodingCheck
   }
 
@@ -1841,7 +1968,10 @@ class JsonlSessionPersistence extends SessionPersistence {
       const path = join(project, encoded + logSuffix(compression))
       const artifactExists = await this.exists(path)
       signal?.throwIfAborted()
-      if (artifactExists) throw this.legacyLayout(path)
+      if (artifactExists) {
+        await this.migrateLegacyDirectoryOnce(path, signal)
+        return
+      }
     }
   }
 
@@ -1881,10 +2011,7 @@ class JsonlSessionPersistence extends SessionPersistence {
   }
 
   private legacyLayout(path: string): Error {
-    return new Error(
-      `session artifact ${JSON.stringify(path)} uses the unsupported flat-file layout; `
-      + 'use a separate root or move it into a project/session directory before loading',
-    )
+    return new LegacyFlatLayoutError(path)
   }
 
   private async exists(path: string): Promise<boolean> {

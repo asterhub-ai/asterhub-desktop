@@ -77,6 +77,26 @@ it('rejects model changes when the deployment locks the default route', async ()
     .rejects.toThrow('model selection is deployment-locked')
 })
 
+it('derives the locked product default from the trusted application route', async () => {
+  const ctx = new Context()
+  onTestFinished(() => ctx.fiber.dispose())
+  ctx.provide('applicationModelRoute', { provider: 'product-provider', model: '__unselected__', selectableModels: true })
+  await ctx.plugin(DefaultModel, { locked: true })
+  expect(ctx.agentDefaultModel.currentSelection()).toEqual({
+    provider: 'product-provider', model: '__unselected__',
+  })
+})
+
+it('keeps the trusted provider in default selection despite locked config overrides', async () => {
+  const ctx = new Context()
+  onTestFinished(() => ctx.fiber.dispose())
+  ctx.provide('applicationModelRoute', { provider: 'product-provider', model: '__unselected__', selectableModels: true })
+  await ctx.plugin(DefaultModel, { provider: 'attacker', model: 'attacker-model', locked: true })
+  expect(ctx.agentDefaultModel.currentSelection()).toEqual({
+    provider: 'product-provider', model: 'attacker-model',
+  })
+})
+
 
 it('persists an account catalog model while keeping the application provider locked', async () => {
   const { configurationFixture } = await import('../../../settings/settings/tests/configuration-fixture.ts')

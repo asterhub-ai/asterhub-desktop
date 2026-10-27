@@ -1,20 +1,7 @@
 /** Toast notification overlay for automation operations. */
 import { Toast } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { HostObservable, InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ToastKind } from './toast-source.ts'
-
-/** One toast entry. */
-export interface ToastEntry {
-  readonly id: number
-  readonly kind: ToastKind
-  readonly message?: string
-  readonly taskId?: string
-}
-
-/** Toast snapshot. */
-export interface ToastSnapshot {
-  readonly toasts: readonly ToastEntry[]
-}
+import type { ToastSnapshot } from './toast-source.ts'
 
 /** Injected toast hooks. */
 export interface AutomationToastInjected {

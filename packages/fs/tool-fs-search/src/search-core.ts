@@ -185,9 +185,9 @@ export function resolveRgPath(): Promise<string> {
 
 /**
  * Run the packaged ripgrep binary with a plain argv vector and return its
- * complete raw stdout. The working directory is the calling agent's session
- * cwd (`exec.agent.session.header.cwd`) when available, else
- * `process.cwd()`. `exec.signal` is forwarded so the cooperative tool timeout
+ * complete raw stdout. The working directory is the authoritative current
+ * execution cwd for the calling session when available, else the provider's
+ * process cwd. `exec.signal` is forwarded so the cooperative tool timeout
  * (`@deepseek-ai/dsh-tool-call-timeout-policy`) and caller cancellation terminate the
  * process tree.
  *
@@ -231,7 +231,19 @@ export async function runRipgrep(
   if (exec.signal.aborted) {
     throw new SearchError(`${toolName} was aborted before completion (tool timeout or caller cancellation)`, 'SEARCH_ABORTED')
   }
-  const cwd = exec.agent?.session.header.cwd
+  const agent = exec.agent
+  let cwd: string | undefined
+  if (agent !== undefined) {
+    const sessionCwd = agent.ctx.get('sessionCwd', false)
+    if (sessionCwd !== undefined) {
+      cwd = sessionCwd.resolve(agent.session.header)
+      if (cwd === undefined) {
+        throw new Error(`Session ${agent.session.id} has no current execution directory`)
+      }
+    } else {
+      cwd = agent.options.cwd ?? agent.session.header.cwd
+    }
+  }
   const workdir = cwd ?? process.cwd()
   let handle: SubprocessHandle
   try {

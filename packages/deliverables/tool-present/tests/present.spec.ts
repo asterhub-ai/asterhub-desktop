@@ -10,6 +10,7 @@ import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import { createScope, type Scope } from '@deepseek-ai/dsh-scope'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { turnBoundaryProjectionDefinition } from '@deepseek-ai/dsh-agent-loop'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -60,6 +61,10 @@ async function setup() {
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(LocalFileSystem, { cwd: root })
+  await ctx.plugin(SessionCwd)
+  let currentRoot: string | undefined = root
+  let overrideRoot = false
+  ctx.sessionCwd.registerResolver(header => overrideRoot ? currentRoot : header.cwd)
   await ctx.plugin(SessionProjectionRegistry)
   ctx.sessionProjections.register(turnBoundaryProjectionDefinition)
   const fiber = ctx.plugin(Present, { maxFiles: 2 })
@@ -70,10 +75,24 @@ async function setup() {
     signal: new AbortController().signal, callId: ToolCallId(`call-${++callNumber}`),
     name: 'present', arguments: { files }, agent: owner,
   })
-  return { ctx, owner, root, fiber, execute }
+  return { ctx, owner, root, fiber, execute, setCurrentRoot: (path: string | undefined) => { currentRoot = path; overrideRoot = true } }
 }
-
 describe('present', () => {
+  it('declares files only from the moved trusted workspace and refuses provider loss', async () => {
+    const { root, owner, execute, setCurrentRoot } = await setup()
+    const moved = await mkdtemp(join(tmpdir(), 'dsh-present-moved-'))
+    cleanups.push(() => rm(moved, { recursive: true, force: true }))
+    await writeFile(join(root, 'same.txt'), 'old')
+    await writeFile(join(moved, 'same.txt'), 'moved')
+    setCurrentRoot(moved)
+    expect((await execute([{ path: 'same.txt' }])).isError).toBe(false)
+    setCurrentRoot(undefined)
+    expect((await execute([{ path: 'same.txt' }])).isError).toBe(true)
+    expect(owner.session.snapshotEvents().filter(event => event.type === 'deliverables/presented')).toHaveLength(1)
+    await rm(root, { recursive: true, force: true })
+    setCurrentRoot(moved)
+    expect((await execute([{ path: 'same.txt' }])).isError).toBe(false)
+  })
   it('declares binary files without reading or copying contents, and records one delivery', async () => {
     const { ctx, owner, root, execute, fiber } = await setup()
     const data = Uint8Array.of(80, 75, 0, 255)

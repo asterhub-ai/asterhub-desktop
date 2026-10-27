@@ -4,6 +4,7 @@ import z from '@deepseek-ai/schemastery'
 import { Context, Service } from '@deepseek-ai/cordis'
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionActivity } from '@deepseek-ai/dsh-workspace'
@@ -165,8 +166,8 @@ export class ScheduleService extends TypertRemoteService {
       return cleanup
     })
     const registered = new WeakSet<object>()
-    const attached = new Map<import('@deepseek-ai/dsh-agent').Agent, () => Promise<void>>()
-    const attach = (agent: import('@deepseek-ai/dsh-agent').Agent): void => {
+    const attached = new Map<Agent, () => void | Promise<void>>()
+    const attach = (agent: Agent): void => {
       if (this.stopping || registered.has(agent) || !ctx.agents.roots().includes(agent)) return
       registered.add(agent)
       // The plugin-scope effect is what tears the Agent-scoped registration down when this
@@ -180,10 +181,15 @@ export class ScheduleService extends TypertRemoteService {
       const detach = attached.get(agent)
       if (detach === undefined) return
       attached.delete(agent)
-      // `agent/disposed` declares a void listener, so the disposer promise is not returned;
-      // this teardown chain is synchronous, and a failure throws into
-      // `AgentRegistry.emitDisposed`, which reports it as a listener throw.
-      void detach()
+      // `agent/disposed` declares a void listener; detach disposer may return void or Promise<void>.
+      // Promise.resolve handles both sync return (void/undefined) and async Promise<void>.
+      try {
+        void Promise.resolve(detach()).catch((error: unknown) => {
+          ctx.logger.warn(`schedule: agent detachment rejected: ${String(error)}`)
+        })
+      } catch (error: unknown) {
+        ctx.logger.warn(`schedule: agent detachment threw: ${String(error)}`)
+      }
     })
     ctx.on('session/created', (session) => {
       // Historical Schedule events remain readable but do not populate Host tasks.

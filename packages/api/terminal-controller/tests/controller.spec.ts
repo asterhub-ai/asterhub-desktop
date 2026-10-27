@@ -64,6 +64,20 @@ describe('TerminalController', () => {
     await controller.close(agent, id)
   })
 
+  it('uses the resolved current cwd for terminal environments after a project move', () => {
+    const { controller, subprocess, sandboxPolicy } = fixture()
+    const oldRoots = ['/historical/project-present', '/historical/project-removed']
+    for (const [index, oldRoot] of oldRoots.entries()) {
+      const currentRoot = `/moved/project-${index}`
+      const isolated = new Context()
+      roots.push(isolated)
+      isolated.provide('subprocess', subprocess as never)
+      isolated.provide('sandboxPolicy', sandboxPolicy as never)
+      isolated.provide('sessionCwd', { resolve: () => currentRoot } as never)
+      expect(controller.environment(owner(isolated, `moved-${index}`, oldRoot), signal()).cwd).toBe(currentRoot)
+    }
+  })
+
   it('creates the environment default shell and keeps an existing identity when that default changes', async () => {
     const { controller, agent, subprocess } = fixture({ shell: undefined })
     subprocess.terminalEnvironment.mockResolvedValue({ platform: 'posix', defaultShell: '/usr/local/bin/zsh' })

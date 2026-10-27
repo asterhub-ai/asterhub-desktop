@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-tool-pwsh-persistent` gives each agent a `pwsh` tool that preserves its current directory, environment variables, functions, and background jobs across calls. Commands for one agent run sequentially, while different agents keep separate shell state. Choose it for multi-step PowerShell work; use `dsh-tool-pwsh` when every command should start clean, and use a terminal tool when commands require interactive stdin. Configure a pwsh-capable backend and per-command timeout; timeout or explicit `exit` discards the shell, so the next call starts fresh.
+`dsh-tool-pwsh-persistent` gives each agent a `pwsh` tool that preserves its current directory, environment variables, functions, and background jobs across calls. Commands for one agent run sequentially, while different agents keep separate shell state. Choose it for multi-step PowerShell work; use `dsh-tool-pwsh` when every command should start clean, and use a terminal tool when commands require interactive stdin. Configure a pwsh-capable backend and per-command timeout; timeout, explicit `exit`, or a change in the trusted current workspace closes the shell before another command can run there, so the next call starts fresh.
 
 ## Table of Contents
 

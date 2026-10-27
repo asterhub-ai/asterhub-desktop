@@ -60,6 +60,8 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
     reason: 'The bundled provider supplies optional development instructions; the selected workflow and task drive each SDK model call.',
   },
   'packages/bundle/asterhub-desktop-native': { kind: 'indirect', reason: 'The bundle mounts existing clock, automation, and browser providers; those providers own model-visible content.' },
+  'packages/bundle/asterhub-product': { kind: 'indirect', reason: 'The bundle selects existing model route, search, skill, and persona services; those services own model-visible content.' },
+  'packages/bundle/asterhub-product-web': { kind: 'indirect', reason: 'The bundle selects existing account, storage, voice, and preset services; those services own model-visible content.' },
   'packages/client/ui-asterhub-automation': { kind: 'none', reason: 'The panel renders Host task state and submits authenticated commands; the Host owns scheduled model requests.' },
   'packages/client/product-analytics': { kind: 'none', reason: 'Desktop analytics observes selected interactions without contributing model context or Session events.' },
   'packages/experimental/speech-to-text': { kind: 'none', reason: 'Routes transient recognition without adding model requests or Session events.' },

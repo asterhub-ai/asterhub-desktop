@@ -22,6 +22,7 @@ export const DESKTOP_IPC = {
   browserOpenRequested: 'dsh-desktop:browser-open-requested',
   browserAutomation: 'dsh-desktop:browser-automation',
   browserAutomationReply: 'dsh-desktop:browser-automation-reply',
+  browserAutomationCancel: 'dsh-desktop:browser-automation-cancel',
   browserNavigate: 'dsh-desktop:browser-navigate',
   browserGoBack: 'dsh-desktop:browser-go-back',
   browserGoForward: 'dsh-desktop:browser-go-forward',
@@ -47,6 +48,7 @@ export const DESKTOP_IPC = {
   windowsAppearance: 'dsh-desktop:windows-appearance',
   windowsMenu: 'dsh-desktop:windows-menu',
   accountCommand: 'dsh-desktop:account-command',
+  appVersion: 'dsh-desktop:app-version',
 } as const
 
 /** Account actions sent from the native application menu to the renderer. */
@@ -90,6 +92,7 @@ export interface DesktopUpdatePresentation {
 /** Product documents cannot supply update versions, package URLs, or installation authorization. */
 export interface DshDesktopProductApi {
   readonly protocolVersion: 1
+  readonly installedVersion: string
   readonly browser: DesktopBrowserBridge
   readonly keyboard: DesktopKeyboardApi
   readonly shortcuts: DesktopShortcutsApi

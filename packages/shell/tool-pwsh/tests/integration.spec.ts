@@ -74,7 +74,11 @@ describe.skipIf(!hasPwsh)('pwsh tool over the real pwsh executor', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
-  const agent = () => ({ session: { header: { id: 'session-int', cwd: dir } } })
+  const agent = () => ({
+    ctx: ctx.plugin(() => {}).ctx,
+    options: {},
+    session: { header: { id: 'session-int', cwd: dir } },
+  })
 
   it('runs a command and returns stdout with no marker on a clean exit', async () => {
     const result = await call('pwsh', { command: 'Write-Output hi', description: 'say hi' }, agent())

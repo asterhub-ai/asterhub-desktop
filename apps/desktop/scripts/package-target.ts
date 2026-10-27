@@ -8,7 +8,7 @@ import {
   desktopBuildRecordFilename,
   resolveDesktopAutoUpdateConfig,
 } from './desktop-auto-update-environment.mjs'
-import { DESKTOP_BUILD_ROOT, desktopTargetBuildPaths } from './desktop-build-paths.mjs'
+import { DESKTOP_BUILD_ROOT, desktopTargetBuildPaths, resolveDesktopBuildLayout, resolveDesktopBuildRoot } from './desktop-build-paths.mjs'
 import { packageMacOSArtifacts, type DesktopPrepackagedArtifact } from './package-macos.ts'
 import { loadDesktopPackageEnvironment, validateDesktopPackageEnvironment } from './desktop-package-environment.mjs'
 import { createPackagingRun, recordPackagingEvent } from './packaging-run.mjs'
@@ -322,7 +322,9 @@ async function resolveRequestedBuildVersion(
   const requested = invocation.requestedBuildVersion
   if (requested === undefined) return productVersion
   if (requested !== AUTOMATIC_BUILD_VERSION) return validateDesktopBuildVersion(requested, productVersion)
-  const paths = desktopTargetBuildPaths(invocation.target.name)
+  const paths = desktopTargetBuildPaths(
+    invocation.target.name, resolveDesktopBuildLayout(environment), resolveDesktopBuildRoot(environment),
+  )
   return suggestDesktopBuildVersion({
     productVersion, target: invocation.target.name, environment,
     // Unsigned builds land beside the signed output, so numbering has to read the directory this run writes.
@@ -405,7 +407,7 @@ export async function packageTarget(
   const proxyEvent = (status: string) => { if (journal) recordPackagingEvent(journal, { type: 'notarization-proxy', status }) }
   const mac = target.platform === 'darwin' ? resolveMacOSPackageSettings(environment) : undefined
   const packArguments = mac === undefined ? [] : ['--concurrency', String(mac.packConcurrency)]
-  const buildPaths = desktopTargetBuildPaths(target.name)
+  const buildPaths = desktopTargetBuildPaths(target.name, resolveDesktopBuildLayout(environment), resolveDesktopBuildRoot(environment))
   const releaseRecordPath = join(buildPaths.artifacts, desktopBuildRecordFilename(target.name))
   if (!invocation.prepareOnly && !invocation.unsigned) {
     rmSync(releaseRecordPath, { force: true })
@@ -529,7 +531,7 @@ export async function packageTarget(
     }
   }
   if (invocation.unsigned && invocation.directory && target.platform === 'win32') {
-    const launcher = prepareWindowsPortableLauncher(join(buildPaths.root, 'unsigned-artifacts', 'win-unpacked'))
+    const launcher = prepareWindowsPortableLauncher(join(buildPaths.unsignedArtifacts, 'win-unpacked'))
     console.log(`desktop package: small launcher ${launcher.launcherBytes} bytes; Electron runtime ${launcher.runtimeBytes} bytes`)
   }
   if (!invocation.directory && !invocation.unsigned) writeReleaseRecord(target, electronBuilderEnv, buildPaths.artifacts)

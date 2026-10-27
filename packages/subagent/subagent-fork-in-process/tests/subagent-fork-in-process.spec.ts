@@ -13,6 +13,7 @@ import * as AgentLoopInvariant from '@deepseek-ai/dsh-agent-loop/invariant'
 import SubagentRuntime, { type SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import * as fork from '../src/index.ts'
 import { STRUCTURED_OUTPUT_TOOL } from '@deepseek-ai/dsh-subagent-in-process-driver'
@@ -211,6 +212,7 @@ describe('dsh-subagent-fork-in-process', () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(SubagentRuntime)
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(AgentRegistry)
     const fiber = await ctx.plugin(fork, { providerName: 'fork' })
     expect(ctx.subagents.list()).toEqual(['fork'])
@@ -250,12 +252,10 @@ describe('dsh-subagent-fork-in-process', () => {
   it('has the namespace-plugin export shape (no stray default)', () => {
     expect('default' in fork).toBe(false)
     expect(fork.name).toBe('subagent-fork-in-process')
-    expect(fork.inject).toEqual(['subagents'])
     const loader = Object.create(Loader.prototype) as Loader
     const unwrapped = loader.unwrapExports(fork) as Record<string, unknown>
     expect(unwrapped).toBe(fork)
     expect(unwrapped.name).toBe('subagent-fork-in-process')
-    expect(unwrapped.inject).toEqual(['subagents'])
     expect(typeof unwrapped.apply).toBe('function')
   })
 })

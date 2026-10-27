@@ -52,15 +52,24 @@ export function createDesktopBrowserAutomationHandler(options: BrowserAutomation
       }
       const exhaustive: never = command.operation
       throw new Error(`Desktop Browser cannot handle ${String(exhaustive)}`)
-    } catch {
-      return failure(signal.aborted ? 'Browser command was cancelled' : 'Browser tab operation failed')
+    } catch (error: unknown) {
+      if (signal.aborted) return failure('Browser command was cancelled')
+      const message = error instanceof Error && error.message.length > 0 && error.message.length <= 4096
+        ? (error.message.startsWith('Browser ') ? error.message : `Browser tab operation failed: ${error.message}`)
+        : 'Browser tab operation failed'
+      return failure(message)
     }
   }
 }
 
 async function openTab(options: BrowserAutomationOptions, sessionId: SessionId, url: string,
   newTab: boolean, signal: AbortSignal): Promise<DesktopBrowserTabCommandResult> {
-  const requested = new URL(url)
+  let requested: URL
+  try {
+    requested = new URL(url)
+  } catch {
+    return failure(`Browser tab operation failed: invalid URL "${url}"`)
+  }
   const candidates = liveBrowserTabs(options, sessionId)
   if (!newTab) {
     const exact = choose(candidates.filter((candidate) => {
@@ -156,7 +165,11 @@ function waitForObservedPage(source: HostObservable<BrowserControllerState>, pre
   signal: AbortSignal): Promise<BrowserControllerState> {
   const current = (): BrowserControllerState | undefined => {
     const state = source.getSnapshot()
-    if (state.frame.error !== undefined) throw new Error('Browser page navigation failed')
+    if (state.frame.error !== undefined) {
+      const description = state.frame.error.description
+        || (state.frame.error.code !== undefined ? `code ${state.frame.error.code}` : undefined)
+      throw new Error(description !== undefined ? `Browser page navigation failed: ${description}` : 'Browser page navigation failed')
+    }
     return state.frame.address === 'observed' && !state.frame.loading && state.frame.target !== undefined
       && state.addressRevision > previousRevision ? state : undefined
   }

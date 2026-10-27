@@ -181,19 +181,46 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   }
 
   async connectWorkspace(workspaceId: WorkspaceId, options: NewSessionOptions = {}): Promise<SessionId> {
-    const workspace = this.workspaces.list.getSnapshot().items
-      .find(item => item.workspaceId === workspaceId)
-    if (workspace === undefined) {
-      throw new Error(`uiWorkspace.connectWorkspace: unknown workspace ${workspaceId}`)
-    }
     const key = JSON.stringify([workspaceId, options.agentPreset ?? null])
     const inflight = this.connecting.get(key)
     if (inflight !== undefined) return inflight
 
-    const attempt = this.createInWorkspace(workspace, options)
-      .finally(() => { this.connecting.delete(key) })
+    const immediate = this.workspaces.list.getSnapshot().items
+      .find(item => item.workspaceId === workspaceId)
+
+    const attempt = (immediate !== undefined
+      ? this.createInWorkspace(immediate, options)
+      : this.waitForWorkspace(workspaceId).then(workspace => this.createInWorkspace(workspace, options))
+    ).finally(() => { this.connecting.delete(key) })
+
     this.connecting.set(key, attempt)
     return attempt
+  }
+
+  private waitForWorkspace(workspaceId: WorkspaceId): Promise<WorkspaceView> {
+    const { promise, resolve, reject } = Promise.withResolvers<WorkspaceView>()
+    let unsubscribe: (() => void) | null = null
+
+    const cleanup = (): void => {
+      clearTimeout(timer)
+      unsubscribe?.()
+      unsubscribe = null
+    }
+
+    const timer = setTimeout(() => {
+      cleanup()
+      reject(new Error(`uiWorkspace.connectWorkspace: unknown workspace ${workspaceId}`))
+    }, 500)
+
+    unsubscribe = this.workspaces.list.subscribe(() => {
+      const found = this.workspaces.list.getSnapshot().items.find(item => item.workspaceId === workspaceId)
+      if (found !== undefined) {
+        cleanup()
+        resolve(found)
+      }
+    })
+
+    return promise
   }
 
   private createInWorkspace(workspace: WorkspaceView, options: NewSessionOptions): Promise<SessionId> {

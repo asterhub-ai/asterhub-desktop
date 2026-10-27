@@ -47,11 +47,8 @@ async function boot(
     applicationModelRoute?: {
       provider: string
       model: string
-      baseURL: string
-      api: string
-      credentialRecord: string
-      contextWindow: number
-      maxTokens: number
+      selectableModels?: boolean
+      profile?: Readonly<Record<string, unknown>>
     }
   } = {},
 ): Promise<Context> {
@@ -92,7 +89,10 @@ describe('deployment-locked provider routes', () => {
   it('uses the application-owned route over profile/settings/environment and reads the Host account record', async () => {
     vi.stubEnv('SUB2API_LOCKED_KEY', 'process-environment-must-not-win')
     const dir = await home()
-    const server = await mockServer([{ events: textEvents }])
+    const server = await mockServer([
+      { body: JSON.stringify({ data: [{ id: 'aster' }] }) },
+      { events: textEvents },
+    ])
     const settingsPath = join(dir, 'settings.yaml')
     const stored = [
       'llm-pi-ai:',
@@ -113,8 +113,8 @@ describe('deployment-locked provider routes', () => {
       deploymentLocked: false,
       providers: {
         sub2api: {
-          displayName: 'Overridden display name',
-          credentialRecord: String(credentialKey('asterhub-account', 'model-api-key')),
+          displayName: 'Untrusted override',
+          credentialRecord: 'attacker/model-key',
           api: 'openai-completions',
           baseURL: 'https://evil.invalid/v1',
           models: [{ id: 'wrong-model', name: 'Wrong', contextWindow: 1000, maxTokens: 500 }],
@@ -122,8 +122,15 @@ describe('deployment-locked provider routes', () => {
         attacker: { api: 'openai-completions', baseURL: 'https://attacker.invalid/v1', models: [{ id: 'attacker-model' }] },
       },
     }, { authorization: true, applicationModelRoute: {
-      provider: 'sub2api', model: 'aster', baseURL: server.url, api: 'openai-completions',
-      credentialRecord: String(credentialKey('asterhub-account', 'model-api-key')), contextWindow: 65_536, maxTokens: 4096,
+      provider: 'sub2api', model: 'aster', selectableModels: true,
+      profile: {
+        displayName: 'AsterHub',
+        credentialRecord: String(credentialKey('asterhub-account', 'model-api-key')),
+        api: 'openai-completions',
+        baseURL: server.url,
+        syncModels: true,
+        models: [{ id: 'aster', name: 'AsterHub', contextWindow: 65_536, maxTokens: 4096, input: ['text', 'image'] }],
+      },
     } })
 
     expect(ctx.llm.listProviders()).toEqual([{ id: 'sub2api', name: 'AsterHub' }])
@@ -132,6 +139,7 @@ describe('deployment-locked provider routes', () => {
     await expect(ctx.llm.discoverModels(NS, {
       provider: 'attacker', api: 'openai-completions', baseURL: 'https://invalid.example/v1',
     })).rejects.toThrow()
+    await expect(ctx.llm.listModels('attacker')).rejects.toThrow()
     expect(ctx.authorization.describe(LlmPiAi.recordKeyFor('openai-codex'))).toBeUndefined()
     expect(await readFile(settingsPath, 'utf8')).toBe(stored)
 
@@ -141,6 +149,10 @@ describe('deployment-locked provider routes', () => {
     const result = await assemble(ctx, { provider: 'sub2api', model: 'aster', messages: [] })
     expect(result.message.content).toEqual([{ type: 'text', text: 'hello' }])
     expect(server.headers[0]?.authorization).toBe('Bearer credential-from-host')
+    expect(server.paths).toEqual(['/models', '/chat/completions'])
+    await expect(configurations.get(ctx)!.update({
+      providers: { sub2api: { baseURL: 'https://replacement.invalid/v1' } },
+    })).rejects.toThrow('provider routes are deployment-locked')
   })
 })
 

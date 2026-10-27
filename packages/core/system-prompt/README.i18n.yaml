@@ -18,8 +18,8 @@
   en: 7bea567207cd7e00
   zh: ffc050b05f07ba7f
 /deepseek-ai-dsh-system-prompt/use-this-package/configure-the-prompt:
-  en: fb055e5f8c15fbac
-  zh: bb5001e4b36aaef3
+  en: 67f813082910d0e5
+  zh: aa2e123e022b6f57
 /deepseek-ai-dsh-system-prompt/use-this-package/contribute-a-prompt-section:
   en: 15d70e3b8eddd636
   zh: a3a67cab60eee86f
@@ -57,11 +57,11 @@
   en: cf78b9dd5596495f
   zh: bd44560f8c2435e8
 /deepseek-ai-dsh-system-prompt/model-experience/system-prompt/what-the-model-sees:
-  en: 9927fdee4f8aa8ec
-  zh: 3687314c357fa7f4
-/deepseek-ai-dsh-system-prompt/model-experience/system-prompt/what-the-model-sees/harness-identity:
-  en: 40effd71cb503319
-  zh: 9969356237a4f398
+  en: 319994f24996e095
+  zh: 99e02a3e5542ba5f
+/deepseek-ai-dsh-system-prompt/model-experience/system-prompt/what-the-model-sees/deployment-identity:
+  en: 79139b45733dd237
+  zh: 69c30e06c0b31379
 /deepseek-ai-dsh-system-prompt/model-experience/system-prompt/token-effect:
   en: 29722e212137deaa
   zh: 92cd0f1a16b10315

@@ -62,7 +62,7 @@ export interface AutomationDetailInjected {
 /** Detail props. */
 export type AutomationDetailProps = Omit<AutomationDetailInjected, 'hooks'>
   & PropsLocale<'automation'>
-  & Pick<PropsRuntime<'main'>, 'useSessions' | 'useWorkspaces'>
+  & Pick<PropsRuntime<'main'>, 'useWorkspaces'>
   & {
     readonly task: AutomationTask
     readonly id: string
@@ -155,10 +155,9 @@ export function AutomationDetail(props: AutomationDetailProps) {
     prepareOperation, commitOperation,
     getChoices, previewDraft,
     onDeleted, onClose, t,
-    useSessions, useWorkspaces,
+    useWorkspaces,
   } = props
 
-  const sessions = useSessions(snapshot => snapshot)
   const workspaces = useWorkspaces(snapshot => snapshot)
 
   const [editing, setEditing] = useState(false)
@@ -262,7 +261,7 @@ export function AutomationDetail(props: AutomationDetailProps) {
       setPending(result.prepared)
       // If no confirmation required, commit immediately
       if (result.prepared.confirmationId === null && !result.prepared.operation.action.includes('create') && !result.prepared.operation.action.includes('update')) {
-        await doCommit()
+        await doCommit(result.prepared)
       }
     } catch {
       setActionError(t('toast.error'))
@@ -272,22 +271,23 @@ export function AutomationDetail(props: AutomationDetailProps) {
     }
   }
 
-  const doCommit = async (): Promise<void> => {
-    if (pending === null) return
+  // Omitted argument commits the state-held `pending` (dialog confirm path,
+  // called after the re-render that carries it); a prepared operation passed
+  // in commits that one directly (no-confirmation path, same tick as
+  // prepareOperation, before `pending` state is visible).
+  const doCommit = async (preparedInput?: PendingOperation): Promise<void> => {
+    const prepared = preparedInput ?? pending
+    if (prepared === null) return
     setCommitting(true)
     setActionError(null)
     try {
-      const outcome = await commitOperation(pending.requestId, pending.confirmationId)
+      const outcome = await commitOperation(prepared.requestId, prepared.confirmationId)
       if (outcome.ok) {
-        const kind = pending.operation.action
+        const kind = prepared.operation.action
         if (kind === 'remove') reportSuccess('deleted', task.id)
         else if (kind === 'pause') reportSuccess('paused', task.id)
         else if (kind === 'resume') reportSuccess('resumed', task.id)
-        else if (kind === 'run') reportSuccess('runStarted', task.id)
-        else if (kind === 'stop') reportSuccess('stopped', task.id)
-        if (kind === 'remove') {
-          onDeleted()
-        }
+        if (kind === 'remove') onDeleted()
       } else {
         setActionError(outcome.errorCode)
       }
@@ -442,18 +442,15 @@ export function AutomationDetail(props: AutomationDetailProps) {
                         if (workspaces.archivedSessionIds.includes(sid)) {
                           return <span style={{ color: 'var(--dsw-alias-label-tertiary)' }}>{t('session.archived')}</span>
                         }
-                        if (sessions.ids.includes(sid)) {
-                          return (
-                            <button
-                              type="button"
-                              style={{ background: 'none', border: 'none', color: 'var(--dsw-alias-state-business-primary)', cursor: 'pointer', padding: 0, font: 'inherit' }}
-                              onClick={() => { onOpenSession(sid) }}
-                            >
-                              {t('session.link')}
-                            </button>
-                          )
-                        }
-                        return <span style={{ color: 'var(--dsw-alias-label-tertiary)' }}>{t('session.unavailable')}</span>
+                        return (
+                          <button
+                            type="button"
+                            style={{ background: 'none', border: 'none', color: 'var(--dsw-alias-state-business-primary)', cursor: 'pointer', padding: 0, font: 'inherit' }}
+                            onClick={() => { onOpenSession(sid) }}
+                          >
+                            {t('session.link')}
+                          </button>
+                        )
                       })()}
                     </div>
                   </li>
@@ -531,6 +528,12 @@ export function AutomationDetail(props: AutomationDetailProps) {
           {t('action.delete')}
         </Button>
       </div>
+      {/* An error stored without a dialog context (failed prepare, failed
+          immediate commit) renders here; an open dialog owns its own error
+          paragraph. */}
+      {confirmKind === null && actionError !== null && (
+        <p className={css.formError} role="alert">{actionError}</p>
+      )}
       {confirmKind !== null && pending !== null && (
         <div className={css.confirmDialog} role="dialog" aria-modal="true" aria-label={confirmTitle}>
           <div className={css.confirmContent}>

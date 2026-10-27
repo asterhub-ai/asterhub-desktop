@@ -3,6 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import TerminalSessionService from '@deepseek-ai/dsh-terminal'
 import type {
@@ -286,16 +287,18 @@ class StubPtySession implements TerminalBackendSession {
 
 function stubBackend(initialMode: StubMode = 'normal') {
   const sessions: StubPtySession[] = []
+  const cwds: (string | undefined)[] = []
   const backend: TerminalBackend = {
     type: 'stub',
-    async spawn() {
+    async spawn(spec) {
       if (initialMode === 'spawn-error') throw new Error('stub spawn failed')
       const session = new StubPtySession(initialMode)
       sessions.push(session)
+      cwds.push(spec.cwd)
       return session
     },
   }
-  return { backend, sessions }
+  return { backend, sessions, cwds }
 }
 
 async function setup(
@@ -308,15 +311,18 @@ async function setup(
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(TerminalSessionService)
+  await ctx.plugin(SessionCwd)
+  let currentRoot: string | undefined = '/workspace'
+  ctx.sessionCwd.registerResolver(() => currentRoot)
   const stub = stubBackend(initialMode)
   ctx.terminals.registerBackend(stub.backend)
   const fiber = await ctx.plugin(ToolBashPersistent, config)
-  return { ctx, stub, fiber, owner: await agent(ctx, '/workspace') }
+  return { ctx, stub, fiber, owner: await agent(ctx, '/workspace'), setCurrentRoot: (root: string | undefined) => { currentRoot = root } }
 }
 
 describe('tool-bash-persistent', () => {
   it('registers a configurable schema and reuses one owner shell', async () => {
-    const { ctx, owner, stub, fiber } = await setup({
+    const { ctx, owner, stub, fiber, setCurrentRoot } = await setup({
       backendType: 'stub',
       description: 'deployment-specific persistent shell',
     })
@@ -336,8 +342,15 @@ describe('tool-bash-persistent', () => {
     expect(stub.sessions[0]?.sends).toBe(3)
 
     const ownerWithoutCwd = await agent(ctx, undefined)
-    expect(text(await call(ctx, ownerWithoutCwd, 'pwd'))).toBe('hello from stub\n[Command finished with exit code 0]')
+    setCurrentRoot(undefined)
+    expect((await call(ctx, owner, 'pwd')).isError).toBe(true)
+    expect(stub.sessions[0]?.closed).toContain('current workspace is unavailable')
+    expect((await call(ctx, ownerWithoutCwd, 'pwd')).isError).toBe(true)
+
+    setCurrentRoot('/workspace-moved')
+    expect(text(await call(ctx, owner, 'pwd'))).toContain('hello from stub')
     expect(stub.sessions).toHaveLength(2)
+    expect(stub.cwds).toEqual(['/workspace', '/workspace-moved'])
 
     await fiber.dispose()
     expect(ctx.tools.schemas()).toEqual([])

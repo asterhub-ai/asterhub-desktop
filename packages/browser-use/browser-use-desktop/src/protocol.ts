@@ -225,7 +225,7 @@ function isObservation(value: unknown): value is DesktopBrowserObservation {
     && (value.screenshot === undefined || typeof value.screenshot === 'boolean')
 }
 
-function isHttpUrl(value: unknown): value is string {
+export function isDesktopBrowserHttpUrl(value: unknown): value is string {
   if (!isNonEmptyString(value) || value.length > 16_384) return false
   try {
     const url = new URL(value)
@@ -234,6 +234,8 @@ function isHttpUrl(value: unknown): value is string {
     return false
   }
 }
+
+const isHttpUrl = isDesktopBrowserHttpUrl
 
 function isTabInfo(value: unknown): value is DesktopBrowserTabInfo {
   return isRecord(value) && hasOnlyKeys(value, ['target', 'url', 'title', 'active', 'ownership', 'attached'])

@@ -2,6 +2,7 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import SessionStore, { SESSION_FORMAT_VERSION, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
 import type {} from '@deepseek-ai/dsh-skill'
 import { describe, expect, it, vi } from 'vitest'
@@ -40,6 +41,7 @@ async function context(): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
   await ctx.plugin(AgentRegistry)
+  await ctx.plugin(SessionCwd)
   return ctx
 }
 
@@ -47,7 +49,8 @@ describe('SessionSkillCatalog', () => {
   it('reads a cold Session catalog without resuming an Agent', async () => {
     const ctx = await context()
     const sessionId = SessionId('cold-skills')
-    const observed = observation(sessionId, { cwd: '/cold/project' })
+    ctx.sessionCwd.registerResolver(() => '/moved/project')
+    const observed = observation(sessionId, { cwd: '/old/project' })
     const dispose = vi.spyOn(observed, Symbol.dispose)
     const observeSession = vi.fn(() => Promise.resolve(observed))
     ctx.provide('sessionQuery', { observeSession } as never)
@@ -57,7 +60,7 @@ describe('SessionSkillCatalog', () => {
         name: 'review',
         description: 'Review the current change.',
         whenToUse: 'Before publishing.',
-        path: '/cold/project/.agents/skills/review/SKILL.md',
+        path: '/moved/project/.agents/skills/review/SKILL.md',
         invocation: { modelInvocable: true, userInvocable: true },
       },
       {
@@ -74,7 +77,7 @@ describe('SessionSkillCatalog', () => {
         name: 'review',
         description: 'Review the current change.',
         whenToUse: 'Before publishing.',
-        path: '/cold/project/.agents/skills/review/SKILL.md',
+        path: '/moved/project/.agents/skills/review/SKILL.md',
         modelInvocable: true,
       }],
     })
@@ -82,7 +85,7 @@ describe('SessionSkillCatalog', () => {
     expect(dispose).toHaveBeenCalledOnce()
     expect(resume).not.toHaveBeenCalled()
     expect(ctx.agents.list()).toEqual([])
-    expect(list).toHaveBeenCalledWith({ cwd: '/cold/project', scope: undefined })
+    expect(list).toHaveBeenCalledWith({ cwd: '/moved/project', scope: undefined })
   })
 
   it('uses a live Agent to address a preset-owned registry', async () => {

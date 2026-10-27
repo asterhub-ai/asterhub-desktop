@@ -44,7 +44,7 @@ describe('SystemPrompt', () => {
   it('keeps reusable instructions identical across local environments', async () => {
     const ctx = new Context()
     try {
-      await ctx.plugin(SystemPrompt, { personaPrefix: 'Model {{model}}.', personaSuffix: 'In {{cwd}} on {{platform}}.' })
+      await ctx.plugin(SystemPrompt, { harnessIdentity: IDENTITY, personaPrefix: 'Model {{model}}.', personaSuffix: 'In {{cwd}} on {{platform}}.' })
       let environment = { model: 'model-a', cwd: '/alice/project', platform: 'darwin', source: '/alice/dsh', url: 'http://127.0.0.1:3080' }
       for (const key of ['model', 'cwd', 'platform'] as const) {
         ctx.systemPrompt.variable(key, () => environment[key])
@@ -86,7 +86,7 @@ describe('SystemPrompt', () => {
     it('renders the environment after guidance and reports its strict interpolation errors', async () => {
       const ctx = new Context()
       try {
-        await ctx.plugin(SystemPrompt, { personaPrefix: 'Model {{model}}.', personaSuffix: 'Workspace {{cwd}}.' })
+        await ctx.plugin(SystemPrompt, { harnessIdentity: IDENTITY, personaPrefix: 'Model {{model}}.', personaSuffix: 'Workspace {{cwd}}.' })
         ctx.systemPrompt.variable('model', () => 'm')
         ctx.systemPrompt.section({ name: 'guidance', order: 100, text: 'Use tools.' })
         const unresolved = await ctx.systemPrompt.assemble()
@@ -102,7 +102,7 @@ describe('SystemPrompt', () => {
 
     it('registers the harness identity and the configured deployment persona', async () => {
       const ctx = new Context()
-      await ctx.plugin(SystemPrompt, { personaPrefix: '你是 AsterHub。' })
+      await ctx.plugin(SystemPrompt, { harnessIdentity: IDENTITY, personaPrefix: '你是 AsterHub。' })
 
       const assembly = await ctx.systemPrompt.assemble()
       expect(assembly.sections.map(s => s.name)).toEqual([
@@ -116,16 +116,20 @@ describe('SystemPrompt', () => {
         .toThrow('prompt section "deployment:persona-prefix" is already registered')
     })
 
-    it('renders no persona section for a persona-less deployment (empty default)', async () => {
+    it('does not add a product identity unless the deployment supplies one', async () => {
       const ctx = new Context()
-      await ctx.plugin(SystemPrompt)
-      expect(renderPrompt(await ctx.systemPrompt.assemble())).toBe(IDENTITY)
+      try {
+        await ctx.plugin(SystemPrompt, { personaPrefix: 'Generic assistant.' })
+        expect(renderPrompt(await ctx.systemPrompt.assemble())).toBe('Generic assistant.')
+      } finally {
+        await ctx.fiber.dispose()
+      }
     })
 
     it('can omit the harness identity for a deployment that owns the complete persona', async () => {
       const ctx = new Context()
       await ctx.plugin(SystemPrompt, {
-        includeHarnessIdentity: false,
+        harnessIdentity: '',
         personaPrefix: 'You are a helpful software engineer assistant.',
       })
 
@@ -158,13 +162,13 @@ describe('SystemPrompt', () => {
       // skips the schema, so the ctor's `?? ''` narrowing is what fires.
       const ctx = new Context()
       const service = new SystemPrompt(ctx, {})
-      expect(renderPrompt(await service.assemble())).toBe(IDENTITY)
+      expect(renderPrompt(await service.assemble())).toBe('')
     })
   })
 
   it('assembles sections in order with context-resolved text and collected tools', async () => {
     const ctx = new Context()
-    await ctx.plugin(SystemPrompt, { personaPrefix: '你是 AsterHub。' })
+    await ctx.plugin(SystemPrompt, { harnessIdentity: IDENTITY, personaPrefix: '你是 AsterHub。' })
 
     ctx.systemPrompt.section({ name: 'cwd', order: 20, text: () => 'cwd: /tmp' })
     ctx.systemPrompt.section({ name: 'rules', order: 10, text: 'Be precise.' })
@@ -212,7 +216,7 @@ describe('SystemPrompt', () => {
 
   it('removes contributions when the contributing fiber is disposed (HMR safety)', async () => {
     const ctx = new Context()
-    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(SystemPrompt, { harnessIdentity: IDENTITY })
 
     const fiber = await ctx.plugin(Object.assign((inner: Context) => {
       inner.systemPrompt.section({ name: 'scoped', order: 0, text: 'scoped section' })
@@ -340,7 +344,7 @@ describe('SystemPrompt', () => {
 
   it('composes multiple system-prompt/assemble waterfall listeners in order, with the context', async () => {
     const ctx = new Context()
-    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(SystemPrompt, { harnessIdentity: IDENTITY })
     ctx.systemPrompt.section({ name: 'base', order: 10, text: 'base' })
 
     // Listener A appends a section, then delegates.
@@ -420,8 +424,8 @@ describe('SystemPrompt', () => {
     firstParameters.properties['leak'] = { type: 'string' }
 
     const second = await ctx.systemPrompt.assemble()
-    expect(second.sections.map(section => section.name)).toEqual(['harness:identity', 'deployment:persona-prefix', 'base', 'deployment:persona-suffix'])
-    expect(second.sections[0]!.text).toBe(IDENTITY)
+    expect(second.sections.map(section => section.name)).toEqual(['deployment:persona-prefix', 'base', 'deployment:persona-suffix'])
+    expect(second.sections[0]!.text).toBe('')
     expect(second.contexts).toEqual([])
     expect(second.tools).toEqual([{ name: 't', description: 'tool', parameters: { type: 'object', properties: {} } }])
   })
@@ -572,7 +576,7 @@ describe('SystemPrompt', () => {
 
     it('interpolates {{name}} references in section text at render — the persona included', async () => {
       const ctx = new Context()
-      await ctx.plugin(SystemPrompt, { personaPrefix: 'You run on {{model}} in {{cwd}}.' })
+      await ctx.plugin(SystemPrompt, { harnessIdentity: IDENTITY, personaPrefix: 'You run on {{model}} in {{cwd}}.' })
       ctx.systemPrompt.variable('model', () => 'deepseek-v4')
       ctx.systemPrompt.variable('cwd', () => '/work')
 
@@ -587,7 +591,7 @@ describe('SystemPrompt', () => {
     ])('preserves literal section text with complete=%s and dynamic=%s', async (complete, dynamic) => {
       const ctx = new Context()
       try {
-        await ctx.plugin(SystemPrompt, { includeHarnessIdentity: false, personaPrefix: '{{model}}' })
+        await ctx.plugin(SystemPrompt, { personaPrefix: '{{model}}' })
         ctx.systemPrompt.variable('model', () => 'actual-model')
         const text = '{{item}} {{model}} {{ model }} {{nested{{item}}}}'
         ctx.systemPrompt.section({ name: 'literal', order: 1, text: dynamic ? () => text : text, interpolate: false, complete })
@@ -606,7 +610,7 @@ describe('SystemPrompt', () => {
         assembly.variables['extra'] = 'from-waterfall'
         return next()
       })
-      expect(renderPrompt(await ctx.systemPrompt.assemble())).toBe(`${IDENTITY}\n\nfrom-waterfall`)
+      expect(renderPrompt(await ctx.systemPrompt.assemble())).toBe('from-waterfall')
     })
 
     it('throws on a reference to an unregistered variable, listing what exists', async () => {
@@ -679,7 +683,7 @@ describe('SystemPrompt', () => {
       await ctx.plugin(SystemPrompt)
       ctx.systemPrompt.section({ name: 's', order: 0, text: '{{constructor}}' })
       ctx.systemPrompt.variable('constructor', () => 'own-value')
-      expect(renderPrompt(await ctx.systemPrompt.assemble())).toBe(`${IDENTITY}\n\nown-value`)
+      expect(renderPrompt(await ctx.systemPrompt.assemble())).toBe('own-value')
     })
 
     it('never re-scans substituted values (a value containing {{sneaky}} stays literal)', () => {

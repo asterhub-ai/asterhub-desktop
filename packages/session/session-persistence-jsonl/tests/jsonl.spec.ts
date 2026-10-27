@@ -20,6 +20,7 @@ import {
 import { runLiveWritePathContract } from '../../session-persistence/tests/live-write-contract.ts'
 import { LIVE_WRITE_BATCH_MAX_DELAY_MS, type JsonlSessionHandle, type JsonlHandleStorage } from '../src/storage.ts'
 import { JsonlGenerationSourceChangedError } from '../src/generation.ts'
+import { compressZstdFrame } from '../src/zstd.ts'
 import SessionStore from '@deepseek-ai/dsh-session'
 
 const statRace = vi.hoisted(() => ({
@@ -2695,29 +2696,81 @@ describe('JsonlSessionPersistence: edge cases', () => {
     expect((await readAll(ctx.sessionPersistence, m.id)).events).toEqual(oneTurnLog())
   })
 
-  it('rejects the obsolete flat-file layout instead of ignoring stored sessions', async () => {
+  it('migrates the obsolete flat session layout into the project-keyed directory on listing', async () => {
     const m = meta('legacy-flat', '/legacy')
-    const project = projectDir(root, m.cwd)
-    const path = join(project, `${encodeSegment(m.id)}.jsonl`)
-    await mkdir(project, { recursive: true })
-    await writeFile(path, [
+    const flatDir = join(root, encodeSegment(m.id))
+    await mkdir(flatDir, { recursive: true })
+    const flatArtifact = join(flatDir, generationLogFilename(SESSION_FORMAT_VERSION, 'none'))
+    const original = [
       JSON.stringify(toHeaderLine(m)),
       ...oneTurnLog().map(event => JSON.stringify(event)),
       '',
-    ].join('\n'))
+    ].join('\n')
+    await writeFile(flatArtifact, original)
 
-    await expect(ctx.sessionPersistence.open(m.id, 'read')).rejects.toThrow(/unsupported flat-file layout/)
-    await expect(ctx.sessionPersistence.list()).rejects.toThrow(/unsupported flat-file layout/)
+    const [firstList, secondList, opened] = await Promise.all([
+      ctx.sessionPersistence.list(),
+      ctx.sessionPersistence.list(),
+      readAll(ctx.sessionPersistence, m.id),
+    ])
+    expect(firstList.map(s => s.header.id)).toContain(m.id)
+    expect(secondList.map(s => s.header.id)).toContain(m.id)
+    expect(opened.events).toEqual(oneTurnLog())
+    const moved = join(sessionDir(root, m.cwd, m.id), generationLogFilename(SESSION_FORMAT_VERSION, 'none'))
+    expect(await readFile(moved, 'utf8')).toBe(original)
+    expect(await readdir(flatDir)).toEqual([])
+    expect((await readAll(ctx.sessionPersistence, m.id)).events).toEqual(oneTurnLog())
   })
 
-  it('rejects a compressed obsolete flat-file artifact during targeted lookup', async () => {
-    const m = meta('legacy-compressed-flat', '/legacy')
-    const project = projectDir(root, m.cwd)
-    expect(await ctx.sessionPersistence.list()).toEqual([])
-    await mkdir(project, { recursive: true })
-    await writeFile(join(project, `${encodeSegment(m.id)}.jsonl.zstd`), 'legacy')
+  it('leaves a flat source untouched when the nested migration target already exists', async () => {
+    const m = meta('legacy-conflict', '/legacy-conflict')
+    const flatDir = join(root, encodeSegment(m.id))
+    const flatArtifact = join(flatDir, generationLogFilename(SESSION_FORMAT_VERSION, 'none'))
+    const original = [JSON.stringify(toHeaderLine(m)), ''].join('\n')
+    await mkdir(flatDir, { recursive: true })
+    await writeFile(flatArtifact, original)
+    const nestedFile = join(sessionDir(root, m.cwd, m.id), generationLogFilename(SESSION_FORMAT_VERSION, 'none'))
+    await mkdir(dirname(nestedFile), { recursive: true })
+    await writeFile(nestedFile, 'existing target')
 
-    await expect(ctx.sessionPersistence.open(m.id, 'read')).rejects.toThrow(/unsupported flat-file layout/)
+    await expect(ctx.sessionPersistence.list()).rejects.toThrow(/migration target .* already exists/)
+    expect(await readFile(flatArtifact, 'utf8')).toBe(original)
+    expect(await readFile(nestedFile, 'utf8')).toBe('existing target')
+  })
+
+  it('migrates a flat artifact whose filename contains the encoded session id', async () => {
+    const m = meta('legacy-flat-name', '/legacy-flat-name')
+    const project = projectDir(root, m.cwd)
+    const oldPath = join(project, `${encodeSegment(m.id)}.jsonl`)
+    const original = [JSON.stringify(toHeaderLine(m)), ''].join('\n')
+    await mkdir(project, { recursive: true })
+    await writeFile(oldPath, original)
+
+    expect((await ctx.sessionPersistence.list()).map(s => s.header.id)).toContain(m.id)
+    const migrated = join(sessionDir(root, m.cwd, m.id), 'session.v5.jsonl')
+    expect(await readFile(migrated, 'utf8')).toBe(original)
+  })
+
+  it('migrates a compressed flat artifact during targeted lookup', async () => {
+    const compressedRoot = await freshRoot()
+    const compressedCtx = new Context()
+    const compressedFiber = await compressedCtx.plugin(JsonlSessionPersistence, { root: compressedRoot, compression: 'zstd' })
+    try {
+      const m = meta('legacy-compressed-flat', '/legacy')
+      const project = projectDir(compressedRoot, m.cwd)
+      const flatPath = join(project, `${encodeSegment(m.id)}.jsonl.zstd`)
+      await mkdir(project, { recursive: true })
+      const header = `${JSON.stringify(toHeaderLine(m))}\n`
+      const events = `${oneTurnLog().map(event => JSON.stringify(event)).join('\n')}\n`
+      const compressed = Buffer.concat([await compressZstdFrame(header), await compressZstdFrame(events)])
+      await writeFile(flatPath, compressed)
+
+      expect((await readAll(compressedCtx.sessionPersistence, m.id)).events).toEqual(oneTurnLog())
+      expect(await readFile(join(sessionDir(compressedRoot, m.cwd, m.id), 'session.v5.jsonl.zstd'))).toEqual(compressed)
+    } finally {
+      await compressedFiber.dispose()
+      await rm(compressedRoot, { recursive: true, force: true })
+    }
   })
 
   it('list skips empty and non-header session logs (metadata-only read)', async () => {

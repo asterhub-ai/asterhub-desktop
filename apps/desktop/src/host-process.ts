@@ -381,8 +381,10 @@ export class DesktopHostProcess {
       child.send({ type: 'credential-cipher/result', requestId: message.requestId, value }, (error) => {
         if (error !== null && !this.stopping) this.fail(new Error('desktop credential encryption reply failed'))
       })
-    } catch {
-      child?.send({ type: 'credential-cipher/result', requestId: message.requestId, error: 'OS credential encryption failed' })
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      console.error(`Desktop credential cipher failure: ${detail}`)
+      child?.send({ type: 'credential-cipher/result', requestId: message.requestId, error: `OS credential encryption failed: ${detail}` })
     }
   }
 

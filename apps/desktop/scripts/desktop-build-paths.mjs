@@ -31,6 +31,25 @@ export function resolveDesktopBuildRoot(env = process.env, repositoryRoot = REPO
 
 export const DESKTOP_BUILD_ROOT = resolveDesktopBuildRoot()
 const SUPPORTED_TARGETS = new Set(['mac-arm64', 'mac-x64', 'win-x64'])
+const COMPACT_TARGET_DIRECTORIES = {
+  'mac-arm64': 'ma64',
+  'mac-x64': 'mx64',
+  'win-x64': 'w64',
+}
+
+/**
+ * Resolve the target-directory layout selected by a packaging environment.
+ * @param {NodeJS.ProcessEnv} [env] - Environment that may select a compact layout.
+ * @returns {'standard' | 'compact'} Validated build-directory layout.
+ */
+export function resolveDesktopBuildLayout(env = process.env) {
+  const layout = env.DSH_DESKTOP_BUILD_LAYOUT ?? 'standard'
+  if (layout !== 'standard' && layout !== 'compact') {
+    throw new Error('desktop build paths: DSH_DESKTOP_BUILD_LAYOUT must be standard or compact')
+  }
+  return layout
+}
+
 
 /**
  * Resolve the fixed build target selected by a packaging environment.
@@ -64,16 +83,23 @@ function assertSupportedTarget(target) {
 /**
  * Return the mutable preparation and artifact directories owned by one release target.
  * @param {'mac-arm64' | 'mac-x64' | 'win-x64'} target - Supported Desktop target name.
+ * @param {'standard' | 'compact'} [layout] - Directory layout; defaults to the validated packaging environment.
  * @returns {{ root: string, artifacts: string, unsignedArtifacts: string, runtime: string, animaRuntime: string, packageSet: string, dsh: string, dshPnpm: string, electron: string, packedDsh: string, packedVendor: string, packedLandlock: string, downloads: string }} Target paths plus the shared immutable download cache.
  */
-export function desktopTargetBuildPaths(target) {
+export function desktopTargetBuildPaths(
+  target,
+  layout = resolveDesktopBuildLayout(process.env),
+  buildRoot = resolveDesktopBuildRoot(process.env),
+) {
   assertSupportedTarget(target)
-  const root = join(DESKTOP_BUILD_ROOT, 'targets', target)
+  const root = layout === 'compact'
+    ? join(buildRoot, COMPACT_TARGET_DIRECTORIES[target])
+    : join(buildRoot, 'targets', target)
   const packed = join(root, 'packed')
   return {
     root,
-    artifacts: join(root, 'artifacts'),
-    unsignedArtifacts: join(root, 'unsigned-artifacts'),
+    artifacts: join(root, layout === 'compact' ? 'a' : 'artifacts'),
+    unsignedArtifacts: join(root, layout === 'compact' ? 'u' : 'unsigned-artifacts'),
     runtime: join(root, 'runtime'),
     animaRuntime: join(root, 'anima-runtime'),
     packageSet: join(root, 'package-set'),
@@ -83,7 +109,7 @@ export function desktopTargetBuildPaths(target) {
     packedDsh: join(packed, 'dsh'),
     packedVendor: join(packed, 'vendor'),
     packedLandlock: join(packed, 'landlock'),
-    downloads: join(DESKTOP_BUILD_ROOT, 'downloads'),
+    downloads: join(buildRoot, 'downloads'),
   }
 }
 
@@ -113,7 +139,11 @@ export function resolveDesktopTargetBuildPaths(
   hostPlatform = process.platform,
   hostArch = process.arch,
 ) {
-  return desktopTargetBuildPaths(resolveDesktopBuildTarget(env, hostPlatform, hostArch))
+  return desktopTargetBuildPaths(
+    resolveDesktopBuildTarget(env, hostPlatform, hostArch),
+    resolveDesktopBuildLayout(env),
+    resolveDesktopBuildRoot(env),
+  )
 }
 
 /**

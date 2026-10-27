@@ -1,7 +1,8 @@
 /** Allocate operator qualification materials or inspect journals; never signs, uploads, or installs. */
 import { execFileSync } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { desktopTargetBuildPaths, resolveDesktopBuildRoot } from './desktop-build-paths.mjs'
 import { collectInstalledUpdateJournals, createInstalledUpdateRun, inspectInstalledUpdateJournals } from './installed-update-qualification.ts'
 import { prepareInstalledUpdateBootstrap } from './prepare-installed-update-bootstrap.ts'
 import { prepareInstalledUpdateRuntime } from './prepare-installed-update-runtime.ts'
@@ -30,7 +31,7 @@ async function main(): Promise<void> {
   }
   if (command === 'runtime' && original !== undefined && successor === undefined) {
     console.log(JSON.stringify(await prepareInstalledUpdateRuntime(original,
-      resolve(repository, 'apps/desktop/.desktop-build/targets/win-x64/dsh')), null, 2))
+      desktopTargetBuildPaths('win-x64').dsh), null, 2))
     return
   }
   if ((command !== 'init' && command !== 'inspect') || original === undefined || successor === undefined
@@ -44,8 +45,10 @@ async function main(): Promise<void> {
     return
   }
   const metadata = JSON.parse(await readFile(resolve(repository, 'package.json'), 'utf8')) as { version: string }
+  const qualification = resolve(resolveDesktopBuildRoot(process.env), 'qualification')
   const git = (args: string[]): string => execFileSync('git', args, { cwd: repository, encoding: 'utf8', windowsHide: true }).trim()
-  const run = await createInstalledUpdateRun(resolve(repository, 'apps/desktop/.desktop-build/qualification'), [original, successor], {
+  await mkdir(qualification, { recursive: true })
+  const run = await createInstalledUpdateRun(qualification, [original, successor], {
     version: metadata.version, commit: git(['rev-parse', 'HEAD']),
     dirtyFiles: git(['status', '--porcelain=v1', '--untracked-files=normal']).split('\n').filter(Boolean),
   })

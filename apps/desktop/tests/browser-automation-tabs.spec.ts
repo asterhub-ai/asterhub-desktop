@@ -9,6 +9,7 @@ import type {
 } from '@deepseek-ai/dsh-browser-use-desktop/types'
 import type { DesktopBrowserLeaseId } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import { DESKTOP_IPC } from '../src/ipc.ts'
+import { isDesktopBrowserResultMessage } from '@deepseek-ai/dsh-browser-use-desktop/protocol'
 
 const electron = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- vi.hoisted runs before module imports
@@ -221,6 +222,58 @@ it('intersects correlated renderer tab reports with main-owned Session guests', 
   await expect(pending).resolves.toMatchObject({ status: 'success', value: {
     kind: 'tabs', truncated: false, tabs: [{ url: 'https://a.example/', title: 'A page', active: true }],
   } })
+})
+
+it('forwards Host cancellation to the renderer using the correlated request id', async () => {
+  const registry = new DesktopBrowserGuests(() => undefined)
+  const fixture = ownerFixture()
+  registry.bind(fixture.window, () => () => {})
+  const controller = new AbortController()
+  const request: DesktopBrowserRequestMessage = {
+    type: 'browser/request', requestId: 16,
+    caller: { sessionId: SESSION_A, ownerGeneration: brandNumber<DesktopBrowserOwnerGeneration>(1) },
+    operation: { kind: 'tabs.list' },
+  }
+  const pending = registry.handleBrowserRequest(fixture.owner, request, controller.signal)
+  const command: unknown = fixture.send.mock.calls.find(([channel]) => channel === DESKTOP_IPC.browserAutomation)?.[1]
+  if (typeof command !== 'object' || command === null || !('requestId' in command) || typeof command.requestId !== 'number') {
+    throw new Error('expected a correlated renderer request')
+  }
+  controller.abort()
+  await expect(pending).resolves.toEqual({
+    status: 'error', code: 'cancelled', message: 'Browser operation was cancelled',
+  })
+  expect(fixture.send).toHaveBeenCalledWith(DESKTOP_IPC.browserAutomationCancel, command.requestId)
+})
+
+it('does not return an uncommitted about:blank guest as a browser tab result', async () => {
+  const registry = new DesktopBrowserGuests(() => undefined)
+  const fixture = ownerFixture()
+  registry.bind(fixture.window, () => () => {})
+  const reservation = registry.acquire(fixture.owner, 'cwd:/shared', SESSION_A, TAB_A)
+  releases.push(() => registry.release(fixture.owner, reservation.lease))
+
+  const request: DesktopBrowserRequestMessage = {
+    type: 'browser/request',
+    requestId: 16,
+    caller: { sessionId: SESSION_A, ownerGeneration: brandNumber<DesktopBrowserOwnerGeneration>(1) },
+    operation: { kind: 'tabs.list' },
+  }
+  const pending = registry.handleBrowserRequest(fixture.owner, request, new AbortController().signal)
+  const command = fixture.send.mock.calls.at(-1)?.[1] as { requestId: number }
+  registry.resolveRendererReply(fixture.owner, {
+    requestId: command.requestId,
+    result: { status: 'success', value: {
+      kind: 'tabs', tabs: [{ tabId: TAB_A, active: true }], truncated: false,
+    } },
+  })
+
+  const result = await pending
+  expect(isDesktopBrowserResultMessage({ type: 'browser/result', requestId: 16, result })).toBe(true)
+  expect(result).toMatchObject({
+    status: 'success',
+    value: { kind: 'tabs', tabs: [], truncated: false },
+  })
 })
 
 it('settles a tabs.list request when the renderer does not reply', async () => {

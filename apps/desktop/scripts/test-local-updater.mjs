@@ -24,7 +24,7 @@ try {
     if (timedOut) throw new Error('Local updater qualification exceeded its 120-second deadline')
     if (result.signal !== null) throw new Error(`Electron exited on ${result.signal}`)
     if (result.code !== 0) throw new Error(`Local updater qualification failed: exit=${result.code}`)
-    const evidenceRoot = fileURLToPath(new URL('../.desktop-build/qualification/', import.meta.url))
+    const evidenceRoot = join(resolveDesktopBuildRoot(process.env), 'qualification')
     await mkdir(evidenceRoot, { recursive: true })
     const evidence = await mkdtemp(join(evidenceRoot, 'local-updater-'))
     const report = JSON.parse(await readFile(join(root, 'result.json'), 'utf8'))

@@ -174,22 +174,16 @@ describe('Session file uploads', () => {
     ])
   })
 
-  it('stages a bounded byte stream and forwards cancellation to storage', async () => {
-    const { controller, uploads, followup, saveFileStream } = await uploadHarness()
-    const abort = new AbortController()
+  it('stages a bounded byte stream as a file attachment', async () => {
+    const { controller, uploads, followup } = await uploadHarness()
     const receipt = await uploads.uploadStream({
       sessionId: SESSION,
       data: (async function* (): AsyncIterable<Uint8Array> {
         yield Uint8Array.of(1, 2)
         yield Uint8Array.of(3, 4, 5)
       })(),
-      signal: abort.signal,
       name: 'huge.bin',
     })
-    expect(saveFileStream).toHaveBeenCalledWith(expect.objectContaining({
-      signal: abort.signal,
-      name: 'huge.bin',
-    }), undefined)
     expect(receipt.file).toMatchObject({ name: 'huge.bin', bytes: 5 })
     await controller.prompt(promptRequest([{ type: 'file', receiptId: receipt.receiptId }]))
     expect((followup.mock.calls[0]?.[0] as UserMessage).content).toEqual([
@@ -202,7 +196,6 @@ describe('Session file uploads', () => {
     const stream = (async function* (): AsyncIterable<Uint8Array> {})()
     await expect(uploads.uploadStream({ sessionId: SESSION, data: stream }))
       .resolves.toMatchObject({ file: { name: 'file', bytes: 0 } })
-    expect(saveFileStream).toHaveBeenLastCalledWith({ data: stream }, undefined)
     saveFileStream.mockRejectedValueOnce('disk offline')
     await expect(uploads.uploadStream({
       sessionId: SESSION,

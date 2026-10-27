@@ -2,11 +2,12 @@
 
 import type { RequestImageAttachment } from '@deepseek-ai/dsh-attachment'
 import { LlmError } from '@deepseek-ai/dsh-llm'
-import { DeepSeekFilesClient, isFilesQuotaError } from './files-api.ts'
+import type { AppIdentity } from '@deepseek-ai/dsh-llm'
 import type { DeepSeekFileId } from './file-id.ts'
 import { messagesApiRoot } from './messages-api.ts'
 import { deepSeekFileScope, DeepSeekUploadIndex } from './upload-index.ts'
 import type { DeepSeekUploadRecord } from './upload-index.ts'
+import { DeepSeekFilesClient, isFilesQuotaError } from './files-api.ts'
 
 /** Shared Files-store limit for each request image, including file-id references. */
 export const MAX_IMAGE_BYTES = 32 * 1024 * 1024
@@ -24,6 +25,8 @@ export interface DeepSeekFileConnection {
   baseURL: string
   /** Provider-resolved authentication headers for this endpoint. */
   headers: Readonly<Record<string, string>>
+  /** Application identity used on upload/cleanup requests. */
+  appIdentity?: AppIdentity
 }
 
 /** Result of one file-id resolution. */
@@ -137,6 +140,7 @@ export class DeepSeekFileStore {
     return new DeepSeekFilesClient({
       baseURL: connection.baseURL,
       headers: connection.headers,
+      ...connection.appIdentity === undefined ? {} : { appIdentity: connection.appIdentity },
       ...this.fetchImpl === undefined ? {} : { fetch: this.fetchImpl },
     })
   }

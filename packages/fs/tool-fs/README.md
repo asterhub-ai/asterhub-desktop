@@ -102,7 +102,7 @@ The tools are the executor; policy is an event gate. The tools inject no policy 
 
 ### Per-tool flow
 
-All four tools share one flow shape: resolve the path with the calling session's cwd, run the applicable gate, perform exactly one provider operation, and emit `fs/observed` only after success. `read` and `read_image` pay one `stat` for type and size routing; `write` and `edit` pay none because their guard comes from the intent slot, and provider failures surface as typed `FsError` results. The per-tool executors live in `src/read.ts`, `src/read-image.ts`, `src/write.ts`, and `src/edit.ts`.
+All four tools share one flow shape: resolve the path with the calling agent's authoritative current execution cwd (never a historical session header), run the applicable gate, perform exactly one provider operation, and emit `fs/observed` only after success. Agent calls fail closed when that trusted root is unavailable; agentless calls retain the filesystem provider's configured default. `read` and `read_image` pay one `stat` for type and size routing; `write` and `edit` pay none because their guard comes from the intent slot, and provider failures surface as typed `FsError` results. The per-tool executors live in `src/read.ts`, `src/read-image.ts`, `src/write.ts`, and `src/edit.ts`.
 
 When ProjectStorage is mounted, `read_image` saves image bytes under the calling Agent's Session project attachment scope.
 

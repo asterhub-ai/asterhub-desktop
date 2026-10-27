@@ -1015,6 +1015,33 @@ Types: [SessionId](core.md) · [SessionInspection](persistence.md) · [SessionSe
 
 Source: [`packages/api/session-controller/src/index.ts`](../../packages/api/session-controller/src/index.ts)
 
+<a id="ctxsessioncwd--sessioncwd"></a>
+
+### `ctx.sessionCwd` — `SessionCwd`
+
+Resolves the trusted, current execution directory for an immutable Session header.
+
+```ts cordis-catalog
+/**
+ * Resolve the current directory; a registered provider's absence or error is authoritative.
+ * After provider disposal, resolution fails until another provider registers.
+ * @param header - Immutable Session header identifying the execution resource.
+ * @returns The provider's directory, or the historical cwd before any provider registers.
+ */
+resolve(header: SessionHeader): string | undefined
+
+/**
+ * Register the single authoritative resolver; its disposer cannot clear a later provider.
+ * @param resolver - Directory lookup owned by the current persistence composition.
+ * @returns An idempotent disposer that removes only this registration.
+ */
+registerResolver(resolver: (header: SessionHeader) => string | undefined): () => void
+```
+
+Types: [SessionHeader](persistence.md)
+
+Source: [`packages/core/session/src/cwd.ts`](../../packages/core/session/src/cwd.ts)
+
 <a id="ctxsessions--sessionstore"></a>
 
 ### `ctx.sessions` — `SessionStore`

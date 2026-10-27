@@ -16,6 +16,7 @@ import ApprovalService, { type ApprovalOutcome, type ApprovalRequest } from '@de
 import type { SessionEventMap } from '@deepseek-ai/dsh-session'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import SessionProjections from '@deepseek-ai/dsh-session-projection'
 
 declare module '@deepseek-ai/dsh-llm' {
@@ -42,7 +43,7 @@ class FakeRuntime extends PtcRuntime {
   readonly language: string
   readonly isolation = 'fake'
   behavior: (request: PtcRunRequest) => Promise<PtcRunResult> = () => Promise.resolve({ logs: [] })
-  lastRequest?: PtcRunRequest
+  lastRequest?: PtcRunRequest | undefined
 
   constructor(ctx: Context, config: { language?: string } = {}) {
     super(ctx)
@@ -64,6 +65,9 @@ interface SetupOptions {
 
 async function setup(options: SetupOptions = {}) {
   const ctx = new Context()
+  await ctx.plugin(SessionCwd)
+  let currentRoot: string | undefined = process.cwd()
+  ctx.sessionCwd.registerResolver(() => currentRoot)
   await ctx.plugin(SystemPrompt, { ...options.toolOrder ? { toolOrder: options.toolOrder } : {} })
   await ctx.plugin(ToolRuntime, { mode: options.mode ?? 'ptc', ...options.maxParallelSubCalls !== undefined ? { maxParallelSubCalls: options.maxParallelSubCalls } : {} })
   let runtime: FakeRuntime | undefined
@@ -71,7 +75,10 @@ async function setup(options: SetupOptions = {}) {
     await ctx.plugin(FakeRuntime, options.runtime ?? {})
     runtime = ctx.ptcRuntime as FakeRuntime
   }
-  return { ctx, tools: ctx.tools, systemPrompt: ctx.systemPrompt, runtime: runtime! }
+  return {
+    ctx, tools: ctx.tools, systemPrompt: ctx.systemPrompt, runtime: runtime!,
+    setCurrentRoot: (root: string | undefined) => { currentRoot = root },
+  }
 }
 
 /** Mint an agent scope configured like production that can register scoped tool policy. */
@@ -80,6 +87,7 @@ async function mintAgentScope(ctx: Context, name = 'scoped'): Promise<{ scope: S
   let scope!: Scope
   await ctx.plugin(Object.assign((inner: Context) => { scope = createScope(inner, agent) },
     { inject: ['tools', 'systemPrompt'] }))
+  Object.assign(agent, { ctx: scope.ctx })
   return { scope, agent }
 }
 
@@ -2370,5 +2378,24 @@ describe('per-program execution controls', () => {
       expect(runtime.lastRequest?.timeoutMs).toBe(1234)
       expect(ctx.sandboxPolicy.resolve({ session: agent.session }).mode).toBe('read-only')
     } finally { answer.resolve('cancelled'); await result; await ctx.fiber.dispose() }
+  })
+  it('uses the current trusted workspace and fails closed when that provider becomes unavailable', async () => {
+    const { ctx, runtime, setCurrentRoot } = await setup()
+    const { scope, agent } = await mintAgentScope(ctx, 'execution-cwd')
+    try {
+      const moved = 'C:/trusted/moved-workspace'
+      setCurrentRoot(moved)
+      const movedResult = await runCode(ctx, 'return 1', { agent })
+      expect(movedResult.isError).toBe(false)
+      expect(runtime.lastRequest?.cwd).toBe(moved)
+
+      runtime.lastRequest = undefined
+      setCurrentRoot(undefined)
+      expect((await runCode(ctx, 'return 1', { agent })).isError).toBe(true)
+      expect(runtime.lastRequest).toBeUndefined()
+    } finally {
+      await scope.dispose()
+      await ctx.fiber.dispose()
+    }
   })
 })

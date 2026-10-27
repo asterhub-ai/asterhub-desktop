@@ -10,6 +10,7 @@ import AttachmentStore, { AttachmentError, type AttachmentScope, type SaveImageA
 import type { MessageId } from '@deepseek-ai/dsh-llm'
 import ProjectStorage from '@deepseek-ai/dsh-project-storage'
 import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import SubagentRuntime, {
   SubagentError,
   type SubagentPromptRequestId,
@@ -130,11 +131,12 @@ describe('subagent prompt Remote', () => {
     await mkdir(project)
     const { ctx, subagents } = await bench({ [PARENT]: { status: 'idle' } })
     try {
+      await ctx.plugin(SessionCwd)
       await ctx.plugin(ProjectStorage, {
         sessionMode: 'project-local', locatorPath: join(root, 'locator.json'),
         legacySessionRoot: '', metadataLimitBytes: 1024 * 1024, lockDeadlineMs: 5000,
       })
-      const binding = await ctx.projectStorage.open({ root: project, mode: 'new' })
+      await ctx.projectStorage.open({ root: project, mode: 'new' })
       await ctx.projectStorage.bindSession({
         version: SESSION_FORMAT_VERSION, id: CHILD, createdAt: 1, cwd: project, isSeeded: false, delegationDepth: 0,
       })
@@ -148,7 +150,7 @@ describe('subagent prompt Remote', () => {
         content: [{ type: 'image', mediaType: 'image/png', data: 'aGk=' }],
       }, signal)
 
-      expect(saveImages.mock.calls[0]?.[1]).toEqual({ projectId: binding.id, sessionId: CHILD })
+      expect(saveImages.mock.calls[0]?.[1]).toEqual({ sessionId: CHILD })
     } finally {
       await ctx.fiber.dispose()
       await rm(root, { recursive: true, force: true })

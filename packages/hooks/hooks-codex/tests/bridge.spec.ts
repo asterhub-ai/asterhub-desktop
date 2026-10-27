@@ -253,12 +253,12 @@ describe('hooks-codex bridge', () => {
   it('has the namespace-plugin export shape (no stray default) so the Loader keeps name/inject/apply', () => {
     expect('default' in HooksCodex).toBe(false)
     expect(HooksCodex.name).toBe('hooks-codex')
-    expect(HooksCodex.inject).toEqual(['shell', 'sessionProjections'])
+    expect(HooksCodex.inject).toEqual(['shell', 'sessionProjections', 'sessionCwd'])
     const loader = Object.create(Loader.prototype) as Loader
     const unwrapped = loader.unwrapExports(HooksCodex) as Record<string, unknown>
     expect(unwrapped).toBe(HooksCodex)
     expect(unwrapped.name).toBe('hooks-codex')
-    expect(unwrapped.inject).toEqual(['shell', 'sessionProjections'])
+    expect(unwrapped.inject).toEqual(['shell', 'sessionProjections', 'sessionCwd'])
     expect(typeof unwrapped.apply).toBe('function')
   })
 })

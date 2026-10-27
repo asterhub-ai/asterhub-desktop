@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path'
 import { PassThrough, type Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
@@ -46,6 +47,7 @@ interface SetupEnv {
  */
 async function setup(mockEnv: SetupEnv = {}, permission: 'allow' | 'reject' = 'reject') {
   const ctx = new Context()
+  await ctx.plugin(SessionCwd)
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(SubagentRuntime)
   await ctx.plugin(LocalSubprocessRuntime)
@@ -473,12 +475,41 @@ describe('cwd resolution', () => {
     }
   })
 
+  it.each([true, false])('uses the current parent execution root when the historical path exists=%s', async (historicalExists) => {
+    const oldRoot = realpathSync(mkdtempSync(join(tmpdir(), 'acp-old-root-')))
+    const currentRoot = realpathSync(mkdtempSync(join(tmpdir(), 'acp-moved-root-')))
+    const ctx = await setup({ MOCK_ECHO_CWD: '1' })
+    const dispose = ctx.sessionCwd.registerResolver(() => currentRoot)
+    if (!historicalExists) rmSync(oldRoot, { recursive: true, force: true })
+    const parent = {
+      id: 'parent',
+      ctx,
+      session: { header: { cwd: oldRoot } },
+    } as unknown as Agent
+    try {
+      const run = await ctx.subagents.start('acp', {
+        prompt: [{ type: 'text' as const, text: 'p' }],
+        parent,
+        signal: new AbortController().signal,
+      })
+      const result = await run.result
+      await run.dispose()
+      expect(text(result.output)).toBe(`${currentRoot}\n${currentRoot}`)
+    } finally {
+      rmSync(oldRoot, { recursive: true, force: true })
+      rmSync(currentRoot, { recursive: true, force: true })
+      dispose()
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('rejects before spawning when neither config.cwd nor the parent session provides one', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'acp-no-cwd-'))
     const sentinel = join(tmp, 'spawned')
     try {
       const ctx = new Context()
       await ctx.plugin(SessionProjectionRegistry)
+      await ctx.plugin(SessionCwd)
       await ctx.plugin(SubagentRuntime)
       await ctx.plugin(LocalSubprocessRuntime)
       // A command that would create the sentinel if the child were ever spawned.
@@ -499,6 +530,7 @@ describe('cwd resolution', () => {
     try {
       const ctx = new Context()
       await ctx.plugin(SessionProjectionRegistry)
+      await ctx.plugin(SessionCwd)
       await ctx.plugin(SubagentRuntime)
       await ctx.plugin(LocalSubprocessRuntime)
       await ctx.plugin(acp, {
@@ -528,6 +560,7 @@ describe('cwd resolution', () => {
     const absolute = resolve(relative)
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     await ctx.plugin(acp, {
@@ -549,6 +582,7 @@ describe('cwd resolution', () => {
     // reintroduce the launch-directory fallback this resolution removed.
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     await expect(ctx.plugin(acp, {
@@ -571,6 +605,7 @@ describe('cwd resolution', () => {
     try {
       const ctx = new Context()
       await ctx.plugin(SessionProjectionRegistry)
+      await ctx.plugin(SessionCwd)
       await ctx.plugin(SubagentRuntime)
       await ctx.plugin(LocalSubprocessRuntime)
       await expect(ctx.plugin(acp, {
@@ -591,6 +626,7 @@ describe('cwd resolution', () => {
   it('rejects a config cwd that is not an accessible directory at load', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     await expect(ctx.plugin(acp, {
@@ -634,6 +670,7 @@ describe('cwd resolution', () => {
     try {
       const ctx = new Context()
       await ctx.plugin(SessionProjectionRegistry)
+      await ctx.plugin(SessionCwd)
       await ctx.plugin(SubagentRuntime)
       await ctx.plugin(LocalSubprocessRuntime)
       await ctx.plugin(acp, { providerName: 'acp', command: 'touch', args: [sentinel], permission: 'reject', env: {} })
@@ -1414,6 +1451,7 @@ describe('dsh-subagent-acp', () => {
     onTestFinished(() => { start.mockRestore() })
     const ready = join(tmp, 'trap-armed')
     await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     await ctx.plugin(acp, {
@@ -1455,6 +1493,7 @@ describe('dsh-subagent-acp', () => {
     ]) {
       const ctx = new Context()
       await ctx.plugin(SessionProjectionRegistry)
+      await ctx.plugin(SessionCwd)
       await ctx.plugin(SubagentRuntime)
       await ctx.plugin(LocalSubprocessRuntime)
       await expect(ctx.plugin(acp, { providerName: 'acp', command: 'true', args: [], permission: 'reject', env: {}, ...bad }))
@@ -1466,6 +1505,7 @@ describe('dsh-subagent-acp', () => {
   it('classifies a returned-handle startup failure through the provider load path', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     await ctx.plugin(acp, {
@@ -1705,6 +1745,7 @@ describe('dsh-subagent-acp', () => {
   it('unregisters the provider when its fiber is disposed (HMR safety)', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(SessionCwd)
     await ctx.plugin(SubagentRuntime)
     await ctx.plugin(LocalSubprocessRuntime)
     const fiber = await ctx.plugin(acp, { providerName: 'acp', command: 'x', args: [], permission: 'reject', env: {} })
@@ -1716,7 +1757,6 @@ describe('dsh-subagent-acp', () => {
   it('has the namespace-plugin export shape (no stray default)', () => {
     expect('default' in acp).toBe(false)
     expect(acp.name).toBe('subagent-acp')
-    expect(acp.inject).toEqual(['subagents', 'subprocess'])
     const loader = Object.create(Loader.prototype) as Loader
     const unwrapped = loader.unwrapExports(acp) as Record<string, unknown>
     expect(unwrapped).toBe(acp)

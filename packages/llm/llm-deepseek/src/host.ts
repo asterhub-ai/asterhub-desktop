@@ -4,8 +4,6 @@ import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import type {} from '@deepseek-ai/dsh-fs'
 import { resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm'
-import type { SessionId } from '@deepseek-ai/dsh-session'
-import { resolveProjectAttachmentScope } from '@deepseek-ai/dsh-project-storage'
 import { getOrCreateAnonymousUserId, type AnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
 import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 import { DeepSeekAdapter } from './adapter.ts'
@@ -19,14 +17,13 @@ import type { DeepSeekAdapterOptions, DeepSeekConnectionOptions } from './types.
  */
 export function registerDeepSeekProvider<C extends DeepSeekConnectionOptions>(
   ctx: Context, provider: string, dependencies: Pick<DeepSeekAdapterOptions<C>,
-  'options' | 'resolveAuth' | 'providerName' | 'discoverModels'>): void {
+  'appIdentity' | 'options' | 'resolveAuth' | 'providerName' | 'discoverModels'>): void {
   ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)) })
   let userId: AnonymousUserId | undefined
-  const attachmentScope = ctx.get('projectStorage', false) === undefined
-    ? undefined
-    : (sessionId: SessionId) => resolveProjectAttachmentScope(ctx, sessionId)
+  const appIdentity = dependencies.appIdentity ?? ctx.get('applicationModelRoute')?.appIdentity
   const adapter = new DeepSeekAdapter({
     ...dependencies,
+    ...appIdentity === undefined ? {} : { appIdentity },
     resolveUserId: () => userId ??= getOrCreateAnonymousUserId(),
     onReplayDegrade: ({ provider, model, reason }) => {
       ctx.logger.warn(`llm-deepseek: unusable Messages replay state on assistant history for route "${provider}/${model}"; sending provider-neutral content (${reason})`)
@@ -35,8 +32,7 @@ export function registerDeepSeekProvider<C extends DeepSeekConnectionOptions>(
       ctx.logger.warn(`llm-deepseek: sending route "${provider}/${model}" without request extension fields ${fields.join(', ')} because they failed to serialize: %o`, error)
     },
     resolveAttachments: () => ctx.get('attachments'),
-    ...attachmentScope === undefined ? {} : { resolveAttachmentScope: attachmentScope },
-    resolveImageAccess: (attachments, ref, scope) => scope === undefined && attachmentScope !== undefined
+    resolveImageAccess: (attachments, ref, scope) => scope === undefined && attachments.modelImageSessionRequired
       ? undefined
       : resolveImageAttachmentAccess(attachments, hostPath => ctx.get('fs')?.processPathFromHostPath(hostPath), ref, scope),
     prepareExtensions: request => ctx.get('deepseekLlmApiExtensions')?.prepare(request)

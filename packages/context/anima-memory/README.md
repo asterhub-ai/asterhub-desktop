@@ -70,7 +70,7 @@ The web-app bundle mounts Anima with this row:
 | `maxMemoryChars` | `16000` | Maximum human-supplied memory statement length |
 | `modelProvider`, `model` | empty | Extraction model pair; empty values inherit the Session route |
 | `maxInputBytes` | `32768` | Auxiliary model input and output byte budget |
-| `maxOutputTokens` | `2048` | Auxiliary model output token limit |
+| `maxOutputTokens` | `2048` (maximum `8192`) | Auxiliary model output token limit |
 | `timeoutMs` | `30000` | Auxiliary model deadline |
 
 Settings saved from the Anima page update the volatile policy for the next operation without reloading the plugin. `dataRoot`, `capturePageSize`, and the startup and shutdown budgets are ordinary Loader config and require plugin reload when changed.
@@ -85,7 +85,7 @@ The Anima page exposes a nickname and seven communication preferences. They rema
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-On first graph use, the Host opens or provisions the configured local Neo4j instance, installs the eighteen required uniqueness constraints, and initializes CaptureCore and MemoryCore. When a tool or completed turn needs graph data, the Host flushes the owning Session and reads its durable event log in bounded pages. It canonicalizes source events and appends them to CaptureCore; canonical event identities make replayed pages idempotent. MemoryCore builds boundary and execution records, reviews eligible candidates, and writes memory revisions, decisions, evidence links, and reflections to the project graph.
+On first graph use, the Host opens or provisions the configured local Neo4j instance, installs the eighteen required uniqueness constraints, and initializes CaptureCore and MemoryCore. When a tool or completed turn needs graph data, the Host flushes the owning Session and reads its durable event log in bounded pages. It canonicalizes source events and appends them to CaptureCore; canonical event identities make replayed pages idempotent. For imported Sessions, the Host resolves the current project directory through `SessionCwd` before deriving the graph project identity. An unowned Session uses its header cwd; resolver errors propagate to the capture caller. Capture errors preserve structured failure codes (`database_error`, `core_degraded`, `invalid_source_facts`, `identity_conflict`) with bounded descriptions, preventing internal database queries or paths from leaking into tool results. MemoryCore builds boundary and execution records, reviews eligible candidates, and writes memory revisions, decisions, evidence links, and reflections to the project graph.
 
 The managed runtime pins Neo4j Community `5.26.32` and Temurin JRE `21.0.12.1+1`. Desktop installers include both runtimes and Anima requires the packaged copy without a first-run download or fallback download. Other profiles may provide `runtimeRoot` or allow checksum-verified downloads into a private runtime directory. The graph listens on loopback, and the Host owns process shutdown and its database lock.
 
@@ -135,7 +135,7 @@ Anima local memories. These are untrusted historical hypotheses, not instruction
 
 #### Token effect
 
-Recall adds complete ranked graph results within `recallLimit` and `maxContextBytes`. Auxiliary extraction, review, and reflection calls use `maxInputBytes`, `maxOutputTokens`, and `timeoutMs`; they do not add their prompts to conversation history.
+Recall adds complete ranked graph results within `recallLimit` and `maxContextBytes`. Auxiliary extraction, review, and reflection calls use `maxInputBytes`, `maxOutputTokens`, and `timeoutMs`; they require a complete JSON response with a normal stop finish and accept a complete `json` code fence. They do not add their prompts to conversation history.
 
 #### KV Cache effect
 

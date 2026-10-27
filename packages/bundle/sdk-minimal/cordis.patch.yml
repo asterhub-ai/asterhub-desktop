@@ -73,6 +73,8 @@
 
     - id: session
       name: '@deepseek-ai/dsh-session'
+    - id: session-cwd
+      name: '@deepseek-ai/dsh-session/cwd'
 
     - id: session-title
       name: '@deepseek-ai/dsh-session-title'
@@ -84,7 +86,6 @@
     - id: system-prompt
       name: '@deepseek-ai/dsh-system-prompt'
       config:
-        includeHarnessIdentity: false
         includeRuntimeContext: false
         personaPrefix: !!js process.env.DSH_SYSTEM_PROMPT ?? 'You are a helpful software engineer assistant.'
 

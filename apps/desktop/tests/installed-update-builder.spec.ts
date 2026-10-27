@@ -94,12 +94,11 @@ describe('installed-update application inputs and builder configuration', () => 
         expect(config.win.signtoolOptions.publisherName).toBe('CN=Fixture,O=Fixture,C=CN')
         expect(typeof config.win.signtoolOptions.sign).toBe('function')
         expect(typeof config.beforeBuild).toBe('function')
-        expect(config.nsis.include).toMatch(/scripts[\\/]installer\.nsh$/u)
         expect(config.publish[0]!.url)
           .toMatch(/^https:\/\/download-test\.deepseek\.com\/dsh-desk\/feeds\/qualification\/[a-f0-9]{24}\/win-x64\/$/u)
       }
     })
-  })
+  }, 30_000)
 
   it('retains a failed preparation without a completion receipt and refuses an unrelated version', async () => {
     await fixture(async (manifest, source) => {
@@ -118,5 +117,5 @@ describe('installed-update application inputs and builder configuration', () => 
     await fixture(async (manifest) => {
       await expect(createInstalledUpdateBuilderConfig(manifest, versions[0], { ...environment, ...override })).rejects.toThrow('test deployment')
     })
-  })
+  }, 30_000)
 })

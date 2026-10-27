@@ -20,7 +20,7 @@ kind: "package-reference"
 - [已知限制与延期工作](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
-AsterHub 鉴权路由以 `/models` 为唯一可选目录，不展示配置中的模板模型。首次加载错误会显示给用户；刷新临时失败只能保留同一凭据最近成功取得的目录。凭据更换会清空目录；已准备请求的模型描述不随之后的目录刷新而变化。
+部署可将已鉴权账户目录配置为唯一可选模型来源。在此模式下，不会展示配置中的模板模型；首次加载错误会显示给用户，临时刷新失败只能保留同一凭据最近成功取得的目录，凭据更换会清除该目录。产品组合负责路由配置及其凭据；本适配器遵循该配置，不提供产品默认值。
 
 -----
 
@@ -29,7 +29,7 @@ AsterHub 鉴权路由以 `/models` 为唯一可选目录，不展示配置中的
 
 当组合需要通过 pi-ai 的提供方目录、或通过 pi-ai 已安装目录未描述的网关路由模型请求时挂载本插件。`providers` 字典就是整个配置面：每个键都是请求用 `GenerateOptions.provider` 选择的提供方路由名。
 
-适配器接受 LLM 服务的[仅供请求使用的 user 输入](../llm/README.zh.md#use-this-package)，并可将其与持久历史混用。user 身份与来源不会进入 pi-ai 内容；assistant 回放元数据和工具调用关联仍由持久消息携带。桌面应用锁定的 Sub2API 路由会为列表未提供模态元数据的账户模型声明文本与图片输入。
+适配器接受 LLM 服务的[仅供请求使用的 user 输入](../llm/README.zh.md#use-this-package)，并可将其与持久历史混用。user 身份与来源不会进入 pi-ai 内容；assistant 回放元数据和工具调用关联仍由持久消息携带。上游账户目录未提供模态信息时，由产品组合声明模型元数据（例如模态）。
 
 分类网关故障时，明确的额度耗尽或余额不足信息优先于 HTTP 401/403。认证、限流、超时、传输与服务端故障保留不同的稳定错误码；无法识别的错误保持未分类，不会据此推断积分耗尽。
 
@@ -39,11 +39,14 @@ AsterHub 鉴权路由以 `/models` 为唯一可选目录，不展示配置中的
 
 ### 配置提供方路由
 
-每个 profile 都可以设置 `retryPolicy`；省略时使用 normal mode、最多重试五次。`apiKeyEnv` 是按请求经 harness 凭据 seam 解析的凭据引用，因此配置文件绝不包含密钥；解析为空的引用会让请求以 `MISSING_CREDENTIAL` 失败。省略它会让路由保持已配置但无密钥（configured-but-keyless）状态，对已安装目录路由而言即交由 pi-ai 提供方原生的环境发现。
+每个 profile 都可以设置 `retryPolicy`；省略时使用 normal mode、最多重试五次。`apiKeyEnv` 是按请求经 harness 凭据 seam 解析的凭据引用，因此配置文件绝不包含密钥；解析为空的引用会让请求以 `MISSING_CREDENTIAL` 失败。省略它会让路由保持已配置但无密钥（configured-but-keyless）状态，对已安装目录路由而言即交由 pi-ai 提供方原生的环境发现。可选顶层 `appIdentity` 为 provider 请求与 discovery 设置公开 `User-Agent` 的产品名与 URL；版本始终从此 package 元数据读取。产品组合会显式设置身份，不依赖库中的产品专属默认值。
 
 ```yaml
 - name: '@deepseek-ai/dsh-llm-pi-ai'
   config:
+    appIdentity:
+      product: example-agent
+      url: https://example.com/agent
     providers:
       openai:
         apiKeyEnv: OPENAI_API_KEY

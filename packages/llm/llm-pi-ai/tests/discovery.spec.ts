@@ -3,7 +3,7 @@ import { createServer } from 'node:http'
 import type { IncomingMessage, Server, ServerResponse } from 'node:http'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import LlmRuntime, { userAgent } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { APP_IDENTITY, userAgent } from '@deepseek-ai/dsh-llm'
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
 import { getBuiltinModels } from '@earendil-works/pi-ai/providers/all'
 import { discoverModels } from '../src/discovery.ts'
@@ -153,6 +153,24 @@ describe('draft-provider model discovery', () => {
     expect(server.paths).toEqual(['/v1/models'])
     expect(server.headers[0]?.authorization).toBe('Bearer probe-key')
     expect(server.headers[0]?.['user-agent']).toBe(userAgent())
+  })
+  it('sends the configured product identity on endpoint discovery requests', async () => {
+    const server = await listingServer({ body: JSON.stringify({ data: [] }) })
+    const identity = { product: 'asterhub', url: 'https://github.com/asterhub-ai/asterhub-desktop' }
+    await discoverModels({
+      baseURL: server.url,
+      api: 'openai-completions',
+    }, () => ({
+      headers: { 'User-Agent': 'overridden' },
+      appIdentity: identity,
+      resolveApiKey: () => Promise.resolve(undefined),
+    }))
+
+    expect(server.headers[0]?.['user-agent']).toBe(userAgent({
+      product: 'asterhub',
+      version: APP_IDENTITY.version,
+      url: identity.url,
+    }))
   })
 
   it('reads an enriched models map using route ids and nested capacities', async () => {

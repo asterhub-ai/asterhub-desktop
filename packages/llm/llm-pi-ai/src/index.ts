@@ -62,10 +62,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import { credentialKey } from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-credentials'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
-import { assertUsableApiKey, LlmError, resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm'
-import { resolveProjectAttachmentScope } from '@deepseek-ai/dsh-project-storage'
-import type { AdapterRegistrationHandle, DirectoryRegistrationHandle, LlmConfigurableProvider } from '@deepseek-ai/dsh-llm'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import { APP_IDENTITY, assertUsableApiKey, LlmError, resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm'
+import type { AppIdentity, AdapterRegistrationHandle, DirectoryRegistrationHandle, LlmConfigurableProvider } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-fs'
 import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 import { PiAiAdapter } from './adapter.ts'
@@ -154,26 +152,12 @@ export function apply(ctx: Context, config: Config): void {
   ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)) })
   const settingsNs = ctx.fiber.entry?.options.id ?? NS
   const applicationRoute = ctx.get('applicationModelRoute')
-  const deploymentLocked = config.deploymentLocked.get() || applicationRoute !== undefined
-  const routeProfiles: Record<string, PiAiProviderProfile> | undefined = applicationRoute === undefined ? undefined : {
-    [applicationRoute.provider]: {
-      displayName: 'AsterHub',
-      api: applicationRoute.api ?? 'openai-completions',
-      baseURL: applicationRoute.baseURL ?? 'https://xapi.fans/v1',
-      credentialRecord: applicationRoute.credentialRecord ?? 'asterhub-account/model-api-key',
-      syncModels: applicationRoute.syncModels === true,
-      models: [{
-        id: applicationRoute.model,
-        name: 'AsterHub',
-        contextWindow: applicationRoute.contextWindow ?? 262_144,
-        maxTokens: applicationRoute.maxTokens ?? 32_768,
-        input: ['text', 'image'],
-        reasoningEfforts: { off: null, low: 'low', medium: 'medium', high: 'high' },
-        compat: { thinkingFormat: 'openai' },
-      }],
-      reasoning: 'medium',
-    },
-  }
+  // A trusted Host route is a deployment-lock boundary even if a caller tries
+  // to turn off the plugin-level lock flag.
+  const deploymentLocked = applicationRoute !== undefined || config.deploymentLocked.get()
+  const configuredIdentity = config.appIdentity.get()
+  const resolvedIdentity: AppIdentity | undefined = applicationRoute?.appIdentity
+    ?? (configuredIdentity === undefined ? undefined : { ...APP_IDENTITY, ...configuredIdentity })
   let lastRaw: ReturnType<Config['providers']['get']> | undefined
   let memoized: ReadonlyMap<string, ResolvedPiAiProviderProfile> | undefined
   /**
@@ -186,7 +170,9 @@ export function apply(ctx: Context, config: Config): void {
    * Scalar configuration errors still reject resolution.
    */
   const profiles = (): ReadonlyMap<string, ResolvedPiAiProviderProfile> => {
-    const raw = routeProfiles ?? config.providers.get()
+    const raw = applicationRoute?.profile === undefined
+      ? config.providers.get()
+      : { [applicationRoute.provider]: applicationRoute.profile as PiAiProviderProfile }
     if (raw === lastRaw && memoized !== undefined) return memoized
     const next = resolveProfiles(structuredClone(raw) as import('./config.ts').Options['providers'], 'deferred')
     lastRaw = raw
@@ -253,10 +239,8 @@ export function apply(ctx: Context, config: Config): void {
   // through `ctx` per call, so they stay correct across the collection rebuilds
   // a configuration change causes, and a sign-in survives one.
   const auth = { credentials: credentialStoreFrom(ctx), authContext: authContextFrom(ctx) }
-  const attachmentScope = ctx.get('projectStorage', false) === undefined
-    ? undefined
-    : (sessionId: SessionId) => resolveProjectAttachmentScope(ctx, sessionId)
   const adapter = new PiAiAdapter({
+    ...resolvedIdentity === undefined ? {} : { appIdentity: resolvedIdentity },
     profiles,
     resolveApiKey,
     syncModels: (profile, signal) => discoverModels({
@@ -266,12 +250,12 @@ export function apply(ctx: Context, config: Config): void {
       signal: signal ?? AbortSignal.timeout(8_000),
     }, () => ({
       headers: profile.headers,
+      ...(resolvedIdentity === undefined ? {} : { appIdentity: resolvedIdentity }),
       resolveApiKey: () => resolveApiKey(profile.provider, profile),
     })),
     auth,
     resolveAttachments: () => ctx.get('attachments'),
-    ...attachmentScope === undefined ? {} : { resolveAttachmentScope: attachmentScope },
-    resolveImageAccess: (attachments, ref, scope) => scope === undefined && attachmentScope !== undefined
+    resolveImageAccess: (attachments, ref, scope) => scope === undefined && attachments.modelImageSessionRequired
       ? undefined
       : resolveImageAttachmentAccess(attachments, hostPath => ctx.get('fs')?.processPathFromHostPath(hostPath), ref, scope),
     onReplayDegrade: ({ provider, model, reason }) => {
@@ -321,6 +305,7 @@ export function apply(ctx: Context, config: Config): void {
     if (profile === undefined) return undefined
     return {
       headers: profile.headers,
+      ...(resolvedIdentity === undefined ? {} : { appIdentity: resolvedIdentity }),
       resolveApiKey: () => resolveApiKey(provider, profile),
     }
   }

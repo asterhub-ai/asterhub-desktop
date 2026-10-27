@@ -70,11 +70,11 @@ export class WorkspaceCommands {
         }
       }
       const existing = await this.ctx.workspaceRegistry.resolveByPath(path)
-      if (existing !== undefined) {
-        return { workspace: workspaceView(existing), created: false }
+      const workspace = existing ?? await this.ctx.workspaceRegistry.create(path)
+      if (projectStorage !== undefined) {
+        await this.ctx.workspaceRegistry.reconcileProjectSessions(workspace.path)
       }
-      const workspace = await this.ctx.workspaceRegistry.create(path)
-      return { workspace: workspaceView(workspace), created: true }
+      return { workspace: workspaceView(workspace), created: existing === undefined }
     } catch (error) {
       if (remoteErrorOf(error) !== undefined) throw error
       throw new RemoteError(

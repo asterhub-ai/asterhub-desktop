@@ -3,6 +3,7 @@ import { randomUUID, createHash } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { LlmModelInfo } from '@deepseek-ai/dsh-llm'
 import { scheduleDomain } from '@deepseek-ai/dsh-schedule/storage'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   AutomationTask,
   AutomationTaskId,
@@ -280,6 +281,7 @@ export class AutomationOperations {
     switch (operation.action) {
       case 'create': {
         const { nextOccurrences } = this.validateDraft(operation.draft, now)
+        this.assertSessionBindingAvailable(operation.originSessionId)
         requiresConfirmation = true
         summary = `Create task "${operation.draft.name.trim()}" with timing "${JSON.stringify(operation.draft.timing)}". Next runs: ${nextOccurrences.join(', ')}`
         break
@@ -388,6 +390,19 @@ export class AutomationOperations {
   private isActiveState(state: string): boolean {
     return state === 'reserved' || state === 'running' || state === 'waiting-approval' || state === 'stopping'
   }
+
+  /**
+   * Enforce the one-automation-per-conversation binding rule before any write.
+   * @param originSessionId - Authoring conversation id to bind, or undefined for an unbound GUI create.
+   */
+  private assertSessionBindingAvailable(originSessionId: SessionId | undefined): void {
+    if (originSessionId === undefined) return
+    const bound = this.store.tasks().find(task => task.originSessionId === originSessionId && task.deletedAt === null)
+    if (bound !== undefined) {
+      throw new AutomationOperationError('session_already_bound',
+        `This conversation already owns the scheduled task "${bound.definition.name}"; each conversation can bind at most one task.`)
+    }
+  }
   /**
    * Commit a prepared operation.
    * @param request - Account-scoped request fields and confirmation facts.
@@ -433,7 +448,7 @@ export class AutomationOperations {
   ): Promise<AutomationMutationResult> {
     switch (operation.action) {
       case 'create':
-        return this.executeCreate(operation.draft, requestId, now, identity)
+        return this.executeCreate(operation.draft, operation.originSessionId, requestId, now, identity)
       case 'update':
         return this.executeUpdate(operation.id, operation.expectedRevision, operation.draft, requestId, now, identity)
       case 'pause':
@@ -456,6 +471,7 @@ export class AutomationOperations {
   /** Execute create operation. */
   private async executeCreate(
     draft: AutomationDraft,
+    originSessionId: SessionId | undefined,
     requestId: string,
     now: number,
     identity: AutomationAccountIdentity,
@@ -472,6 +488,11 @@ export class AutomationOperations {
     if (allTasks.length >= this.config.maxTasks) {
       throw new AutomationOperationError('global_task_limit', `Maximum ${this.config.maxTasks} tasks`)
     }
+
+    // Authoritative binding check inside the shared FIFO; prepare already
+    // rejected this before user confirmation, so a rejection here means a
+    // concurrent create bound the same conversation in between.
+    this.assertSessionBindingAvailable(originSessionId)
 
     // Validate and normalize
     const { timing, nextOccurrences } = this.validateDraft(draft, now)
@@ -494,6 +515,7 @@ export class AutomationOperations {
     const task: AutomationTask = {
       id: taskId,
       ownerAccountId: identity.accountId,
+      ...(originSessionId === undefined ? {} : { originSessionId }),
       revision: 1,
       recordVersion: 1,
       authorizationRevision: 1,

@@ -245,8 +245,8 @@ function compareToolNames(a: ToolSchema, b: ToolSchema): number {
 
 /** Plugin config: the deployment-authored fragment of the system prompt (see {@link Config.personaPrefix} for its contract). */
 export interface Config {
-  /** Include the fixed AsterHub identity before the deployment persona (default true). */
-  includeHarnessIdentity?: boolean
+  /** Product/deployment-owned identity opener at order −1000; omitted means no opener. */
+  harnessIdentity?: string
   /** Include dynamic runtime-context snapshots in model history (default true). */
   includeRuntimeContext?: boolean
   /**
@@ -404,7 +404,7 @@ class PromptLayer implements ScopeLayer {
 /** Registry service for the prompt inputs assembled before each model step. */
 export class SystemPrompt extends Service {
   static Config: z<Config> = z.object({
-    includeHarnessIdentity: z.boolean().default(true),
+    harnessIdentity: z.string().default(''),
     includeRuntimeContext: z.boolean().default(true),
     personaPrefix: z.string().default(''),
     personaSuffix: z.string().default(''),
@@ -421,12 +421,12 @@ export class SystemPrompt extends Service {
   constructor(ctx: Context, config: Config) {
     super(ctx, 'systemPrompt')
     this.toolOrder = validateToolOrder(config.toolOrder)
-    // Keep harness-owned openers independent of the selected loop plugin.
-    if (config.includeHarnessIdentity ?? true) {
+    // Deployments own the opener text; generic prompt assembly only places it.
+    if (config.harnessIdentity !== undefined && config.harnessIdentity.length > 0) {
       this.section({
         name: 'harness:identity',
         order: this.getSectionOrder('HARNESS_IDENTITY'),
-        text: '你是 AsterHub 的 AI 助手。',
+        text: config.harnessIdentity,
       })
     }
     this.section({

@@ -79,7 +79,7 @@ Each session gets a session-owned directory under a readable project directory. 
 
 Session ids are injectively escaped to one safe path segment before use (no traversal, no collision). The normalized cwd keeps the project directory readable for navigation; cwd strings that normalize alike share a project directory while session ids still select distinct session directories. Runtime operations select the numerically highest canonical generation, and format-refusal diagnostics name that absolute path so an operator can find the raw log a build refused to interpret.
 
-The package exports `sessionDir(root, cwd, id)` for consumers that need the canonical session directory; `cwd` may be `undefined` for sessions without a project directory.
+The package exports `sessionDir(root, cwd, id)` for consumers that need the canonical session directory; `cwd` may be `undefined` for sessions without a project directory. On listing, a supported historical flat artifact whose header identifies a session is moved, without rewriting its bytes, into the matching project/session directory. An existing target or an inconsistent header fails without overwriting either artifact.
 
 ### Durability and crash semantics
 
@@ -172,7 +172,7 @@ These limits define when this backend is a poor fit or needs special operational
 
 - **Format migration preserves the configured encoding and supports only the catalogued chain** — this build migrates supported historical generations to the current format; changing compression requires a separate root, and retained predecessors do not provide automatic fallback or downgrade support.
 - **The V4 migration installer is script-only** — `applyV4MigrationPersistence` writes V4 successors for the one-time offline migration command; ordinary application mounts write the current format.
-- **The flat-file storage layout does not load** — use a separate root or move pre-release artifacts into the project/session directory layout before loading.
+- **Legacy flat files are not loaded in place** — `list()` migrates a supported artifact only when its header identifies the Session and cwd; a missing header or an existing target fails without overwriting either artifact.
 - **Compressed files are not directly line-readable** — use the backend to load them, or select `compression: 'none'` before writing a fresh root when external line readers are required.
 - **Nothing deletes session files** — logs accumulate under `root` until removed externally; the seam has no deletion API.
 - **One live writer per session** — the write-handle claim excludes a second writer inside the owning backend instance, and a kernel lock (non-blocking `flock(2)` on `session.lock`; on Windows a named kernel semaphore derived from that path, with no filesystem footprint) excludes every other instance and process; the lock is taken at write-open of an existing artifact and, for a created session, only right before its first materializing write, so an unmaterialized session leaves no filesystem footprint. A crashed holder's lock dies with its process, so its session is writable again immediately, while a live-but-wedged holder blocks writers until its process exits (on POSIX, removing the lock file forfeits that exclusion; release itself never removes it). Advisory `flock` is unreliable on some network filesystems (NFSv3), and the Windows semaphore name is per login session.

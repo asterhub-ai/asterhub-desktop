@@ -1,4 +1,4 @@
-/** Concrete fresh-session execution, durable completion evidence and account lifetime guards. */
+/** Concrete fresh-session or resumed-origin dispatch, durable completion evidence and account lifetime guards. */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-account-sub2api'
@@ -116,6 +116,9 @@ export async function executeRun(host: AutomationRuntimeHost,
   if (initial === undefined || initial.sessionId === null) throw new Error('automation: reservation needs a fixed Session identity')
   if (isTerminalState(initial.state)) return initial
   const ctx = host.ctx
+  // Bound tasks resume their authoring conversation; unbound tasks (GUI-created)
+  // mint a fresh Session. The track is fixed at reservation, never inferred here.
+  const bound = task.originSessionId !== undefined
   let run = initial
   let handle: AgentHandle | undefined
   let inputOwner: SessionExecutionInputOwner | undefined
@@ -174,6 +177,18 @@ export async function executeRun(host: AutomationRuntimeHost,
 
   try {
     signal.throwIfAborted()
+    if (bound) {
+      // Fail loud on a vanished authoring conversation; never fall back to a
+      // fresh Session, which would strand the bound task's results elsewhere.
+      const persisted = await ctx.sessionPersistence.stat(initial.sessionId)
+      if (persisted === undefined) {
+        return { ...initial,
+          state: 'failed',
+          finishedAt: new Date().toISOString(),
+          reason: { code: 'origin_session_missing',
+            message: 'The conversation that created this task no longer exists. Re-create the task from a conversation or delete the task.' } }
+      }
+    }
     ctx.accountSub2api.assertAutomationIdentity(identity)
     const route = ctx.get('applicationModelRoute')
     if (route === undefined) throw new Error('automation: application model route is unavailable')
@@ -213,30 +228,38 @@ export async function executeRun(host: AutomationRuntimeHost,
       if (family.has(agent)) return
       if ([...family].some(parent => ctx.agents.isOwnedBy(agent.id, parent))) installGuards(agent.ctx, agent)
     }, { prepend: true }))
+    const agentOptions = { provider: route.provider,
+      model: run.snapshot.modelId,
+      ...(run.snapshot.reasoningEffort === null ? {} : { reasoningEffort: ReasoningEffortId(run.snapshot.reasoningEffort) }) }
+    const setup = async (agentCtx: Context, agent: Agent): Promise<void> => {
+      installGuards(agentCtx, agent)
+      await ctx.agentPresets.mount(agentCtx, preset.id)
+    }
     inputOwner = ctx.sessionController.registerExecutionInputOwner(initial.sessionId, publicationReady.promise)
-    handle = await ctx.agents.create({
-      sessionId: initial.sessionId, signal,
-      meta: { cwd: path, agentPreset: preset.id },
-      agentOptions: { provider: route.provider,
-        model: run.snapshot.modelId,
-        ...(run.snapshot.reasoningEffort === null ? {} : { reasoningEffort: ReasoningEffortId(run.snapshot.reasoningEffort) }) },
-
-      setup: async (agentCtx, agent) => {
-        installGuards(agentCtx, agent)
-        await ctx.agentPresets.mount(agentCtx, preset.id)
-      },
-    })
+    handle = await (bound
+      ? ctx.agents.resume({
+        resumeSessionId: initial.sessionId, signal, agentOptions, setup,
+      })
+      : ctx.agents.create({
+        sessionId: initial.sessionId, signal,
+        meta: { cwd: path, agentPreset: preset.id },
+        agentOptions, setup,
+      }))
     disposers.push(ctx.jobs.events.subscribe({ owners: 'scope' }, (event) => {
       if (event.type !== 'output' && [...family].some(member => member.id === event.job.owner)) checkEnding()
     }))
     disposers.push(ctx.on('agent/status', ({ agent: member }) => { if (family.has(member)) checkEnding() }))
     const agent = handle.agent
-    run = { ...run, sessionCreated: true }
+    if (!bound) run = { ...run, sessionCreated: true }
     await workspace.attachSession(agent.id)
-    ctx.permissionPresets.set(agent.session, ctx.permissionPresets.current(agent.session))
-    ctx.sessionTitle.rename(agent.session, `${run.snapshot.name} · ${new Date().toLocaleString()}`)
+    if (!bound) {
+      // A resumed authoring conversation keeps its own permission events and
+      // title; only the fresh track pins and renames here.
+      ctx.permissionPresets.set(agent.session, ctx.permissionPresets.current(agent.session))
+      ctx.sessionTitle.rename(agent.session, `${run.snapshot.name} · ${new Date().toLocaleString()}`)
+    }
     const message = buildAutomationInputMessage(run, run.snapshot)
-    run = { ...run, sessionCreated: true, startLogOffset: Number(agent.session.seq), inputMessageId: message.id }
+    run = { ...run, startLogOffset: Number(agent.session.seq), inputMessageId: message.id }
     await saveRun(host, run)
 
     disposers.push(agent.ctx.on('agent/inbox/claimed', ({ agent: subject, message: claimed, turn }) => {
@@ -304,9 +327,12 @@ export async function executeRun(host: AutomationRuntimeHost,
       ctx.userQuestions.cancelPending(handle.agent)
       await handle.agent.whenIdle()
       try {
-        await ctx.sessions.flush(handle.agent.session)
-      } catch {
-        // Teardown flush must not abort saving terminal run state.
+        const flushed = await ctx.sessions.flush(handle.agent.session)
+        if (!flushed) {
+          ctx.logger.warn(`automation: session flush returned false during error teardown for ${handle.agent.session.id}`)
+        }
+      } catch (flushError) {
+        ctx.logger.warn(`automation: failed to flush session during error teardown for ${handle.agent.session.id}: ${String(flushError)}`)
       }
     }
     await queuedWrites

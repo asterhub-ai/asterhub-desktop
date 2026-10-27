@@ -13,7 +13,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { credentialKey, credentialRef, type CredentialProvider } from '@deepseek-ai/dsh-credentials'
+import { credentialKey, credentialRef, type CredentialProvider, type CredentialRef } from '@deepseek-ai/dsh-credentials'
 import type {
   AccountAuthSettings,
   AccountAutomationIdentity,
@@ -92,6 +92,20 @@ class InvalidAccountSessionError extends Error {
 /** A non-authentication failure safe to expose to the account UI. */
 function accountServiceUnavailable(): RemoteError {
   return new RemoteError('gateway/internal', '认证服务暂不可用，请稍后重试', {})
+}
+
+/** Safe, distinct connection failures; never include Fetch or socket error text. */
+function accountConnectionFailure(timedOut: boolean): RemoteError {
+  return new RemoteError(
+    'gateway/internal',
+    timedOut ? '连接认证服务超时，请检查网络后重试' : '无法连接认证服务，请检查网络后重试',
+    {},
+  )
+}
+
+/** Safe failure returned when local persistence of authenticated credentials fails. */
+function accountCredentialSaveFailed(): RemoteError {
+  return new RemoteError('gateway/internal', '无法安全保存账户凭据，请重试', {})
 }
 
 /** Safe error copy for checkout failures. */
@@ -191,10 +205,15 @@ class Sub2ApiClient {
       response = await this.fetcher(new URL(path.replace(/^\//, ''), this.baseUrl), {
         ...init, headers, signal: AbortSignal.timeout(this.timeoutMs),
       })
-    } catch {
-      throw accountServiceUnavailable()
+    } catch (error) {
+      // Fetch implementations expose timeout as TimeoutError; other transport
+      // failures are presented as connection failures without forwarding causes.
+      throw accountConnectionFailure(error instanceof Error && error.name === 'TimeoutError')
     }
-    const body = await response.json().catch(() => ({})) as Record<string, unknown>
+    const parsed: unknown = await response.json().catch(() => ({}))
+    const body = parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {}
     if (!response.ok || (body.code !== undefined && body.code !== 0)) {
       const message = typeof body.message === 'string' && body.message ? body.message : undefined
       const errorCode = typeof body.error_code === 'string' ? body.error_code.toLowerCase() : ''
@@ -210,10 +229,12 @@ class Sub2ApiClient {
         throw accountError('注册失败，请检查信息后重试')
       }
       if (operation === 'verify') throw accountError('验证码发送失败，请稍后重试')
-      if (response.status === 401 || body.error_code === 'invalid_credentials' || body.error_code === 'unauthorized')
+      if (response.status === 401 || errorCode === 'invalid_credentials' || errorCode === 'unauthorized')
         throw new InvalidAccountSessionError()
       if (response.status === 403 && (
-        body.error_code === 'group_binding_forbidden' || /not allowed to bind/i.test(message ?? '')
+        errorCode === 'group_binding_forbidden'
+        || errorCode === 'permission_denied'
+        || /not allowed to bind/i.test(message ?? '')
       ))
         throw accountError('当前账户尚未开通工作台使用权限，请联系支持处理')
       throw accountServiceUnavailable()
@@ -475,10 +496,7 @@ export class AccountSub2apiService extends TypertRemoteService {
     super(ctx, 'accountSub2api')
     this.credentials = ctx.credentials
     const resolved = config as Required<Config>
-    const authBaseUrl = ctx.get('applicationModelRoute') === undefined
-      ? resolved.authBaseUrl
-      : 'https://xapi.fans/api/v1'
-    this.client = new Sub2ApiClient({ baseUrl: authBaseUrl, groupId: resolved.groupId })
+    this.client = new Sub2ApiClient({ baseUrl: resolved.authBaseUrl, groupId: resolved.groupId })
     // Awaited readiness: identity is only published after verifying a stored
     // token AND a bound model key exist locally, without network. Until the
     // readiness promise resolves, automationIdentity returns null (fail closed).
@@ -721,8 +739,33 @@ export class AccountSub2apiService extends TypertRemoteService {
     if (results.some(result => result.status === 'rejected')) throw accountServiceUnavailable()
   }
 
+  /**
+   * Store one account credential reference unless the launching environment
+   * supplies it read-only. The provider rejects a write an environment value
+   * would shadow, and that value is already the effective one, so the write
+   * is skipped instead of failing the sign-in.
+   */
+  private async storeCredential(ref: CredentialRef, value: string): Promise<void> {
+    if (!(await this.credentials.describe(ref)).writable) return
+    await this.credentials.set(ref, value)
+  }
+
+  /** Remove the remembered username; a reference the launching environment supplies read-only keeps its environment value. */
   private async clearRememberedUsername(): Promise<void> {
-    await this.credentials.unset(credentialRef(REMEMBERED_USERNAME_REF))
+    const ref = credentialRef(REMEMBERED_USERNAME_REF)
+    if (!(await this.credentials.describe(ref)).writable) return
+    await this.credentials.unset(ref)
+  }
+
+  /**
+   * Whether part of the account credentials is supplied by the read-only
+   * launching environment. Such references cannot be persisted — sign-in
+   * skips their write-back — so they stay environment-owned.
+   */
+  private async credentialsFromEnvironment(): Promise<boolean> {
+    const refs = [TOKEN_REF, USER_REF, REMEMBERED_USERNAME_REF, AUTO_LOGIN_PASSWORD_REF, AUTO_LOGIN_REF]
+    const descriptions = await Promise.all(refs.map(ref => this.credentials.describe(credentialRef(ref))))
+    return descriptions.some(info => info.configured && !info.writable)
   }
 
   private async rememberedUsername(): Promise<string | undefined> {
@@ -872,6 +915,7 @@ export class AccountSub2apiService extends TypertRemoteService {
       keyBound,
       ...(user !== undefined ? { user } : {}),
       ...(balance !== undefined ? { balance } : {}),
+      ...(await this.credentialsFromEnvironment() ? { credentialsFromEnv: true } : {}),
       ...(await this.signInPreferences()),
     }
   }
@@ -922,7 +966,7 @@ export class AccountSub2apiService extends TypertRemoteService {
 
   /** Sign in and bind one reusable model key to this account.
    * @param input - account credentials and local sign-in preferences.
-   * @returns current account state after credentials are stored.
+   * @returns current account state after the credential transition completes; environment-supplied references are skipped, not stored.
    */
   @Remote
   async login(input: AccountLoginInput): Promise<AccountStatus> {
@@ -983,23 +1027,22 @@ export class AccountSub2apiService extends TypertRemoteService {
       // pair one account token with another account's model key.
       await this.clearSessionCredentials()
       try {
-        await this.credentials.set(credentialRef(TOKEN_REF), auth.accessToken)
-        await this.credentials.set(credentialRef(USER_REF), JSON.stringify(auth.user))
+        await this.storeCredential(credentialRef(TOKEN_REF), auth.accessToken)
+        await this.storeCredential(credentialRef(USER_REF), JSON.stringify(auth.user))
         await this.credentials.modifyRecord(MODEL_KEY_RECORD, () => Promise.resolve({ kind: 'api-key', key }))
         await this.retainKey(userId, key)
         if (rememberUsername || autoLogin) {
-          await this.credentials.set(credentialRef(REMEMBERED_USERNAME_REF), email)
+          await this.storeCredential(credentialRef(REMEMBERED_USERNAME_REF), email)
         } else {
           await this.clearRememberedUsername()
         }
         if (autoLogin) {
-          await this.credentials.set(credentialRef(AUTO_LOGIN_PASSWORD_REF), password)
-          await this.credentials.set(credentialRef(AUTO_LOGIN_REF), 'true')
+          await this.storeCredential(credentialRef(AUTO_LOGIN_PASSWORD_REF), password)
+          await this.storeCredential(credentialRef(AUTO_LOGIN_REF), 'true')
         } else {
-          await this.clearAutoLogin()
         }
       } catch {
-        const cleanup = await Promise.allSettled([
+        await Promise.allSettled([
           this.clearLegacyModelKey(),
           this.credentials.deleteRecord(MODEL_KEY_RECORD),
           this.credentials.unset(credentialRef(TOKEN_REF)),
@@ -1008,10 +1051,7 @@ export class AccountSub2apiService extends TypertRemoteService {
           this.credentials.unset(credentialRef(AUTO_LOGIN_PASSWORD_REF)),
           this.credentials.unset(credentialRef(AUTO_LOGIN_REF)),
         ])
-        if (cleanup.some(result => result.status === 'rejected')) {
-          throw new RemoteError('gateway/internal', '无法安全保存账户凭据，请重试', {})
-        }
-        throw accountServiceUnavailable()
+        throw accountCredentialSaveFailed()
       }
       // Publish new automation identity after successful credential storage.
       // Epoch cannot assign a new account before valid key binding because we

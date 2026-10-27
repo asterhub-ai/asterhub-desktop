@@ -40,11 +40,19 @@ export function resolveDesktopBuildTarget(
 ): DesktopAutoUpdateTarget
 
 /**
+ * Resolve the target-directory layout selected by a packaging environment.
+ * @param env - Environment that may select a compact layout.
+ * @returns Validated build-directory layout.
+ */
+export function resolveDesktopBuildLayout(env?: NodeJS.ProcessEnv): 'standard' | 'compact'
+
+/**
  * Return the mutable preparation and artifact directories owned by one release target.
  * @param target - Supported Desktop target name.
+ * @param layout - Directory layout; defaults to the validated packaging environment.
  * @returns Target paths plus the shared immutable download cache.
  */
-export function desktopTargetBuildPaths(target: DesktopAutoUpdateTarget): DesktopTargetBuildPaths
+export function desktopTargetBuildPaths(target: DesktopAutoUpdateTarget, layout?: 'standard' | 'compact', buildRoot?: string): DesktopTargetBuildPaths
 
 /**
  * Return the platform and architecture of the payload one release target prepares.

@@ -1,7 +1,6 @@
 /** Model catalog and request-local dependencies for DeepSeek Messages. */
 import type { AttachmentScope, AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import type { LlmModelInfo, ModelModality, SystemPromptUpdate, ToolUpdate, ResolvedRetryPolicy, ImageAttachmentAccess } from '@deepseek-ai/dsh-llm'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { AppIdentity, LlmModelInfo, ModelModality, SystemPromptUpdate, ToolUpdate, ResolvedRetryPolicy, ImageAttachmentAccess } from '@deepseek-ai/dsh-llm'
 import type { AnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
 import type { DeepSeekLlmApiExtensionRequest, PreparedDeepSeekLlmApiExtensions } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
 import type { DeepSeekFileStore, DeepSeekFilePolicy } from './file-store.ts'
@@ -90,8 +89,10 @@ export interface DeepSeekRequestAuth {
   onRequestError?: (error: unknown) => Promise<unknown>
 }
 
-/** Constructor options for {@link DeepSeekAdapter}: the operation-local resolution hooks the plugin owns. */
+/** Constructor options for {@link DeepSeekAdapter}: operation-local dependencies. */
 export interface DeepSeekAdapterOptions<Connection extends DeepSeekConnectionOptions = DeepSeekConnectionOptions> {
+  /** Product/deployment attribution identity; omission uses the generic library identity. */
+  appIdentity?: Pick<AppIdentity, 'product' | 'url'>
   /** Report unusable native Messages replay metadata without exposing content or signatures. */
   onReplayDegrade?: (detail: { provider: string; model: string; reason: string }) => void
   /** Report extension fields omitted from one request because the merged request failed to serialize. */
@@ -108,8 +109,6 @@ export interface DeepSeekAdapterOptions<Connection extends DeepSeekConnectionOpt
   resolveUserId: () => AnonymousUserId
   /** Resolve the current durable attachment service; absence rejects image input. */
   resolveAttachments?: () => AttachmentStore | undefined
-  /** Resolve the registered project scope for a trusted Session address. */
-  resolveAttachmentScope?: (sessionId: SessionId) => AttachmentScope | undefined
   /** Bridge one attachment reference into the current model-tool execution world. */
   resolveImageAccess?: (attachments: AttachmentStore, ref: ImageAttachmentRef, scope?: AttachmentScope) => ImageAttachmentAccess | undefined
   /** Resolve the process-wide upload reuse store. */

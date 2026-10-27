@@ -12,7 +12,7 @@ import {
   desktopUpdateMetadataFilename,
   resolveDesktopUploadConfig,
 } from './desktop-auto-update-environment.mjs'
-import { desktopTargetBuildPaths } from './desktop-build-paths.mjs'
+import { desktopTargetBuildPaths, resolveDesktopBuildLayout, resolveDesktopBuildRoot } from './desktop-build-paths.mjs'
 import { validateDesktopBuildVersion } from './desktop-build-version.mjs'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
@@ -183,7 +183,9 @@ export async function createDesktopUploadPlan(
     throw new Error(`desktop upload: unsupported target ${String(targetName)}`)
   }
   const environment = options.environment ?? process.env
-  const artifactsRoot = options.artifactsRoot ?? desktopTargetBuildPaths(targetName).artifacts
+  const artifactsRoot = options.artifactsRoot ?? desktopTargetBuildPaths(
+    targetName, resolveDesktopBuildLayout(environment), resolveDesktopBuildRoot(environment),
+  ).artifacts
   const appRoot = options.appRoot ?? APP_ROOT
   const desktopVersion = await manifestVersion(join(appRoot, 'package.json'), 'desktop package')
   const update = resolveDesktopUploadConfig(environment, target.platform, target.arch)

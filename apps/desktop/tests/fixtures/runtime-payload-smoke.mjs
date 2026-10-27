@@ -18,7 +18,7 @@ assert.equal(process.platform, descriptor.platform)
 assert.equal(process.arch, descriptor.arch)
 const resourcesRuntime = process.argv[3] ?? join(dirname(root), 'runtime')
 const requireRuntime = createRequire(join(root, 'package.json'))
-const scratch = mkdtempSync(join(tmpdir(), 'dsh-runtime-payload-'))
+const scratch = mkdtempSync(join(tmpdir(), 'stage-smoke-'))
 
 /** Run a package script with only the shipped node launcher available on PATH. */
 function checkPnpm() {
@@ -35,8 +35,10 @@ assert.ok(process.execArgv.includes('--expose-internals'))
 assert.equal(typeof require('internal/modules/esm/loader').getOrInitializeCascadedLoader, 'function')
 console.log('desktop-node-script-ok')
 `)
-  const environment = Object.fromEntries(Object.entries(process.env).filter(([name]) => /^(?:systemroot|windir|comspec)$/iu.test(name)))
-  const systemBin = process.platform === 'win32' ? join(process.env.SystemRoot, 'System32') : '/usr/bin:/bin'
+  const environment = Object.fromEntries(Object.entries(process.env).filter(([name]) => /^(?:systemroot|windir|comspec|systemdrive|pathext)$/iu.test(name)))
+  const systemBin = process.platform === 'win32'
+    ? [join(process.env.SystemRoot, 'System32'), process.env.SystemRoot, join(process.env.SystemRoot, 'System32', 'Wbem')].join(delimiter)
+    : '/usr/bin:/bin'
   // This dependency-free fixture checks script launch, without pnpm's implicit install and update-network check.
   const output = execFileSync(process.execPath, ['--expose-internals', pnpm, 'run', 'check'], {
     cwd: scratch, encoding: 'utf8', timeout: 45_000,

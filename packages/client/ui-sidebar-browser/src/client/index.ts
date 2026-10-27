@@ -105,16 +105,35 @@ export function apply(ctx: Context): void {
     // Main issues tab commands; the handler runs against this Session's retained
     // Sidebar View and the same live controller map the bodies register into.
     const automation = desktop?.onAutomationRequest?.bind(desktop)
+    const automationCancel = desktop?.onAutomationCancel?.bind(desktop)
     if (automation !== undefined) {
-      scope.effect(() => automation(createDesktopBrowserAutomationHandler({
-        openTabs,
-        controllers,
-        sessionControllersChanged,
-        retainSessionView: (sessionId, signal) => ctx.sidebarRight.retainSessionView(sessionId, signal),
-        whenSessionAdopted: (sessionId, signal) => ctx.sidebarRight.whenSessionAdopted(sessionId, signal),
-        openTab: (sessionId, url) => { ctx.sidebarRight.openTabIn(sessionId, BROWSER_KIND, { params: { url } }) },
-        closeTab: (sessionId, tabId) => { ctx.sidebarRight.closeIn(sessionId, tabId) },
-      })), 'ui-sidebar-browser.automation')
+      scope.effect(() => {
+        const active = new Map<number, AbortController>()
+        const cancel = automationCancel
+        const offCancel = cancel?.(requestId => active.get(requestId)?.abort())
+        const handler = createDesktopBrowserAutomationHandler({
+          openTabs,
+          controllers,
+          sessionControllersChanged,
+          retainSessionView: (sessionId, signal) => ctx.sidebarRight.retainSessionView(sessionId, signal),
+          whenSessionAdopted: (sessionId, signal) => ctx.sidebarRight.whenSessionAdopted(sessionId, signal),
+          openTab: (sessionId, url) => { ctx.sidebarRight.openTabIn(sessionId, BROWSER_KIND, { params: { url } }) },
+          closeTab: (sessionId, tabId) => { ctx.sidebarRight.closeIn(sessionId, tabId) },
+        })
+        const offAutomation = automation((command) => {
+          const controller = new AbortController()
+          active.set(command.requestId, controller)
+          return handler(command, controller.signal).finally(() => {
+            if (active.get(command.requestId) === controller) active.delete(command.requestId)
+          })
+        })
+        return () => {
+          offAutomation()
+          offCancel?.()
+          for (const controller of active.values()) controller.abort()
+          active.clear()
+        }
+      }, 'ui-sidebar-browser.automation')
     }
   }
   if (desktop === undefined) installFrames(ctx, () => createIframePage)

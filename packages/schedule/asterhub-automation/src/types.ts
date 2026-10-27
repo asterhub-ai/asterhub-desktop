@@ -82,6 +82,13 @@ export interface AutomationReceipt {
 export interface AutomationTask {
   readonly id: AutomationTaskId
   readonly ownerAccountId: string
+  /**
+   * Authoring conversation bound at tool creation; each dispatch resumes it and
+   * appends the run's turn there. Absent for GUI-created tasks, which dispatch
+   * into a fresh independent Session. At most one undeleted task may bind a
+   * given Session id.
+   */
+  readonly originSessionId?: SessionId | undefined
   readonly revision: number
   readonly recordVersion: number
   readonly authorizationRevision: number
@@ -104,7 +111,7 @@ export interface AutomationTask {
 }
 /** Typed management action, used by both GUI and chat producers. */
 export type AutomationOperation =
-  | { readonly action: 'create'; readonly draft: AutomationDraft }
+  | { readonly action: 'create'; readonly draft: AutomationDraft; readonly originSessionId?: SessionId }
   | { readonly action: 'update'; readonly id: AutomationTaskId; readonly expectedRevision: number; readonly draft: AutomationDraft }
   | { readonly action: 'pause' | 'resume' | 'remove' | 'purgeDeleted'; readonly id: AutomationTaskId; readonly expectedRevision: number }
   | { readonly action: 'run'; readonly id: AutomationTaskId; readonly expectedRevision: number }

@@ -26,7 +26,10 @@ const instantSchema = z.string().refine(
   { message: 'Expected ISO 8601 UTC timestamp' },
 )
 
-/** Normalized timing validator. */
+/**
+ * Normalized timing validator.
+ * Daily and weekly timings accept both standard HH:mm:ss and millisecond-precision HH:mm:ss.SSS.
+ */
 const timingSchema: z.ZodType<AutomationTiming> = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('once'),
@@ -123,6 +126,11 @@ const receiptSchema: z.ZodType<AutomationReceipt> = z.object({
 export const taskAggregateSchema: z.ZodType<AutomationTask> = z.object({
   id: taskIdSchema,
   ownerAccountId: z.string().min(1),
+  // Optional binding written only by tool-created tasks; absent on stored
+  // GUI-created records, so no migration rewrites committed generations.
+  originSessionId: z.string().min(1)
+    .transform((v): SessionId => brandString<SessionId>(v))
+    .optional(),
   revision: z.number().int().nonnegative(),
   recordVersion: z.number().int().nonnegative(),
   authorizationRevision: z.number().int().nonnegative(),

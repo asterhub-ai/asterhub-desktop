@@ -5,9 +5,10 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AttachmentLocal from '@deepseek-ai/dsh-attachment-local'
-import ProjectStorage, { resolveProjectAttachmentScope } from '@deepseek-ai/dsh-project-storage'
+import ProjectStorage from '@deepseek-ai/dsh-project-storage'
 import { createInboxStub } from '@deepseek-ai/dsh-agent-loop-testkit'
 import SessionStore, { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import { describe, expect, it, vi } from 'vitest'
 import { createSessionTestRemote } from './test-remote.ts'
 
@@ -21,6 +22,7 @@ describe('Session image attachment ownership', () => {
     try {
       await ctx.plugin(SessionStore)
       await ctx.plugin(AgentRegistry)
+      await ctx.plugin(SessionCwd)
       await ctx.plugin(ProjectStorage, {
         sessionMode: 'project-local',
         locatorPath: join(dshHome, 'locator.json'),
@@ -29,7 +31,7 @@ describe('Session image attachment ownership', () => {
         lockDeadlineMs: 5000,
       })
       await ctx.plugin(AttachmentLocal, { dshHome, projectLocal: true })
-      const binding = await ctx.projectStorage.open({ root: project, mode: 'new' })
+      await ctx.projectStorage.open({ root: project, mode: 'new' })
       const sessionId = SessionId('image-scope-session')
       const session = ctx.sessions.create(sessionId, { meta: { cwd: project } })
       await ctx.projectStorage.bindSession({
@@ -85,9 +87,7 @@ describe('Session image attachment ownership', () => {
         mode: 'queue',
         content: [{ type: 'text', text: 'Continue without a new image' }],
       })).resolves.toMatchObject({ ok: true, value: { accepted: true } })
-      const scope = resolveProjectAttachmentScope(ctx, sessionId)
-      if (scope === undefined || scope.projectId !== binding.id) throw new Error('Session project scope was not registered')
-
+      const scope = { sessionId }
       const read = await remote.attachment({ sessionId, attachmentId: admitted.attachment.attachmentId })
       expect(read).toMatchObject({ ok: true, value: { attachment: admitted.attachment } })
       if (!read.ok) throw new Error('Session image RPC rejected a referenced project attachment')

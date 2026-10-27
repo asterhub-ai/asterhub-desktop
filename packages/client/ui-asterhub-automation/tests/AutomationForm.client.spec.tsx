@@ -225,3 +225,82 @@ describe('AutomationForm no duplicate save', () => {
     })
   })
 })
+
+describe('AutomationForm timezone selection interaction (D6)', () => {
+  it('opens timezone dropdown on focus and closes on option click without reopening', () => {
+    const props = makeFormProps()
+    const { container } = render(<AutomationForm {...props} />)
+    const searchInput = screen.getByLabelText(t('form.timezone.search'))
+
+    // Initial state: dropdown is closed, hidden timezone is populated
+    expect(screen.queryByRole('listbox')).toBeNull()
+    const hiddenTz = container.querySelector('#automation-form-timezone') as HTMLInputElement
+    expect(hiddenTz).toBeTruthy()
+
+    // Focus input opens dropdown
+    fireEvent.focus(searchInput)
+    expect(screen.getByRole('listbox')).toBeTruthy()
+
+    // Select a different timezone (e.g. Asia/Tokyo) via mouse click
+    const tokyoOption = container.querySelector('[id="tz-option-Asia/Tokyo"]') as HTMLElement
+    expect(tokyoOption).toBeTruthy()
+    fireEvent.click(tokyoOption)
+
+    // Dropdown MUST close and NOT reopen
+    expect(screen.queryByRole('listbox')).toBeNull()
+
+    // Hidden input must reflect selected timezone
+    expect(hiddenTz.value).toBe('Asia/Tokyo')
+  })
+
+  it('allows reopening the dropdown immediately by clicking the input after a selection', () => {
+    const props = makeFormProps()
+    const { container } = render(<AutomationForm {...props} />)
+    const searchInput = screen.getByLabelText(t('form.timezone.search'))
+
+    // 1. Focus to open dropdown
+    fireEvent.focus(searchInput)
+    expect(screen.getByRole('listbox')).toBeTruthy()
+
+    // 2. Select option -> dropdown closes
+    const tokyoOption = container.querySelector('[id="tz-option-Asia/Tokyo"]') as HTMLElement
+    expect(tokyoOption).toBeTruthy()
+    fireEvent.click(tokyoOption)
+
+    // 3. Immediately click search input -> dropdown re-opens without delay
+    fireEvent.click(searchInput)
+    expect(screen.getByRole('listbox')).toBeTruthy()
+  })
+
+  it('selects timezone with keyboard ArrowDown and Enter then closes dropdown', () => {
+    const props = makeFormProps()
+    const { container } = render(<AutomationForm {...props} />)
+    const searchInput = screen.getByLabelText(t('form.timezone.search'))
+    const hiddenTz = container.querySelector('#automation-form-timezone') as HTMLInputElement
+
+    fireEvent.focus(searchInput)
+    fireEvent.change(searchInput, { target: { value: 'New' } })
+    expect(screen.getByRole('listbox')).toBeTruthy()
+
+    // Press ArrowDown to highlight America/New_York
+    fireEvent.keyDown(searchInput, { key: 'ArrowDown' })
+    // Press Enter to select
+    fireEvent.keyDown(searchInput, { key: 'Enter' })
+
+    // Dropdown closes and value is America/New_York
+    expect(screen.queryByRole('listbox')).toBeNull()
+    expect(hiddenTz.value).toBe('America/New_York')
+  })
+
+  it('closes timezone dropdown on Escape', () => {
+    const props = makeFormProps()
+    render(<AutomationForm {...props} />)
+    const searchInput = screen.getByLabelText(t('form.timezone.search'))
+
+    fireEvent.focus(searchInput)
+    expect(screen.getByRole('listbox')).toBeTruthy()
+
+    fireEvent.keyDown(searchInput, { key: 'Escape' })
+    expect(screen.queryByRole('listbox')).toBeNull()
+  })
+})

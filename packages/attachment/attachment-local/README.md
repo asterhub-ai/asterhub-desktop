@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Store image and generic file attachments in grouped profiles below the resolved `DSH_HOME`, or beside project history when project-local mode is enabled. Images are validated, normalized for model requests, and cached per route; generic files are preserved byte-for-byte without admission limits. Identical bytes deduplicate within each owning store, and reads verify file length and content. Project-local operations require a trusted Session scope and never fall back to global storage when ownership is unavailable. Objects are never deleted automatically.
+Store image and file attachments in grouped profiles below `DSH_HOME`, or beside project history in project-local mode. Images are validated, normalized for model requests, and cached per route; generic files are preserved byte-for-byte. Identical bytes deduplicate within each owning store; reads verify length and content. Scoped operations accept only the trusted `SessionId`; with ProjectStorage mounted, the provider resolves ownership and status. Grouped profiles retain global behavior without ProjectStorage, but never fall back after a mounted project owner becomes unavailable. Objects are never deleted automatically.
 
 ## Table of Contents
 
@@ -61,7 +61,7 @@ Attach an image and its source limits, media, dimensions, and pixels are checked
 
 ### What can go wrong
 
-An image can be refused when you attach it: unsupported format, over the byte, pixel, or per-side dimension limits, or bytes that do not match their declared type. On a later read, an image that was deleted or corrupted on disk fails with a clear error. Each failure carries a stable code so the client and protocol adapters can explain it in their own words.
+An image can be refused when you attach it: unsupported format, over the byte, pixel, or per-side dimension limits, or bytes that do not match their declared type. On a later read, an image that was deleted or corrupted on disk fails with a stable attachment error code. A missing Session owner is an internal ownership error, not an attachment-input error. Project metadata errors propagate unchanged; only an absent project path is classified as unavailable attachment scope.
 
 -----
 

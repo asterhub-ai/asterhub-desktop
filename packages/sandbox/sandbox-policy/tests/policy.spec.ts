@@ -11,12 +11,14 @@ import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
+import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import SandboxPolicyService, { SANDBOX_MODES, setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt, { renderContextSnapshot, renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 
 async function mounted(config: { mode?: 'read-only' | 'workspace-write' | 'danger-full-access'; workspaceRoot?: string } = {}) {
   const ctx = new Context()
+  await ctx.plugin(SessionCwd)
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(SandboxPolicyService, config)
   return ctx
@@ -99,6 +101,37 @@ describe('SandboxPolicyService', () => {
     })
   })
 
+  it('uses the current project root when historical cwd exists or has been removed', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-policy-moved-'))
+    const oldRoot = join(root, 'old-project')
+    mkdirSync(oldRoot)
+    const ctx = await mounted({ mode: 'workspace-write', workspaceRoot: '/fallback' })
+    const dispose = ctx.sessionCwd.registerResolver(() => root)
+    try {
+      expect(ctx.sandboxPolicy.resolve({ session: session('moved-present', oldRoot) }).workspaceRoot).toBe(resolve(root))
+      rmSync(oldRoot, { recursive: true })
+      expect(ctx.sandboxPolicy.resolve({ session: session('moved-absent', join(root, 'removed-old-project')) }).workspaceRoot)
+        .toBe(resolve(root))
+    } finally {
+      dispose()
+      rmSync(root, { recursive: true, force: true })
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('rejects an unresolved project directory rather than granting the deployment root', async () => {
+    const ctx = await mounted({ mode: 'workspace-write', workspaceRoot: '/fallback' })
+    const dispose = ctx.sessionCwd.registerResolver(() => undefined)
+    try {
+      expect(() => ctx.sandboxPolicy.resolve({ session: session('unresolved-project', '/historical') }))
+        .toThrow(/execution directory/)
+      expect(ctx.sandboxPolicy.resolve().workspaceRoot).toBe('/fallback')
+    } finally {
+      dispose()
+      await ctx.fiber.dispose()
+    }
+  })
+
   it.skipIf(process.platform === 'win32')('preserves symlink-sensitive session cwd for its enforcing provider', async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-policy-cwd-'))
     try {
@@ -133,10 +166,6 @@ describe('SandboxPolicyService', () => {
     })
   })
 
-  it('uses the configured root when a session has no cwd', async () => {
-    const ctx = await mounted({ workspaceRoot: '/fallback' })
-    expect(ctx.sandboxPolicy.resolve({ session: session('sess-no-cwd') }).workspaceRoot).toBe('/fallback')
-  })
 
   it('rejects a mode outside the closed vocabulary at load', async () => {
     const ctx = new Context()

@@ -1,7 +1,7 @@
 /** Direct Messages transport with one cancellable lifecycle per model request. */
 
-import { attributionHeaders, LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
-import type { GenerateOptions, ImageAttachmentAccessResolver, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
+import { APP_IDENTITY, attributionHeaders, LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
+import type { AppIdentity, GenerateOptions, ImageAttachmentAccessResolver, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { DeepSeekLlmApiJson } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import { modelInfo } from './model-info.ts'
@@ -19,14 +19,16 @@ import { providerError, providerErrorDetail } from './transport.ts'
 /** DeepSeek provider using Messages content and native thinking replay. */
 export class DeepSeekAdapter<C extends Connection = Connection> extends LlmAdapter {
   private readonly files: DeepSeekFileStore
+  private readonly identity: AppIdentity
   private readonly imageAccess: ImageAttachmentAccessResolver = (ref, scope) => {
-    if (scope === undefined && this.dependencies.resolveAttachmentScope !== undefined) return undefined
     const attachments = this.dependencies.resolveAttachments?.()
+    if (scope === undefined && attachments?.modelImageSessionRequired) return undefined
     return attachments === undefined ? undefined : this.dependencies.resolveImageAccess?.(attachments, ref, scope)
   }
 
   constructor(private readonly dependencies: DeepSeekAdapterOptions<C>) {
     super()
+    this.identity = { ...APP_IDENTITY, ...dependencies.appIdentity }
     this.files = dependencies.resolveFiles?.() ?? new DeepSeekFileStore()
   }
 
@@ -77,7 +79,7 @@ export class DeepSeekAdapter<C extends Connection = Connection> extends LlmAdapt
     options: GenerateOptions, connection: C, signal: AbortSignal, activity: () => void,
   ): AsyncGenerator<StreamChunk> {
     signal.throwIfAborted()
-    const scope = options.sessionId === undefined ? undefined : this.dependencies.resolveAttachmentScope?.(options.sessionId)
+    const scope = options.sessionId === undefined ? undefined : { sessionId: options.sessionId }
     const imageAccess: ImageAttachmentAccessResolver = ref => this.imageAccess(ref, scope)
     const { messages, versions } = await prepareImages(
       options.messages, connection, options.model, this.dependencies.resolveAttachments?.(), imageAccess, signal, scope,
@@ -85,7 +87,7 @@ export class DeepSeekAdapter<C extends Connection = Connection> extends LlmAdapt
     const auth = await this.dependencies.resolveAuth(connection)
     try {
       const files = new RequestFiles(this.files, {
-        baseURL: connection.baseURL, headers: auth.headers,
+        baseURL: connection.baseURL, headers: auth.headers, appIdentity: this.identity,
       },
       connection.filePolicy, connection.filesApiTimeoutMs, signal, activity)
       let inline = false
@@ -123,9 +125,9 @@ export class DeepSeekAdapter<C extends Connection = Connection> extends LlmAdapt
         const response = await fetch(`${messagesApiRoot(connection.baseURL)}/messages`, {
           method: 'POST', signal, body: extensions.payload, redirect: 'error',
           headers: {
-            ...attributionHeaders(),
-            'content-type': 'application/json', 'accept': 'text/event-stream',
             ...auth.headers,
+            ...attributionHeaders(this.identity),
+            'content-type': 'application/json', 'accept': 'text/event-stream',
             'anthropic-version': '2023-06-01',
             ...betas.length === 0 ? {} : { 'anthropic-beta': betas.join(',') },
             'x-deepseek-harness-user-id': this.dependencies.resolveUserId(),

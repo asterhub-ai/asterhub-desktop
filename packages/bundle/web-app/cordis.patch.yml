@@ -13,10 +13,6 @@
 
 # ── surface-specific values the base deliberately omits ─────────────────────
 
-- id: system-prompt
-  config:
-    personaSuffix: 当前工作目录：{{cwd}}。
-    personaPrefix: 当前会话使用 {{model}} 模型。
 
 # Full-text session search is opt-in (the base row's `openAt: never`). This
 # restatement keeps the Web values on one ephemeral in-memory index; a
@@ -44,48 +40,6 @@
 - id: session-persistence-jsonl
   disabled: true
 - insert:
-    - id: desktop-product-telemetry
-      name: '@deepseek-ai/dsh-host-product-telemetry-otel'
-      disabled: !!js "ctx.get('profileContext')?.name !== 'desktop' || !process.env.DSH_PRODUCT_ANALYTICS_OTLP_URL"
-      config:
-        endpoint: !!js process.env.DSH_PRODUCT_ANALYTICS_OTLP_URL
-        serviceName: asterhub-desktop
-        serviceVersion: !!js process.env.DSH_CLIENT_VERSION
-        compression: gzip
-        scheduledDelayMillis: 30000
-        timeoutMillis: 15000
-        exportTimeoutMillis: 20000
-        shutdownTimeoutMillis: 2000
-    - id: product-analytics
-      name: '@deepseek-ai/dsh-client-product-analytics'
-      disabled: !!js "ctx.get('profileContext')?.name !== 'desktop' || !process.env.DSH_PRODUCT_ANALYTICS_OTLP_URL"
-      config:
-        appVersion: !!js process.env.DSH_CLIENT_VERSION
-    - id: anima
-      name: '@deepseek-ai/dsh-anima-memory'
-      config:
-        dataRoot: !!js dshHomePath('anima')
-        runtimeRoot: !!js process.env.DSH_ANIMA_RUNTIME_ROOT || ''
-    - id: project-storage
-      name: '@deepseek-ai/dsh-project-storage'
-      config:
-        sessionMode: project-local
-        locatorPath: !!js dshHomePath('locator.json')
-        legacySessionRoot: !!js dshHomePath('sessions')
-        metadataLimitBytes: 1048576
-        lockDeadlineMs: 5000
-
-    # Project-local Sessions own their attachment files; unscoped writes fail
-    # instead of persisting a reference outside the Session's project.
-    - id: attachment-local
-      name: '@deepseek-ai/dsh-attachment-local'
-      config:
-        projectLocal: true
-
-    - id: session-persistence-project
-      name: '@deepseek-ai/dsh-project-storage/persistence'
-      config:
-        compression: zstd
 
     - id: subagent-model-selection-settings
       name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'
@@ -312,11 +266,6 @@
     - id: ui-settings-general
       name: '@deepseek-ai/dsh-client-ui-settings-general'
 
-    # The Account settings entry: sub2api login, quota, and top-up. Login
-    # provisions the model key the llm-pi-ai sub2api route resolves, replacing
-    # the upstream provider-management section.
-    - id: ui-settings-account
-      name: '@deepseek-ai/dsh-client-ui-settings-account'
 
     # Plugin management: the sidebar Plugins page installs, enables, disables,
     # and removes the profile's bundles through the `pluginManager` Remote.
@@ -344,26 +293,6 @@
     - id: ui-attachment
       name: '@deepseek-ai/dsh-client-ui-attachment'
 
-    # Native voice input is part of the AsterHub workbench. Model assets are
-    # pre-bundled in the Desktop installation; the env-injected paths below
-    # point the provider at the bundled files so no first-use download is needed.
-    - id: speech-to-text
-      name: '@deepseek-ai/dsh-experimental-speech-to-text'
-      config:
-        defaultProvider: sensevoice-local
-
-    - id: speech-to-text-sensevoice
-      name: '@deepseek-ai/dsh-experimental-speech-to-text-sensevoice'
-      config:
-        dataRoot: !!js dshHomePath('speech-to-text', 'sensevoice')
-        modelDirectory: !!js "process.env.DSH_SPEECH_MODEL_DIRECTORY || undefined"
-        vadModelPath: !!js "process.env.DSH_SPEECH_VAD_MODEL_PATH || undefined"
-
-    - id: api-speech-to-text
-      name: '@deepseek-ai/dsh-experimental-api-speech-to-text'
-
-    - id: ui-voice-input
-      name: '@deepseek-ai/dsh-experimental-client-ui-voice-input'
 
     # Tool call tree, generic fallback, and keyed business Tool views.
     - id: ui-tool
@@ -429,11 +358,6 @@
     - id: ui-message-feedback
       name: '@deepseek-ai/dsh-client-ui-message-feedback'
 
-    # The picker receives only the deployment-owned AsterHub route and its
-    # authenticated upstream model list. Provider configuration stays locked.
-    - id: ui-model-selection
-      name: '@deepseek-ai/dsh-client-ui-model-selection'
-
     - id: ui-permission
       name: '@deepseek-ai/dsh-client-ui-permission-presets'
 
@@ -457,8 +381,6 @@
       name: '@deepseek-ai/dsh-client-ui-settings-subagent'
 
 
-    - id: ui-settings-anima
-      name: '@deepseek-ai/dsh-client-ui-settings-anima'
 
     # Plan control: the composer plan seat over the plan projection + /plan channel.
     - id: ui-plan
@@ -597,21 +519,3 @@
 
 - id: tool-web
   disabled: true
-
-# The preset selection registry. The shipped preset declarations follow as
-# separate patch files under `presets/`, listed after this file in
-# `package.json` `dsh.bundle.patch`.
-- insert:
-    - id: agent-preset-registry
-      name: '@deepseek-ai/dsh-agent-preset-registry'
-      config:
-        default: standard
-
-    # The AsterHub account service: Sub2API login, model-key provisioning
-    # (written to a Host-only credential record), quota, and
-    # top-up for the 账户 settings entry.
-    - id: account-sub2api
-      name: '@deepseek-ai/dsh-account-sub2api'
-      config:
-        authBaseUrl: 'https://xapi.fans/api/v1'
-        groupId: 6

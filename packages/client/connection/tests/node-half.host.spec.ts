@@ -2,11 +2,12 @@
 import { EventEmitter } from 'node:events'
 import { createServer, request as httpRequest } from 'node:http'
 import { Readable } from 'node:stream'
+import { AttachmentStore } from '@deepseek-ai/dsh-attachment'
+import type { ImageAttachmentLimits, ImageAttachmentRef, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
 import type { AddressInfo } from 'node:net'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import type { IndexInjection, WebServer, WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 import {
   API_PATH,
@@ -126,6 +127,22 @@ function browserCookie(connection: HostConnectionHandle, authority: string): str
   return setCookie.split(';', 1)[0]!
 }
 
+const IMAGE_LIMITS: ImageAttachmentLimits = {
+  maxImageBytes: 20 * 1024 * 1024,
+  maxImagesPerMessage: 20,
+  maxMessageImageBytes: 20 * 1024 * 1024,
+  maxImagePixels: 64_000_000,
+  maxImageDimension: 8192,
+  mediaTypes: ['image/png', 'image/jpeg', 'image/webp'],
+}
+
+class AttachmentLimitStore extends AttachmentStore {
+  readonly imageLimits = IMAGE_LIMITS
+  validateImage(): Promise<void> { return Promise.resolve() }
+  saveImage(): Promise<ImageAttachmentRef> { return Promise.reject(new Error('unused')) }
+  readImage(): Promise<StoredImageAttachment> { return Promise.reject(new Error('unused')) }
+}
+
 describe('connection node half', () => {
   it('runs request admission after authentication and removes it with its owning fiber', async () => {
     const { ctx, routes, connection, dispose } = await mounted()
@@ -232,9 +249,7 @@ describe('connection node half', () => {
     const ctx = new Context()
     const routes: WebRoute[] = []
     ctx.provide('webServer', fakeHttpServer(routes, []) as WebServer)
-    ctx.provide('attachments', {
-      imageLimits: { maxMessageImageBytes: 20 * 1024 * 1024 },
-    } as AttachmentStore)
+    new AttachmentLimitStore(ctx)
     await expect(apply(ctx, { maxRequestBodyBytes: 1024 }))
       .rejects.toThrow(/must be at least .* aggregate image limit/)
     expect(routes).toHaveLength(0)

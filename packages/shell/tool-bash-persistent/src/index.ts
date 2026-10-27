@@ -223,6 +223,7 @@ async function respondToSessionExit(
 function persistentShells(ctx: Context, config: ResolvedConfig): PersistentShells {
   const pending = new WeakMap<Agent, Promise<TerminalSessionId>>()
   const live = new Map<Agent, TerminalSessionId>()
+  const roots = new WeakMap<Agent, string>()
   const creating = new Set<Promise<TerminalSessionId>>()
   const ownerCleanupInstalled = new WeakSet<Agent>()
   const lifecycle = new AbortController()
@@ -244,26 +245,56 @@ function persistentShells(ctx: Context, config: ResolvedConfig): PersistentShell
     pending.delete(owner)
     const id = live.get(owner)
     live.delete(owner)
+    roots.delete(owner)
     if (id !== undefined) await close(owner, id, reason)
   }
 
-  const get = (owner: Agent, signal: AbortSignal): Promise<TerminalSessionId> => {
+  const get = async (owner: Agent, signal: AbortSignal): Promise<TerminalSessionId> => {
+    // Agent calls must use the current trusted root on every invocation. A missing or
+    // disposed provider is authoritative; never let the terminal inherit its own cwd.
+    let cwd: string | undefined
+    const sessionCwd = ctx.get('sessionCwd', false)
+    if (sessionCwd !== undefined) {
+      try {
+        cwd = sessionCwd.resolve(owner.session.header)
+      } catch (error: unknown) {
+        const inFlight = pending.get(owner)
+        if (inFlight !== undefined) await inFlight.catch(() => {})
+        await reset(owner, 'current workspace is unavailable')
+        throw error
+      }
+      if (cwd === undefined) {
+        const inFlight = pending.get(owner)
+        if (inFlight !== undefined) await inFlight.catch(() => {})
+        await reset(owner, 'current workspace is unavailable')
+        throw new Error(`Session ${owner.session.id} has no current execution directory`)
+      }
+    } else {
+      cwd = owner.options.cwd ?? owner.session.header.cwd
+    }
+    if (cwd === undefined) throw new Error(`Session ${owner.session.id} has no current execution directory`)
+    const finalCwd = cwd
     const existing = pending.get(owner)
-    if (existing !== undefined) return existing
+    if (existing !== undefined) {
+      if (roots.get(owner) === cwd) return existing
+      await existing.catch(() => {})
+      await reset(owner, 'persistent bash workspace changed')
+    }
     const combinedSignal = AbortSignal.any([signal, lifecycle.signal])
     const creation = (async () => {
       try {
-        const cwd = owner.session.header.cwd
         const spawned = await ctx.terminals.spawn(owner, {
           type: config.backendType,
-          ...cwd === undefined ? {} : { cwd },
+          cwd: finalCwd,
         }, combinedSignal)
         live.set(owner, spawned.sessionId)
+        roots.set(owner, finalCwd)
         if (!ownerCleanupInstalled.has(owner)) {
           ownerCleanupInstalled.add(owner)
           owner.ctx.effect(() => () => {
             pending.delete(owner)
             live.delete(owner)
+            roots.delete(owner)
           }, 'tool-bash-persistent owner cache cleanup')
         }
         // Echo suppression only: the prompt stays the backend's own, so the
