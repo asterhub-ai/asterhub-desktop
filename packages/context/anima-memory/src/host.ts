@@ -153,11 +153,28 @@ export class AnimaHost {
     return this.ready
   }
 
+  /**
+   * Resolve the capture working directory through the Session cwd service so continued
+   * imported sessions capture into their adopted project; a missing/errored service or a
+   * provider that declines resolution falls back to the durable header cwd.
+   * @param session - Session being bound for capture.
+   * @returns The effective execution directory, or the header cwd when resolution is unavailable.
+   */
+  private resolveCaptureCwd(session: Session): string | undefined {
+    const headerCwd = session.header.cwd
+    if (headerCwd === undefined) return undefined
+    try {
+      return this.ctx.sessionCwd.resolve(session.header) ?? headerCwd
+    } catch {
+      return headerCwd
+    }
+  }
+
   private async binding(session: Session): Promise<Binding> {
     let binding = this.bindings.get(session)
     if (binding === undefined) {
       binding = this.cores().then(async (cores) => {
-        const facts = createCaptureFacts(cores.installationUid, session, 'asterhub')
+        const facts = createCaptureFacts(cores.installationUid, session, 'asterhub', this.resolveCaptureCwd(session))
         const project = projectIdentity(facts)
         await registerProjectOwnership(cores.ownership, { project_uid: project.uid, identity_fingerprint: project.fingerprint })
         const capture = cores.capture.openSession(facts)
