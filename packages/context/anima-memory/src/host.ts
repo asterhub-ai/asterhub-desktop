@@ -155,19 +155,13 @@ export class AnimaHost {
 
   /**
    * Resolve the capture working directory through the Session cwd service so continued
-   * imported sessions capture into their adopted project; a missing/errored service or a
-   * provider that declines resolution falls back to the durable header cwd.
+   * imported sessions capture into their adopted project. Unowned Sessions retain their
+   * historical cwd; resolver failures remain visible to the capture caller.
    * @param session - Session being bound for capture.
-   * @returns The effective execution directory, or the header cwd when resolution is unavailable.
+   * @returns The effective execution directory, or the header cwd when no project owns it.
    */
   private resolveCaptureCwd(session: Session): string | undefined {
-    const headerCwd = session.header.cwd
-    if (headerCwd === undefined) return undefined
-    try {
-      return this.ctx.sessionCwd.resolve(session.header) ?? headerCwd
-    } catch {
-      return headerCwd
-    }
+    return this.ctx.sessionCwd.resolve(session.header) ?? session.header.cwd
   }
 
   private async binding(session: Session): Promise<Binding> {
