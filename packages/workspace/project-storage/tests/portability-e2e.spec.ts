@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -257,5 +257,83 @@ describe('end-to-end project portability across synthetic machines', () => {
     }
 
     await ctxB.fiber.dispose()
+  })
+
+  it('reconciles and recovers unindexed physical sessions from .aster/sessions on import/inspect/open', async () => {
+    const machine = await tempDir('unindexed-sessions-')
+    const locator = join(machine, 'locator.json')
+    const projectDir = join(machine, 'my-portable-project')
+    await mkdir(join(projectDir, '.aster', 'sessions', '--old-machine-cwd--', 'session-unindexed-1'), { recursive: true })
+
+    const headerLine = JSON.stringify({
+      type: 'session',
+      version: SESSION_FORMAT_VERSION,
+      id: 'session-unindexed-1',
+      createdAt: 1000,
+      cwd: '/old/machine/cwd',
+      isSeeded: false,
+      delegationDepth: 0,
+    })
+    const event1 = JSON.stringify({ type: 'turn/start', seq: 0, time: 1001, data: { turn: 1 } })
+    const event2 = JSON.stringify({ type: 'turn/end', seq: 1, time: 1002, data: { turn: 1, reason: { kind: 'completed' } } })
+    await writeFile(
+      join(projectDir, '.aster', 'sessions', '--old-machine-cwd--', 'session-unindexed-1', 'session.v5.jsonl'),
+      `${headerLine}\n${event1}\n${event2}\n`,
+      'utf8',
+    )
+    const expectedProjectId = randomUUID()
+    const emptyManifest = {
+      schemaVersion: 1,
+      id: expectedProjectId,
+      title: 'Portable Project With Unindexed Sessions',
+      createdAt: 1000,
+      sessions: [],
+      sessionOrder: [],
+      pinnedSessionIds: [],
+      archivedSessionIds: [],
+    }
+    await writeFile(
+      join(projectDir, '.aster', 'project.json'),
+      JSON.stringify(emptyManifest, null, 2),
+      'utf8',
+    )
+
+    const ctx = new Context()
+    await ctx.plugin(SessionCwd)
+    await ctx.plugin(ProjectStorage, {
+      sessionMode: 'project-local',
+      locatorPath: locator,
+      legacySessionRoot: '',
+      metadataLimitBytes: 1024 * 1024,
+      lockDeadlineMs: 5000,
+    })
+
+    const inspection = await ctx.projectStorage.inspect(projectDir)
+    expect(inspection.kind).toBe('existing')
+    if (inspection.kind !== 'existing') throw new Error('expected existing project')
+    expect(inspection.manifest.sessions).toHaveLength(1)
+
+    const binding = await ctx.projectStorage.open({
+      root: projectDir,
+      mode: 'existing',
+      expectedId: inspection.manifest.id,
+      expectedDigest: inspection.digest,
+    })
+    expect(binding.id).toBe(expectedProjectId)
+
+    await ctx.plugin(ProjectSessionPersistence, { compression: 'none' })
+    const listed = await ctx.sessionPersistence.list()
+    expect(listed.map(s => String(s.header.id))).toContain('session-unindexed-1')
+
+    const reader = await ctx.sessionPersistence.open(SessionId('session-unindexed-1'), 'read')
+    try {
+      expect(reader.header.id).toBe('session-unindexed-1')
+      const events = (await reader.read()).events
+      expect(events).toHaveLength(2)
+    } finally {
+      await reader.close()
+    }
+
+    await ctx.fiber.dispose()
   })
 })

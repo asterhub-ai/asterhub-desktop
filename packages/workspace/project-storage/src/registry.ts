@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { constants, readFileSync, realpathSync } from 'node:fs'
 import type { FileHandle } from 'node:fs/promises'
-import { access, open as openFile, lstat, mkdir, readFile, realpath, rename, rm, stat, unlink } from 'node:fs/promises'
+import { access, open as openFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, unlink } from 'node:fs/promises'
+import { zstdDecompressSync } from 'node:zlib'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { ProjectBindingRevision as makeProjectBindingRevision, ProjectId as makeProjectId, createManifest, decodeManifest, manifestDigest, parseStrictJson, projectSessionRecord } from './manifest.ts'
-import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session/types'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionHeader } from '@deepseek-ai/dsh-session/types'
 import { sessionDir } from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { ensureProjectGitExclusion } from './git-exclusion.ts'
 import type {
@@ -108,9 +110,13 @@ export class ProjectStorageRegistry implements ProjectStorageHost {
     if (info !== undefined) {
       if (info.isSymbolicLink() || !info.isFile()) throw new Error('project metadata must be a regular file')
       const bytes = await readFile(metadata, { signal })
-      const manifest = decodeManifest(bytes, this.options.metadataLimitBytes)
+      let manifest = decodeManifest(bytes, this.options.metadataLimitBytes)
       await assertOwnedRoots(canonical, false)
-      const digest = manifestDigest(bytes)
+      const reconciled = await reconcileDiskSessions(canonical, manifest, signal)
+      manifest = reconciled.manifest
+      const digest = reconciled.changed
+        ? manifestDigest(Buffer.from(JSON.stringify(manifest)))
+        : manifestDigest(bytes)
       const rootOwner = this.records.find(record => record.root === canonical && record.id !== manifest.id)
       if (rootOwner !== undefined) throw new Error(`project root identity conflict: registered as ${rootOwner.id}, metadata claims ${manifest.id}`)
       const owner = this.records.find(record => record.id === manifest.id)
@@ -146,7 +152,9 @@ export class ProjectStorageRegistry implements ProjectStorageHost {
         if (exclusion.kind === 'tracked-data') throw new Error(`.aster contains already-tracked private Git data: ${exclusion.trackedPaths.join(', ')}`)
         await mkdir(join(root, '.aster'), { mode: 0o700 })
         await assertOwnedRoots(root, true)
-        const manifest = createManifest({ title: baseName(root) })
+        let manifest = createManifest({ title: baseName(root) })
+        const reconciled = await reconcileDiskSessions(root, manifest, signal)
+        manifest = reconciled.manifest
         await writeManifest(root, manifest)
         const record = this.makeRecord(manifest.id, root)
         await this.saveRecord(record)
@@ -185,12 +193,25 @@ export class ProjectStorageRegistry implements ProjectStorageHost {
       const exclusion = await ensureProjectGitExclusion(root, signal)
       if (exclusion.kind === 'tracked-data') throw new Error(`.aster contains already-tracked private Git data: ${exclusion.trackedPaths.join(', ')}`)
       await assertOwnedRoots(root, false)
-      if (inspection.kind === 'registered') return inspection.binding
+      if (inspection.kind === 'registered') {
+        const onDiskBytes = await readFile(join(root, ...MANIFEST_PATH), { signal }).catch(() => undefined)
+        if (onDiskBytes === undefined || manifestDigest(onDiskBytes) !== inspection.digest) {
+          await writeManifest(root, manifest)
+          this.manifests.set(manifest.id, manifest)
+          this.indexSessionOwners(manifest)
+          this.emitChange({ id: manifest.id, binding: inspection.binding, manifest })
+        }
+        return inspection.binding
+      }
       const current = this.records.find(item => item.id === manifest.id)
       if (current !== undefined && current.root !== root && await existsDirectory(current.root)) throw new Error(`project location conflict: ${manifest.id}`)
       this.assertManifestOwner(manifest)
       const record = this.makeRecord(manifest.id, root)
       await this.saveRecord(record)
+      const onDiskBytes = await readFile(join(root, ...MANIFEST_PATH), { signal }).catch(() => undefined)
+      if (onDiskBytes === undefined || manifestDigest(onDiskBytes) !== inspection.digest) {
+        await writeManifest(root, manifest)
+      }
       this.manifests.set(manifest.id, manifest)
       this.indexSessionOwners(manifest)
       this.emitChange({ id: manifest.id, binding: binding(record), manifest })
@@ -592,6 +613,111 @@ function location(record: LocatorRecord, relativeCwd: string): ProjectSessionLoc
     attachmentsRoot: join(record.root, '.aster', 'attachments', 'v1'), bindingRevision: record.revision,
   }
 }
+async function scanDiskSessionIds(projectRoot: string, signal?: AbortSignal): Promise<Set<string>> {
+  const sessionsDir = join(projectRoot, '.aster', 'sessions')
+  const found = new Set<string>()
+  let entries
+  try {
+    entries = await readdir(sessionsDir, { withFileTypes: true })
+  } catch {
+    return found
+  }
+
+  async function checkSessionDir(dir: string, candidateId: string) {
+    try {
+      const files = await readdir(dir, { withFileTypes: true })
+      for (const file of files) {
+        if (!file.isFile()) continue
+        const name = file.name
+        if (
+          (name.startsWith('session.') || name.startsWith('session')) &&
+          (name.endsWith('.jsonl') || name.endsWith('.jsonl.zstd')) &&
+          !name.includes('.tmp')
+        ) {
+          let id = candidateId
+          const filePath = join(dir, name)
+          let handle
+          try {
+            handle = await openFile(filePath, 'r')
+            const buf = Buffer.alloc(16384)
+            const { bytesRead } = await handle.read(buf, 0, 16384, 0)
+            const slice = buf.subarray(0, bytesRead)
+            let text = ''
+            if (name.endsWith('.zstd')) {
+              try {
+                const decomp = zstdDecompressSync(slice)
+                text = decomp.toString('utf8')
+              } catch {
+                text = ''
+              }
+            } else {
+              text = slice.toString('utf8')
+            }
+            const firstLine = text.split('\n')[0]
+            if (firstLine !== undefined && firstLine.length > 0) {
+              const parsed = JSON.parse(firstLine) as { id?: unknown }
+              if (parsed !== null && typeof parsed === 'object' && typeof parsed.id === 'string' && parsed.id.length > 0) {
+                id = parsed.id
+              }
+            }
+          } catch {
+            // Keep candidateId on parse failure
+          } finally {
+            await handle?.close()
+          }
+          found.add(id)
+          break
+        }
+      }
+    } catch {
+      // Ignore unreadable session directory
+    }
+  }
+
+  for (const entry of entries) {
+    signal?.throwIfAborted()
+    if (!entry.isDirectory()) continue
+    if (entry.name.startsWith('--') && entry.name.endsWith('--')) {
+      const subEntries = await readdir(join(sessionsDir, entry.name), { withFileTypes: true }).catch(() => [])
+      for (const sub of subEntries) {
+        if (sub.isDirectory()) {
+          await checkSessionDir(join(sessionsDir, entry.name, sub.name), sub.name)
+        }
+      }
+    } else {
+      await checkSessionDir(join(sessionsDir, entry.name), entry.name)
+    }
+  }
+  return found
+}
+
+async function reconcileDiskSessions(
+  canonicalRoot: string,
+  manifest: PortableProjectManifest,
+  signal?: AbortSignal,
+): Promise<{ manifest: PortableProjectManifest; changed: boolean }> {
+  const diskIds = await scanDiskSessionIds(canonicalRoot, signal)
+  if (diskIds.size === 0) return { manifest, changed: false }
+  const existing = new Set(manifest.sessions.map(s => String(s.id)))
+  const missing: string[] = []
+  for (const id of diskIds) {
+    if (!existing.has(id)) missing.push(id)
+  }
+  if (missing.length === 0) return { manifest, changed: false }
+  const additions = missing.map(id => projectSessionRecord(id, '.'))
+  const nextSessions = [...manifest.sessions, ...additions]
+  const existingOrder = new Set(manifest.sessionOrder.map(s => String(s)))
+  const nextOrder = [...manifest.sessionOrder, ...additions.map(s => s.id).filter(id => !existingOrder.has(String(id)))]
+  return {
+    manifest: {
+      ...manifest,
+      sessions: nextSessions,
+      sessionOrder: nextOrder,
+    },
+    changed: true,
+  }
+}
+
 async function canonicalDirectory(path: string): Promise<string> {
   const canonical = await realpath(resolve(path))
   if (!(await stat(canonical)).isDirectory()) throw new Error(`project root is not a directory: ${path}`)
