@@ -789,6 +789,78 @@ describe('project discovery and confirmed opening', () => {
   })
 
 
+  it('restores archived history when a deleted workspace reimports from its moved root', async () => {
+    const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-workspace-rearchive-')))
+    tempDirs.push(root)
+    const ctx = new Context()
+    roots.push(ctx)
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(Storage)
+    ctx.storage.backend.register('memory', new MemoryStorageBackend())
+    const storageDomain = new DomainFacility(ctx, { backend: 'memory', routes: {} })
+    ctx.storage.mount('domain', storageDomain)
+    ctx.provide('storageDomain', storageDomain)
+    await ctx.plugin(SessionCwd)
+    await ctx.plugin(ProjectStorage, {
+      sessionMode: 'project-local',
+      locatorPath: join(root, 'locator.json'),
+      legacySessionRoot: '',
+      metadataLimitBytes: 1024 * 1024,
+      lockDeadlineMs: 5000,
+    })
+    await ctx.plugin(ProjectSessionPersistence, { compression: 'none' })
+    await ctx.plugin(WorkspaceRegistry)
+    const controller = new WorkspaceController(ctx, { documentsDirectory: root })
+
+    const originalRoot = stageDir(root, 'original-project')
+    const created = await controller.create({ path: originalRoot })
+    const sessionId = SessionId('archived-then-moved')
+    const movedHeader: SessionHeader = {
+      version: SESSION_FORMAT_VERSION,
+      id: sessionId,
+      createdAt: 1000,
+      cwd: originalRoot,
+      isSeeded: false,
+      delegationDepth: 0,
+    }
+    const writer = await ctx.sessionPersistence.create(movedHeader)
+    await writer.append([
+      { type: 'turn/start', seq: SessionSeq(0), time: 1001, data: { turn: 1 } },
+      { type: 'turn/end', seq: SessionSeq(1), time: 1002, data: { turn: 1, reason: { kind: 'completed' as const } } },
+    ])
+    await writer.close()
+    const workspace = ctx.workspaceRegistry.get(created.workspace.workspaceId)
+    if (workspace === undefined) throw new Error('fixture Workspace disappeared')
+    await workspace.attachSession(sessionId)
+
+    // Deleting with the default sessionAction archives the workspace's
+    // sessions globally while their logs stay in the project directory.
+    await expect(controller.delete({ workspaceId: created.workspace.workspaceId }))
+      .resolves.toEqual({ deleted: true })
+    expect(ctx.workspaceRegistry.archivedSessionIds).toContain(sessionId)
+
+    // The directory moves and the project reimports under the new path.
+    const movedRoot = stageDir(root, 'moved-project')
+    await cp(join(originalRoot, '.aster'), join(movedRoot, '.aster'), { recursive: true })
+    await rm(originalRoot, { recursive: true, force: true })
+    const inspection = await controller.inspect({ path: movedRoot }, new AbortController().signal)
+    if (inspection.kind !== 'existing') throw new Error('expected existing project')
+    expect(inspection.sessionCount).toBeGreaterThanOrEqual(1)
+
+    const reopened = await controller.openProject({
+      path: movedRoot,
+      mode: 'existing',
+      expectedId: inspection.projectId,
+      expectedDigest: inspection.digest,
+    }, new AbortController().signal)
+    expect(reopened.workspace.sessionIds).toContain(sessionId)
+    // The archive entry the deletion wrote must not keep the restored history
+    // hidden: reattachment through the project location drops it from the
+    // registry-global archive set and the session lists again.
+    expect(ctx.workspaceRegistry.archivedSessionIds).not.toContain(sessionId)
+    expect((await ctx.sessionPersistence.list()).map(snapshot => snapshot.header.id)).toContain(sessionId)
+  })
+
   it('openProject throws workspace/confirmation-mismatch when projectStorage rejects confirmation', async () => {
     const { controller, ctx, root } = await harness()
     const signal = new AbortController().signal

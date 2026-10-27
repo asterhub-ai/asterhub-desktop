@@ -336,4 +336,154 @@ describe('end-to-end project portability across synthetic machines', () => {
 
     await ctx.fiber.dispose()
   })
+
+  it('reconciles a flat session artifact inside a project bucket into the manifest on inspect and list', async () => {
+    const machine = await tempDir('flat-bucket-session-')
+    const locator = join(machine, 'locator.json')
+    const projectDir = join(machine, 'my-flat-bucket-project')
+    await mkdir(join(projectDir, '.aster', 'sessions', '--old-machine-cwd--'), { recursive: true })
+
+    const flatId = 'session-flat-bucket-1'
+    const headerLine = JSON.stringify({
+      type: 'session',
+      version: SESSION_FORMAT_VERSION,
+      id: flatId,
+      createdAt: 1000,
+      cwd: '/old/machine/cwd',
+      isSeeded: false,
+      delegationDepth: 0,
+    })
+    const event1 = JSON.stringify({ type: 'turn/start', seq: 0, time: 1001, data: { turn: 1 } })
+    const event2 = JSON.stringify({ type: 'turn/end', seq: 1, time: 1002, data: { turn: 1, reason: { kind: 'completed' } } })
+    await writeFile(
+      join(projectDir, '.aster', 'sessions', '--old-machine-cwd--', `${flatId}.jsonl`),
+      `${headerLine}\n${event1}\n${event2}\n`,
+      'utf8',
+    )
+    const expectedProjectId = randomUUID()
+    await writeFile(
+      join(projectDir, '.aster', 'project.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        id: expectedProjectId,
+        title: 'Flat Bucket Project',
+        createdAt: 1000,
+        sessions: [],
+        sessionOrder: [],
+        pinnedSessionIds: [],
+        archivedSessionIds: [],
+      }, null, 2),
+      'utf8',
+    )
+
+    const ctx = new Context()
+    await ctx.plugin(SessionCwd)
+    await ctx.plugin(ProjectStorage, {
+      sessionMode: 'project-local',
+      locatorPath: locator,
+      legacySessionRoot: '',
+      metadataLimitBytes: 1024 * 1024,
+      lockDeadlineMs: 5000,
+    })
+
+    const inspection = await ctx.projectStorage.inspect(projectDir)
+    expect(inspection.kind).toBe('existing')
+    if (inspection.kind !== 'existing') throw new Error('expected existing project')
+    expect(inspection.manifest.sessions).toHaveLength(1)
+    expect(String(inspection.manifest.sessions[0]!.id)).toBe(flatId)
+
+    await ctx.projectStorage.open({
+      root: projectDir,
+      mode: 'existing',
+      expectedId: inspection.manifest.id,
+      expectedDigest: inspection.digest,
+    })
+    await ctx.plugin(ProjectSessionPersistence, { compression: 'none' })
+    const listed = await ctx.sessionPersistence.list()
+    expect(listed.map(snapshot => String(snapshot.header.id))).toContain(flatId)
+
+    const reader = await ctx.sessionPersistence.open(SessionId(flatId), 'read')
+    try {
+      expect(reader.header.id).toBe(flatId)
+      const events = (await reader.read()).events
+      expect(events).toHaveLength(2)
+    } finally {
+      await reader.close()
+    }
+
+    await ctx.fiber.dispose()
+  })
+
+  it('leaves a bucket flat artifact without a supported header uncounted while the backend keeps refusing it', async () => {
+    const machine = await tempDir('flat-bucket-broken-')
+    const locator = join(machine, 'locator.json')
+    const projectDir = join(machine, 'my-flat-bucket-broken-project')
+    const goodId = 'session-flat-bucket-good'
+    await mkdir(join(projectDir, '.aster', 'sessions', '--old-machine-cwd--', goodId), { recursive: true })
+    const goodHeader = JSON.stringify({
+      type: 'session',
+      version: SESSION_FORMAT_VERSION,
+      id: goodId,
+      createdAt: 900,
+      cwd: '/old/machine/cwd',
+      isSeeded: false,
+      delegationDepth: 0,
+    })
+    await writeFile(
+      join(projectDir, '.aster', 'sessions', '--old-machine-cwd--', goodId, `session.v${SESSION_FORMAT_VERSION}.jsonl`),
+      `${goodHeader}\n${JSON.stringify({ type: 'turn/start', seq: 0, time: 901, data: { turn: 1 } })}\n`,
+      'utf8',
+    )
+    await writeFile(
+      join(projectDir, '.aster', 'sessions', '--old-machine-cwd--', 'broken-artifact.jsonl'),
+      'this file carries no session header\n',
+      'utf8',
+    )
+    await writeFile(
+      join(projectDir, '.aster', 'project.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        id: randomUUID(),
+        title: 'Flat Bucket Broken Project',
+        createdAt: 1000,
+        sessions: [{ id: goodId, relativeCwd: '.' }],
+        sessionOrder: [goodId],
+        pinnedSessionIds: [],
+        archivedSessionIds: [],
+      }, null, 2),
+      'utf8',
+    )
+
+    const ctx = new Context()
+    await ctx.plugin(SessionCwd)
+    await ctx.plugin(ProjectStorage, {
+      sessionMode: 'project-local',
+      locatorPath: locator,
+      legacySessionRoot: '',
+      metadataLimitBytes: 1024 * 1024,
+      lockDeadlineMs: 5000,
+    })
+
+    const inspection = await ctx.projectStorage.inspect(projectDir)
+    expect(inspection.kind).toBe('existing')
+    if (inspection.kind !== 'existing') throw new Error('expected existing project')
+    // The scan cannot read an id from the broken artifact, so the manifest
+    // keeps exactly its recorded session instead of naming one the backend
+    // could never serve.
+    expect(inspection.manifest.sessions).toHaveLength(1)
+    expect(String(inspection.manifest.sessions[0]!.id)).toBe(goodId)
+
+    await ctx.projectStorage.open({
+      root: projectDir,
+      mode: 'existing',
+      expectedId: inspection.manifest.id,
+      expectedDigest: inspection.digest,
+    })
+    await ctx.plugin(ProjectSessionPersistence, { compression: 'none' })
+    // The backend's legacy-layout migration refuses the headerless artifact
+    // loudly instead of silently dropping it from a listing.
+    await expect(ctx.sessionPersistence.list()).rejects.toThrow(/no supported header/)
+
+    await ctx.fiber.dispose()
+  })
 })

@@ -623,6 +623,54 @@ async function scanDiskSessionIds(projectRoot: string, signal?: AbortSignal): Pr
     return found
   }
 
+  /**
+   * Read the session id from a JSONL artifact's first line within its first
+   * 16KB, transparently decompressing zstd-named artifacts.
+   * @param filePath - Absolute artifact path to read.
+   * @param zstd - Whether the artifact name carries the `.zstd` suffix.
+   * @returns the header id, or `undefined` when the artifact is unreadable,
+   *   its first line is absent, or that line carries no usable id.
+   */
+  async function readLogHeaderId(filePath: string, zstd: boolean): Promise<string | undefined> {
+    let handle: FileHandle | undefined
+    try {
+      handle = await openFile(filePath, 'r')
+      const buf = Buffer.alloc(16384)
+      const { bytesRead } = await handle.read(buf, 0, 16384, 0)
+      const slice = buf.subarray(0, bytesRead)
+      let text: string
+      if (zstd) {
+        try {
+          text = zstdDecompressSync(slice).toString('utf8')
+        } catch {
+          text = ''
+        }
+      } else {
+        text = slice.toString('utf8')
+      }
+      const firstLine = text.split('\n')[0]
+      if (firstLine === undefined || firstLine.length === 0) return undefined
+      const parsed = JSON.parse(firstLine) as { id?: unknown }
+      return parsed !== null && typeof parsed === 'object' && typeof parsed.id === 'string' && parsed.id.length > 0
+        ? parsed.id
+        : undefined
+    } catch {
+      return undefined
+    } finally {
+      await handle?.close()
+    }
+  }
+
+  /**
+   * Whether a directory entry is a bare JSONL artifact the JSONL backend
+   * serves by migrating it into session-directory layout — the same shape the
+   * backend's own listing treats as legacy. `.tmp` staging files never count.
+   */
+  const isFlatLogArtifact = (entry: { readonly isFile: () => boolean; readonly name: string }): boolean =>
+    entry.isFile()
+    && (entry.name.endsWith('.jsonl') || entry.name.endsWith('.jsonl.zstd'))
+    && !entry.name.includes('.tmp')
+
   async function checkSessionDir(dir: string, candidateId: string) {
     try {
       const files = await readdir(dir, { withFileTypes: true })
@@ -634,38 +682,10 @@ async function scanDiskSessionIds(projectRoot: string, signal?: AbortSignal): Pr
           (name.endsWith('.jsonl') || name.endsWith('.jsonl.zstd')) &&
           !name.includes('.tmp')
         ) {
-          let id = candidateId
           const filePath = join(dir, name)
-          let handle
-          try {
-            handle = await openFile(filePath, 'r')
-            const buf = Buffer.alloc(16384)
-            const { bytesRead } = await handle.read(buf, 0, 16384, 0)
-            const slice = buf.subarray(0, bytesRead)
-            let text = ''
-            if (name.endsWith('.zstd')) {
-              try {
-                const decomp = zstdDecompressSync(slice)
-                text = decomp.toString('utf8')
-              } catch {
-                text = ''
-              }
-            } else {
-              text = slice.toString('utf8')
-            }
-            const firstLine = text.split('\n')[0]
-            if (firstLine !== undefined && firstLine.length > 0) {
-              const parsed = JSON.parse(firstLine) as { id?: unknown }
-              if (parsed !== null && typeof parsed === 'object' && typeof parsed.id === 'string' && parsed.id.length > 0) {
-                id = parsed.id
-              }
-            }
-          } catch {
-            // Keep candidateId on parse failure
-          } finally {
-            await handle?.close()
-          }
-          found.add(id)
+          // An unreadable or id-less artifact still accounts the directory's
+          // own encoded name; that name is the session identity on disk.
+          found.add((await readLogHeaderId(filePath, name.endsWith('.zstd'))) ?? candidateId)
           break
         }
       }
@@ -682,6 +702,13 @@ async function scanDiskSessionIds(projectRoot: string, signal?: AbortSignal): Pr
       for (const sub of subEntries) {
         if (sub.isDirectory()) {
           await checkSessionDir(join(sessionsDir, entry.name, sub.name), sub.name)
+        } else if (isFlatLogArtifact(sub)) {
+          // A bare artifact directly inside a bucket is one the backend
+          // migrates and serves, so it belongs in the manifest; an artifact
+          // whose header yields no id is skipped — the backend refuses such a
+          // file loudly, and naming it here would fabricate a session id.
+          const id = await readLogHeaderId(join(sessionsDir, entry.name, sub.name), sub.name.endsWith('.zstd'))
+          if (id !== undefined) found.add(id)
         }
       }
     } else {

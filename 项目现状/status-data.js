@@ -2,9 +2,10 @@
 window.ASTERHUB_STATUS = {
   meta: {
     title: 'AsterHub · 项目现状',
-    date: '2026-10-27',
+    date: '2026-10-28',
     productVersion: '0.21.2',
     frameworkVersion: '0.2.0-rc.3',
+    upstreamBaseline: 'fork 基线 dsh-v0.2.0-rc.2（merge-base 639ed01539）；上游最新 dsh-v0.2.1-rc.3（2026-10-23），领先约 3464 提交；分析细节见交接文档 2026-10-28 节',
     phase: '主线已合并 · Windows 0.21.2 unsigned 预发布',
     verdict: '0.21.2 unsigned 安装包已发布；历史会话便携性仍待真实界面验收',
     summary: '主线包含会话归属调整及导入后展开；0.21.2 预发布对应的合成测试和打包 runtime smoke 有证据，但未证明真实跨设备历史列表与续聊通过。',

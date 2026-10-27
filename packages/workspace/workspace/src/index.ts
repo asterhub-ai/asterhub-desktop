@@ -295,7 +295,15 @@ export class WorkspaceRegistry extends Service {
   }
 
   /**
-   * Attach stored Sessions whose authoritative project location matches an opened Workspace.
+   * Attach stored Sessions whose authoritative project location matches an
+   * opened Workspace. A Session this call newly accounts — the durable record
+   * did not list it before the attach — and that sits in the registry-global
+   * archive set leaves that set in one follow-up write. Deleting the previous
+   * registration archived the workspace's sessions globally while their logs
+   * stayed in the project directory, so a moved-root reimport would otherwise
+   * re-attach history that every grouping surface then hides. A Session the
+   * record already listed, including one a caller archived deliberately,
+   * keeps its archive state.
    * @param path - Existing Workspace directory.
    * @returns completion after the Session membership records are durable.
    */
@@ -307,7 +315,11 @@ export class WorkspaceRegistry extends Service {
       const headers = await this.listStoredHeaders()
       await this.indexHeaders(headers)
       const projectStorage = this.ctx.get('projectStorage') as ProjectStorageLocator | undefined
+      const restored: SessionId[] = []
       for (const header of headers) {
+        // The entity's sessionIds getter projects the filtered cwd index; the
+        // raw table record is the pre-call membership fact this decision needs.
+        const recorded = this.requireTable().get(workspace.id)?.sessionIds.includes(header.id) ?? false
         let matches = this.sessionPaths.get(header.id) === canonical
         if (!matches && projectStorage !== undefined) {
           const location = projectStorage.locateSession(header.id)
@@ -321,7 +333,20 @@ export class WorkspaceRegistry extends Service {
             } catch {}
           }
         }
-        if (matches) await workspace.attachSession(header.id)
+        if (!matches) continue
+        await workspace.attachSession(header.id)
+        if (!recorded && this.requireState().archivedSessionIds.includes(header.id)) {
+          restored.push(header.id)
+        }
+      }
+      if (restored.length > 0) {
+        // Re-read after the attach loop: entity mutations above can commit
+        // table writes, and this write needs the latest global state.
+        const state = this.requireState()
+        await this.setState({
+          ...state,
+          archivedSessionIds: state.archivedSessionIds.filter(id => !restored.includes(id)),
+        })
       }
     })
   }

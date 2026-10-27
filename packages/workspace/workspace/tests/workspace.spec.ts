@@ -306,6 +306,75 @@ describe('WorkspaceRegistry lifecycle and bootstrap', () => {
     }
   })
 
+  it('unarchives a moved-root session that reconcile newly accounts to the reopened workspace', async () => {
+    const movedRoot = await makeDir('rearchive-target-project')
+    const staleCwd = join(base, 'old-device', 'deleted-workspace')
+    const imported = header('rearchive-session', staleCwd, 100)
+    const h = await harness({
+      sessions: [],
+      projectLocations: new Map([[imported.id, movedRoot]]),
+    })
+    try {
+      const workspace = await h.registry.create(movedRoot)
+      h.setSessions([imported])
+      // Deleting the previous registration archived the session globally; its
+      // log stayed in the project and the record is gone with the registration.
+      await h.registry.archiveSession(imported.id)
+      expect(h.registry.archivedSessionIds).toEqual([imported.id])
+
+      await h.registry.reconcileProjectSessions(movedRoot)
+
+      expect(workspace.sessionIds).toEqual([imported.id])
+      expect(h.registry.archivedSessionIds).toEqual([])
+      expect(storedRecord(h.pool, workspace.id).sessionIds).toEqual([imported.id])
+      expect(storedState(h.pool).archivedSessionIds).toEqual([])
+    } finally {
+      await h.fiber.dispose()
+    }
+  })
+
+  it('attaches every project-located session from a fresh registry without ungrouped leftovers', async () => {
+    const movedRoot = await makeDir('imported-multi-project')
+    const staleCwd = join(base, 'old-device', 'multi-workspace')
+    const first = header('multi-import-1', staleCwd, 100)
+    const second = header('multi-import-2', staleCwd, 200)
+    const h = await harness({
+      sessions: [first, second],
+      projectLocations: new Map([[first.id, movedRoot], [second.id, movedRoot]]),
+    })
+    try {
+      // No workspace existed for the stale cwd, so bootstrap left both
+      // sessions ungrouped; importing the moved root must account both.
+      const workspace = await h.registry.create(movedRoot)
+      await h.registry.reconcileProjectSessions(movedRoot)
+
+      expect(h.registry.list()).toEqual([workspace])
+      expect(workspace.sessionIds).toHaveLength(2)
+      expect(new Set(workspace.sessionIds)).toEqual(new Set([first.id, second.id]))
+      expect(storedRecord(h.pool, workspace.id).sessionIds).toHaveLength(2)
+    } finally {
+      await h.fiber.dispose()
+    }
+  })
+
+  it('keeps an already-recorded session archived across a repeated reconcile', async () => {
+    const dir = await makeDir('deliberate-archive-reopen')
+    const result = await harness({ sessions: [header('deliberate', dir, 100)] })
+    const workspace = result.registry.list()[0]!
+    try {
+      await result.registry.archiveSession(SessionId('deliberate'))
+      expect(result.registry.archivedSessionIds).toEqual([SessionId('deliberate')])
+
+      await result.registry.reconcileProjectSessions(dir)
+
+      expect(result.registry.archivedSessionIds).toEqual([SessionId('deliberate')])
+      expect(workspace.sessionIds).toContain(SessionId('deliberate'))
+      expect(storedState(result.pool).archivedSessionIds).toEqual([SessionId('deliberate')])
+    } finally {
+      await result.fiber.dispose()
+    }
+  })
+
   it('bootstraps once from list headers only, in workspace/session createdAt order', async ({ skip }) => {
     const older = await makeDir('older')
     const newer = await makeDir('newer')
