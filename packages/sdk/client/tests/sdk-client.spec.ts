@@ -191,12 +191,13 @@ describe('DeepSeekHarness', () => {
     let closed = false
     const harness = harnessWith()
     vi.spyOn(harness, 'start').mockResolvedValue()
-    vi.spyOn(harness.client, 'prompt').mockResolvedValue('accepted-message')
+    vi.spyOn(harness.client, 'request').mockResolvedValue({ kind: 'prompt', messageId: 'accepted-message' })
     vi.spyOn(harness.client, 'subscribeSessionTree').mockImplementation(() => ({
       next: async () => {
         const notification = notifications.shift()
         if (notification === undefined) throw new Error('scripted notification queue exhausted')
-        return notification      },
+        return notification
+      },
       tryNext: () => notifications.shift(),
       close: () => { closed = true },
       async * [Symbol.asyncIterator]() {},
@@ -279,12 +280,13 @@ describe('DeepSeekHarness', () => {
     ] as HarnessNotification[]
     const harness = harnessWith()
     vi.spyOn(harness, 'start').mockResolvedValue()
-    vi.spyOn(harness.client, 'prompt').mockResolvedValue('accepted-message')
+    vi.spyOn(harness.client, 'request').mockResolvedValue({ kind: 'prompt', messageId: 'accepted-message' })
     vi.spyOn(harness.client, 'subscribeSessionTree').mockImplementation(() => ({
       next: async () => {
         const notification = notifications.shift()
         if (notification === undefined) throw new Error('scripted notification queue exhausted')
-        return notification      },
+        return notification
+      },
       tryNext: () => notifications.shift(),
       close: () => {},
       async * [Symbol.asyncIterator]() {},

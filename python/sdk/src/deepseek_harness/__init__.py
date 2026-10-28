@@ -1,6 +1,5 @@
-from .api import DeepSeekHarness, DeepSeekHarnessConfig, RunResult, Session
-from .client import HarnessClient, HarnessConfig
-from .errors import SdkProtocolError
+from .api import RunCommandResult, DeepSeekHarness, DeepSeekHarnessConfig, RunResult, Session
+from .client import HarnessClient, HarnessConfigfrom .errors import SdkProtocolError
 from .models import (
     CommandErrorResult, CommandExecution,
     CommandResult, CommandSuccessResult, IncomingRequest, InitializeResponse,
@@ -12,6 +11,7 @@ __all__ = [
     "DeepSeekHarnessConfig",
     "Session",
     "RunResult",
+    "RunCommandResult",
     "CommandExecution",
     "CommandResult",
     "CommandSuccessResult",
