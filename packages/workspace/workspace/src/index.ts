@@ -330,7 +330,18 @@ export class WorkspaceRegistry extends Service {
                 this.invalidSessionPaths.delete(header.id)
                 matches = true
               }
-            } catch {}
+            } catch (error: unknown) {
+              // A missing project root is the portable moved-away state the
+              // next import repairs; membership already survives it durably.
+              // Any other resolution failure is permanent for this attempt and
+              // must surface instead of silently dropping the Session.
+              if (!isMissingLocationError(error)) {
+                this.ctx.logger.warn(
+                  `workspace '${workspace.id}' could not resolve project root '${location.projectRoot}' `
+                  + `for session '${String(header.id)}': ${String(error)}`,
+                )
+              }
+            }
           }
         }
         if (!matches) continue
@@ -1161,5 +1172,10 @@ export class WorkspaceRegistry extends Service {
 
 const sameSessionIds = (left: readonly SessionId[], right: readonly SessionId[]): boolean =>
   left.length === right.length && left.every((id, index) => id === right[index])
+
+/** Whether a filesystem resolution failed because the target is absent — the repairable moved-away state. */
+const isMissingLocationError = (error: unknown): boolean =>
+  typeof error === 'object' && error !== null && 'code' in error
+  && (error as { code?: unknown }).code === 'ENOENT'
 
 export default WorkspaceRegistry
