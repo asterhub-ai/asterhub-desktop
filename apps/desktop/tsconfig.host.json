@@ -33,6 +33,9 @@
       "path": "../../packages/client/product-analytics/tsconfig.host.json"
     },
     {
+      "path": "../../packages/boot/plugin-manager"
+    },
+    {
       "path": "../../packages/browser-use/browser-use-desktop"
     }
   ],
