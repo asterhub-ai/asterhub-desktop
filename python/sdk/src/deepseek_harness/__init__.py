@@ -4,18 +4,13 @@ from .errors import SdkProtocolError
 from .models import (
     CommandErrorResult, CommandExecution,
     CommandResult, CommandSuccessResult, IncomingRequest, InitializeResponse,
-    JsonObject, Notification, ServerInfo,
-)
+    JsonObject, Notification, ServerInfo,)
 
 __all__ = [
     "DeepSeekHarness",
     "DeepSeekHarnessConfig",
     "Session",
     "RunResult",
-    "CommandExecution",
-    "CommandResult",
-    "CommandSuccessResult",
-    "CommandErrorResult",
     "HarnessClient",
     "HarnessConfig",
     "SdkProtocolError",
