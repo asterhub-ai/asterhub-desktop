@@ -146,6 +146,8 @@ interface SidebarRightSessions {
   readonly openTabs: SidebarTabInventory['source']
   /** Adoption state and callers waiting for a Session's store. */
   readonly adoption: SessionAdoptionSignal
+  /** Each Session's flash source, created on first use and released when the Session is forgotten. */
+  readonly flashes: Map<SessionId, SnapshotStore<SidebarRightFlash | undefined>>
 }
 
 /**
@@ -174,14 +176,16 @@ export function createSidebarRightController(
   const onScreen = createSnapshotStore<SessionId | undefined>(undefined)
   const inventory = new SidebarTabInventory()
   const adoption = new SessionAdoptionSignal()
+  const flashes = new Map<SessionId, SnapshotStore<SidebarRightFlash | undefined>>()
   const controller = new SidebarRightController(
-    tabs, pin, host, { adopted, rooms, onScreen, openTabs: inventory.source, adoption }, retainSessionView,
+    tabs, pin, host, { adopted, rooms, onScreen, openTabs: inventory.source, adoption, flashes }, retainSessionView,
   )
   return {
     controller,
     forget: (sessionId) => {
       inventory.remove(sessionId)
       rooms.delete(sessionId)
+      flashes.delete(sessionId)
     },
     show: (sessionId) => { if (onScreen.getSnapshot() !== sessionId) onScreen.set(sessionId) },
     measure: (sessionId, canSplitPane) => { rooms.set(sessionId, canSplitPane) },
@@ -396,7 +400,7 @@ export class SidebarRightController implements ISidebarRight {
   private readonly rooms: ReadonlyMap<SessionId, RoomRule>
   private readonly adoption: SessionAdoptionSignal
   private readonly closeHandlers = new Map<string, SidebarRightCloseHandler>()
-  private readonly flashes = new Map<SessionId, SnapshotStore<SidebarRightFlash | undefined>>()
+  private readonly flashes: Map<SessionId, SnapshotStore<SidebarRightFlash | undefined>>
 
   /**
    * Register resource cleanup before explicit removal. Failure preserves the tab.
@@ -435,6 +439,7 @@ export class SidebarRightController implements ISidebarRight {
     this.adoption = sessions.adoption
     this.mounted = sessions.onScreen
     this.openTabs = sessions.openTabs
+    this.flashes = sessions.flashes
     this.tabDomain = new TabDomain(this, pin)
   }
 
@@ -879,7 +884,7 @@ export class SidebarRightController implements ISidebarRight {
   }
 
   /**
-   * Return a floating panel's tab to the active docked pane; a missing or docked pane is left alone.
+   * Return a floating panel's tab to the active docked pane and expand the column; a missing or docked pane is left alone.
    * @param paneId - the floating pane.
    */
   dock(paneId: PaneId): void {
