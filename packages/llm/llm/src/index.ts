@@ -32,14 +32,14 @@ import { resolveRetryPolicy } from './retry-policy.ts'
 import type { ResolvedRetryPolicy } from './retry-policy.ts'
 import type { ProviderRequestId } from './brand.ts'
 import { callConfigEquals } from './call-config.ts'
-import type { LlmCallConfig, LlmCallConfigAdapterDefaults } from './call-config.ts'
+import type { ConfigureCall, LlmCallConfig, LlmCallConfigAdapterDefaults } from './call-config.ts'
 import { HarnessError, INVALID_CREDENTIAL_CODE } from './error.ts'
 import { normalizeLlmFailure } from './adapter-failure.ts'
 import { normalizeApiKey } from './api-key.ts'
 import {
   contentHasFile, contentHasImage, fileHandleText, projectFilesToText, projectImagesForTextModel, projectToolUpdates,
 } from './content.ts'
-import type { FileAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import type { FileAttachmentRef, ImageAttachmentRef, ImageRequestTarget } from '@deepseek-ai/dsh-attachment'
 
 export * from './attribution.ts'
 export * from './brand.ts'
@@ -52,19 +52,11 @@ export * from './message.ts'
 export * from './retry-policy.ts'
 export { BlockAssembler } from './assembler.ts'
 export { callConfigEquals, isAgentLoopRequest, markAgentLoopRequest } from './call-config.ts'
-export type { LlmCallConfig, LlmCallConfigAdapterDefaults } from './call-config.ts'
+export type { ConfigureCall, LlmCallConfig, LlmCallConfigAdapterDefaults, LlmCallControls } from './call-config.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
     llm: LlmRuntime
-    /** Trusted application-owned route ceiling and optional adapter profile. */
-    applicationModelRoute?: Readonly<{
-      provider: string
-      model: string
-      selectableModels?: boolean
-      appIdentity?: Readonly<{ product: string; version: string; url: string }>
-      profile?: Readonly<Record<string, unknown>>
-    }>
   }
 
   interface Events {
@@ -246,6 +238,18 @@ export abstract class LlmAdapter {
   }
 
   /**
+   * Resolve the image dimensions and byte target this adapter sends to the model.
+   * The default preserves normalized images; adapters that resize must override it.
+   * @param _provider - registered provider route.
+   * @param _model - exact model id.
+   * @param image - normalized image whose request projection is being resolved.
+   * @returns the same target used by request serialization, before provider-internal processing.
+   */
+  imageRequestTarget(_provider: string, _model: string, image: ImageAttachmentRef): ImageRequestTarget {
+    return { width: image.width, height: image.height, maxBytes: image.bytes }
+  }
+
+  /**
    * List models this adapter can currently advertise for one owned provider.
    * Core routing accepts unlisted model ids; catalog-driven entry points such
    * as the GUI may require membership. Adapters used there must advertise
@@ -354,82 +358,30 @@ export class LlmRuntime extends TypertRemoteService {
     string,
     (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>
   >()
-  private fixedRoute: Readonly<{ provider: string; model?: string }> | undefined
-  private fixedRouteLocked = false
 
   constructor(ctx: Context) {
     super(ctx, 'llm')
-    const route = ctx.get('applicationModelRoute')
-    if (route !== undefined) {
-      if (route.selectableModels === true) this.lockProvider(route.provider)
-      else this.lockRoute(route.provider, route.model)
-    }
-  }
-
-  /** Install an application-owned route ceiling before adapters are mounted.
-   * @param provider Provider id that every model call must use.
-   * @param model Model id that every model call must use.
-   */
-  lockRoute(provider: string, model: string): void {
-    if (provider.length === 0 || model.length === 0) {
-      throw new LlmError('a fixed model route needs non-empty provider and model ids', 'INVALID_FIXED_ROUTE')
-    }
-    if (this.fixedRouteLocked) throw new LlmError('the fixed model route is already owned by the application', 'FIXED_ROUTE_LOCKED')
-    this.fixedRoute = Object.freeze({ provider, model })
-    this.fixedRouteLocked = true
-  }
-
-  /** Lock the application to one provider while allowing its advertised models.
-   * @param provider application-owned provider id.
-   */
-  lockProvider(provider: string): void {
-    if (provider.length === 0) throw new LlmError('a fixed provider route needs a non-empty provider id', 'INVALID_FIXED_ROUTE')
-    if (this.fixedRouteLocked) throw new LlmError('the fixed model route is already owned by the application', 'FIXED_ROUTE_LOCKED')
-    this.fixedRoute = Object.freeze({ provider })
-    this.fixedRouteLocked = true
-  }
-
-  /** Reject a route that differs from the application-owned model route. */
-  private assertFixedRoute(config: Pick<LlmCallConfig, 'provider' | 'model'>): void {
-    const fixed = this.fixedRoute
-    if (fixed !== undefined && (config.provider !== fixed.provider || (fixed.model !== undefined && config.model !== fixed.model))) {
-      throw new LlmError('model route is fixed by this application', 'MODEL_ROUTE_LOCKED')
-    }
-  }
-
-  /** Whether an application-owned fixed route has been installed.
-   * @returns `true` when calls are constrained to the application route.
-   */
-  hasFixedRoute(): boolean {
-    return this.fixedRoute !== undefined
   }
 
   /** Notify topology observers without letting one broken listener veto the commit. */
   private emitAdaptersUpdated(): void {
     // Cordis emit uses Array.map: one synchronous throw starves later
     // listeners. Registry notifications are non-vetoing, so contain each
-    // callback independently; INVARIANT-coded failures still surface.
-    let invariantFailure: unknown
+    // callback independently.
     for (const listener of this.ctx.events.dispatch('emit', ['llm/adapters-updated']) as Array<() => unknown>) {
       try {
         const returned = listener()
         if (returned != null && typeof (returned as PromiseLike<unknown>).then === 'function') {
           // An emit listener may still be an async function; its rejection
-          // cannot reach the synchronous INVARIANT rethrow below, so it is
-          // contained here instead of becoming an unhandled rejection.
+          // is contained here instead of becoming an unhandled rejection.
           void Promise.resolve(returned as PromiseLike<unknown>).then(undefined, (error: unknown) => {
             this.warnAdaptersListenerFailure(error)
           })
         }
       } catch (error) {
-        if ((error as { code?: unknown } | null)?.code === 'INVARIANT') {
-          invariantFailure ??= error
-          continue
-        }
         this.warnAdaptersListenerFailure(error)
       }
     }
-    if (invariantFailure !== undefined) throw invariantFailure as Error
   }
 
   /** Contained-listener diagnostic shared by the sync and async failure paths. */
@@ -529,10 +481,6 @@ export class LlmRuntime extends TypertRemoteService {
    */
   @Remote
   listProviders(): LlmProviderInfo[] {
-    if (this.fixedRoute !== undefined) {
-      const provider = this.adapters.get(this.fixedRoute.provider)?.provider
-      return provider === undefined ? [] : [{ ...provider }]
-    }
     return [...this.adapters.values()].map(({ provider }) => ({ ...provider }))
   }
 
@@ -568,7 +516,7 @@ export class LlmRuntime extends TypertRemoteService {
           || detached.some(seen => seen.provider === entry.provider)) {
           throw new LlmError(`configurable provider "${entry.provider}" is already declared`, 'DUPLICATE_DIRECTORY')
         }
-        detached.push({ ...entry, settingsPath: [...entry.settingsPath] })
+        detached.push(detachDirectoryEntry(entry))
       }
       for (const entry of held) this.directory.delete(entry.provider)
       for (const entry of detached) this.directory.set(entry.provider, entry)
@@ -605,8 +553,7 @@ export class LlmRuntime extends TypertRemoteService {
    */
   @Remote
   listConfigurableProviders(): LlmConfigurableProvider[] {
-    if (this.fixedRoute !== undefined) return []
-    return [...this.directory.values()].map(entry => ({ ...entry, settingsPath: [...entry.settingsPath] }))
+    return [...this.directory.values()].map(detachDirectoryEntry)
   }
 
   /**
@@ -656,9 +603,6 @@ export class LlmRuntime extends TypertRemoteService {
     request: LlmModelDiscoveryRequest,
     signal?: AbortSignal,
   ): Promise<LlmDiscoveredModel[]> {
-    if (this.fixedRoute !== undefined) {
-      throw new LlmError('model discovery is disabled for this application', 'MODEL_ROUTE_LOCKED')
-    }
     const discover = this.discoveries.get(settingsNs)
     if (discover === undefined) {
       throw new LlmError(`no model discovery is registered for "${settingsNs}"`, 'NO_DISCOVERY')
@@ -702,9 +646,6 @@ export class LlmRuntime extends TypertRemoteService {
     signal: AbortSignal,
   ): Promise<LlmDiscoveredModel[]> {
     try {
-      if (this.fixedRoute !== undefined) {
-        throw new LlmError('model discovery is disabled for this application', 'MODEL_ROUTE_LOCKED')
-      }
       return await this.discoverModels(settingsNs, request, signal)
     } catch (error: unknown) {
       throw new RemoteError(
@@ -742,6 +683,17 @@ export class LlmRuntime extends TypertRemoteService {
   }
 
   /**
+   * Resolve the image projection for an exact registered model route.
+   * @param provider - registered provider route.
+   * @param model - exact model id.
+   * @param image - normalized image reference.
+   * @returns dimensions and byte target used by the adapter's request serializer.
+   */
+  imageRequestTarget(provider: string, model: string, image: ImageAttachmentRef): ImageRequestTarget {
+    return this.registration(provider).adapter.imageRequestTarget(provider, model, image)
+  }
+
+  /**
    * Resolve the exact text one durable file occurrence contributes to every
    * provider request in the current execution environment.
    * @param ref - durable verbatim file reference from model history.
@@ -764,9 +716,6 @@ export class LlmRuntime extends TypertRemoteService {
    * @returns detached model metadata in adapter-preferred order.
    */
   async listModels(provider: string): Promise<LlmModelInfo[]> {
-    if (this.fixedRoute !== undefined && provider !== this.fixedRoute.provider) {
-      throw new LlmError('model route is fixed by this application', 'MODEL_ROUTE_LOCKED')
-    }
     const adapter = this.registration(provider).adapter
     const models = await adapter.listModels(provider)
     const seen = new Set<string>()
@@ -785,12 +734,16 @@ export class LlmRuntime extends TypertRemoteService {
       }
       seen.add(model.id)
       const inputModalities = this.detachedModalities(model.inputModalities)
+      const badge = model.badge
       return {
         provider: model.provider,
         id: model.id,
         name: model.name,
         ...model.description === undefined ? {} : { description: model.description },
         ...inputModalities === undefined ? {} : { inputModalities },
+        ...badge === undefined ? {} : {
+          badge: { text: typeof badge.text === 'string' ? badge.text : { ...badge.text }, tone: badge.tone },
+        },
       }
     })
   }
@@ -809,10 +762,6 @@ export class LlmRuntime extends TypertRemoteService {
     model: string,
     signal?: AbortSignal,
   ): Promise<LlmResolvedModelInfo> {
-    if (this.fixedRoute !== undefined && (provider !== this.fixedRoute.provider
-      || (this.fixedRoute.model !== undefined && model !== this.fixedRoute.model))) {
-      throw new LlmError('model route is fixed by this application', 'MODEL_ROUTE_LOCKED')
-    }
     return this.resolveModelInfoFor(this.registration(provider), model, signal)
   }
 
@@ -947,7 +896,6 @@ export class LlmRuntime extends TypertRemoteService {
    * @returns a detached config only when a default must be materialized.
    */
   async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig> {
-    this.assertFixedRoute(config)
     return (await this.resolveCallFor(this.registration(config.provider), config, signal)).config
   }
 
@@ -1001,25 +949,39 @@ export class LlmRuntime extends TypertRemoteService {
    * Resolve one call under its current adapter registration. The returned
    * one-shot handle keeps that registration across header logging and dispatch,
    * so HMR cannot combine one adapter's capability result with another adapter.
-   * @param config - provider/model route and optional request controls.
+   * An optional synchronous callback selects concrete controls using captured
+   * model metadata. Defaults and validation apply to its result. Callback
+   * failures and cancellation reject preparation before dispatch.
+   * @param config - provider/model route and optional concrete request controls.
    * @param signal - optional cancellation for adapter-owned capability lookup.
+   * @param configure - pure control selection, called once before defaults and validation.
    * @returns a prepared config and its registration-bound stream entry point.
    */
-  async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlmCall> {
-    this.assertFixedRoute(config)
-    const registration = this.registration(config.provider)
-    const adapterCall = await registration.adapter.prepareCall(config.provider, config.model, signal)
-    const modelInfo = this.normalizeModelInfo(registration, config.model, adapterCall.model)
-    const resolved = this.resolveCallWithInfo(config, modelInfo)
+  async prepareCall(
+    config: LlmCallConfig,
+    signal?: AbortSignal,
+    configure?: ConfigureCall,
+  ): Promise<PreparedLlmCall> {
+    signal?.throwIfAborted()
+    const { provider, model, ...controls } = config
+    const registration = this.registration(provider)
+    const adapterCall = await registration.adapter.prepareCall(provider, model, signal)
+    signal?.throwIfAborted()
+    const modelInfo = this.normalizeModelInfo(registration, model, adapterCall.model)
+    const proposed = configure === undefined
+      ? config
+      : { ...configure(deepFreeze(structuredClone(controls)), deepFreeze(modelInfo)), provider, model }
+    signal?.throwIfAborted()
+    const resolved = this.resolveCallWithInfo(proposed, modelInfo)
     const resolvedConfig = deepFreeze(structuredClone(resolved.config))
     const context = resolved.context === undefined
       ? undefined
       : deepFreeze(structuredClone(resolved.context))
     const adapterDefaults = deepFreeze<LlmCallConfigAdapterDefaults>({
-      ...config.reasoningEffort === undefined && resolvedConfig.reasoningEffort !== undefined
+      ...proposed.reasoningEffort === undefined && resolvedConfig.reasoningEffort !== undefined
         ? { reasoningEffort: true }
         : {},
-      ...config.maxTokens === undefined && resolvedConfig.maxTokens !== undefined
+      ...proposed.maxTokens === undefined && resolvedConfig.maxTokens !== undefined
         ? { maxTokens: true }
         : {},
     })
@@ -1109,7 +1071,6 @@ export class LlmRuntime extends TypertRemoteService {
   ): AsyncGenerator<StreamChunk> {
     let iterator: AsyncIterator<StreamChunk>
     try {
-      this.assertFixedRoute(options)
       const registration = prepared?.registration ?? this.registration(options.provider)
       const adapter = registration.adapter
       let modelInfo: LlmResolvedModelInfo
@@ -1231,6 +1192,17 @@ function adapterFailureChunk(error: unknown, signal?: AbortSignal): StreamChunk 
     reason: signal?.aborted || failure.code === 'ABORTED'
       ? { kind: 'aborted', failure }
       : { kind: 'error', failure },
+  }
+}
+
+/** Copy a directory entry, including its arrays, so neither side can mutate the other's copy. */
+function detachDirectoryEntry(entry: LlmConfigurableProvider): LlmConfigurableProvider {
+  const { nativeAuth } = entry
+  return {
+    ...entry,
+    settingsPath: [...entry.settingsPath],
+    ...entry.baseURLEnv === undefined ? {} : { baseURLEnv: [...entry.baseURLEnv] },
+    ...(nativeAuth === undefined ? {} : { nativeAuth: { ...nativeAuth, env: [...nativeAuth.env] } }),
   }
 }
 

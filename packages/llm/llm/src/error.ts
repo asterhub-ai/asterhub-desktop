@@ -6,7 +6,7 @@
 
 /**
  * Base class for all harness errors. Carries a `code` (stable, programmatic —
- * e.g. `NO_ADAPTER`, `INVALID_ARGS`, `INVARIANT`) distinct from the
+ * e.g. `NO_ADAPTER`, `INVALID_ARGS`) distinct from the
  * human-readable `message`, and supports `cause` chaining via the standard
  * `ErrorOptions`. `name` defaults to the subclass constructor name.
  */
@@ -100,8 +100,6 @@ export function isQuotaExceededError(detail: string): boolean {
     || /\bexceed(?:ed|s)?[\s_-]+(?:(?:your|the)[\s_-]+)?(?:current[\s_-]+)?quota\b/i.test(detail)
     || /\b(?:balance|credits?)[\s_-]+(?:exhausted|depleted)\b/i.test(detail)
     || /\bout[\s_-]+of[\s_-]+(?:credits?|budget)\b/i.test(detail)
-    || /\b(?:balance|credits?)[\s_-]+(?:is[\s_-]+)?(?:insufficient|not[\s_-]+enough)\b/i.test(detail)
-    || /(?:余额|积分|额度)(?:不足|已耗尽|耗尽|已用完|用完)/u.test(detail)
 }
 
 /**

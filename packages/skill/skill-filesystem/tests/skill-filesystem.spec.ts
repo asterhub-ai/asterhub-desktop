@@ -155,7 +155,7 @@ async function setupLocal(home: string, config: Partial<SkillFileSystem.Config> 
   const ctx = new Context()
   await ctx.plugin(SkillRegistry)
   await ctx.plugin(SkillFileSystem, {
-    dshHome: join(home, '.asterhub'),
+    dshHome: join(home, '.dsh'),
     agentsHome: join(home, '.agents'),
     watch: false,
     ...config,
@@ -419,7 +419,7 @@ describe('FileSystemSkillProvider', () => {
     expect((await ctx.skills.list()).map(skill => skill.name)).toEqual(['good-skill'])
   })
 
-  it.each([false, true])('publishes regular-file paths for linked skills while retaining their resource roots (filesystem service: %s)', async (withFileSystem) => {
+  const linkedSkillPaths = async (withFileSystem: boolean): Promise<void> => {
     const home = await tempDir('skill-symlink-home')
     const external = await tempDir('skill-symlink-external')
     await writeSkill(external, 'linked-dir', 'Linked directory')
@@ -439,7 +439,7 @@ describe('FileSystemSkillProvider', () => {
         }
       })
     }
-    const fiber = ctx.plugin(SkillFileSystem, { dshHome: join(home, '.asterhub'), agentsHome: join(home, '.agents'), watch: false })
+    const fiber = ctx.plugin(SkillFileSystem, { dshHome: join(home, '.dsh'), agentsHome: join(home, '.agents'), watch: false })
     await fiber
 
     try {
@@ -460,6 +460,14 @@ describe('FileSystemSkillProvider', () => {
     } finally {
       await fiber.dispose()
     }
+  }
+
+  it.skipIf(process.platform === 'win32')('publishes regular-file paths for linked skills while retaining their resource roots (filesystem service: false)', async () => {
+    await linkedSkillPaths(false)
+  })
+
+  it.skipIf(process.platform === 'win32')('publishes regular-file paths for linked skills while retaining their resource roots (filesystem service: true)', async () => {
+    await linkedSkillPaths(true)
   })
 
   it('uses the filesystem service for discovery, reads, and project-root lookup', async () => {
@@ -493,7 +501,7 @@ describe('FileSystemSkillProvider', () => {
       size: 0,
     })
     await ctx.plugin(SkillRegistry)
-    await ctx.plugin(SkillFileSystem, { dshHome: join(home, '.asterhub'), agentsHome: join(home, '.agents'), watch: false })
+    await ctx.plugin(SkillFileSystem, { dshHome: join(home, '.dsh'), agentsHome: join(home, '.agents'), watch: false })
 
     expect((await ctx.skills.list({ cwd: nestedCwd })).map(skill => [skill.name, skill.source])).toEqual([
       ['backend-root', 'project-agents'],
@@ -510,7 +518,7 @@ describe('FileSystemSkillProvider', () => {
     bundledFs.failResolvePaths.add(bundled)
     await bundledCtx.plugin(SkillRegistry)
     await bundledCtx.plugin(SkillFileSystem, {
-      dshHome: join(home, '.asterhub'),
+      dshHome: join(home, '.dsh'),
       agentsHome: join(home, '.agents'),
       bundledSkillDir: bundled,
     })
@@ -597,7 +605,7 @@ describe('FileSystemSkillProvider', () => {
     const fs = ctx.fs as TestFileSystem
     await ctx.plugin(SkillRegistry)
     await ctx.plugin(SkillFileSystem, {
-      dshHome: join(home, '.asterhub'),
+      dshHome: join(home, '.dsh'),
       agentsHome: join(home, '.agents'),
       watch: false,
     })
@@ -662,7 +670,7 @@ describe('FileSystemSkillProvider', () => {
     const fs = ctx.fs as TestFileSystem
     await ctx.plugin(SkillRegistry)
     await ctx.plugin(SkillFileSystem, {
-      dshHome: join(home, '.asterhub'),
+      dshHome: join(home, '.dsh'),
       agentsHome: join(home, '.agents'),
       watch: false,
     })
@@ -712,7 +720,7 @@ describe('FileSystemSkillProvider', () => {
     await ctx.plugin(TestFileSystem)
     const fs = ctx.fs as TestFileSystem
     await ctx.plugin(SkillRegistry)
-    await ctx.plugin(SkillFileSystem, { dshHome: join(home, '.asterhub'), agentsHome: join(home, '.agents'), watch: false })
+    await ctx.plugin(SkillFileSystem, { dshHome: join(home, '.dsh'), agentsHome: join(home, '.agents'), watch: false })
     expect((await ctx.skills.list()).map(skill => skill.name)).toEqual(['abortable-skill'])
 
     fs.statSignals = []
@@ -745,7 +753,7 @@ describe('FileSystemSkillProvider', () => {
     const ctx = new Context()
     await ctx.plugin(SkillRegistry)
     const fiber = await ctx.plugin(SkillFileSystem, {
-      dshHome: join(home, '.asterhub'),
+      dshHome: join(home, '.dsh'),
       agentsHome: join(home, '.agents'),
       watch: true,
       watchStabilityThresholdMs: 20,
@@ -853,7 +861,7 @@ describe('FileSystemSkillProvider', () => {
     const ctx = new Context()
     await ctx.plugin(SkillRegistry)
     const fiber = await ctx.plugin(SkillFileSystem, {
-      dshHome: join(home, '.asterhub'),
+      dshHome: join(home, '.dsh'),
       agentsHome: join(home, '.agents'),
       customSkillDirs: [join(first, '.agents/skills')],
       watch: true,
@@ -875,7 +883,7 @@ describe('FileSystemSkillProvider', () => {
     const noWatch = new Context()
     await noWatch.plugin(SkillRegistry)
     await noWatch.plugin(SkillFileSystem, {
-      dshHome: join(home, '.asterhub'),
+      dshHome: join(home, '.dsh'),
       agentsHome: join(home, '.agents'),
       watch: false,
       watchMaxProjects: 1,
@@ -894,7 +902,7 @@ describe('FileSystemSkillProvider', () => {
     let provider!: SkillFileSystem.FileSystemSkillProvider
     const disposeProvider = ctx.skills.registerProvider((control) => {
       provider = new SkillFileSystem.FileSystemSkillProvider(ctx, control, {
-        dshHome: join(home, '.asterhub'),
+        dshHome: join(home, '.dsh'),
         agentsHome: join(home, '.agents'),
         customSkillDirs: [nonDirectoryRoot],
         watch: true,
@@ -917,7 +925,7 @@ describe('FileSystemSkillProvider', () => {
     disposeProvider()
   })
 
-  it('refreshes frontmatter through a followed skill symlink', { timeout: 10000 }, async () => {
+  it.skipIf(process.platform === 'win32')('refreshes frontmatter through a followed skill symlink', { timeout: 10000 }, async () => {
     const home = await tempDir('skill-watch-symlink-home')
     const external = await tempDir('skill-watch-symlink-external')
     const root = join(home, '.dsh/skills')
@@ -927,7 +935,7 @@ describe('FileSystemSkillProvider', () => {
     const ctx = new Context()
     await ctx.plugin(SkillRegistry)
     const fiber = await ctx.plugin(SkillFileSystem, {
-      dshHome: join(home, '.asterhub'),
+      dshHome: join(home, '.dsh'),
       agentsHome: join(home, '.agents'),
       watch: true,
       watchFollowSymlinks: true,
@@ -962,7 +970,7 @@ describe('FileSystemSkillProvider', () => {
     const previousBundledSkillDir = process.env.DSH_BUNDLED_SKILL_DIR
     const envHome = await tempDir('skill-env-home')
     try {
-      process.env.DSH_HOME = join(envHome, '.asterhub')
+      process.env.DSH_HOME = join(envHome, '.dsh')
       process.env.DSH_AGENTS_HOME = join(envHome, '.agents')
       const bundled = join(envHome, 'bundled-skills')
       process.env.DSH_BUNDLED_SKILL_DIR = bundled
