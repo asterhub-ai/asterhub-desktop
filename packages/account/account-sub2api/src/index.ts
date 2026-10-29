@@ -1001,8 +1001,7 @@ export class AccountSub2apiService extends TypertRemoteService {
       const locallyBoundKey = previousUser?.id === userId ? activeKey : await this.retainedKeyFor(userId)
       if (locallyBoundKey) return locallyBoundKey
 
-      const keys = await this.client.listGroupKeys(auth.accessToken)
-      const accountKeys = keys
+      const accountKeys = await this.client.listGroupKeys(auth.accessToken)
       for (const candidate of accountKeys) {
         if (candidate.key && !candidate.key.includes('*')) return candidate.key
         try {
@@ -1039,7 +1038,6 @@ export class AccountSub2apiService extends TypertRemoteService {
         if (autoLogin) {
           await this.storeCredential(credentialRef(AUTO_LOGIN_PASSWORD_REF), password)
           await this.storeCredential(credentialRef(AUTO_LOGIN_REF), 'true')
-        } else {
         }
       } catch {
         await Promise.allSettled([

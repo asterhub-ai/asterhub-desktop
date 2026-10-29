@@ -64,7 +64,7 @@ export interface IncompatiblePlugin {
 
 /** Localizable management failure and optional external diagnostic. */
 export interface ManagementError {
-  code: ReadOnlyReason | 'unknown-plugin' | 'invalid-spec' | 'already-installed' | 'ambiguous-install' | 'not-bundle' | 'not-removable' | 'stop-profile' | 'bundle-in-use' | 'stale-approval' | 'incompatible-version' | 'operation-error'
+  code: ReadOnlyReason | 'unknown-plugin' | 'invalid-spec' | 'already-installed' | 'ambiguous-install' | 'not-bundle' | 'not-removable' | 'stop-profile' | 'bundle-in-use' | 'stale-approval' | 'incompatible-version' | 'unsupported-platform' | 'operation-error'
   diagnostic?: string
   /** Present with `incompatible-version`: the packages the running DSH version rejects. */
   incompatible?: IncompatiblePlugin[]
@@ -78,6 +78,33 @@ export interface ManagementError {
  * `module-comparison` means loaded modules could not be compared with disk.
  */
 export type RestartReason = 'no-hmr' | 'package-moved' | 'host-module' | 'unmanaged-plugin' | 'module-comparison'
+
+/** Identifies one manager invocation, including time spent waiting for its profile lock. */
+export type PluginOperationId = Branded<'PluginOperationId'>
+
+/** Management facts for diagnostic consumers; recent operations do not establish a crash's cause. */
+export type PluginOperation = {
+  readonly id: PluginOperationId
+  readonly time: string
+  readonly reason: PluginChange['reason']
+  /** Known entry id or parsed registry package name; unrecognized targets and raw specs are omitted. */
+  readonly target: string | null
+  readonly stage: ChangeResult['stage']
+  readonly enabled?: boolean | undefined
+  /** Request-time or resolved package version; absence means unusable or unavailable, never the latest registry version. */
+  readonly version?: string | undefined
+} & (
+  | { readonly phase: 'started' }
+  | {
+    readonly phase: 'settled'
+    readonly application: ChangeResult['application']
+    readonly changed: boolean
+    readonly errorCode?: ManagementError['code'] | undefined
+    readonly restartReason?: RestartReason | undefined
+  }
+  /** An exception escaped the operation result; persisted or applied changes cannot be inferred. */
+  | { readonly phase: 'unknown' }
+)
 
 /** One running-profile entry and its persistent control availability. */
 export type PluginInfo = PluginInventoryEntry & (

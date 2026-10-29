@@ -3,7 +3,6 @@ import type { Context } from '@deepseek-ai/cordis'
 import { AttachmentError, AttachmentId } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef, SaveImageAttachment } from '@deepseek-ai/dsh-attachment'
 import type { ModelSelection } from '@deepseek-ai/dsh-agent'
-import { SessionId } from '@deepseek-ai/dsh-session'
 import {
   AcpContentError,
   admitAcpPrompt,
@@ -208,18 +207,26 @@ describe('ACP rich content codec', () => {
 
   it('projects only non-empty text and verified durable images to ACP', async () => {
     const fixture = admissionFixture()
-    await expect(assistantBlockToAcp(fixture.ctx, { type: 'text', text: '' }, SessionId('acp-output'))).resolves.toBeUndefined()
-    await expect(assistantBlockToAcp(fixture.ctx, { type: 'text', text: 'hello' }, SessionId('acp-output'))).resolves.toEqual({
+    await expect(assistantBlockToAcp(fixture.ctx, { type: 'text', text: '' })).resolves.toBeUndefined()
+    await expect(assistantBlockToAcp(fixture.ctx, { type: 'text', text: 'hello' })).resolves.toEqual({
       type: 'text', text: 'hello',
     })
-    await expect(assistantBlockToAcp(fixture.ctx, { type: 'reasoning', text: 'private' }, SessionId('acp-output'))).resolves.toBeUndefined()
+    await expect(assistantBlockToAcp(fixture.ctx, { type: 'reasoning', text: 'private' })).resolves.toBeUndefined()
 
     const noStore = admissionFixture({ attachments: false })
-    await expect(assistantBlockToAcp(noStore.ctx, { type: 'image', attachment: REF }, SessionId('acp-output')))
+    await expect(assistantBlockToAcp(noStore.ctx, { type: 'image', attachment: REF }))
       .rejects.toThrow(/no attachment store/)
     const readImage = vi.fn().mockRejectedValue(new AttachmentError('gone', 'ATTACHMENT_NOT_FOUND'))
     const missingCtx = { get: (name: string) => name === 'attachments' ? { readImage } : undefined } as unknown as Context
-    await expect(assistantBlockToAcp(missingCtx, { type: 'image', attachment: REF }, SessionId('acp-output')))
+    await expect(assistantBlockToAcp(missingCtx, { type: 'image', attachment: REF }))
       .rejects.toThrow(/unavailable or corrupt/)
+    const storedCtx = {
+      get: (name: string) => name === 'attachments'
+        ? { readImage: vi.fn().mockResolvedValue({ ref: REF, data: Uint8Array.of(1) }) }
+        : undefined,
+    } as unknown as Context
+    await expect(assistantBlockToAcp(storedCtx, { type: 'image', attachment: REF })).resolves.toEqual({
+      type: 'image', data: 'AQ==', mimeType: 'image/png',
+    })
   })
 })

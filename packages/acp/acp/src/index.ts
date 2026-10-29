@@ -45,9 +45,7 @@ import {
   type SessionNotification,
   type Stream,
 } from '@agentclientprotocol/sdk'
-import type { ModelSelection } from '@deepseek-ai/dsh-agent'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import type {} from '@deepseek-ai/dsh-session/cwd'
 import type {} from '@deepseek-ai/dsh-session-persistence'
 // Side-effect type import: declaration-merges the approval waterfall answered below.
 import type {} from '@deepseek-ai/dsh-user-approval'
@@ -60,7 +58,7 @@ const DEFAULT_SESSION_LIST_PAGE_SIZE = 100
 
 export const name = 'acp'
 /** Core services required by the standard automation controls. */
-export const inject = ['agents', 'llm', 'sessionPersistence', 'sessions', 'sessionCwd']
+export const inject = ['agents', 'llm', 'sessionPersistence', 'sessions']
 
 /** Preserve invalid-parameter detail in the SDK wire error message. */
 function invalidParams(detail: string): RequestError {
@@ -142,8 +140,12 @@ export function apply(ctx: Context, config: AcpConfig): void {
     ownedRecord(agent)?.onInboxClaimed(message, turn)
   })
 
-  ctx.on('agent/error', ({ agent, turn, error }) => {
-    ownedRecord(agent)?.onAgentError(turn, error)
+  ctx.on('agent/error', ({ agent, error }) => {
+    ownedRecord(agent)?.onAgentError(error)
+  })
+
+  ctx.on('agent/status', ({ agent, status }) => {
+    ownedRecord(agent)?.onAgentStatus(status)
   })
 
   ctx.on('llm/adapters-updated', () => {
@@ -209,7 +211,6 @@ export function apply(ctx: Context, config: AcpConfig): void {
           cwd: params.cwd,
           mcpServers: params.mcpServers,
           agentOptions: agentOptions(config),
-          fallbackSelection: initialSelection(config),
           signal,
           notify,
         })
@@ -247,11 +248,10 @@ export function apply(ctx: Context, config: AcpConfig): void {
       activating.add(sessionId)
       return (async (): Promise<ResumeSessionResponse> => {
         const persisted = (await persistence.stat(sessionId, { signal }))?.header
-        if (persisted === undefined || persisted.origin === 'subagent' || persisted.parentSession !== undefined) {
+        if (persisted === undefined || persisted.origin === 'subagent') {
           throw invalidParams(`session is not resumable: ${sessionId}`)
         }
-        const cwd = ctx.sessionCwd.resolve(persisted)
-        if (cwd === undefined || !await sameDirectory(cwd, params.cwd)) {
+        if (!await sameDirectory(persisted.cwd, params.cwd)) {
           throw invalidParams(`session cwd does not match: ${params.cwd}`)
         }
         let record: AcpSession
@@ -261,7 +261,6 @@ export function apply(ctx: Context, config: AcpConfig): void {
             cwd: params.cwd,
             mcpServers: params.mcpServers ?? [],
             agentOptions: agentOptions(config),
-            fallbackSelection: initialSelection(config),
             signal,
             notify,
           })
@@ -270,7 +269,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
           throw error
         }
         /* v8 ignore start -- the persisted header was checked before resume; the factory restores that exact header. */
-        if (!await sameDirectory(record.agent.options.cwd, params.cwd)) {
+        if (!await sameDirectory(record.agent.session.header.cwd, params.cwd)) {
           await record.close('session/resume cwd mismatch')
           throw invalidParams(`session cwd does not match: ${params.cwd}`)
         }
@@ -309,14 +308,13 @@ export function apply(ctx: Context, config: AcpConfig): void {
             || activating.has(header.id)
             || ctx.sessions.get(header.id) !== undefined
             || header.origin === 'subagent'
-            || header.parentSession !== undefined
+            || header.cwd === undefined
+            || !isAbsolute(header.cwd)
         ) return undefined
-        const cwd = ctx.sessionCwd.resolve(header)
-        if (cwd === undefined || !isAbsolute(cwd)) return undefined
-        if (params.cwd !== undefined && params.cwd !== null && !await sameDirectory(cwd, params.cwd)) {
+        if (params.cwd !== undefined && params.cwd !== null && !await sameDirectory(header.cwd, params.cwd)) {
           return undefined
         }
-        return { sessionId: header.id, cwd, createdAt: header.createdAt }
+        return { sessionId: header.id, cwd: header.cwd, createdAt: header.createdAt }
       }))
       const entries = filtered
         .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined)
@@ -448,13 +446,6 @@ function agentOptions(config: AcpConfig): { provider?: string; model?: string } 
     ...config.provider !== undefined ? { provider: config.provider } : {},
     ...config.model !== undefined ? { model: config.model } : {},
   }
-}
-
-/** Initial session selection when both deployment fields are present. */
-function initialSelection(config: AcpConfig): ModelSelection | undefined {
-  return config.provider === undefined || config.model === undefined
-    ? undefined
-    : { provider: config.provider, model: config.model }
 }
 
 interface SessionListCursor {

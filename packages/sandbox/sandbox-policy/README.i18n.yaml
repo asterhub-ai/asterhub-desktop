@@ -21,32 +21,32 @@
   en: 6704447e52ec295b
   zh: 9ed812d9e29d5533
 /deepseek-ai-dsh-sandbox-policy/use-this-package/minimal-configuration:
-  en: d91694e98c134fc2
-  zh: 8b45ebc6515dadeb
+  en: 069de80f17900193
+  zh: 2833f134c8dcb2e4
 /deepseek-ai-dsh-sandbox-policy/use-this-package/switching-a-session-s-mode:
-  en: c3eedc832d28bf7d
-  zh: 0640dc112d6827c3
+  en: 957d72691e470e5c
+  zh: c22a3a750af0e4a3
 /deepseek-ai-dsh-sandbox-policy/use-this-package/failures-and-recovery:
-  en: 9c63616a59986061
-  zh: d6d147db89c8dc4f
+  en: 9cef5f64a050f468
+  zh: 5dc42c148b2c902d
 /deepseek-ai-dsh-sandbox-policy/understand-the-implementation:
   en: 2d560aa6681fcfb8
   zh: e1c6361a6fa40c63
 /deepseek-ai-dsh-sandbox-policy/understand-the-implementation/resolution-precedence:
-  en: 23a735ff344b4d0b
-  zh: 4529b4af42826673
+  en: f1f38b10c23947d2
+  zh: 7a591e743d6793f5
 /deepseek-ai-dsh-sandbox-policy/understand-the-implementation/the-per-session-store:
-  en: 0b10f46b8ee022b7
-  zh: 0009e7be8ad1c2b2
+  en: d13dabff02f2acfd
+  zh: f593888b4ffddf36
 /deepseek-ai-dsh-sandbox-policy/understand-the-implementation/model-visible-text:
-  en: d427370cafeecb48
-  zh: 70494b8400c45655
+  en: 564be685efdd6ced
+  zh: 50d6289edbeb5414
 /deepseek-ai-dsh-sandbox-policy/understand-the-implementation/source-map:
   en: 184d0ece30be790f
   zh: 84a1fd1b71f5154d
 /deepseek-ai-dsh-sandbox-policy/further-exploration:
-  en: 8525667a02f4bbeb
-  zh: 2f09594fbf8d37ed
+  en: 5bebcd5d35e8ec1f
+  zh: b168d79c7103de6a
 /deepseek-ai-dsh-sandbox-policy/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -62,18 +62,21 @@
 /deepseek-ai-dsh-sandbox-policy/model-experience/current-file-sandbox-policy/what-the-model-sees/workspace-write:
   en: 269d494ad304638d
   zh: a879c1d7cc03e6ac
+/deepseek-ai-dsh-sandbox-policy/model-experience/current-file-sandbox-policy/what-the-model-sees/workspace-write-with-extra-directories:
+  en: 4305c3caeef38624
+  zh: aa1c4d2d16248128
 /deepseek-ai-dsh-sandbox-policy/model-experience/current-file-sandbox-policy/what-the-model-sees/danger-full-access:
   en: 4e28324a011422a1
   zh: bf31ffce30f06a09
 /deepseek-ai-dsh-sandbox-policy/model-experience/current-file-sandbox-policy/token-effect:
-  en: e3387fb6eeba1239
-  zh: 06a47393057d3e9b
+  en: fe4724cbdaa928b4
+  zh: 5c2d6d3d42e863a1
 /deepseek-ai-dsh-sandbox-policy/model-experience/current-file-sandbox-policy/kv-cache-effect:
   en: a16a657e0e5145fb
   zh: 4b19263a728990dc
 /deepseek-ai-dsh-sandbox-policy/known-limitations-and-deferred-work:
-  en: 45263a1971553b8e
-  zh: b998c9e274086b8a
+  en: 721d36415f424791
+  zh: c65593ad7d5ddfc8
 /deepseek-ai-dsh-sandbox-policy/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 3bb0c20c93f16f98

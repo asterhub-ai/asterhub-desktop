@@ -1,5 +1,6 @@
 /** Shipped sidebar terminal over the real Loader, Remote mux, Chromium and local PTY. */
 import { mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Browser, type Page } from 'playwright'
 import { afterEach, beforeEach, describe, expect, it, onTestFailed, vi } from 'vitest'
@@ -246,11 +247,50 @@ describe.skipIf(process.platform === 'win32')('Web sidebar terminal', () => {
     expect(tripwire.pageErrors).toEqual([])
   })
 
+  it('starts in the current directory while earlier terminals and sandbox roots stay independent', async () => {
+    onTestFailed(() => saveFailureShot(page, 'sidebar-terminal-directory'))
+    const agent = scaffold.ctx.agents.list()[0]!
+    const directories = agent.ctx.get('workingDirectory')
+    if (directories === undefined) throw new Error('Session working-directory provider is missing')
+    const original = directories.get(agent.session)
+    const child = join(original, 'terminal-child')
+    await mkdir(child)
+    const sandboxPolicy = agent.ctx.get('sandboxPolicy')
+    if (sandboxPolicy === undefined) throw new Error('Session sandbox policy provider is missing')
+    const policy = sandboxPolicy.resolve({ session: agent.session })
+    const sandbox = agent.ctx.get('sandbox')
+    if (sandbox === undefined) throw new Error('Session sandbox provider is missing')
+    const confine = vi.spyOn(sandbox, 'confine')
+    const selected = await directories.set(agent, child)
+
+    await openTerminal(page)
+    const firstProcess = processIdentity(0)
+    const screen = page.locator('.xterm-rows:visible')
+    const checkDirectory = async (marker: string, directory: string): Promise<void> => {
+      const literal = `'${directory.replaceAll("'", "'\\''")}'`
+      await command(page, `[ "$PWD" = ${literal} ]; printf '${marker}:%s\\n' "$?"`)
+      await expect.poll(async () => await screen.innerText()).toContain(`${marker}:0`)
+    }
+    await checkDirectory('FIRST_DIRECTORY_STATUS', selected)
+    const returned = await directories.set(agent, original)
+    await checkDirectory('RETAINED_DIRECTORY_STATUS', selected)
+
+    await openTerminal(page)
+    await checkDirectory('SECOND_DIRECTORY_STATUS', returned)
+    expect(scaffold.ctx.terminalController.list(agent.id).map(terminal => terminal.cwd)).toEqual([selected, returned])
+    expect(alive(firstProcess)).toBe(true)
+    expect(sandboxPolicy.resolve({ session: agent.session })).toEqual(policy)
+    expect(confine).not.toHaveBeenCalled()
+    expect(tripwire.pageErrors).toEqual([])
+  })
+
   it('completes commands, preserves the process through collapse and reload, resizes, and kills on tab close', async () => {
     onTestFailed(() => saveFailureShot(page, 'sidebar-terminal'))
     const unaryInput: string[] = []
+    const listRequests: string[] = []
     page.on('request', (request) => {
       if (/\/api\/terminal\/(write|resize|follow)$/u.test(new URL(request.url()).pathname)) unaryInput.push(request.url())
+      if (new URL(request.url()).pathname === '/api/terminal/list') listRequests.push(request.url())
     })
     await openTerminal(page)
     const terminal = page.locator('[data-sidebar-terminal]')
@@ -297,6 +337,7 @@ describe.skipIf(process.platform === 'win32')('Web sidebar terminal', () => {
     await expect.poll(async () => await screen.innerText()).toContain(`SIZE:${terminals()[0]!.rows} ${terminals()[0]!.cols}`)
     await page.screenshot({ path: `${shots}/fullscreen.png`, fullPage: true })
     const tabIds = await page.locator('[data-dockkit-tab]').evaluateAll(tabs => tabs.map(tab => tab.getAttribute('data-dockkit-tab')))
+    expect(listRequests).toHaveLength(0)
     await page.reload({ waitUntil: 'load' })
     await page.locator('[data-dockkit-tab]').filter({ hasText: 'Development' }).waitFor({ timeout: 15_000 })
     await expect.poll(async () => await page.locator('[data-dockkit-tab-title]').allInnerTexts()).toEqual(['Development', 'bash'])
@@ -306,6 +347,7 @@ describe.skipIf(process.platform === 'win32')('Web sidebar terminal', () => {
     expect(await page.locator('[data-dockkit-tab]').evaluateAll(tabs => tabs.map(tab => tab.getAttribute('data-dockkit-tab')))).toEqual(tabIds)
     await expect.poll(async () => await screen.innerText()).toContain('PERSIST:xterm-256color')
     await page.getByRole('button', { name: 'Exit fullscreen', exact: true }).waitFor()
+    expect(listRequests).toHaveLength(1)
     await page.getByRole('button', { name: 'Collapse right sidebar', exact: true }).click()
     await page.reload({ waitUntil: 'load' })
     await page.locator('[data-sidebar-right-expand]').waitFor()
@@ -316,6 +358,7 @@ describe.skipIf(process.platform === 'win32')('Web sidebar terminal', () => {
     const secondTab = page.locator('[data-dockkit-tab]').filter({ hasText: 'bash' })
     await secondTab.click()
     await expect.poll(async () => await screen.innerText()).toContain(`SECOND_PID:${secondPid}`)
+    expect(listRequests).toHaveLength(2)
     await secondTab.hover()
     await secondTab.locator('[data-dockkit-tab-close]').click()
     await expect.poll(async () => await secondTab.count()).toBe(0)
@@ -435,10 +478,18 @@ describe.skipIf(process.platform === 'win32')('Web sidebar terminal', () => {
       .filter(key => key.startsWith('dsh.terminal.binding.v1.')).map(key => localStorage.getItem(key)))
     const saved = await bindings()
     expect(saved).toHaveLength(2)
+    const closed = Promise.withResolvers<undefined>()
+    const close = scaffold.ctx.terminalController.close.bind(scaffold.ctx.terminalController)
+    vi.spyOn(scaffold.ctx.terminalController, 'close').mockImplementation((agent, id) => {
+      const result = close(agent, id)
+      closed.resolve(result.then(() => undefined))
+      return result
+    })
     const selected = second.locator('[data-dockkit-tab][aria-selected="true"]')
     await selected.hover()
-    await selected.locator('[data-dockkit-tab-close]').click()
-    await expect.poll(() => alive(secondProcess)).toBe(false)
+    // Tab removal starts background cleanup; the Host promise includes process termination.
+    await Promise.all([selected.locator('[data-dockkit-tab-close]').click(), closed.promise])
+    expect(alive(secondProcess)).toBe(false)
     expect(alive(firstProcess)).toBe(true)
     await expect.poll(() => bindings()).toHaveLength(1)
     expect(saved).toContain((await bindings())[0])
@@ -596,19 +647,25 @@ describe.skipIf(process.platform === 'win32')('Web sidebar terminal', () => {
     const write = handle.write.bind(handle)
     const entered = Promise.withResolvers<undefined>()
     const release = Promise.withResolvers<undefined>()
+    const burst = `printf 'BUFFER_%s\\n' OK # ${'a'.repeat(3000)}`
+    let delivered = ''
     const paused = vi.spyOn(handle, 'write').mockImplementation(async (data) => {
       entered.resolve(undefined)
       await release.promise
       await write(data)
+      delivered += data
     })
     try {
       await page.locator('.xterm-helper-textarea:visible').click()
-      await page.keyboard.type(`printf 'BUFFER_%s\\n' OK # ${'a'.repeat(3000)}`)
+      await page.keyboard.type(burst)
+      await page.keyboard.press('Enter')
       await entered.promise
       expect(paused).toHaveBeenCalledTimes(1)
       release.resolve(undefined)
-      await page.keyboard.press('Enter')
-      await expect.poll(() => page.locator('.xterm-rows:visible').innerText()).toContain('BUFFER_OK')
+      // The concurrent browser lane needs separate completion waits for queued input and rendered output.
+      await expect.poll(() => delivered.endsWith('\r'), { timeout: 30_000, message: 'The queued Enter must reach the PTY' }).toBe(true)
+      expect(delivered).toBe(`${burst}\r`)
+      await page.locator('.xterm-rows:visible').filter({ hasText: 'BUFFER_OK' }).waitFor({ timeout: 30_000 })
       expect(handles).toHaveLength(1)
       expect(tripwire.pageErrors).toEqual([])
     } finally {
@@ -624,7 +681,7 @@ describe.skipIf(process.platform === 'win32')('Web sidebar terminal', () => {
     await expect.poll(() => page.locator('.xterm-rows:visible').innerText()).toContain('RECONNECT_READY')
     const transport = await controlTransport(page)
     await page.reload({ waitUntil: 'load' })
-    await expect.poll(() => page.locator('.xterm-rows:visible').innerText()).toContain('RECONNECT_READY')
+    await page.locator('.xterm-rows:visible').filter({ hasText: 'RECONNECT_READY' }).waitFor({ timeout: 30_000 })
     await transport.disconnect()
     const reconnect = page.getByRole('button', { name: 'Reconnect', exact: true })
     await reconnect.waitFor()

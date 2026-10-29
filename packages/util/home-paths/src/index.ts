@@ -13,8 +13,18 @@ export const DSH_HOME_DIR_NAME = '.asterhub'
 
 /** Stable user-facing display form for the default AsterHub home. */
 export const DEFAULT_DSH_HOME_DISPLAY = `~/${DSH_HOME_DIR_NAME}`
+
 /** Environment variable that overrides the default AsterHub home. */
 export const DSH_HOME_ENV = 'DSH_HOME'
+
+/** Directory name for the default shared agent configuration root under the OS home. */
+export const AGENTS_HOME_DIR_NAME = '.agents'
+
+/** Stable user-facing display form for the default shared agent configuration root. */
+export const DEFAULT_AGENTS_HOME_DISPLAY = `~/${AGENTS_HOME_DIR_NAME}`
+
+/** Environment variable that overrides the default shared agent configuration root. */
+export const AGENTS_HOME_ENV = 'DSH_AGENTS_HOME'
 
 /**
  * Give a native filesystem watcher one canonical spelling of a path, even
@@ -55,10 +65,18 @@ export async function canonicalizeWatchPath(path: string): Promise<string> {
 
 /**
  * Resolve the default AsterHub home using Node's platform path rules.
- * @returns the absolute default AsterHub home path.
+ * @returns the absolute default harness home path.
  */
 export function defaultDshHome(): string {
   return join(homedir(), DSH_HOME_DIR_NAME)
+}
+
+/**
+ * Resolve the default shared agent configuration root using Node's platform path rules.
+ * @returns the absolute default shared agent configuration root.
+ */
+export function defaultAgentsHome(): string {
+  return join(homedir(), AGENTS_HOME_DIR_NAME)
 }
 
 /**
@@ -73,18 +91,65 @@ export function expandHomePath(path: string): string {
 }
 
 /**
+ * Resolve one user-data root from an explicit path, an environment override, and a default.
+ * @param configured - explicit path, which has highest precedence.
+ * @param env - environment mapping to read.
+ * @param envName - environment variable that overrides the default.
+ * @param fallback - default root, used when neither the explicit path nor the environment provides one.
+ * @returns the normalized absolute root.
+ */
+function resolveRoot(
+  configured: string | undefined,
+  env: Record<string, string | undefined>,
+  envName: string,
+  fallback: () => string,
+): string {
+  const fromEnv = env[envName]
+  const selected = configured ?? (fromEnv !== undefined && fromEnv.trim().length > 0 ? fromEnv : fallback())
+  return resolve(expandHomePath(selected))
+}
+
+/**
+ * Label one resolved user-data root symbolically for user-facing display.
+ * @param resolvedRoot - absolute path returned by the matching resolver.
+ * @param defaultRoot - absolute default root whose symbolic label applies to a match.
+ * @param defaultLabel - symbolic label for the default root.
+ * @param envName - environment variable name that labels any other root.
+ * @returns the symbolic label.
+ */
+function rootDisplay(resolvedRoot: string, defaultRoot: string, defaultLabel: string, envName: string): string {
+  return resolvedRoot === resolve(defaultRoot) ? defaultLabel : `$${envName}`
+}
+
+/**
+ * Resolve the single-root AsterHub home.
+ *
  * Precedence, highest first: an explicit configured path, `$DSH_HOME`, then
  * `~/.asterhub`. The harness keeps all user data under one root. An empty or
  * whitespace-only `$DSH_HOME` is treated as unset, so a blank override never
  * resolves the home to the current working directory.
- * @param configured - explicit AsterHub-home override, which has highest precedence.
+ * @param configured - explicit harness-home override, which has highest precedence.
  * @param env - environment mapping used to read `DSH_HOME`.
- * @returns the normalized absolute AsterHub home path.
+ * @returns the normalized absolute harness home path.
  */
 export function resolveDshHome(configured?: string, env: Record<string, string | undefined> = process.env): string {
-  const fromEnv = env[DSH_HOME_ENV]
-  const selected = configured ?? (fromEnv !== undefined && fromEnv.trim().length > 0 ? fromEnv : defaultDshHome())
-  return resolve(expandHomePath(selected))
+  return resolveRoot(configured, env, DSH_HOME_ENV, defaultDshHome)
+}
+
+/**
+ * Resolve the shared agent configuration root.
+ *
+ * Precedence, highest first: an explicit configured path, `$DSH_AGENTS_HOME`,
+ * then `~/.agents`. The root holds configuration shared with other agent tools,
+ * so it stays independent of the AsterHub home. An empty or
+ * whitespace-only `$DSH_AGENTS_HOME` is treated as unset, so a blank override
+ * never resolves the root to the current working directory.
+ * @param configured - explicit shared-root override, which has highest precedence.
+ * @param env - environment mapping used to read `DSH_AGENTS_HOME`.
+ * @returns the normalized absolute shared agent configuration root.
+ */
+export function resolveAgentsHome(configured?: string, env: Record<string, string | undefined> = process.env): string {
+  return resolveRoot(configured, env, AGENTS_HOME_ENV, defaultAgentsHome)
 }
 
 /**
@@ -108,7 +173,7 @@ export function dshCachePath(optionsOrSegment: { dshHome?: string } | string = {
 }
 
 /**
- * Describe a resolved AsterHub home symbolically for user-facing display.
+ * Describe a resolved harness home symbolically for user-facing display.
  *
  * It never returns an absolute machine path: the default home is labelled
  * `~/.asterhub`, and any configured home is labelled `$DSH_HOME`.
@@ -116,5 +181,17 @@ export function dshCachePath(optionsOrSegment: { dshHome?: string } | string = {
  * @returns `~/.asterhub` for the default home, otherwise `$DSH_HOME`.
  */
 export function dshHomeDisplay(resolvedHome: string): string {
-  return resolvedHome === resolve(defaultDshHome()) ? DEFAULT_DSH_HOME_DISPLAY : `$${DSH_HOME_ENV}`
+  return rootDisplay(resolvedHome, defaultDshHome(), DEFAULT_DSH_HOME_DISPLAY, DSH_HOME_ENV)
+}
+
+/**
+ * Describe a resolved shared agent configuration root symbolically for user-facing display.
+ *
+ * It never returns an absolute machine path: the default root is labelled
+ * `~/.agents`, and any configured root is labelled `$DSH_AGENTS_HOME`.
+ * @param resolvedHome - the absolute path returned by {@link resolveAgentsHome}.
+ * @returns `~/.agents` for the default root, otherwise `$DSH_AGENTS_HOME`.
+ */
+export function agentsHomeDisplay(resolvedHome: string): string {
+  return rootDisplay(resolvedHome, defaultAgentsHome(), DEFAULT_AGENTS_HOME_DISPLAY, AGENTS_HOME_ENV)
 }

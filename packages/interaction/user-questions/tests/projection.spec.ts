@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { SessionLogOffset, SessionSeq, TOOL_OUTCOME_UNKNOWN, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { createToolResultMessage, createUserMessage, ToolCallId, type ToolSchema } from '@deepseek-ai/dsh-llm'
-import type {} from '@deepseek-ai/dsh-tools/types'
+import type {} from '@deepseek-ai/dsh-tool-executor-ptc/types'
 import {
   applyUserQuestionEvent, foldUserQuestions, isTimedAskUserQuestionSchema, questionsOf, TIMED_WAIT_PARAMETER,
   userQuestionProjectionDefinition,
@@ -204,7 +204,7 @@ describe('userQuestions projection fold', () => {
   })
 
   it('returns the same fold for unrelated events, unreadable calls, and an unchanged header', () => {
-    const fold = [timedHeader, asked].reduce(applyUserQuestionEvent, { timed: false, canceledCallIds: [], questions: empty })
+    const fold = [timedHeader, asked].reduce(applyUserQuestionEvent, { timed: false, questions: empty })
     expect(applyUserQuestionEvent(fold, event(5, 'turn/start', { turn: 2 }))).toBe(fold)
     expect(applyUserQuestionEvent(fold, header(5, [timedSchema]))).toBe(fold)
     expect(applyUserQuestionEvent(fold, event(5, 'tool/call', {
@@ -235,7 +235,7 @@ describe('userQuestions projection fold', () => {
       turn: 1, step: 2, callId: otherId, name: 'ask_user_question',
       arguments: '{"questions":[{"id":"name","question":"Name?"}]}',
     })
-    const both = [timedHeader, asked, other].reduce(applyUserQuestionEvent, { timed: false, canceledCallIds: [], questions: empty })
+    const both = [timedHeader, asked, other].reduce(applyUserQuestionEvent, { timed: false, questions: empty })
     expect(both.questions.active.map(question => question.callId)).toEqual([callId, otherId])
 
     const continued = applyUserQuestionEvent(both, resulted('{"pending":true,"callId":"call_ask_1"}'))
@@ -265,10 +265,8 @@ describe('userQuestions projection fold', () => {
       state: 'continued',
     }
     const view = { active: [full], settled: [{ callId: 'call_ask_0', answers: answerBatch }] }
-    const restored = userQuestionProjectionDefinition.stateSchema.parse({
-      inheritedEventCount: 3, timed: true, canceledCallIds: [], questions: view,
-    })
-    expect(restored).toEqual({ inheritedEventCount: SessionLogOffset(3), timed: true, canceledCallIds: [], questions: view })
+    const restored = userQuestionProjectionDefinition.stateSchema.parse({ inheritedEventCount: 3, timed: true, questions: view })
+    expect(restored).toEqual({ inheritedEventCount: SessionLogOffset(3), timed: true, questions: view })
     expect(restored.questions.active[0]?.questions[1]).not.toHaveProperty('options')
 
     const { viewSchema } = userQuestionProjectionDefinition.wire
@@ -297,6 +295,6 @@ describe('userQuestions projection fold', () => {
     expect(userQuestionProjectionDefinition.wire.view(opened))
       .toEqual({ active: [{ callId, questions, state: 'open' }], settled: [] })
     expect(userQuestionProjectionDefinition.apply(opened, event(5, 'turn/start', { turn: 2 }))).toBe(opened)
-    expect(userQuestionProjectionDefinition.stateVersion).toBe(4)
+    expect(userQuestionProjectionDefinition.stateVersion).toBe(2)
   })
 })

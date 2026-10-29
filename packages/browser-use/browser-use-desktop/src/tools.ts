@@ -140,10 +140,7 @@ export class SessionOperationQueue {
    */
   enqueue<T>(sessionId: string, op: () => Promise<T>): Promise<T> {
     const prev = this.queues.get(sessionId) ?? Promise.resolve()
-    const run = async (): Promise<T> => {
-      return await op()
-    }
-    const next = prev.then(run, run)
+    const next = prev.then(op, op)
     this.queues.set(sessionId, next)
     next
       .finally(() => {
@@ -151,6 +148,8 @@ export class SessionOperationQueue {
           this.queues.delete(sessionId)
         }
       })
+      // The caller owns this rejection; this catch only prevents an unhandled
+      // rejection on the map-cleanup chain, which carries no result.
       .catch(() => {})
     return next
   }

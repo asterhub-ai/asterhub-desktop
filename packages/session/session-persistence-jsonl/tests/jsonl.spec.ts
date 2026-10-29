@@ -20,7 +20,6 @@ import {
 import { runLiveWritePathContract } from '../../session-persistence/tests/live-write-contract.ts'
 import { LIVE_WRITE_BATCH_MAX_DELAY_MS, type JsonlSessionHandle, type JsonlHandleStorage } from '../src/storage.ts'
 import { JsonlGenerationSourceChangedError } from '../src/generation.ts'
-import { compressZstdFrame } from '../src/zstd.ts'
 import SessionStore from '@deepseek-ai/dsh-session'
 
 const statRace = vi.hoisted(() => ({
@@ -61,13 +60,6 @@ const readTally = vi.hoisted(() => ({
 const readFailure = vi.hoisted(() => ({
   path: undefined as string | undefined,
   error: undefined as Error | undefined,
-}))
-
-const openAppendFailure = vi.hoisted(() => ({
-  path: undefined as string | undefined,
-  error: undefined as Error | undefined,
-  calls: 0,
-  maxFailures: 0,
 }))
 
 const pausedRead = vi.hoisted(() => ({
@@ -134,17 +126,6 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       }
       return actual.readdir(...args)
     }) as typeof actual.readdir,
-    open: async (...args: Parameters<typeof actual.open>) => {
-      const path = typeof args[0] === 'string' ? args[0] : undefined
-      const flags = args[1]
-      if (flags === 'a' && path === openAppendFailure.path && openAppendFailure.error !== undefined) {
-        openAppendFailure.calls += 1
-        if (openAppendFailure.calls <= openAppendFailure.maxFailures) {
-          throw openAppendFailure.error
-        }
-      }
-      return actual.open(...args)
-    },
   }
 })
 
@@ -347,10 +328,6 @@ afterEach(async () => {
   statFailure.error = undefined
   readdirFailure.path = undefined
   readdirFailure.error = undefined
-  openAppendFailure.path = undefined
-  openAppendFailure.error = undefined
-  openAppendFailure.calls = 0
-  openAppendFailure.maxFailures = 0
   vi.restoreAllMocks()
   const results = await Promise.allSettled(contexts.map(ctx => ctx.fiber.dispose()))
   for (const d of directories) await rm(d, { recursive: true, force: true })
@@ -802,11 +779,16 @@ describe('JsonlSessionPersistence: immutable format generations', () => {
     await mkdir(dirname(sourcePath), { recursive: true })
     await writeFile(sourcePath, source)
 
+    readTally.enabled = true
+    const formatStatus = 'migration-required'
     expect(await ctx.sessionPersistence.stat(header.id)).toMatchObject({
       header: { id: header.id, version: SESSION_FORMAT_VERSION },
+      formatStatus,
     })
     const [listed] = await ctx.sessionPersistence.list()
     expect(listed?.header).toMatchObject({ id: header.id, version: SESSION_FORMAT_VERSION })
+    expect(listed?.formatStatus).toBe(formatStatus)
+    expect(readTally.bySuffix.get(sourcePath) ?? 0).toBe(0)
     expect(await readFile(sourcePath)).toEqual(source)
     await expect(stat(currentPath)).rejects.toMatchObject({ code: 'ENOENT' })
   })
@@ -829,6 +811,9 @@ describe('JsonlSessionPersistence: immutable format generations', () => {
     const userMessage = restored.events.find(event => event.type === 'user/message')
     expect(userMessage).toBeDefined()
     expect(Object.isFrozen(userMessage?.data)).toBe(true)
+    const formatStatus = 'migration-required'
+    expect((await ctx.sessionPersistence.stat(header.id))?.formatStatus).toBe(formatStatus)
+    expect((await ctx.sessionPersistence.list()).find(item => item.header.id === header.id)?.formatStatus).toBe(formatStatus)
     expect(await readFile(sourcePath)).toEqual(source)
     await expect(readFile(currentPath)).rejects.toMatchObject({ code: 'ENOENT' })
     expect((await readdir(dirname(sourcePath))).filter(name => name.startsWith('session')).sort())
@@ -1038,6 +1023,9 @@ describe('JsonlSessionPersistence: immutable format generations', () => {
       } else {
         await expect(readFile(currentPath)).rejects.toMatchObject({ code: 'ENOENT' })
       }
+      const formatStatus = access === 'write' ? 'current' : 'migration-required'
+      expect((await ctx.sessionPersistence.stat(header.id))?.formatStatus).toBe(formatStatus)
+      expect((await ctx.sessionPersistence.list()).find(item => item.header.id === header.id)?.formatStatus).toBe(formatStatus)
       expect(await readFile(sourcePath)).toEqual(source)
     } finally {
       await handle.close()
@@ -1225,6 +1213,48 @@ describe('JsonlSessionPersistence: immutable format generations', () => {
     })
   })
 
+  it('reports format metadata from the highest physical generation without body reads', async () => {
+    const header = meta('metadata-highest', '/work')
+    readTally.enabled = true
+    for (const version of [0, 3, SESSION_FORMAT_VERSION]) {
+      const path = generationLogPath(root, header.cwd, header.id, version, 'none')
+      await mkdir(dirname(path), { recursive: true })
+      const physical = version === 0 ? releasedV0Header(header) : { ...toHeaderLine(header), version }
+      await writeFile(path, `${JSON.stringify(physical)}\n`)
+      const formatStatus = version === SESSION_FORMAT_VERSION ? 'current' : 'migration-required'
+      expect(await ctx.sessionPersistence.stat(header.id)).toMatchObject({
+        header: { version: SESSION_FORMAT_VERSION },
+        formatStatus,
+        location: { kind: 'jsonl', path },
+      })
+      const [listed] = await ctx.sessionPersistence.list()
+      expect(listed?.formatStatus).toBe(formatStatus)
+      expect(listed?.location).toEqual({ kind: 'jsonl', path })
+      expect(readTally.bySuffix.size).toBe(0)
+    }
+  })
+
+
+  it('reports the selected compressed artifact path in stat and list metadata', async () => {
+    const compressedRoot = await freshRoot()
+    const compressed = new Context()
+    try {
+      await compressed.plugin(JsonlSessionPersistence, { root: compressedRoot, compression: 'zstd' })
+      const header = meta('zstd-location', '/work')
+      const handle = await compressed.sessionPersistence.create(header)
+      await handle.append(oneTurnLog())
+      await handle.flush()
+      await handle.close()
+      const path = logPath(compressedRoot, header.cwd, header.id, 'zstd')
+      expect((await compressed.sessionPersistence.stat(header.id))?.location)
+        .toEqual({ kind: 'jsonl', path })
+      const [listed] = await compressed.sessionPersistence.list()
+      expect(listed?.location).toEqual({ kind: 'jsonl', path })
+    } finally {
+      await compressed.fiber.dispose()
+    }
+  })
+
   it('selects a retained future generation above readable historical bytes', async () => {
     const header = meta('future-wins', '/work')
     const sourcePath = historicalLogPath(root, header.cwd, header.id)
@@ -1236,6 +1266,8 @@ describe('JsonlSessionPersistence: immutable format generations', () => {
     await expect(ctx.sessionPersistence.open(header.id, 'read')).rejects.toMatchObject({
       name: 'SessionFormatUnsupportedError',
     })
+    await expect(ctx.sessionPersistence.stat(header.id)).rejects.toMatchObject({ name: 'SessionFormatUnsupportedError' })
+    expect(await ctx.sessionPersistence.list()).toEqual([])
     expect(await readFile(sourcePath, 'utf8')).toBe(`${JSON.stringify(releasedV0Header(header))}\n`)
     await expect(stat(rawLogPath(root, header.cwd, header.id))).rejects.toMatchObject({ code: 'ENOENT' })
   })
@@ -1408,13 +1440,26 @@ describe('JsonlSessionPersistence: durability and crash semantics', () => {
     // created session is already visible to this process.
     const dir = sessionDir(root, '/work', m.id)
     await expect(stat(rawLogPath(root, '/work', m.id))).rejects.toThrow()
-    expect((await ctx.sessionPersistence.list()).map(s => s.header.id)).toContain(m.id)
-    expect((await ctx.sessionPersistence.stat(m.id))?.sizeBytes).toBeUndefined()
+    const pending = await ctx.sessionPersistence.stat(m.id)
+    const pendingRows = await ctx.sessionPersistence.list()
+    expect(pendingRows.map(s => s.header.id)).toContain(m.id)
+    expect(pending?.sizeBytes).toBeUndefined()
+    expect(pending?.formatStatus).toBeUndefined()
+    expect(pending?.location).toBeUndefined()
+    expect(pendingRows.find(s => s.header.id === m.id)?.formatStatus).toBeUndefined()
+    expect(pendingRows.find(s => s.header.id === m.id)?.location).toBeUndefined()
 
     await handle.append(oneTurnLog())
     expect((await stat(dir)).isDirectory()).toBe(true)
     expect((await stat(rawLogPath(root, '/work', m.id))).isFile()).toBe(true)
+    const materializedPath = rawLogPath(root, '/work', m.id)
     expect((await ctx.sessionPersistence.list()).map(s => s.header.id)).toContain(m.id)
+    expect(await ctx.sessionPersistence.stat(m.id)).toMatchObject({
+      formatStatus: 'current',
+      location: { kind: 'jsonl', path: materializedPath },
+    })
+    expect((await ctx.sessionPersistence.list()).find(s => s.header.id === m.id)?.location)
+      .toEqual({ kind: 'jsonl', path: materializedPath })
     await handle.close()
   })
 
@@ -1778,100 +1823,6 @@ describe('JsonlSessionPersistence: durability and crash semantics', () => {
       // The retry now succeeds with NO seq gap — the log is contiguous 0..7.
       await handle.append(turn2)
       expect((await handle.read()).events.map(e => e.seq)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
-    } finally {
-      await handle.close()
-    }
-  })
-
-  it('safely recovers and retries without duplicate or lost events when open for append encounters transient EBUSY', async () => {
-    if (process.platform !== 'win32') return
-    const m = meta('ebusy-append-open')
-    await writeLog(ctx.sessionPersistence, m, oneTurnLog())
-    const path = rawLogPath(root, undefined, m.id)
-    const handle = await ctx.sessionPersistence.open(m.id, 'write')
-
-    try {
-      openAppendFailure.path = path
-      openAppendFailure.error = Object.assign(new Error(`EBUSY: resource locked or busy, open '${path}'`), {
-        code: 'EBUSY',
-        syscall: 'open',
-      })
-      openAppendFailure.calls = 0
-      openAppendFailure.maxFailures = 2
-
-      const turn2: SessionEvent[] = [
-        { type: 'turn/start', seq: SessionSeq(6), time: 9, data: { turn: 2 } },
-        { type: 'turn/end', seq: SessionSeq(7), time: 10, data: { turn: 2, reason: { kind: 'completed' } } },
-      ]
-
-      // Transparent automatic bounded recovery on transient open sharing failure:
-      // live append succeeds without throwing and without duplicate/lost events.
-      await handle.append(turn2)
-      expect(openAppendFailure.calls).toBe(3)
-
-      const result = await handle.read()
-      expect(result.events.map(e => e.seq)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
-    } finally {
-      await handle.close()
-    }
-  })
-
-  it('fails loudly when open for append sharing errors exhaust retry bounds', async () => {
-    if (process.platform !== 'win32') return
-    const m = meta('ebusy-append-open-exhausted')
-    await writeLog(ctx.sessionPersistence, m, oneTurnLog())
-    const path = rawLogPath(root, undefined, m.id)
-    const handle = await ctx.sessionPersistence.open(m.id, 'write')
-
-    try {
-      openAppendFailure.path = path
-      openAppendFailure.error = Object.assign(new Error(`EBUSY: resource locked or busy, open '${path}'`), {
-        code: 'EBUSY',
-        syscall: 'open',
-      })
-      openAppendFailure.calls = 0
-      openAppendFailure.maxFailures = 20
-
-      const turn2: SessionEvent[] = [
-        { type: 'turn/start', seq: SessionSeq(6), time: 9, data: { turn: 2 } },
-        { type: 'turn/end', seq: SessionSeq(7), time: 10, data: { turn: 2, reason: { kind: 'completed' } } },
-      ]
-
-      await expect(handle.append(turn2)).rejects.toMatchObject({ code: 'EBUSY' })
-      expect(openAppendFailure.calls).toBe(9) // 1 initial + 8 retries
-
-      // Clear the simulated failure; handle state remains valid and retrying succeeds exact-once
-      openAppendFailure.maxFailures = 0
-      await handle.append(turn2)
-      const result = await handle.read()
-      expect(result.events.map(e => e.seq)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
-    } finally {
-      await handle.close()
-    }
-  })
-
-  it('does not retry open for append on non-sharing permanent errors or POSIX permission failures', async () => {
-    const m = meta('enoent-append-open-no-retry')
-    await writeLog(ctx.sessionPersistence, m, oneTurnLog())
-    const path = rawLogPath(root, undefined, m.id)
-    const handle = await ctx.sessionPersistence.open(m.id, 'write')
-
-    try {
-      openAppendFailure.path = path
-      openAppendFailure.error = Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), {
-        code: 'ENOENT',
-        syscall: 'open',
-      })
-      openAppendFailure.calls = 0
-      openAppendFailure.maxFailures = 5
-
-      const turn2: SessionEvent[] = [
-        { type: 'turn/start', seq: SessionSeq(6), time: 9, data: { turn: 2 } },
-        { type: 'turn/end', seq: SessionSeq(7), time: 10, data: { turn: 2, reason: { kind: 'completed' } } },
-      ]
-
-      await expect(handle.append(turn2)).rejects.toMatchObject({ code: 'ENOENT' })
-      expect(openAppendFailure.calls).toBe(1)
     } finally {
       await handle.close()
     }
@@ -2696,81 +2647,29 @@ describe('JsonlSessionPersistence: edge cases', () => {
     expect((await readAll(ctx.sessionPersistence, m.id)).events).toEqual(oneTurnLog())
   })
 
-  it('migrates the obsolete flat session layout into the project-keyed directory on listing', async () => {
+  it('rejects the obsolete flat-file layout instead of ignoring stored sessions', async () => {
     const m = meta('legacy-flat', '/legacy')
-    const flatDir = join(root, encodeSegment(m.id))
-    await mkdir(flatDir, { recursive: true })
-    const flatArtifact = join(flatDir, generationLogFilename(SESSION_FORMAT_VERSION, 'none'))
-    const original = [
+    const project = projectDir(root, m.cwd)
+    const path = join(project, `${encodeSegment(m.id)}.jsonl`)
+    await mkdir(project, { recursive: true })
+    await writeFile(path, [
       JSON.stringify(toHeaderLine(m)),
       ...oneTurnLog().map(event => JSON.stringify(event)),
       '',
-    ].join('\n')
-    await writeFile(flatArtifact, original)
+    ].join('\n'))
 
-    const [firstList, secondList, opened] = await Promise.all([
-      ctx.sessionPersistence.list(),
-      ctx.sessionPersistence.list(),
-      readAll(ctx.sessionPersistence, m.id),
-    ])
-    expect(firstList.map(s => s.header.id)).toContain(m.id)
-    expect(secondList.map(s => s.header.id)).toContain(m.id)
-    expect(opened.events).toEqual(oneTurnLog())
-    const moved = join(sessionDir(root, m.cwd, m.id), generationLogFilename(SESSION_FORMAT_VERSION, 'none'))
-    expect(await readFile(moved, 'utf8')).toBe(original)
-    expect(await readdir(flatDir)).toEqual([])
-    expect((await readAll(ctx.sessionPersistence, m.id)).events).toEqual(oneTurnLog())
+    await expect(ctx.sessionPersistence.open(m.id, 'read')).rejects.toThrow(/unsupported flat-file layout/)
+    await expect(ctx.sessionPersistence.list()).rejects.toThrow(/unsupported flat-file layout/)
   })
 
-  it('leaves a flat source untouched when the nested migration target already exists', async () => {
-    const m = meta('legacy-conflict', '/legacy-conflict')
-    const flatDir = join(root, encodeSegment(m.id))
-    const flatArtifact = join(flatDir, generationLogFilename(SESSION_FORMAT_VERSION, 'none'))
-    const original = [JSON.stringify(toHeaderLine(m)), ''].join('\n')
-    await mkdir(flatDir, { recursive: true })
-    await writeFile(flatArtifact, original)
-    const nestedFile = join(sessionDir(root, m.cwd, m.id), generationLogFilename(SESSION_FORMAT_VERSION, 'none'))
-    await mkdir(dirname(nestedFile), { recursive: true })
-    await writeFile(nestedFile, 'existing target')
-
-    await expect(ctx.sessionPersistence.list()).rejects.toThrow(/migration target .* already exists/)
-    expect(await readFile(flatArtifact, 'utf8')).toBe(original)
-    expect(await readFile(nestedFile, 'utf8')).toBe('existing target')
-  })
-
-  it('migrates a flat artifact whose filename contains the encoded session id', async () => {
-    const m = meta('legacy-flat-name', '/legacy-flat-name')
+  it('rejects a compressed obsolete flat-file artifact during targeted lookup', async () => {
+    const m = meta('legacy-compressed-flat', '/legacy')
     const project = projectDir(root, m.cwd)
-    const oldPath = join(project, `${encodeSegment(m.id)}.jsonl`)
-    const original = [JSON.stringify(toHeaderLine(m)), ''].join('\n')
+    expect(await ctx.sessionPersistence.list()).toEqual([])
     await mkdir(project, { recursive: true })
-    await writeFile(oldPath, original)
+    await writeFile(join(project, `${encodeSegment(m.id)}.jsonl.zstd`), 'legacy')
 
-    expect((await ctx.sessionPersistence.list()).map(s => s.header.id)).toContain(m.id)
-    const migrated = join(sessionDir(root, m.cwd, m.id), 'session.v5.jsonl')
-    expect(await readFile(migrated, 'utf8')).toBe(original)
-  })
-
-  it('migrates a compressed flat artifact during targeted lookup', async () => {
-    const compressedRoot = await freshRoot()
-    const compressedCtx = new Context()
-    const compressedFiber = await compressedCtx.plugin(JsonlSessionPersistence, { root: compressedRoot, compression: 'zstd' })
-    try {
-      const m = meta('legacy-compressed-flat', '/legacy')
-      const project = projectDir(compressedRoot, m.cwd)
-      const flatPath = join(project, `${encodeSegment(m.id)}.jsonl.zstd`)
-      await mkdir(project, { recursive: true })
-      const header = `${JSON.stringify(toHeaderLine(m))}\n`
-      const events = `${oneTurnLog().map(event => JSON.stringify(event)).join('\n')}\n`
-      const compressed = Buffer.concat([await compressZstdFrame(header), await compressZstdFrame(events)])
-      await writeFile(flatPath, compressed)
-
-      expect((await readAll(compressedCtx.sessionPersistence, m.id)).events).toEqual(oneTurnLog())
-      expect(await readFile(join(sessionDir(compressedRoot, m.cwd, m.id), 'session.v5.jsonl.zstd'))).toEqual(compressed)
-    } finally {
-      await compressedFiber.dispose()
-      await rm(compressedRoot, { recursive: true, force: true })
-    }
+    await expect(ctx.sessionPersistence.open(m.id, 'read')).rejects.toThrow(/unsupported flat-file layout/)
   })
 
   it('list skips empty and non-header session logs (metadata-only read)', async () => {
@@ -2984,33 +2883,6 @@ describe('JsonlSessionPersistence listing concurrency', () => {
     expect(JsonlSessionPersistence.Config({ root: listingRoot, listConcurrency: 1 }).listConcurrency).toBe(1)
     expect(() => JsonlSessionPersistence.Config({ root: listingRoot, listConcurrency: 0 })).toThrow()
     expect(() => JsonlSessionPersistence.Config({ root: listingRoot, listConcurrency: 1.5 })).toThrow()
-    expect(JsonlSessionPersistence.Config({ root: listingRoot }).appendOpenRetryInitialMs).toBe(20)
-    expect(JsonlSessionPersistence.Config({ root: listingRoot }).appendOpenRetryMaxMs).toBe(200)
-    expect(JsonlSessionPersistence.Config({ root: listingRoot }).appendOpenRetryLimit).toBe(8)
-    expect(JsonlSessionPersistence.resolveAppendOpenRetrySpec({ root: listingRoot })).toEqual({
-      initialMs: 20,
-      maxMs: 200,
-      limit: 8,
-    })
-    expect(JsonlSessionPersistence.resolveAppendOpenRetrySpec({
-      root: listingRoot,
-      appendOpenRetryInitialMs: 50,
-      appendOpenRetryMaxMs: 500,
-      appendOpenRetryLimit: 3,
-    })).toEqual({
-      initialMs: 50,
-      maxMs: 500,
-      limit: 3,
-    })
-    expect(() => JsonlSessionPersistence.resolveAppendOpenRetrySpec({
-      root: listingRoot, appendOpenRetryInitialMs: 0,
-    })).toThrow(/appendOpenRetryInitialMs/)
-    expect(() => JsonlSessionPersistence.resolveAppendOpenRetrySpec({
-      root: listingRoot, appendOpenRetryInitialMs: 100, appendOpenRetryMaxMs: 50,
-    })).toThrow(/appendOpenRetryMaxMs/)
-    expect(() => JsonlSessionPersistence.resolveAppendOpenRetrySpec({
-      root: listingRoot, appendOpenRetryLimit: -1,
-    })).toThrow(/appendOpenRetryLimit/)
   })
 
   it('bounds directory and stat reads across concurrent listings of one backend', async () => {

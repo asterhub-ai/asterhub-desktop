@@ -524,5 +524,5 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 
 | Package | Config | Description |
 |---|---|---|
-| `@deepseek-ai/dsh-project-storage` | yes | Portable project metadata, local Session membership, and machine-local project locator |
+| `@deepseek-ai/dsh-project-storage` | yes | Project-local Session persistence under registered Workspace roots; no separate project ledger |
 | `@deepseek-ai/dsh-workspace` | no | Workspace entity registry (ctx.workspaceRegistry): durable workspace records with validated session attachment over the domain data form for the AsterHub |

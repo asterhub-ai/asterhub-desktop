@@ -185,9 +185,9 @@ export function resolveRgPath(): Promise<string> {
 
 /**
  * Run the packaged ripgrep binary with a plain argv vector and return its
- * complete raw stdout. The working directory is the authoritative current
- * execution cwd for the calling session when available, else the provider's
- * process cwd. `exec.signal` is forwarded so the cooperative tool timeout
+ * complete raw stdout. The working directory is the calling agent's session
+ * current directory when available, else
+ * `process.cwd()`. `exec.signal` is forwarded so the cooperative tool timeout
  * (`@deepseek-ai/dsh-tool-call-timeout-policy`) and caller cancellation terminate the
  * process tree.
  *
@@ -211,7 +211,7 @@ export function resolveRgPath(): Promise<string> {
  * creation time becomes `SEARCH_ABORTED` instead.
  *
  * @param ctx - the plugin context; execution uses its `subprocess` service.
- * @param exec - the tool-execution context; supplies the session cwd and the abort signal.
+ * @param exec - the tool-execution context; supplies the owning Agent and the abort signal.
  * @param toolName - `glob` or `grep`, used in error messages.
  * @param argv - the ripgrep arguments (every model value an unquoted argv element; no shell layer exists).
  * @param rawOutputMaxBytes - cap on the complete raw stdout the tool will parse.
@@ -231,20 +231,9 @@ export async function runRipgrep(
   if (exec.signal.aborted) {
     throw new SearchError(`${toolName} was aborted before completion (tool timeout or caller cancellation)`, 'SEARCH_ABORTED')
   }
-  const agent = exec.agent
-  let cwd: string | undefined
-  if (agent !== undefined) {
-    const sessionCwd = agent.ctx.get('sessionCwd', false)
-    if (sessionCwd !== undefined) {
-      cwd = sessionCwd.resolve(agent.session.header)
-      if (cwd === undefined) {
-        throw new Error(`Session ${agent.session.id} has no current execution directory`)
-      }
-    } else {
-      cwd = agent.options.cwd ?? agent.session.header.cwd
-    }
-  }
-  const workdir = cwd ?? process.cwd()
+  const workdir = exec.agent === undefined
+    ? process.cwd()
+    : await ctx.workingDirectory.ensure(exec.agent, exec.signal)
   let handle: SubprocessHandle
   try {
     handle = ctx.subprocess.spawn({

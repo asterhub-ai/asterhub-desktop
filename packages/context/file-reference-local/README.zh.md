@@ -25,7 +25,9 @@ agent（智能体）及宿主 UI 可以用各 agent 本地工作区中经过排�
 <a id="use-this-package"></a>
 ## 使用本包
 
-当 `@file` 补全应发现 Harness 宿主自身的文件系统——即随附 `read` 工具所操作的命名空间——时，挂载此提供方。每个 agent 的工作区从 `SessionCwd` 的当前执行根目录建立索引。若该提供方没有当前根目录，则发现操作失败，不会搜索历史 Session 路径或进程目录。在发现服务启动后挂载的目录服务同样具有权威性；解析器移除后，发现操作不会退回历史路径。
+切换 Session 工作目录后，旧目录的搜索索引会被丢弃；下一次补全会搜索新目录。
+
+当 `@file` 补全应发现 Harness 宿主自身的文件系统——即随附 `read` 工具所操作的命名空间——时，挂载此提供方。每个 agent 的工作区从其 Session 当前工作目录开始建立索引。
 
 ### 启用提供方
 
@@ -63,7 +65,7 @@ agent（智能体）及宿主 UI 可以用各 agent 本地工作区中经过排�
 
 ### 设计理念
 
-提供方为每个 agent 维护一个可复用的 `WorkspaceFileSearch`，以该 Session 的当前执行目录为根。根目录变化时会释放旧索引并创建新索引。目录范围查询（`a/b/...`）列出实时目录状态，裸模糊查询共享一次有界递归遍历。每个工作区仅首次裸查询会等待该遍历；`tool/result` 事件把已完成的条目标记为陈旧，下一次裸查询在替代品构建期间继续由它作答。模型指引是按 agent 的提示词段，仅在指定 agent 拥有 `read` 工具时贡献；创建会等待提示词安装，安装失败会回滚 agent；agent dispose（资源释放）时会同时释放索引与提示词 fiber。
+提供方为每个 agent 维护一个可复用的 `WorkspaceFileSearch`，以该会话的 `cwd` 为根。目录范围查询（`a/b/...`）列出实时目录状态，裸模糊查询共享一次有界递归遍历。每个工作区仅首次裸查询会等待该遍历；`tool/result` 事件把已完成的条目标记为陈旧，下一次裸查询在替代品构建期间继续由它作答。模型指引是按 agent 的提示词段，仅在指定 agent 拥有 `read` 工具时贡献；创建会等待提示词安装，安装失败会回滚 agent；agent dispose（资源释放）时会同时释放索引与提示词 fiber。
 
 ### 源码地图
 
@@ -71,7 +73,6 @@ agent（智能体）及宿主 UI 可以用各 agent 本地工作区中经过排�
 |---|---|
 | [`src/index.ts`](src/index.ts) | `LocalFileReferenceService`：配置校验、按 agent 搜索、提示词安装 |
 | [`src/search.ts`](src/search.ts) | `WorkspaceFileSearch`：遍历、排序、排除、陈旧标记与后台重建 |
-| — | 不发布运行时不变式伴生入口；按 agent 的 index 是私有 advisory cache，其失效与 dispose 行为通过服务测试直接观察。 |
 
 ### 主要流程
 

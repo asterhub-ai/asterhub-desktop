@@ -7,7 +7,6 @@
  * @module @deepseek-ai/dsh-session-persistence-jsonl/generation
  */
 
-import { createSessionFormatCatalogWithChildren } from '@deepseek-ai/dsh-session-format-catalog'
 import { currentSessionMessageProjections } from '@deepseek-ai/dsh-session-format-catalog/message-projections'
 import { createHash, randomBytes } from 'node:crypto'
 import {
@@ -36,7 +35,7 @@ import type {
   SessionFormatRestore,
 } from '@deepseek-ai/dsh-session-format'
 import { validateStoredEvents } from '@deepseek-ai/dsh-session-persistence'
-import type { JsonlCompression, SessionLogScan } from './format.ts'
+import type { JsonlCompression } from './format.ts'
 import { generationLogFilename, logSuffix, SessionLogScanner } from './format.ts'
 import { publishNewFileWin32 } from './win32.ts'
 import {
@@ -211,7 +210,6 @@ export interface JsonlGenerationRuntime {
     expectedId: string,
     expectedEventCount: number,
     expectedPrefix?: JsonlExpectedPrefix,
-    targetVersion?: 4,
   ): Promise<JsonlVerifiedGeneration>
 }
 
@@ -489,7 +487,6 @@ async function decodeStreamingMigration(
  * @param expectedId - Session identity expected in the header.
  * @param expectedEventCount - exact logical event count expected after decoding.
  * @param expectedPrefix - verified migration prefix; an append tail may be present and is not validated.
- * @param targetVersion - optional target format generation cutoff; literal 4 for offline migration, or omitted for current format.
  * @returns stable physical identity and digest for publication comparison.
  */
 export async function verifyJsonlCurrentGeneration(
@@ -498,9 +495,8 @@ export async function verifyJsonlCurrentGeneration(
   expectedId: string,
   expectedEventCount: number,
   expectedPrefix?: JsonlExpectedPrefix,
-  targetVersion?: 4,
 ): Promise<JsonlVerifiedGeneration> {
-  return defaultGenerationRuntime.verify(path, compression, expectedId, expectedEventCount, expectedPrefix, targetVersion)
+  return defaultGenerationRuntime.verify(path, compression, expectedId, expectedEventCount, expectedPrefix)
 }
 
 async function verifyCurrentGeneration(
@@ -510,7 +506,6 @@ async function verifyCurrentGeneration(
   expectedEventCount: number,
   fs: GenerationFileSystem,
   expectedPrefix?: JsonlExpectedPrefix,
-  targetVersion?: 4,
 ): Promise<JsonlVerifiedGeneration> {
   const before = await fs.stat(path)
   const bytes = await fs.readFile(path)
@@ -529,7 +524,7 @@ async function verifyCurrentGeneration(
     throw new Error('current session generation changed during verification')
   }
   const snapshot = { bytes, identity: after }
-  const generation = decodeCurrentGeneration(snapshot.bytes, compression, targetVersion)
+  const generation = decodeCurrentGeneration(snapshot.bytes, compression)
   validateStoredEvents(generation.meta, generation.events, { kind: 'jsonl', path })
   if (generation.meta.id !== expectedId) {
     throw new Error(`current session generation contains id "${generation.meta.id}", expected "${expectedId}"`)
@@ -539,17 +534,15 @@ async function verifyCurrentGeneration(
       `current session generation contains ${generation.events.length} events, expected ${expectedEventCount}`,
     )
   }
-  if (targetVersion !== 4) {
-    Session.fromRestore(
-      generation.meta.id,
-      generation.events,
-      generation.meta,
-      generation.inheritedEventCount,
-      'detached',
-      currentSessionMessageProjections,
-    )
-    assertCurrentAssistantStreams(generation.events)
-  }
+  Session.fromRestore(
+    generation.meta.id,
+    generation.events,
+    generation.meta,
+    generation.inheritedEventCount,
+    'detached',
+    currentSessionMessageProjections,
+  )
+  assertCurrentAssistantStreams(generation.events)
   return {
     identity: snapshot.identity,
     bytes: snapshot.bytes.length,
@@ -586,13 +579,11 @@ function assertCurrentAssistantStreams(events: readonly SessionEvent[]): void {
 function decodeCurrentGeneration(
   bytes: Buffer,
   compression: JsonlCompression,
-  targetVersion?: 4,
-): SessionLogScan {
-  const catalog = targetVersion === 4 ? createSessionFormatCatalogWithChildren([], 4) : undefined
+): ReturnType<SessionLogScanner['finish']> {
   if (compression === 'none') {
     const headerEnd = bytes.indexOf(0x0A)
     if (headerEnd === -1) throw new Error('empty or header-less session log')
-    const scanner = new SessionLogScanner(bytes.subarray(0, headerEnd + 1), 'strict', catalog)
+    const scanner = new SessionLogScanner(bytes.subarray(0, headerEnd + 1), 'strict')
     scanner.write(bytes.subarray(headerEnd + 1))
     return finishCurrentGenerationScan(scanner)
   }
@@ -606,7 +597,7 @@ function decodeCurrentGeneration(
     /* v8 ignore next -- a non-empty structural frame list yields once or throws. */
     if (header.done) throw new Error('empty or header-less Zstandard session log')
     assertIndependentHeaderFrame(header.value)
-    const scanner = new SessionLogScanner(header.value, 'strict', catalog)
+    const scanner = new SessionLogScanner(header.value, 'strict')
     for (const chunk of plaintext) scanner.write(chunk)
     return finishCurrentGenerationScan(scanner)
   } finally {
@@ -616,7 +607,7 @@ function decodeCurrentGeneration(
 
 function finishCurrentGenerationScan(
   scanner: SessionLogScanner,
-): SessionLogScan {
+): ReturnType<SessionLogScanner['finish']> {
   const inputBytes = scanner.checkpoint().inputBytes
   const decoded = scanner.finish()
   if (decoded.committedBytes !== inputBytes) throw new Error('current session generation has a torn physical tail')
@@ -1031,14 +1022,8 @@ export function createJsonlGenerationRuntime(
   return {
     readStable: (path, signal) => readStableSnapshot(path, signal, internals.fs),
     prepare: options => prepareMigration(options, internals),
-    verify: (path, compression, expectedId, expectedEventCount, expectedPrefix, targetVersion) => verifyCurrentGeneration(
-      path,
-      compression,
-      expectedId,
-      expectedEventCount,
-      internals.fs,
-      expectedPrefix,
-      targetVersion,
+    verify: (path, compression, expectedId, expectedEventCount, expectedPrefix) => verifyCurrentGeneration(
+      path, compression, expectedId, expectedEventCount, internals.fs, expectedPrefix,
     ),
   }
 }

@@ -134,7 +134,7 @@ export function toHeaderLine(
 }
 
 /**
- * Translate one supported physical header into current runtime metadata and its cut.
+ * Translate one current physical header into logical metadata and its cut.
  * @param line - the shape-checked first line of a log (see the `isHeaderLine` guard).
  * @returns logical Session metadata paired with the exact inherited prefix length.
  */
@@ -323,8 +323,7 @@ export function eventLine(event: SessionEvent): string {
   return JSON.stringify(sessionFormatCatalog.encodeCurrentEvent(event as unknown as SessionFormatEvent))
 }
 
-/** Current runtime metadata, decoded events, and the complete physical prefix safe to retain. */
-export interface SessionLogScan {
+interface SessionLogScan {
   meta: SessionHeader
   inheritedEventCount: SessionLogOffsetType
   events: SessionEvent[]
@@ -338,19 +337,16 @@ export interface SessionLogScan {
  * must see "upgrade the harness", never "corrupt session log".
  * @param parsed - the JSON-parsed first line of a session artifact.
  */
-function refuseForeignFormatVersion(parsed: object, supportedVersion: number = SESSION_FORMAT_VERSION): void {
+function refuseForeignFormatVersion(parsed: object): void {
   const { version, id } = parsed as { version?: unknown; id?: unknown }
-  if (typeof version !== 'number' || version === supportedVersion) return
+  if (typeof version !== 'number' || version === SESSION_FORMAT_VERSION) return
   throw new SessionFormatUnsupportedError(
     sessionFormatVersionRefusal(typeof id === 'string' ? id : String(id), version),
   )
 }
 
 /** Parse one complete header record supplied independently from event rows. */
-function parseHeaderRecord(
-  record: Buffer,
-  catalog: typeof sessionFormatCatalog = sessionFormatCatalog,
-): { readonly meta: SessionHeader; readonly restore: SessionFormatRestore } {
+function parseHeaderRecord(record: Buffer): { readonly meta: SessionHeader; readonly restore: SessionFormatRestore } {
   if (record.length === 0 || record.at(-1) !== 0x0A || record.indexOf(0x0A) !== record.length - 1) {
     throw new Error('empty or header-less session log')
   }
@@ -363,14 +359,14 @@ function parseHeaderRecord(
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new Error('corrupt session log: first line is not a JSON object')
   }
-  refuseForeignFormatVersion(parsed, catalog.currentVersion)
+  refuseForeignFormatVersion(parsed)
   assertNoRetiredHeaderFields(parsed)
   if (!isHeaderLine(parsed)) {
     throw new Error('corrupt session log: first line is not a session header')
   }
   let restore: SessionFormatRestore
   try {
-    restore = catalog.createRestore(parsed, {
+    restore = sessionFormatCatalog.createRestore(parsed, {
       recovery: 'strict',
       validation: 'transformed',
     })
@@ -402,15 +398,12 @@ export class SessionLogScanner {
   /**
    * Create an event scanner from exactly one newline-terminated header record.
    * @param headerRecord - the complete first JSONL record, including its newline.
-   * @param recovery - error recovery policy during event decoding.
-   * @param catalog - session format catalog governing header parsing and row validation.
    */
   constructor(
     headerRecord: Buffer,
     private readonly recovery: SessionFormatRecovery = 'recoverable',
-    catalog: typeof sessionFormatCatalog = sessionFormatCatalog,
   ) {
-    const parsed = parseHeaderRecord(headerRecord, catalog)
+    const parsed = parseHeaderRecord(headerRecord)
     this.meta = parsed.meta
     this.restore = parsed.restore
     this.inputBytes = headerRecord.length
@@ -534,16 +527,12 @@ export class SessionLogScanner {
  * event rows to {@link SessionLogScanner}.
  *
  * @param buffer - the raw bytes of the log file (header line first).
- * @param catalog - codec and migration catalog for the selected physical format generation.
  * @returns the header, preserved event prefix, and byte offset safe to append at.
  */
-export function scanLog(
-  buffer: Buffer,
-  catalog: typeof sessionFormatCatalog = sessionFormatCatalog,
-): SessionLogScan {
+export function scanLog(buffer: Buffer): SessionLogScan {
   const headerEnd = buffer.indexOf(0x0A)
   if (headerEnd === -1) throw new Error('empty or header-less session log')
-  const scanner = new SessionLogScanner(buffer.subarray(0, headerEnd + 1), 'recoverable', catalog)
+  const scanner = new SessionLogScanner(buffer.subarray(0, headerEnd + 1))
   scanner.write(buffer.subarray(headerEnd + 1))
   return scanner.finish()
 }

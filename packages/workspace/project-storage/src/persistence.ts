@@ -8,28 +8,26 @@ import {
   type SessionPersistenceListOptions, type SessionPersistenceOpenOptions,
   type SessionPersistenceSnapshot, type SessionPersistenceStatOptions,
 } from '@deepseek-ai/dsh-session-persistence'
-import type {} from './index.ts'
+import { realpath, stat } from 'node:fs/promises'
+import { isAbsolute, join, relative, sep } from 'node:path'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
-import type { ProjectId, ProjectSessionLocation } from './types.ts'
+import type { WorkspaceRegistry } from '@deepseek-ai/dsh-workspace'
 
 interface Config { compression?: JsonlCompression }
 interface Backend {
-  readonly projectId: ProjectId
-  readonly revision: string
   readonly persistence: SessionPersistence
   readonly dispose: () => Promise<void>
-  activeHandles: number
 }
 
-/** Project-local router that delegates each Session to its immutable JSONL backend. */
+/** Routes SessionPersistence operations through `.aster/sessions` under registered Workspace roots. */
 export class ProjectSessionPersistence extends SessionPersistence {
-  static inject = ['projectStorage']
   static Config: z<Config> = z.object({ compression: z.union(['zstd', 'none'] as const) })
 
   private readonly backends = new Map<string, Backend>()
   private backendTail: Promise<void> = Promise.resolve()
   private readonly compression: JsonlCompression
   private disposed = false
+
   constructor(ctx: Context, config: Config) {
     super(ctx)
     this.compression = config.compression ?? 'zstd'
@@ -48,32 +46,29 @@ export class ProjectSessionPersistence extends SessionPersistence {
   }
 
   /**
-   * Create a project-owned Session after binding its header to one registered project.
-   * @param header - immutable stored Session metadata.
-   * @param options - inherited fork cut and cancellation.
-   * @returns the project backend's owned write handle.
+   * Create a project-owned Session at the Workspace containing its header cwd.
+   * @param header - immutable Session metadata.
+   * @param options - optional cancellation.
+   * @returns the project JSONL backend's owned write handle.
+   * @throws when no registered Workspace contains `header.cwd`.
    */
   async create(header: SessionHeader, options?: SessionPersistenceCreateOptions): Promise<SessionHandle> {
-    const location = await this.ctx.projectStorage.bindSession(header, options?.signal)
-    await this.requireWritable(location, options?.signal)
-    const backend = await this.backend(location)
-    return this.track(backend, await backend.persistence.create(header, options))
+    const projectRoot = await this.projectRootForCwd(header.cwd)
+    return await (await this.backend(projectRoot)).persistence.create(header, options)
   }
 
   /**
-   * Open one uniquely owned project Session.
-   * @param id - Session identifier from the project manifest.
+   * Open a Session found under one registered Workspace root.
+   * @param id - stored Session identity.
    * @param access - read-only access or single-writer access.
    * @param options - optional cancellation.
-   * @returns the project backend's open handle.
+   * @returns the owning project backend's open handle.
+   * @throws {SessionPersistenceNotFoundError} when no Workspace root contains the Session.
    */
   async open(id: SessionId, access: SessionAccess, options?: SessionPersistenceOpenOptions): Promise<SessionHandle> {
-    const location = this.ctx.projectStorage.locateSession(id)
-    if (location === undefined) throw new SessionPersistenceNotFoundError(id)
-    if (access === 'write') await this.requireWritable(location, options?.signal)
-    else await this.requireAvailable(location, options?.signal)
-    const backend = await this.backend(location)
-    return this.track(backend, await backend.persistence.open(id, access, options))
+    const located = await this.locate(id, options?.signal)
+    if (located === undefined) throw new SessionPersistenceNotFoundError(id)
+    return await located.backend.persistence.open(id, access, options)
   }
 
   /**
@@ -87,65 +82,88 @@ export class ProjectSessionPersistence extends SessionPersistence {
   }
 
   /**
-   * Observe one Session in its registered project without reading its events.
-   * @param id - Session identifier from the project manifest.
+   * Observe one Session without reading its event log.
+   * @param id - stored Session identity.
    * @param options - optional cancellation.
-   * @returns stored metadata, or `undefined` when the owner backend has no record.
+   * @returns the snapshot, or `undefined` when no registered Workspace contains it.
    */
   async stat(id: SessionId, options?: SessionPersistenceStatOptions): Promise<SessionPersistenceSnapshot | undefined> {
-    const location = this.ctx.projectStorage.locateSession(id)
-    if (location === undefined) throw new SessionPersistenceNotFoundError(id)
-    await this.requireAvailable(location, options?.signal)
-    return (await this.backend(location)).persistence.stat(id, options)
+    return (await this.locate(id, options?.signal))?.snapshot
   }
 
   /**
-   * List stored Sessions belonging to registered, available projects.
+   * List Sessions physically stored beneath registered Workspace roots.
    * @param options - optional cancellation.
-   * @returns one snapshot per listed project Session.
+   * @returns one snapshot per stored Session under a registered root.
    */
   async list(options?: SessionPersistenceListOptions): Promise<readonly SessionPersistenceSnapshot[]> {
     const snapshots: SessionPersistenceSnapshot[] = []
-    for (const binding of this.ctx.projectStorage.list()) {
+    for (const root of this.workspaceRegistry().listProjectRoots()) {
       options?.signal?.throwIfAborted()
-      const status = await this.ctx.projectStorage.status(binding.id, options?.signal)
-      if (status === 'missing') continue
-      const manifest = this.ctx.projectStorage.manifest(binding.id)
-      const first = manifest.sessions[0]
-      if (first === undefined) continue
-      const location = this.ctx.projectStorage.locateSession(first.id)
-      if (location === undefined) throw new Error(`project Session membership has no registered location: ${first.id}`)
-      const backend = await this.backend(location)
-      const owned = new Set(manifest.sessions.map(session => session.id))
-      for (const snapshot of await backend.persistence.list(options)) {
-        if (owned.has(snapshot.header.id)) snapshots.push(snapshot)
+      try {
+        if (!(await stat(root)).isDirectory()) continue
+      } catch (error) {
+        if (isMissingPath(error)) continue
+        throw error
       }
+      const backend = await this.backend(root)
+      snapshots.push(...await backend.persistence.list(options))
     }
     return snapshots
   }
 
-  private async backend(location: ProjectSessionLocation): Promise<Backend> {
-    let release!: () => void
+  private workspaceRegistry(): WorkspaceRegistry {
+    const registry = this.ctx.get('workspaceRegistry', false)
+    if (registry === undefined) throw new Error('project Session persistence requires the Workspace registry')
+    return registry
+  }
+
+  private async projectRootForCwd(cwd: string | undefined): Promise<string> {
+    if (cwd === undefined) throw new Error('project Session persistence requires a Session header cwd')
+    const canonicalCwd = await realpath(cwd)
+    const root = this.workspaceRegistry().listProjectRoots()
+      .filter(root => containsPath(root, canonicalCwd))
+      .sort((left, right) => right.length - left.length)[0]
+    if (root === undefined) throw new Error(`no registered Workspace contains Session cwd '${canonicalCwd}'`)
+    return root
+  }
+
+  private async locate(
+    id: SessionId,
+    signal?: AbortSignal,
+  ): Promise<{ readonly backend: Backend; readonly snapshot: SessionPersistenceSnapshot } | undefined> {
+    const registry = this.workspaceRegistry()
+    const owner = registry.projectRootForSession(id)
+    const roots = owner === undefined ? registry.listProjectRoots() : [owner]
+    let found: { readonly backend: Backend; readonly snapshot: SessionPersistenceSnapshot } | undefined
+    for (const root of roots) {
+      signal?.throwIfAborted()
+      const backend = await this.backend(root)
+      const snapshot = await backend.persistence.stat(id, signal === undefined ? {} : { signal })
+      if (snapshot === undefined) continue
+      if (found !== undefined) throw new Error(`session '${id}' exists under multiple Workspace roots`)
+      found = { backend, snapshot }
+    }
+    return found
+  }
+
+  private async backend(projectRoot: string): Promise<Backend> {
     const previous = this.backendTail
-    this.backendTail = new Promise<void>((resolve) => { release = resolve })
+    const { promise, resolve } = Promise.withResolvers<void>()
+    this.backendTail = promise
     await previous
     try {
       if (this.disposed) throw new Error('project Session persistence is disposing')
-      const key = String(location.projectId)
-      const current = this.backends.get(key)
-      if (current !== undefined && current.revision === location.bindingRevision) return current
-      if (current !== undefined) {
-        if (current.activeHandles !== 0) throw new Error(`cannot rebind project ${location.projectId} while Session handles are open`)
-        await current.persistence.flush()
-        await current.dispose()
-        this.backends.delete(key)
-      }
+      const current = this.backends.get(projectRoot)
+      if (current !== undefined) return current
       const scope = this.ctx.isolate('sessionPersistence')
-      const fiber = scope.plugin(JsonlSessionPersistence, { root: location.sessionsRoot, compression: this.compression })
+      const fiber = scope.plugin(JsonlSessionPersistence, {
+        root: join(projectRoot, '.aster', 'sessions'),
+        compression: this.compression,
+      })
       let persistence: SessionPersistence
       try {
         await fiber.await()
-        // The parent scope's property lookup can return this router's own service.
         const provided = scope.get('sessionPersistence')
         if (provided === undefined) throw new Error('project JSONL backend did not provide Session persistence')
         persistence = provided
@@ -154,46 +172,24 @@ export class ProjectSessionPersistence extends SessionPersistence {
         throw error
       }
       const backend: Backend = {
-        projectId: location.projectId,
-        revision: location.bindingRevision,
         persistence,
         dispose: async () => { await fiber.dispose() },
-        activeHandles: 0,
       }
-      this.backends.set(key, backend)
+      this.backends.set(projectRoot, backend)
       return backend
     } finally {
-      release()
+      resolve()
     }
   }
+}
 
-  private track(backend: Backend, handle: SessionHandle): SessionHandle {
-    backend.activeHandles += 1
-    let closed = false
-    const close = async (): Promise<void> => {
-      if (closed) return
-      await handle.close()
-      closed = true
-      backend.activeHandles -= 1
-    }
-    return new Proxy(handle, {
-      get(target, property, receiver) {
-        if (property === 'close' || property === Symbol.asyncDispose) return close
-        const value: unknown = Reflect.get(target, property, receiver)
-        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value
-      },
-    })
-  }
+function containsPath(parent: string, child: string): boolean {
+  const path = relative(parent, child)
+  return path === '' || (path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path))
+}
 
-  private async requireWritable(location: ProjectSessionLocation, signal?: AbortSignal): Promise<void> {
-    const status = await this.ctx.projectStorage.status(location.projectId, signal)
-    if (status !== 'available') throw new Error(`project ${location.projectId} is ${status}; Session writes are unavailable`)
-  }
-
-  private async requireAvailable(location: ProjectSessionLocation, signal?: AbortSignal): Promise<void> {
-    const status = await this.ctx.projectStorage.status(location.projectId, signal)
-    if (status === 'missing') throw new Error(`project ${location.projectId} is missing; Session history is unavailable`)
-  }
+function isMissingPath(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT'
 }
 
 export default ProjectSessionPersistence

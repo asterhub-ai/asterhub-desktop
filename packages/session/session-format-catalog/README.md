@@ -27,13 +27,13 @@ English | [中文](README.zh.md)
 
 ### When to use it
 
-Import this library from persistence and test-support readers that need the complete first-party released-format inventory before any feature plugin mounts. Feature compositions do not register or reorder its entries. No runtime invariant companion is published because construction rejects an invalid static inventory and each completed restore validates its result; mutable row-decoder state belongs to one caller-owned streaming restore.
+Import this library from persistence and test-support readers that need the complete first-party released-format inventory before any feature plugin mounts. Feature compositions do not register or reorder its entries.
 
 ### Entry point
 
 ```text
 const descriptor = sessionFormatCatalog.readHeader(physicalHeader)
-const catalog = createSessionFormatCatalogWithChildren(childFacts, targetVersion?)
+const catalog = createSessionFormatCatalogWithChildren(childFacts)
 const restore = catalog.createRestore(physicalHeader, { recovery: 'recoverable', validation: 'transformed' })
 for (const row of physicalRows) restore.decodeRow(row)
 const current = restore.finish()
@@ -47,7 +47,7 @@ Production historical reads select `{ recovery: 'recoverable', validation: 'tran
 
 The catalog contains all supported historical readers directly. A profile cannot add, remove, or reorder an edge by mounting a feature plugin. Its peer dependency on `dsh-session` supplies the installed current event vocabulary and current restoration rules, while historical edge validators remain frozen. The browser-safe `./message-projections` export assembles current plugin-owned interpreters for detached constructors and surface folds; it does not mount recovery listeners.
 
-`createSessionFormatCatalogWithChildren(childFacts, targetVersion?: 4)` binds explicit child evidence to V3→V4 during assembly; see the [catalog-completion specification](../session-format-v3-to-v4/README.md). An omitted `targetVersion` targets the installed current writer format, while the explicit value `4` retains the V4 writer and stops adjacent migration at V4 for historical migration utilities. `historicalSessionFormatCatalog` restores V0–V3 using the fixed released-V3 event vocabulary to collect child prerequisites without recursively completing their catalogs. An ignorable V3 extension remains opaque even when the installed writer knows its name. Isolated transcript replay explicitly supplies an empty array; persistence must collect the complete available direct-child set. Keep the supplied evidence unchanged for the catalog’s lifetime. Each restore owns independent stage state. The static `sessionFormatCatalog` supports header and native current-format reads; historical body reads require the child-bound catalog.
+`createSessionFormatCatalogWithChildren(childFacts)` binds explicit child evidence to V3→V4 during assembly; see the [catalog-completion specification](../session-format-v3-to-v4/README.md). `historicalSessionFormatCatalog` restores V0–V3 using the fixed released-V3 event vocabulary to collect child prerequisites without recursively completing their catalogs. An ignorable V3 extension remains opaque even when the installed writer knows its name. Isolated transcript replay explicitly supplies an empty array; persistence must collect the complete available direct-child set. Keep the supplied evidence unchanged for the catalog’s lifetime. Each restore owns independent stage state. The static `sessionFormatCatalog` supports header and native current-format reads; historical body reads require the child-bound catalog.
 
 -----
 

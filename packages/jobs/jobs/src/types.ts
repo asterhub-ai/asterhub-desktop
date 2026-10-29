@@ -6,7 +6,7 @@
  */
 
 import type { SessionEventMap, SessionId } from '@deepseek-ai/dsh-session'
-import type { JobExecutionId, JobId } from './brand.ts'
+import type { JobId } from './brand.ts'
 import type { JobChannel, JobChunk, JobKind, JobView } from './view.ts'
 
 export { JobId } from './brand.ts'
@@ -20,45 +20,47 @@ export interface JobToolCall {
   readonly rootCallId: SessionEventMap['tool/call']['callId']
 }
 
-/** Durable registration data shared by current records and released history. */
+/** Durable identity and registration time of one owned job execution. */
 export interface JobRegisteredData {
-  /** Stable UUID used to pair modern executions; early released records omit it. */
-  executionId?: JobExecutionId
-  /** Runtime-local id accepted by job controls. */
-  jobId: JobId
+  /** Unique execution id accepted by job controls and retained in Session history. */
+  readonly jobId: JobId
   /** Original owner; copied history does not transfer execution ownership. */
-  owner: SessionId
+  readonly owner: SessionId
   /** Producer kind. */
-  kind: string
+  readonly kind: string
   /** Producer-supplied label. */
-  label: string
+  readonly label: string
   /** Unix epoch milliseconds when registration committed. */
-  startedAt: number
+  readonly startedAt: number
   /** Creating tool invocation, when the producer was called through a tool. */
-  toolCall?: JobToolCall
+  readonly toolCall?: JobToolCall
 }
 
-/** Registry settlement fields, including legacy producer-report metadata. */
+/** Registry settlement, including whether the producer reported a terminal outcome. */
 export interface JobSettledData extends JobRegisteredData {
   /** Unix epoch milliseconds when the registry committed the terminal record. */
-  finishedAt: number
+  readonly finishedAt: number
   /** Recorded terminal outcome. */
-  status: JobOutcome['status']
+  readonly status: JobOutcome['status']
   /** Source of the termination request, or producer completion. */
-  cause: JobSettleCause
-  /** False for a rejected producer promise or forced teardown failure; absent in early history. */
-  terminationConfirmed?: boolean
-  /** Whether the producer explicitly reported completion in legacy records. */
-  producerReported?: boolean
+  readonly cause: JobSettleCause
+  /** True when done fulfilled; false for rejection or forced failure. Does not certify resource release. */
+  readonly producerReported: boolean
   /** Terminal reason, including a recorded kill reason when applicable. */
-  detail?: string
+  readonly detail?: string
 }
 
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
-    /** Log-only job registration; earlier released records omit executionId. */
+    /**
+     * Log-only job registration; model output collection is not required.
+     * @param data - Execution identity, original owner, registration time, and creating tool call.
+     */
     'job/registered': JobRegisteredData
-    /** Log-only terminal record; earlier released records use producerReported. */
+    /**
+     * Log-only terminal record, paired by the same unique jobId used for live control.
+     * @param data - Registration facts plus settlement time, outcome, and producer acknowledgement.
+     */
     'job/settled': JobSettledData
   }
 }
@@ -135,7 +137,7 @@ export interface JobAppendOptions {
  * throwing, so a producer's trailing flush cannot break its own teardown path.
  */
 export interface JobHandle {
-  /** The registry-issued id (`<kind>-N`). */
+  /** The registry-issued id (`<kind>-<short-uuid>`). */
   readonly id: JobId
   /**
    * Append one chunk to the output ring. Offsets advance by the chunk's UTF-8
@@ -175,7 +177,7 @@ export interface JobHooks {
  * the output ring.
  */
 export interface JobSpec {
-  /** Producer kind — also the id prefix (`bash`, `subagent`, …). */
+  /** Producer kind — also the id prefix (`bash`, …). */
   kind: JobKind
   /** One-line model-facing label (the command; the delegation description). */
   label: string
@@ -186,6 +188,8 @@ export interface JobSpec {
    * caller until service disposal.
    */
   owner?: SessionId
+  /** Creating tool invocation, retained in the durable lifecycle records. */
+  toolCall?: JobToolCall
   /**
    * Optional UTF-8 byte cap for each complete model-facing completion notice or
    * output read, including controller status metadata. Independent of ring

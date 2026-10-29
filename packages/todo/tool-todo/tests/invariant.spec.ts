@@ -112,12 +112,13 @@ describe('todo snapshot invariants', () => {
 
   it('tracks events committed before a prepared session is announced', async () => {
     const ctx = await setup()
-    const session = ctx.sessions.prepare(SessionId('todo-prepared'))
+    const session = ctx.sessions.prepare(SessionId('todo-prepared'), { seed: [
+      { type: 'turn/start', seq: SessionSeq(0), time: 1, data: { turn: 1 } },
+    ] })
     const detach = ctx.sessions.enter(session)
     try {
-      session.append('turn/start', { turn: 1 })
-      expect(() => session.append('todo/write', { todos: [] })).not.toThrow()
       ctx.sessions.announce(session)
+      expect(() => session.append('todo/write', { todos: [] })).not.toThrow()
       session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
       expect(() => session.append('todo/write', { todos: [] })).toThrow(/outside any open turn/)
     } finally {

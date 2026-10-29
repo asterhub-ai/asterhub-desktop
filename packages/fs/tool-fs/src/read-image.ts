@@ -83,6 +83,7 @@ const IMAGE_VALUE_SCHEMA = {
 
 /** The structured outcome declared by the `read_image` output schema. */
 export interface ImageReadValue {
+  /** Canonical absolute path in the filesystem provider's execution world. */
   path: string
   image: {
     attachmentId: string
@@ -218,7 +219,7 @@ export function applyReadImageTool(ctx: Context): void {
         type: 'object',
         additionalProperties: false,
         properties: {
-          path: { type: 'string', required: true },
+          path: { type: 'string', required: true, description: 'Canonical absolute path in the filesystem execution world.' },
           image: IMAGE_VALUE_SCHEMA,
         },
       },
@@ -270,8 +271,7 @@ export function applyReadImageTool(ctx: Context): void {
       // committed object by the time the tool/result event is appended.
       let ref: ImageAttachmentRef
       try {
-        const scope = exec.agent === undefined ? undefined : { sessionId: exec.agent.session.id }
-        ref = await attachments.saveImage({ data, mediaType, name: basename(target.displayPath) }, scope)
+        ref = await attachments.saveImage({ data, mediaType, name: basename(target.displayPath) })
       } catch (error: unknown) {
         if (!(error instanceof AttachmentError)) throw error
         // Dimension refusals stay recoverable tool errors: an oversized image
@@ -321,7 +321,7 @@ export function applyReadImageTool(ctx: Context): void {
       }
       ctx.emit('fs/observed', target, { kind: 'present', version: info.version }, exec)
       const value: ImageReadValue = {
-        path: target.displayPath,
+        path: ctx.fs.processPath(target),
         image: {
           attachmentId: ref.attachmentId,
           mediaType: ref.mediaType,

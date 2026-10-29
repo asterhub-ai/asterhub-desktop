@@ -1,9 +1,10 @@
 /** Host Workspace Remote owner: explicit commands and reconnect-safe state. */
 
 import { Context } from '@deepseek-ai/cordis'
-import type { ProjectStorage } from '@deepseek-ai/dsh-project-storage/types'
 import z from '@deepseek-ai/schemastery'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import type {} from '@deepseek-ai/dsh-api-remote-access'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { WorkspaceCommands } from './commands.ts'
 import { DirectoryPickerController } from './directory-picker.ts'
 import { WorkspaceFeed, workspaceView } from './feed.ts'
@@ -11,16 +12,13 @@ import { defaultWorkspaceDirectory, validateDocumentsDirectory } from './default
 import type {
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
+  WorkspaceBaseline,
   WorkspaceCreateRequest,
   WorkspaceCreateValue,
-  WorkspaceDeleteSessionRequest,
-  WorkspaceDeleteSessionValue,
-  WorkspaceInspectRequest,
-  WorkspaceInspectionView,
-  WorkspaceOpenProjectRequest,
   WorkspaceDeleteRequest,
   WorkspaceDeleteValue,
   WorkspaceFollowFrame,
+  WorkspaceId,
   WorkspaceInsertBeforeRequest,
   WorkspaceInsertSessionBeforeRequest,
   WorkspaceOrderValue,
@@ -55,7 +53,7 @@ declare module '@deepseek-ai/cordis' {
 
 /** Host service backing the generated `ctx.remote.workspace` namespace. */
 export class WorkspaceController extends TypertRemoteService {
-  static inject = ['typert', 'workspaceRegistry']
+  static inject = ['remoteAccess', 'typert', 'workspaceRegistry']
 
   static Config: z<Config, ResolvedConfig> = z.object({
     documentsDirectory: z.string(),
@@ -72,6 +70,7 @@ export class WorkspaceController extends TypertRemoteService {
    */
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'workspaceController', { namespace: 'workspace' })
+    ctx.typert.resources.register('workspace', { field: 'workspaceId' })
     this.config = WorkspaceController.Config(config)
     if (this.config.documentsDirectory !== undefined) validateDocumentsDirectory(this.config.documentsDirectory)
     this.commands = new WorkspaceCommands(ctx)
@@ -94,28 +93,6 @@ export class WorkspaceController extends TypertRemoteService {
   }
 
   /**
-   * Inspect a directory before creating or adopting a Workspace.
-   * @param request - path to inspect.
-   * @param signal - caller cancellation signal.
-   * @returns the inspection view (new, existing, registered, or legacy).
-   */
-  @Remote('inspect')
-  inspect(request: WorkspaceInspectRequest, signal: AbortSignal): Promise<WorkspaceInspectionView> {
-    return this.commands.inspect(request, signal)
-  }
-
-  /**
-   * Confirm and open an existing, legacy, or new project directory.
-   * @param request - confirmed parameters including path, mode, and optional expected ID/digest.
-   * @param signal - caller cancellation signal.
-   * @returns the created or resolved Workspace projection.
-   */
-  @Remote('openProject')
-  openProject(request: WorkspaceOpenProjectRequest, signal: AbortSignal): Promise<WorkspaceCreateValue> {
-    return this.commands.openProject(request, signal)
-  }
-
-  /**
    * Initialize or reuse the default Workspace during first-use startup. The
    * directory name is fixed, so the Host never renames or relocates an
    * existing default; its initial title is that same name, which browser
@@ -131,22 +108,7 @@ export class WorkspaceController extends TypertRemoteService {
         this.config.documentsDirectory, AbortSignal.any([signal, timeout]),
       )
     })
-    if (workspace === undefined) return undefined
-    const projectStorage = this.ctx.get('projectStorage', false) as ProjectStorage | undefined
-    if (projectStorage !== undefined) {
-      const inspection = await projectStorage.inspect(workspace.path, signal)
-      if (inspection.kind === 'new') {
-        await projectStorage.open({ root: workspace.path, mode: 'new' }, signal)
-      } else if (inspection.kind === 'existing') {
-        await projectStorage.open({
-          root: workspace.path,
-          mode: 'existing',
-          expectedId: inspection.manifest.id,
-          expectedDigest: inspection.digest,
-        }, signal)
-      }
-    }
-    return { workspace: workspaceView(workspace) }
+    return workspace === undefined ? undefined : { workspace: workspaceView(workspace) }
   }
 
   /**
@@ -208,16 +170,6 @@ export class WorkspaceController extends TypertRemoteService {
   unarchiveSession(request: WorkspaceUnarchiveSessionRequest): Promise<WorkspaceArchiveValue> {
     return this.commands.unarchiveSession(request)
   }
-  /**
-   * Permanently delete one known Session from Workspace grouping surfaces and storage.
-   * @param request - Session identity to delete.
-   * @returns deletion confirmation.
-   */
-  @Remote('deleteSession')
-  deleteSession(request: WorkspaceDeleteSessionRequest): Promise<WorkspaceDeleteSessionValue> {
-    return this.commands.deleteSession(request)
-  }
-
 
   /**
    * Surface one known unarchived Session ahead of unpinned Sessions.
@@ -240,14 +192,77 @@ export class WorkspaceController extends TypertRemoteService {
   }
 
   /**
-   * Stream a complete Workspace baseline followed by ordered increments.
+   * Stream a complete Workspace baseline followed by ordered increments. A
+   * non-owner receives only the Workspaces and Sessions `allows()` admits.
+   * When a delivered Workspace is no longer admitted at its next change or
+   * the next order change, the stream sends a `replace` frame with the
+   * complete filtered state instead of a `remove`, because a Client never
+   * resurrects a removed Workspace; a `remove` frame reports a deletion and
+   * reaches only a Client that received that Workspace.
    * @param signal - generation cancellation.
    * @returns baseline followed by ordered Workspace increments.
    */
   @Remote({ mode: 'stream' })
-  follow(signal: AbortSignal): AsyncIterable<WorkspaceFollowFrame> {
-    return this.feed.follow(signal)
+  async *follow(signal: AbortSignal): AsyncIterable<WorkspaceFollowFrame> {
+    const access = this.ctx.remoteAccess
+    const visible = (workspaceId: WorkspaceId): boolean => access.allows({ kind: 'workspace', id: workspaceId })
+    const sessions = (sessionIds: readonly SessionId[]): SessionId[] =>
+      sessionIds.filter(sessionId => access.allows({ kind: 'session', id: sessionId }))
+    /** Workspaces this generation has delivered and not yet removed. */
+    const delivered = new Set<WorkspaceId>()
+    /** The admitted part of `value`; it becomes the delivered set. */
+    const filtered = (value: WorkspaceBaseline): WorkspaceBaseline => {
+      const items = value.items.filter(item => visible(item.workspaceId))
+      delivered.clear()
+      for (const item of items) delivered.add(item.workspaceId)
+      return {
+        items: items.map(item => ({ ...item, sessionIds: sessions(item.sessionIds) })),
+        archivedSessionIds: sessions(value.archivedSessionIds),
+        pinnedSessionIds: sessions(value.pinnedSessionIds),
+      }
+    }
+    for await (const frame of this.feed.follow(signal)) {
+      switch (frame.type) {
+        case 'baseline':
+          yield { type: 'baseline', value: filtered(frame.value) }
+          break
+        case 'upsert': {
+          const workspaceId = frame.workspace.workspaceId
+          if (visible(workspaceId)) {
+            delivered.add(workspaceId)
+            yield { type: 'upsert', workspace: { ...frame.workspace, sessionIds: sessions(frame.workspace.sessionIds) } }
+          } else if (delivered.has(workspaceId)) {
+            yield { type: 'replace', value: filtered(this.feed.baseline()) }
+          }
+          break
+        }
+        case 'remove':
+          if (delivered.delete(frame.workspaceId)) yield frame
+          break
+        case 'order':
+          if (frame.workspaceIds.some(workspaceId => delivered.has(workspaceId) && !visible(workspaceId))) {
+            yield { type: 'replace', value: filtered(this.feed.baseline()) }
+          } else {
+            yield { type: 'order', workspaceIds: frame.workspaceIds.filter(visible) }
+          }
+          break
+        case 'archived':
+          yield { type: 'archived', archivedSessionIds: sessions(frame.archivedSessionIds) }
+          break
+        case 'pinned':
+          yield { type: 'pinned', pinnedSessionIds: sessions(frame.pinnedSessionIds) }
+          break
+        /* v8 ignore next -- closed follow-frame union. */
+        default:
+          assertNever(frame)
+      }
+    }
   }
+}
+
+/* v8 ignore next 3 -- closed-union backstop. */
+function assertNever(value: never): never {
+  throw new Error(`unreachable Workspace follow frame: ${JSON.stringify(value)}`)
 }
 
 export default WorkspaceController

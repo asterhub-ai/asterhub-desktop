@@ -4,10 +4,10 @@
  * @module @deepseek-ai/dsh-file-reference-local
  */
 
+import type {} from '@deepseek-ai/dsh-working-directory'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type {} from '@deepseek-ai/dsh-session/cwd'
 import FileReferenceService, {
   FILE_REFERENCE_PROMPT,
   type FileReferenceCandidate,
@@ -43,7 +43,7 @@ export interface Config {
 
 /** Local-filesystem owner of the file-reference discovery service. */
 export class LocalFileReferenceService extends FileReferenceService {
-  static inject = ['agents']
+  static inject = ['agents', 'workingDirectory']
   static Config: z<Config> = z.object({
     maxResults: z.number().step(1).min(1).default(DEFAULT_FILE_SEARCH_MAX_RESULTS),
     maxEntries: z.number().step(1).min(1).default(DEFAULT_FILE_SEARCH_MAX_ENTRIES),
@@ -51,14 +51,12 @@ export class LocalFileReferenceService extends FileReferenceService {
   })
 
   private readonly config: FileSearchConfig
-  private sessionCwd: Context['sessionCwd'] | undefined
   private readonly searches = new Map<Agent, { cwd: string; search: WorkspaceFileSearch }>()
   private readonly promptFibers = new Map<Agent, ReturnType<Context['inject']>>()
   private readonly promptDisposals = new Set<Promise<void>>()
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx)
-    this.sessionCwd = ctx.get('sessionCwd', false)
     this.config = {
       maxResults: config.maxResults ?? DEFAULT_FILE_SEARCH_MAX_RESULTS,
       maxEntries: config.maxEntries ?? DEFAULT_FILE_SEARCH_MAX_ENTRIES,
@@ -105,6 +103,7 @@ export class LocalFileReferenceService extends FileReferenceService {
     })
     ctx.effect(() => async () => {
       for (const { search } of this.searches.values()) search.dispose()
+      this.searches.clear()
       const promptFibers = [...this.promptFibers.values()]
       this.promptFibers.clear()
       await Promise.all([
@@ -119,17 +118,14 @@ export class LocalFileReferenceService extends FileReferenceService {
     query: string,
     signal: AbortSignal,
   ): Promise<FileReferenceCandidate[]> {
-    this.sessionCwd = this.ctx.get('sessionCwd', false) ?? this.sessionCwd
-    const sessionCwd = this.sessionCwd
-    const cwd = sessionCwd ? sessionCwd.resolve(agent.session.header) : (agent.options.cwd ?? agent.session.header.cwd)
-    if (cwd === undefined) throw new Error(`Session ${agent.id} has no current execution directory`)
-    let entry = this.searches.get(agent)
-    if (entry?.cwd !== cwd) {
-      entry?.search.dispose()
-      entry = { cwd, search: new WorkspaceFileSearch(cwd, this.config) }
-      this.searches.set(agent, entry)
+    const cwd = await this.ctx.workingDirectory.ensure(agent, signal)
+    let cached = this.searches.get(agent)
+    if (cached?.cwd !== cwd) {
+      cached?.search.dispose()
+      cached = { cwd, search: new WorkspaceFileSearch(cwd, this.config) }
+      this.searches.set(agent, cached)
     }
-    return entry.search.list(query, signal)
+    return cached.search.list(query, signal)
   }
 }
 

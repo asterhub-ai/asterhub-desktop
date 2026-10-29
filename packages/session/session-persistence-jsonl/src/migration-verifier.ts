@@ -11,7 +11,6 @@ interface VerificationRequest {
   readonly expectedId: string
   readonly expectedEventCount: number
   readonly expectedPrefix?: JsonlExpectedPrefix
-  readonly targetVersion?: 4
 }
 
 type VerificationResponse =
@@ -82,6 +81,8 @@ function workerSpawn(request: VerificationRequest): { readonly entry: string | U
   const workerEntry = new URL('./worker.ts', import.meta.url)
   const bootstrap = [
     `import { register as registerEsm } from ${JSON.stringify(import.meta.resolve('tsx/esm/api'))}`,
+    `import { register as registerCjs } from ${JSON.stringify(import.meta.resolve('tsx/cjs/api'))}`,
+    'registerCjs()',
     'registerEsm()',
     `await import(${JSON.stringify(workerEntry.href)})`,
   ].join('\n')
@@ -102,8 +103,7 @@ function workerSpawn(request: VerificationRequest): { readonly entry: string | U
  * @param expectedEventCount - exact logical event count expected after decoding.
  * @param expectedPrefix - verified physical prefix; an append tail may be present and is not validated.
  * @param signal - optional cancellation for scheduler wait and Worker execution.
- * @param targetVersion - optional target format generation cutoff; literal 4 for offline migration, or omitted for current format.
- * @returns stable physical identity and digest observed by the worker.
+ * @returns the worker's physical identity and digest after its natural zero exit.
  */
 export function verifyCurrentGenerationInWorker(
   path: string,
@@ -112,7 +112,6 @@ export function verifyCurrentGenerationInWorker(
   expectedEventCount: number,
   expectedPrefix?: JsonlExpectedPrefix,
   signal?: AbortSignal,
-  targetVersion?: 4,
 ): Promise<JsonlVerifiedGeneration> {
   return verificationScheduler.run(() => runVerificationWorker(
     path,
@@ -121,7 +120,6 @@ export function verifyCurrentGenerationInWorker(
     expectedEventCount,
     expectedPrefix,
     signal,
-    targetVersion,
   ), signal)
 }
 
@@ -132,21 +130,17 @@ function runVerificationWorker(
   expectedEventCount: number,
   expectedPrefix?: JsonlExpectedPrefix,
   signal?: AbortSignal,
-  targetVersion?: 4,
 ): Promise<JsonlVerifiedGeneration> {
   signal?.throwIfAborted()
   const request: VerificationRequest = {
-    path,
-    compression,
-    expectedId,
-    expectedEventCount,
+    path, compression, expectedId, expectedEventCount,
     ...(expectedPrefix === undefined ? {} : { expectedPrefix }),
-    ...(targetVersion === undefined ? {} : { targetVersion }),
   }
   const { entry, options } = workerSpawn(request)
   const worker = new Worker(entry, options)
   return new Promise((resolve, reject) => {
     let settled = false
+    let success: Extract<VerificationResponse, { ok: true }> | undefined
     const cleanup = (): void => {
       signal?.removeEventListener('abort', abort)
     }
@@ -176,16 +170,20 @@ function runVerificationWorker(
         fail(error)
         return
       }
-      settled = true
-      cleanup()
-      void worker.terminate().then(
-        () => { resolve(response.result) },
-        (error: unknown) => { reject(error instanceof Error ? error : new Error(String(error))) },
-      )
+      success = response
     })
     worker.once('error', fail)
     worker.once('exit', (code) => {
-      if (!settled) fail(new Error(`migration verifier exited before reporting a result (code ${code})`))
+      if (settled) return
+      settled = true
+      cleanup()
+      if (success === undefined) {
+        reject(new Error(`migration verifier exited before reporting a result (code ${code})`))
+      } else if (code !== 0) {
+        reject(new Error(`migration verifier exited after reporting a result (code ${code})`))
+      } else {
+        resolve(success.result)
+      }
     })
     const abort = (): void => { fail(verifierAbortError(signal)) }
     signal?.addEventListener('abort', abort, { once: true })

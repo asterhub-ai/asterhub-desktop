@@ -1,26 +1,32 @@
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import { mountWorkingDirectoryFixture } from './working-directory-fixture.ts'
 // The browser-facing prompt and interrupt controls and their stable failure
 // codes. Session Controller owns catalog observation and transport.
 
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import AttachmentStore, { AttachmentError, type AttachmentScope, type SaveImageAttachment } from '@deepseek-ai/dsh-attachment'
+import AttachmentStore, { AttachmentError } from '@deepseek-ai/dsh-attachment'
 import type { MessageId } from '@deepseek-ai/dsh-llm'
-import ProjectStorage from '@deepseek-ai/dsh-project-storage'
-import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
-import SessionCwd from '@deepseek-ai/dsh-session/cwd'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import SubagentRuntime, {
   SubagentError,
   type SubagentPromptRequestId,
 } from '@deepseek-ai/dsh-subagent'
 import { deliverSubagentPrompt, type HostPromptDeliverer } from '@deepseek-ai/dsh-subagent/internal'
+import type { PeerId, Principal, RemoteInvocation } from '@deepseek-ai/dsh-typert-protocol'
+
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface PrincipalMap {
+    /** Test-only non-owner caller shared by the access specs. */
+    'test-guest': { readonly kind: 'test-guest'; readonly guest: string }
+  }
+}
 
 const PARENT = SessionId('parent')
 const CHILD = SessionId('child')
 const PARENT_CREATED_AT = 1
 const REQUEST_ID = 'req-1' as SubagentPromptRequestId
+const GUEST: Principal = { kind: 'test-guest', guest: 'subagent' }
 const signal = new AbortController().signal
 /** Durable-reference base for the fake store; per-test ids and media types override. */
 const IMAGE_REF = { attachmentId: 'att', mediaType: 'image/png', bytes: 2, width: 1, height: 1 }
@@ -28,6 +34,8 @@ const IMAGE_REF = { attachmentId: 'att', mediaType: 'image/png', bytes: 2, width
 /** The runtime plus a programmable live-Agent registry, omitted to compose none. */
 async function bench(live?: Record<string, { status: 'running' | 'idle' }>) {
   const ctx = new Context()
+  await mountWorkingDirectoryFixture(ctx)
+  if (ctx.get('sessionProjections') === undefined) await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(SubagentRuntime)
   if (live !== undefined) {
     ctx.provide('agents', {
@@ -125,38 +133,6 @@ describe('subagent prompt Remote', () => {
     ])
   })
 
-  it('stores browser prompt images in the child Session project scope', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'subagent-image-scope-'))
-    const project = join(root, 'project')
-    await mkdir(project)
-    const { ctx, subagents } = await bench({ [PARENT]: { status: 'idle' } })
-    try {
-      await ctx.plugin(SessionCwd)
-      await ctx.plugin(ProjectStorage, {
-        sessionMode: 'project-local', locatorPath: join(root, 'locator.json'),
-        legacySessionRoot: '', metadataLimitBytes: 1024 * 1024, lockDeadlineMs: 5000,
-      })
-      await ctx.projectStorage.open({ root: project, mode: 'new' })
-      await ctx.projectStorage.bindSession({
-        version: SESSION_FORMAT_VERSION, id: CHILD, createdAt: 1, cwd: project, isSeeded: false, delegationDepth: 0,
-      })
-      const saveImages = vi.fn(async (inputs: readonly SaveImageAttachment[], _scope?: AttachmentScope) =>
-        inputs.map((input, index) => ({ ...IMAGE_REF, attachmentId: `child-${index}`, mediaType: input.mediaType })))
-      ctx.provide('attachments', Object.setPrototypeOf({ saveImages }, AttachmentStore.prototype) as never)
-      promptDelivery(subagents).mockResolvedValue('m-content' as MessageId)
-
-      await subagents.prompt({
-        ...promptRequest(),
-        content: [{ type: 'image', mediaType: 'image/png', data: 'aGk=' }],
-      }, signal)
-
-      expect(saveImages.mock.calls[0]?.[1]).toEqual({ sessionId: CHILD })
-    } finally {
-      await ctx.fiber.dispose()
-      await rm(root, { recursive: true, force: true })
-    }
-  })
-
   it('maps a refused image batch to subagent/attachment-invalid and delivers nothing', async () => {
     const { ctx, subagents } = await bench({ [PARENT]: { status: 'idle' } })
     ctx.provide('attachments', Object.setPrototypeOf({
@@ -227,6 +203,27 @@ describe('subagent prompt Remote', () => {
       signal,
       'queue',
     )
+  })
+
+  it('records a non-owner caller on the follow-up source and nothing for the owner', async () => {
+    const { ctx, subagents } = await bench({ [PARENT]: { status: 'idle' } })
+    const delivery = promptDelivery(subagents).mockResolvedValue('m-guest' as MessageId)
+    const as = (principal: Principal) => ctx.extend({
+      invocation: {
+        request: { namespace: 'subagents', method: 'prompt', args: {} },
+        service: 'subagents',
+        peer: { id: 'subagent-peer' as PeerId, ctx, principal, interactions: 'answer', signal, dispose: async () => {} },
+        signal,
+        uplink: <In>(): AsyncIterable<In> => ({ [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true, value: undefined }) }) }),
+      } satisfies RemoteInvocation,
+    }).subagents
+
+    await expect(as(GUEST).prompt(promptRequest(), signal)).resolves.toEqual({ messageId: 'm-guest' })
+    await expect(as({ kind: 'owner' }).prompt(promptRequest(), signal)).resolves.toEqual({ messageId: 'm-guest' })
+    expect(delivery.mock.calls.map(call => call[3])).toEqual([
+      { kind: 'user', rpcId: REQUEST_ID, principal: GUEST },
+      { kind: 'user', rpcId: REQUEST_ID },
+    ])
   })
 
   it('passes steer delivery through the same admission operation', async () => {

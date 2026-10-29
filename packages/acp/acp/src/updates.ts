@@ -2,7 +2,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionUpdate, ToolCallContent } from '@agentclientprotocol/sdk'
-import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-token-meter'
 import { assistantBlockToAcp } from './content.ts'
 
@@ -17,7 +17,6 @@ export async function assistantUpdates(
   ctx: Context,
   session: Session,
   event: SessionEvent<'assistant/message'>,
-  bridgeSessionId: SessionId,
 ): Promise<SessionUpdate[]> {
   const updates: SessionUpdate[] = []
   for (const block of event.data.message.content) {
@@ -31,7 +30,7 @@ export async function assistantUpdates(
       }
       continue
     }
-    const content = await assistantBlockToAcp(ctx, block, bridgeSessionId)
+    const content = await assistantBlockToAcp(ctx, block)
     if (content !== undefined) {
       updates.push({
         sessionUpdate: 'agent_message_chunk',
@@ -69,13 +68,12 @@ export function toolCallUpdate(event: SessionEvent<'tool/call'>): SessionUpdate 
  */
 export async function toolResultUpdate(
   ctx: Context,
-  sessionId: SessionId,
   event: SessionEvent<'tool/result'>,
 ): Promise<SessionUpdate> {
   const message = event.data.message
   const content: ToolCallContent[] = []
   for (const block of message.content) {
-    const converted = await assistantBlockToAcp(ctx, block, sessionId)
+    const converted = await assistantBlockToAcp(ctx, block)
     if (converted !== undefined) content.push({ type: 'content' as const, content: converted })
   }
   return {

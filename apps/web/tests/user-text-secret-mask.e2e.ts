@@ -4,14 +4,13 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Browser, type Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
-import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import {
   assertFixtureInventory, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
 import { newEnglishPage, saveFailureShot } from './support.ts'
 
-const SNAPSHOT_DIR = fileURLToPath(new URL('./expected/user-text-secret-mask', import.meta.url))
+const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/user-text-secret-mask', import.meta.url))
 // Borrowed read-only: this scenario needs any settled user message, not a new recording.
 const SEED = fileURLToPath(new URL('../../../snapshots/web/seeded-history/session.v3.jsonl', import.meta.url))
 const MODE = webSnapshotMode()
@@ -27,19 +26,10 @@ describe('web e2e: credential mask in user text', () => {
   let tripwire: ReturnType<typeof watchConsole>
 
   beforeAll(async () => {
-    scaffold = await launchWebScaffold({
-      extraOverlayPath: fileURLToPath(new URL('./settings-surface.overlay.yml', import.meta.url)),
-    })
+    scaffold = await launchWebScaffold({})
     const raw = (await readFile(SEED, 'utf8')).replace(RECORDED_PROMPT, PROMPT)
     expect(fixtureUserPrompts(raw), 'adapted seed must carry the credential prompt').toContain(PROMPT)
-    const projects = scaffold.ctx.get('projectStorage')
-    if (projects === undefined) throw new Error('credential mask scenario requires project storage')
-    await projects.open({ root: scaffold.workspaceCwd, mode: 'new' })
-    const location = await projects.bindSession({
-      version: SESSION_FORMAT_VERSION, id: SessionId('user-text-secret-mask'),
-      createdAt: Date.now(), isSeeded: false, delegationDepth: 0, cwd: scaffold.workspaceCwd,
-    })
-    await seedSession({ ...scaffold, persistenceRoot: location.sessionsRoot }, raw, 'user-text-secret-mask')
+    await seedSession(scaffold, raw, 'user-text-secret-mask')
     browser = await chromium.launch()
     page = await newEnglishPage(browser)
     tripwire = watchConsole(page)
@@ -73,16 +63,8 @@ describe('web e2e: credential mask in user text', () => {
     const masked = { run: await run.boundingBox(), bubble: await text.boundingBox() }
     await page.getByRole('button', { name: 'Show secret', exact: true }).click()
     await expect.poll(() => text.textContent()).toBe(PROMPT)
-    // Mask and text glyphs can differ by a layout subpixel; revealing must not move or wrap the line.
-    for (const [name, locator] of [['run', run], ['bubble', text]] as const) {
-      const revealed = await locator.boundingBox()
-      const original = masked[name]
-      expect(revealed).not.toBeNull()
-      expect(original).not.toBeNull()
-      for (const dimension of ['x', 'y', 'width', 'height'] as const) {
-        expect(revealed![dimension]).toBeCloseTo(original![dimension], 0)
-      }
-    }
+    // The monospace run keeps one mask character per original character, so revealing does not move the line.
+    expect({ run: await run.boundingBox(), bubble: await text.boundingBox() }).toEqual(masked)
     await page.getByRole('button', { name: 'Hide secret', exact: true }).click()
     await expect.poll(() => text.textContent()).not.toContain(KEY)
     expect(tripwire.pageErrors).toEqual([])

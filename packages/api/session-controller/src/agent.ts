@@ -1,26 +1,17 @@
-/** Agent activation, composition, and model-selection policy owned by API Session. */
+/** Agent activation, composition, and initial model route owned by API Session. */
 
 import { randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
-import { relative } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import { installModelSelection } from '@deepseek-ai/dsh-agent'
-import type {
-  Agent, AgentHandle, AgentOptions, AgentSetup, CreateAgentOptions,
-  ModelSelection as AgentModelSelection, ModelSelectionRef,
-} from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentOptions, AgentSetup } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
+import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
-import type {} from '@deepseek-ai/dsh-workspace'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import type { Session, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
-import type {} from '@deepseek-ai/dsh-session/cwd'
-import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence'
+import type { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { RemoteError, remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-typert-registry'
-import type { ModelSelection } from './types.ts'
 
 /** Cold Session identity absent from persistence. */
 export class ApiSessionNotFound extends Error {}
@@ -33,7 +24,7 @@ export class ApiSessionSubagentOwnership extends Error {
   }
 }
 
-/** Explicit-id creation attempted to adopt a Session under another resolved execution root. */
+/** Explicit-id creation attempted to adopt a Session under another cwd. */
 export class ApiSessionCwdConflict extends Error {
   constructor(
     readonly sessionId: SessionId,
@@ -75,12 +66,6 @@ export interface ApiSessionCreateRequest {
    * @returns whether that Session may be reused.
    */
   readonly reusable: (sessionId: SessionId) => boolean
-  /**
-   * Commit caller-owned placement before another request may reuse this identity.
-   * @param sessionId - created or reused Session.
-   * @returns resolves after placement is durable.
-   */
-  readonly attach?: (sessionId: SessionId) => Promise<void>
 }
 
 /** The Session one creation request created or reused. */
@@ -104,11 +89,6 @@ export type ApiSessionAgentError = RemoteError<'session/not-found' | 'session/ag
 export type ApiSessionAgentResult =
   | { readonly agent: Agent }
   | { readonly error: ApiSessionAgentError }
-
-type InstalledSelection = ModelSelectionRef & {
-  current: AgentModelSelection
-  consume(provider: string, model: string, reasoningEffort: string | undefined): boolean
-}
 
 /**
  * Test whether generic Session routing must leave an identity to subagent routing.
@@ -142,59 +122,20 @@ export function apiSessionSubagentOwnershipError(sessionId: SessionId): ApiSessi
   )
 }
 
-/**
- * Inspect one cold Session without repairing, resuming, or publishing it.
- * @param ctx - Host context carrying Session persistence.
- * @param sessionId - durable Session identity.
- * @param signal - optional cancellation for persistence reads.
- * @returns the persisted header and complete event prefix.
- */
-export async function inspectApiSession(
-  ctx: Context,
-  sessionId: SessionId,
-  signal?: AbortSignal,
-): Promise<SessionInspection> {
-  try {
-    using observation = await ctx.sessionQuery.observeSession(sessionId, {
-      ...(signal === undefined ? {} : { signal }),
-      projectionMode: 'none',
-    })
-    if (observation.header.cwd === undefined) {
-      throw new ApiSessionNotFound(`session "${sessionId}" not found`)
-    }
-    return {
-      meta: observation.header,
-      inheritedEventCount: observation.inheritedEventCount,
-      events: [...observation.events],
-    }
-  } catch (error: unknown) {
-    if (error instanceof SessionQueryError
-      && error.code === 'SESSION_QUERY_SESSION_NOT_FOUND') {
-      throw new ApiSessionNotFound(`session "${sessionId}" not found`)
-    }
-    throw error
-  }
-}
-
 /** Owns every operation that may create, resume, or configure a Web Agent. */
 export class ApiSessionAgentController {
   private readonly resumes = new Map<SessionId, Promise<Agent>>()
   private readonly claims = new Map<SessionId, Promise<void>>()
-  private readonly handles = new Map<SessionId, AgentHandle>()
-  private readonly selections = new WeakMap<Agent, InstalledSelection>()
   private readonly imageAdmissionChains = new WeakMap<Agent, Promise<void>>()
-  private readonly fixedModelSelection: boolean
+
+  /** @param ctx - Host context carrying Agent, model, persistence, and Typert services. */
+  constructor(private readonly ctx: Context) {}
 
   /**
-   * @param ctx - Host context carrying Agent, model, persistence, and Typert services.
-   * @param fixedModelSelection - use only the deployment model, ignoring Session history and writes.
+   * Configure Session and Agent lookups for Typert.
    */
-  constructor(private readonly ctx: Context, fixedModelSelection = false) {
-    this.fixedModelSelection = fixedModelSelection
-    ctx.effect(() => ctx.on('workspace/session-delete', ({ sessionId }) => this.disposeSession(sessionId)))
-    ctx.effect(() => ctx.on('agent/disposed', ({ agent }) => {
-      if (this.handles.get(agent.id)?.agent === agent) this.handles.delete(agent.id)
-    }))
+  initialize(): void {
+    const ctx = this.ctx
     ctx.typert.lookups.configure('agent', async (sessionId: SessionId) => {
       const found = await this.resolveAgent(sessionId)
       if ('error' in found) throw found.error
@@ -228,47 +169,6 @@ export class ApiSessionAgentController {
    */
   async resolveObservedAgent(observation: SessionObservation): Promise<ApiSessionAgentResult> {
     return this.resolve(observation.header.id, observation)
-  }
-
-  /**
-   * Create a fork Agent through this controller's handle ownership.
-   * @param options - complete fork metadata, seed, model, and setup request.
-   * @returns the created Agent.
-   */
-  async createForkAgent(options: CreateAgentOptions): Promise<Agent> {
-    return this.ownHandle(await this.ctx.agents.create(options))
-  }
-
-  /**
-   * Dispose the owning Agent before workspace storage permanently deletes its Session.
-   * @param sessionId - ordinary Session identity requested for deletion.
-   * @returns resolves after the Agent and its Session persistence handles are disposed.
-   */
-  async disposeSession(sessionId: SessionId): Promise<void> {
-    if (this.claims.has(sessionId)) {
-      throw new Error(`Session '${sessionId}' is being created or placed; retry deletion after it settles`)
-    }
-    const pendingResume = this.resumes.get(sessionId)
-    if (pendingResume !== undefined) await pendingResume.catch(() => undefined)
-    if (this.claims.has(sessionId)) {
-      throw new Error(`Session '${sessionId}' is being created or placed; retry deletion after it settles`)
-    }
-    await this.disposeOwnedHandle(sessionId)
-  }
-
-  private async disposeOwnedHandle(sessionId: SessionId): Promise<void> {
-    const handle = this.handles.get(sessionId)
-    if (handle !== undefined) {
-      const live = this.ctx.agents.get(sessionId)
-      if (live !== undefined && live !== handle.agent) {
-        throw new Error(`Agent ownership changed while deleting Session '${sessionId}'`)
-      }
-      await handle.dispose()
-      this.handles.delete(sessionId)
-      return
-    }
-    // Another controller may own an Agent for this Session. The Workspace
-    // registry verifies all owners released it before it deletes storage.
   }
 
   private async resolve(
@@ -329,118 +229,26 @@ export class ApiSessionAgentController {
    * and a new Session is created instead. Requests naming one identity run in
    * arrival order, including their preset resolution, and check the named
    * Session's directory and ownership before resolving the preset.
-   * @param request - optional Session to reuse, directory, preset, placement rule, and attachment commit.
+   * @param request - optional Session to reuse, directory, preset, and placement rule.
    * @returns the reused or created Session and the preset it ran when this request finished.
-   * @throws ApiSessionCwdConflict when the named Session's current execution root differs from the request.
+   * @throws ApiSessionCwdConflict when the named Session belongs to another directory.
    * @throws ApiSessionSubagentOwnership when subagent routing owns the named Session.
    * @throws RemoteError `agent-preset/not-found` or `agent-preset/invalid` for the requested or default preset.
    * @throws ApiSessionPresetConflict when no roster is composed and the request names a preset for a reused Session.
    */
   async createSession(request: ApiSessionCreateRequest): Promise<ApiSessionCreated> {
     const named = request.sessionId
-    const create = async (): Promise<ApiSessionCreated> => {
-      const agent = named === undefined
-        ? await this.createMinted(request.cwd, await this.composeAgent(request.agentPreset))
-        : await this.claim(named, request)
-      const created = this.created(agent)
-      await request.attach?.(agent.id)
-      return created
-    }
-    return named === undefined ? create() : this.inOrder(named, create)
-  }
-
-  /**
-   * Install or return the Session-local model selection used by prompt assembly.
-   * @param agent - live Agent that owns the selection.
-   * @returns the installed mutable selection reference.
-   */
-  selectionFor(agent: Agent): InstalledSelection {
-    const installed = this.selections.get(agent)
-    if (installed !== undefined) return installed
-    const projectionState = this.ctx.sessionProjections.stateOf(agent.session, 'modelSelection')
-    if (projectionState === undefined) {
-      throw new Error('api-session: required modelSelection projection is not registered')
-    }
-    let picked = projectionState.pending === null
-      ? undefined
-      : agentModelSelection(projectionState.pending)
-    const defaultModel = this.ctx.agentDefaultModel
-    const fixedModelSelection = this.fixedModelSelection
-    const selection: InstalledSelection = {
-      get current(): AgentModelSelection {
-        if (fixedModelSelection) return defaultModel.currentSelection()
-        if (picked !== undefined) return picked
-        const loggedHeader = agent.session.requestHeader()
-        if (loggedHeader === undefined) return defaultModel.currentSelection()
-        const logged = loggedHeader.config
-        return {
-          provider: logged.provider,
-          model: logged.model,
-          // An effort the adapter defaulted is not a conversation choice: restoring
-          // it as one would make an unchanged default read as a request change.
-          ...(logged.reasoningEffort === undefined
-            || loggedHeader.adapterDefaults?.reasoningEffort === true
-            ? {}
-            : { reasoningEffort: logged.reasoningEffort }),
-        }
-      },
-      set current(next: AgentModelSelection) {
-        if (fixedModelSelection) {
-          throw new RemoteError('session/model-selection-disabled', 'model routing is fixed by this deployment', {})
-        }
-        picked = next
-      },
-      consume(provider: string, model: string, reasoningEffort: string | undefined): boolean {
-        if (picked?.provider !== provider
-          || picked.model !== model
-          || picked.reasoningEffort !== reasoningEffort) return false
-        picked = undefined
-        return true
-      },
-      assembled: undefined,
-    }
-    installModelSelection(agent.ctx, selection)
-    this.selections.set(agent, selection)
-    return selection
-  }
-
-  /**
-   * Commit and cache one validated selection for the next prompt assembly.
-   * @param agent - live Agent that owns the selection.
-   * @param selection - validated selection to record and apply.
-   */
-  selectForNextRequest(agent: Agent, selection: AgentModelSelection): void {
-    if (this.fixedModelSelection) {
-      throw new RemoteError('session/model-selection-disabled', 'model routing is fixed by this deployment', {})
-    }
-    agent.session.append('model/selection', selection)
-    this.selectionFor(agent).current = selection
-  }
-
-  /**
-   * Let a matching durable request header retire the execution cache.
-   * @param agent - live Agent whose request was recorded.
-   * @param provider - provider route used by the request.
-   * @param model - provider-owned model used by the request.
-   * @param reasoningEffort - adapter-owned effort used by the request.
-   * @returns whether the pending selection was consumed.
-   */
-  consumeSelection(
-    agent: Agent,
-    provider: string,
-    model: string,
-    reasoningEffort: string | undefined,
-  ): boolean {
-    return this.selections.get(agent)?.consume(provider, model, reasoningEffort) ?? false
+    if (named === undefined) return this.created(await this.createMinted(request.cwd, await this.composeAgent(request.agentPreset)))
+    return this.inOrder(named, async () => this.created(await this.claim(named, request)))
   }
 
   /**
    * Read the current Agent preset from the Session projection.
    * @param session - live Session whose projection state is available.
-   * @returns the current preset, or undefined when the capability is absent.
+   * @returns the current preset, or undefined without a preset service or recorded selection.
    */
   presetForSession(session: Session): string | undefined {
-    return this.ctx.sessionProjections.stateOf(session, 'agentPreset') ?? undefined
+    return this.ctx.get('agentPresets')?.presetForSession(session) ?? undefined
   }
 
   /**
@@ -463,13 +271,13 @@ export class ApiSessionAgentController {
   async composeAgent(presetId: string | undefined): Promise<ApiSessionComposition> {
     const presets = this.ctx.get('agentPresets')
     if (presets === undefined) {
-      return { setup: (_agentCtx, agent) => { this.installSelection(agent) } }
+      return { setup: (agentCtx) => { installModelSelection(agentCtx) } }
     }
     const resolvedId = (await presets.resolve(presetId)).id
     return {
       agentPreset: resolvedId,
-      setup: async (agentCtx, agent) => {
-        this.installSelection(agent)
+      setup: async (agentCtx) => {
+        installModelSelection(agentCtx)
         await presets.mount(agentCtx, resolvedId)
       },
     }
@@ -513,11 +321,11 @@ export class ApiSessionAgentController {
     if (published !== undefined && hasApiSessionSubagentOwner(this.ctx, published, live)) {
       throw new ApiSessionSubagentOwnership(sessionId)
     }
-    return this.ownHandle(await this.ctx.agents.resume({
+    return (await this.ctx.agents.resume({
       resumeSessionId: sessionId,
-      agentOptions: this.agentOptions(this.executionCwd(observation.header)),
+      agentOptions: this.agentOptions(),
       setup: composition.setup,
-    }))
+    })).agent
   }
 
   private async inOrder<Value>(sessionId: SessionId, operation: () => Promise<Value>): Promise<Value> {
@@ -539,9 +347,8 @@ export class ApiSessionAgentController {
       throw new ApiSessionSubagentOwnership(sessionId)
     }
     if (live !== undefined) {
-      const cwd = this.executionCwd(live.session.header)
-      if (relative(cwd, request.cwd) !== '') {
-        throw new ApiSessionCwdConflict(live.id, request.cwd, cwd)
+      if (live.session.header.cwd !== request.cwd) {
+        throw new ApiSessionCwdConflict(live.id, request.cwd, live.session.header.cwd)
       }
       const composition = await this.composeAgent(request.agentPreset)
       return await this.reuseLive(live, request, composition) ?? this.createMinted(request.cwd, composition)
@@ -559,9 +366,8 @@ export class ApiSessionAgentController {
       if (hasApiSessionSubagentOwner(this.ctx, { header: observed.header }, undefined)) {
         throw new ApiSessionSubagentOwnership(sessionId)
       }
-      const cwd = this.executionCwd(observed.header)
-      if (relative(cwd, request.cwd) !== '') {
-        throw new ApiSessionCwdConflict(sessionId, request.cwd, cwd)
+      if (observed.header.cwd !== request.cwd) {
+        throw new ApiSessionCwdConflict(sessionId, request.cwd, observed.header.cwd)
       }
       reusable = request.reusable(sessionId) && !observed.events.some(event => event.type === 'turn/start')
     }
@@ -569,11 +375,11 @@ export class ApiSessionAgentController {
     if (!reusable) return this.createMinted(request.cwd, composition)
     this.assertPresetApplicable(sessionId, request.agentPreset)
     try {
-      return this.ownHandle(await this.ctx.agents.resume({
+      return (await this.ctx.agents.resume({
         resumeSessionId: sessionId,
-        agentOptions: this.agentOptions(this.executionCwd(observation.header)),
+        agentOptions: this.agentOptions(),
         setup: this.reuseSetup(composition),
-      }))
+      })).agent
     } catch (error: unknown) {
       if (error instanceof ApiSessionStartedSinceObserved) return this.createMinted(request.cwd, composition)
       if (!(error instanceof Error) || error.name !== 'SessionAlreadyOwnedError') throw error
@@ -620,23 +426,14 @@ export class ApiSessionAgentController {
 
   /** Whether no turn has started, by the predicate the preset registry's `select` enforces. */
   private isBlank(session: Session): boolean {
-    const boundary = this.ctx.sessionProjections.stateOf(session, 'turnBoundary')
-    return boundary === undefined || (boundary.openTurnStartSeq === null && boundary.lastTurn === 0)
+    const boundary = this.ctx.agents.turnBoundaryOf(session)
+    return boundary.openTurnStartSeq === null && boundary.lastTurn === 0
   }
 
   /** Without a roster, reuse cannot apply a named preset. */
   private assertPresetApplicable(sessionId: SessionId, requested: string | undefined): void {
     if (requested === undefined || this.ctx.get('agentPresets') !== undefined) return
     throw new ApiSessionPresetConflict(sessionId, requested)
-  }
-
-  private ownHandle(handle: AgentHandle): Agent {
-    const existing = this.handles.get(handle.agent.id)
-    if (existing !== undefined && existing !== handle) {
-      throw new Error(`AgentHandle already tracked for Session '${handle.agent.id}'`)
-    }
-    this.handles.set(handle.agent.id, handle)
-    return handle.agent
   }
 
   private created(agent: Agent): ApiSessionCreated {
@@ -653,30 +450,25 @@ export class ApiSessionAgentController {
     } catch (error: unknown) {
       throw new Error(`failed to ensure project directory "${cwd}": ${String(error)}`, { cause: error })
     }
-    return this.ownHandle(await this.ctx.agents.create({
+    return (await this.ctx.agents.create({
       sessionId,
-      agentOptions: this.agentOptions(cwd),
+      agentOptions: this.agentOptions(),
       meta: {
         cwd,
         ...(composition.agentPreset === undefined ? {} : { agentPreset: composition.agentPreset }),
       },
       setup: composition.setup,
-    }))
+    })).agent
   }
 
-  private agentOptions(cwd?: string): AgentOptions {
-    const { provider, model } = this.ctx.agentDefaultModel.currentSelection()
-    return { provider, model, ...cwd === undefined ? {} : { cwd } }
-  }
-
-  private executionCwd(header: SessionHeader): string {
-    const cwd = this.ctx.sessionCwd.resolve(header)
-    if (cwd === undefined) throw new Error(`Session ${header.id} has no current execution directory`)
-    return cwd
-  }
-
-  private installSelection(agent: Agent): void {
-    this.selectionFor(agent)
+  private agentOptions(): AgentOptions {
+    const defaults = this.ctx.agentDefaultModel
+    // A Session that records no selection or request follows default changes.
+    return {
+      get provider() { return defaults.currentSelection().provider },
+      get model() { return defaults.currentSelection().model },
+      get reasoningEffort() { return defaults.currentSelection().reasoningEffort },
+    }
   }
 
   /**
@@ -689,15 +481,5 @@ export class ApiSessionAgentController {
       throw new Error('api-session: Agent activation requires a projected Session observation')
     }
     return observation.projections.values.agentPreset ?? undefined
-  }
-}
-
-function agentModelSelection(selection: ModelSelection): AgentModelSelection {
-  return {
-    provider: selection.provider,
-    model: selection.model,
-    ...(selection.reasoningEffort === undefined
-      ? {}
-      : { reasoningEffort: ReasoningEffortId(selection.reasoningEffort) }),
   }
 }

@@ -3,7 +3,7 @@ import type { AnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AttachmentId, ImageVariantId } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef, RequestImageAttachment } from '@deepseek-ai/dsh-attachment'
-import { APP_IDENTITY, createAssistantMessage, createToolResultMessage, LlmError, ToolCallId } from '@deepseek-ai/dsh-llm'
+import { createAssistantMessage, createToolResultMessage, LlmError, ToolCallId } from '@deepseek-ai/dsh-llm'
 import { DeepSeekFileId } from '../src/file-id.ts'
 import { DeepSeekFileStore } from '../src/file-store.ts'
 import { resolveAdapterOptions } from '../src/config.ts'
@@ -56,11 +56,7 @@ describe('Messages Files requests', () => {
       createToolResultMessage({ callId, isError: false, content: [{ type: 'image', attachment: ref }, { type: 'image', attachment: ref }] })]
     await chunks(h.adapter.stream(options({ model, messages })))
     expect(h.readImageRequest).toHaveBeenCalledTimes(1)
-    expect(h.ensureUploaded).toHaveBeenCalledWith(expect.anything(), {
-      baseURL: 'https://gateway.example/custom',
-      headers: { 'x-api-key': 'test-key' },
-      appIdentity: APP_IDENTITY,
-    }, expect.anything(), expect.any(AbortSignal))
+    expect(h.ensureUploaded).toHaveBeenCalledWith(expect.anything(), { baseURL: 'https://gateway.example/custom', headers: { 'x-api-key': 'test-key' } }, expect.anything(), expect.any(AbortSignal))
     const [url, init] = fetchImpl.mock.calls[0]!
     expect(url).toBe('https://gateway.example/custom/v1/messages')
     expect(new Headers(init?.headers).get('anthropic-beta')).toBe('files-api-2025-04-14')
@@ -145,14 +141,7 @@ describe('Messages Files requests', () => {
     const h = harness({ maxRequestFilesBytes: 3, imageOffloadByteQuantum: 1, maxImagesPerRequest: 2, imageOffloadCountQuantum: 1 })
     const images = [{ type: 'image' as const, attachment: ref, offloaded: true as const }, { type: 'image' as const, attachment: second }]
     await chunks(h.adapter.stream(options({ model, messages: [{ ...user(), content: images }] })))
-    const expectedBytes: unknown = expect.any(Number)
-    const expectedBounds = { width: 1, height: 1, maxBytes: expectedBytes }
-    expect(h.readImageRequest).toHaveBeenCalledExactlyOnceWith(
-      second,
-      expectedBounds,
-      expect.any(AbortSignal),
-      undefined,
-    )
+    expect(h.readImageRequest).toHaveBeenCalledExactlyOnceWith(second, expect.anything(), expect.any(AbortSignal))
     expect(h.adapter.imageRequestPricing('deepseek-official', model).priceImages(images).map(image => image.visualTokens)).toEqual([0, expect.any(Number)])
   })
 

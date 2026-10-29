@@ -1,8 +1,11 @@
+import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { unsupportedModel, provideWorkingDirectoryFixture, unsupportedInbox } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { Context } from '@deepseek-ai/cordis'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
-import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import TerminalSessionService from '@deepseek-ai/dsh-terminal'
@@ -19,7 +22,6 @@ import type {
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRegistry from '@deepseek-ai/dsh-tools'
 import * as ToolPwshPersistent from '@deepseek-ai/dsh-tool-pwsh-persistent'
-import { unsupportedInbox } from '@deepseek-ai/dsh-agent-loop-testkit'
 
 const contexts: Context[] = []
 let callNumber = 0
@@ -43,6 +45,7 @@ async function agent(ctx: Context, cwd: string | undefined): Promise<Agent> {
     id,
     options: {},
     session,
+    model: unsupportedModel(),
     inbox: unsupportedInbox(),
     status: 'idle',
     ctx: scope.ctx,
@@ -68,7 +71,7 @@ function call(
   command: string,
   signal = new AbortController().signal,
 ) {
-  return ctx.tools.execute({
+  return executeToolFixture(ctx, {
     signal,
     callId: ToolCallId(`persistent-pwsh-${++callNumber}`),
     name: 'pwsh',
@@ -301,18 +304,16 @@ class StubTerminalSession implements TerminalBackendSession {
 
 function stubBackend(initialMode: StubMode = 'normal') {
   const sessions: StubTerminalSession[] = []
-  const cwds: (string | undefined)[] = []
   const backend: TerminalBackend = {
     type: 'stub',
-    async spawn(spec) {
+    async spawn() {
       if (initialMode === 'spawn-error') throw new Error('stub spawn failed')
       const session = new StubTerminalSession(initialMode)
       sessions.push(session)
-      cwds.push(spec.cwd)
       return session
     },
   }
-  return { backend, sessions, cwds }
+  return { backend, sessions }
 }
 
 async function setup(
@@ -320,23 +321,23 @@ async function setup(
   initialMode: StubMode = 'normal',
 ) {
   const ctx = new Context()
+  provideWorkingDirectoryFixture(ctx)
   contexts.push(ctx)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRegistry)
+  await ctx.plugin(SessionProjectionRegistry)
+  await ctx.plugin(NativeToolExecutor)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(TerminalSessionService)
-  await ctx.plugin(SessionCwd)
-  let currentRoot: string | undefined = '/workspace'
-  ctx.sessionCwd.registerResolver(() => currentRoot)
   const stub = stubBackend(initialMode)
   ctx.terminals.registerBackend(stub.backend)
   const fiber = await ctx.plugin(ToolPwshPersistent, config)
-  return { ctx, stub, fiber, owner: await agent(ctx, '/workspace'), setCurrentRoot: (root: string | undefined) => { currentRoot = root } }
+  return { ctx, stub, fiber, owner: await agent(ctx, '/workspace') }
 }
 
 describe('tool-pwsh-persistent', () => {
   it('registers a configurable schema and reuses one owner shell', async () => {
-    const { ctx, owner, stub, fiber, setCurrentRoot } = await setup({
+    const { ctx, owner, stub, fiber } = await setup({
       backendType: 'stub',
       description: 'deployment-specific persistent shell',
     })
@@ -356,16 +357,8 @@ describe('tool-pwsh-persistent', () => {
     expect(stub.sessions[0]?.sends).toBe(2)
 
     const ownerWithoutCwd = await agent(ctx, undefined)
-    setCurrentRoot(undefined)
-    expect((await call(ctx, owner, 'pwd')).isError).toBe(true)
-    expect(stub.sessions[0]?.closed).toContain('current workspace is unavailable')
-    expect((await call(ctx, ownerWithoutCwd, 'pwd')).isError).toBe(true)
-    expect(stub.sessions).toHaveLength(1)
-
-    setCurrentRoot('/workspace-moved')
-    expect(text(await call(ctx, owner, 'pwd'))).toBe('hello from stub')
+    expect(text(await call(ctx, ownerWithoutCwd, 'pwd'))).toBe('hello from stub')
     expect(stub.sessions).toHaveLength(2)
-    expect(stub.cwds).toEqual(['/workspace', '/workspace-moved'])
 
     await fiber.dispose()
     expect(ctx.tools.schemas()).toEqual([])
@@ -801,9 +794,12 @@ describe('tool-pwsh-persistent', () => {
 
   it('cancels and awaits a pending shell spawn when the plugin is disposed', async () => {
     const ctx = new Context()
+    provideWorkingDirectoryFixture(ctx)
     contexts.push(ctx)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRegistry)
+    await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(NativeToolExecutor)
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(TerminalSessionService)
     const spawnStarted = Promise.withResolvers<undefined>()

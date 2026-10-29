@@ -6,6 +6,7 @@ import AttachmentStore, {
   ImageVariantId,
   isAttachmentError,
   isImageAdmissionError,
+  type AttachmentScope,
   type ImageAttachmentRef,
   type ImageMediaType,
   type ImageRequestTarget,
@@ -24,11 +25,14 @@ const LIMITS = {
   mediaTypes: ['image/png'] as const,
 }
 
+const SCOPE = { sessionId: 'session-1' as AttachmentScope['sessionId'] }
+
 class RecordingStore extends AttachmentStore {
   readonly imageLimits = LIMITS
   readonly calls: string[] = []
   rejectValidationAt: number | undefined
   rejectSaveAt: number | undefined
+  lastScope: AttachmentScope | undefined
 
   async validateImage(input: SaveImageAttachment): Promise<void> {
     const value = input.data[0] ?? 0
@@ -36,7 +40,8 @@ class RecordingStore extends AttachmentStore {
     if (value === this.rejectValidationAt) throw new Error(`invalid:${value}`)
   }
 
-  async saveImage(input: SaveImageAttachment): Promise<ImageAttachmentRef> {
+  override async saveImage(input: SaveImageAttachment, scope?: AttachmentScope): Promise<ImageAttachmentRef> {
+    this.lastScope = scope
     const value = input.data[0] ?? 0
     this.calls.push(`save:${value}`)
     if (value === this.rejectSaveAt) throw new Error(`write:${value}`)
@@ -92,9 +97,11 @@ class UnsupportedProjectionStore extends AttachmentStore {
 
 class RecordingFileStore extends RecordingStore {
   fileInput: SaveFileAttachment | undefined
+  fileScope: AttachmentScope | undefined
 
-  override saveFile(input: SaveFileAttachment) {
+  override saveFile(input: SaveFileAttachment, scope?: AttachmentScope) {
     this.fileInput = input
+    this.fileScope = scope
     return Promise.resolve({
       attachmentId: AttachmentId(`sha256:${'cd'.repeat(32)}`),
       name: input.name ?? 'unnamed',
@@ -138,6 +145,14 @@ describe('AttachmentStore.saveImages', () => {
     await expect(store.saveImages([image(1), image(2)]))
       .rejects.toThrow('invalid:2')
     expect(store.calls).toEqual(['validate:1', 'validate:2'])
+  })
+
+  it('passes the Session scope to every image save', async () => {
+    const store = new RecordingStore(new Context())
+
+    await store.saveImages([image(1)], SCOPE)
+
+    expect(store.lastScope).toBe(SCOPE)
   })
 
   it('returns no partial references when storage fails after an earlier commit', async () => {
@@ -203,6 +218,14 @@ describe('AttachmentStore file admission', () => {
     expect(store.fileInput).toEqual({ data: Uint8Array.of(1, 2, 3), name: 'notes.bin' })
     expect(store.isAttachmentError(new AttachmentError('disk failed', 'ATTACHMENT_WRITE_FAILED'))).toBe(true)
     expect(store.isAttachmentError(new Error('unknown failure'))).toBe(false)
+  })
+
+  it('forwards the Session scope from the service entry to the file store', async () => {
+    const store = new RecordingFileStore(new Context())
+
+    await store.admitEncodedFile({ data: 'AQID', name: 'notes.bin' }, SCOPE)
+
+    expect(store.fileScope).toBe(SCOPE)
   })
 })
 

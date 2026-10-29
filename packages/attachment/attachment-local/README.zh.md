@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-分组模式会把图片与通用文件附件持久存储到已解析的 `DSH_HOME` 下；启用项目本地模式时，附件随项目历史存储。图片经过校验、规范化以供模型请求，并按路由缓存；通用文件不设准入限制，按字节原样保存。相同字节只在各自所属的存储中去重，读取时会校验长度与内容。所有作用域操作仅接受可信 `SessionId`；挂载 ProjectStorage 时，提供方会为分组与项目本地配置解析归属及状态。未挂载 ProjectStorage 时，分组模式仍使用全局存储；但已挂载项目所有者不可用后绝不回退。对象永远不会自动删除。
+在运行 DSH 的机器上，把图片与通用文件附件持久存储到 `DSH_HOME` 下；启用 `projectLocal` 时，则存储到附件所属 Workspace 项目之下。图片经过校验、针对模型请求完成规范化并按路由缓存；通用文件不设准入限制，按字节原样保存。即使上传时使用不同显示名称，相同字节也只存储一次；读取会校验文件长度与内容，之后收紧限制也不会让已接纳的图片不可读。随附的 `dsh` 组合无需配置即可使用本包。对象仅限本机，并且永远不会自动删除。
 
 ## 目录
 
@@ -37,23 +37,23 @@ kind: "package-reference"
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
-| `dshHome` | 自动解析 | 显式 harness home；省略时依次跟随 `$DSH_HOME` 与 `~/.asterhub` |
-| `projectLocal` | `false` | 要求可信 Session scope，并将原始字节存储到所属项目 `.aster/attachments/v1` |
-| `maxImageBytes` | `20 MiB` | 单张图片接受的最大编码源字节数 |
+| `dshHome` | 自动解析 | 显式 harness home；省略时依次跟随 `$DSH_HOME` 与 `~/.dsh` |
+| `maxImageBytes` | `50 MiB` | 单张图片接受的最大编码源字节数 |
 | `maxImagesPerMessage` | `20` | 单条提交消息接受的最大图片数量 |
 | `maxMessageImageBytes` | `200 MiB` | 单条提交消息接受的最大编码源图字节总数 |
 | `maxImagePixels` | `64,000,000` | 源图宽度与高度乘积的最大值 |
-| `maxImageDimension` | `8192` | 源图接受的最大宽度或高度 |
+| `maxImageDimension` | `65,535` | 源图接受的最大宽度或高度；默认值让 `maxImagePixels` 单独把关，长边由规范化缩小 |
 | `normalizedImageMaxPixels` | `2048 × 2048` | 已存规范化图片的总像素预算 |
 | `normalizedImageMaxDimension` | `8192` | 应用总像素预算后的最大长边 |
 | `normalizedImageMaxBytes` | `4 MiB` | 编码字节目标；没有候选满足时保留质量阶梯中的最小输出 |
 | `imageCompressionConcurrency` | `2` | 并发规范化与请求变换的 FIFO 上限 |
+| `projectLocal` | `false` | 把每个附件存储到所属 Workspace 项目的 `.aster/attachments/v1` 下而非全局根；此后每个操作都要求会话作用域 |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-attachment-local)完整列出了所有受支持的字段及其 JSDoc。
 
 ### 图片存储在哪里、会保留多久
 
-分组模式把附件存储在 `<DSH_HOME>/attachments/v1` 下。启用 `projectLocal: true` 时，每次带 scope 的操作都访问所属项目的 `.aster/attachments/v1`；项目或 Session 所有者缺失时失败，绝不读取或写入全局存储。请求图片版本属于可重建缓存。原始对象不会自动删除。
+附加的图片保存在本机的 `<DSH_HOME>/attachments/v1` 下。启用 `projectLocal` 后，每个操作都会经由会话所属的 Workspace 项目路由，落到 `<project>/.aster/attachments/v1` 下；缺少会话作用域、缺少 Workspace 注册表，或会话不被任何 Workspace 记录认领时，操作会直接失败而不会回退到全局根。已存储的图片永远不会被自动删除，相同图片只会存储一份，之后收紧限制也绝不会让已保存的图片不可读。如果你的图片需要能从另一台机器读取，本包并不合适。
 
 ### 附加图片时会发生什么
 
@@ -61,7 +61,7 @@ kind: "package-reference"
 
 ### 可能出什么问题
 
-附加图片时可能被拒绝：格式不受支持、超出字节、像素或单边尺寸限制，或者字节与声明类型不符。之后读取时，磁盘上被删除或损坏的图片会以稳定的附件错误码失败。Session 缺少归属方属于内部归属错误，不属于附件输入错误。项目元数据错误原样传递；仅项目路径不存在时归类为附件作用域不可用。
+附加图片时可能被拒绝：格式不受支持、超出字节、像素或单边尺寸限制，或者字节与声明类型不符。之后读取时，磁盘上被删除或损坏的图片会以明确错误失败。每个失败都带有稳定错误码，客户端与协议适配器可以用自己的措辞解释。
 
 -----
 
@@ -84,7 +84,7 @@ kind: "package-reference"
 
 对象存放在 `<DSH_HOME>/attachments/v1/objects/<sha256-prefix>/<sha256>`；相同字节会去重为同一个对象和同一个 `sha256:` 标识符。首次写入前，进程会把 home 的每个祖先目录逐级同步到文件系统根目录，因此绝不会把另一个进程已创建但尚未同步的目录误认为安全边界。随后，写入过程把字节暂存到 `v1/tmp`、同步临时文件、以原子且排他的硬链接发布，并同步发布目录——在 Windows 上，文件系统元数据日志负责目录项持久性。保存操作完成后，返回的引用已具备持久性。
 
-准入允许每条消息最多 20 张图片与 200 MiB 源字节；单个源图最多 20 MiB、6400 万像素与单边 8192 像素。系统应用方向、移除元数据与色彩配置，并把规范化结果限制在 2048×2048 总像素预算、8192 像素长边和 4 MiB 编码字节目标内，因此，即使宽高比极端，图片也会保留短边分辨率。已经满足限制的干净、单帧、8-bit sRGB/sRGBA PNG、JPEG 或 WebP 会逐字节直通；GIF、动画、元数据、方向、16-bit PNG 与不兼容色彩空间会触发转换。
+准入允许每条消息最多 20 张图片与 200 MiB 源字节；单个源图最多 50 MiB、6400 万像素与单边 65,535 像素。系统应用方向、移除元数据与色彩配置，并把规范化结果限制在 2048×2048 总像素预算、8192 像素长边和 4 MiB 编码字节目标内，因此，即使宽高比极端，图片也会保留短边分辨率。已经满足限制的干净、单帧、8-bit sRGB/sRGBA PNG、JPEG 或 WebP 会逐字节直通；GIF、动画、元数据、方向、16-bit PNG 与不兼容色彩空间会触发转换。
 
 请求版本位于由 `dshCachePath` 解析的 `<DSH_HOME>/cache/attachments/request-images/`；显式 `dshHome` 设置同时适用于缓存与持久存储。在两次请求之间清空此缓存会保留持久附件，后续读取会重新生成请求版本。`readImageRequest` 在不放大的前提下缩放到路由选定的目标尺寸，缩放只按长边给定，短边由编码器按路由预测的方式推出，随后通过相同的 alpha 路由与质量阶梯应用独立编码字节目标。缓存身份包含附件 id、变换版本、目标尺寸、字节目标与固定编码参数；缓存字节会先通过文件头探测格式、8-bit sRGB/sRGBA、尺寸与 alpha 信息，不匹配时重新生成。并发调用方共享一次变换与缓存写入，且只在没有等待方时由取消停止共享工作。`imageHostPath` 派生规范化对象的宿主路径，挂载的文件系统可以把该路径映射进执行世界，而不会写入持久历史。
 
@@ -100,7 +100,6 @@ kind: "package-reference"
 | [`src/normalization.ts`](src/normalization.ts) + [`src/encoding.ts`](src/encoding.ts) | 提供方无关的规范化与有界格式／质量候选 |
 | [`src/request-image.ts`](src/request-image.ts) | 路由专用请求变换、缓存身份与 singleflight |
 | [`src/image.ts`](src/image.ts) | 完整光栅解码与元数据校验 |
-| — | 不发布运行时不变式伴生入口；不可变写入与校验读取在后端边界直接强制。 |
 
 </details>
 

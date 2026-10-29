@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import {
   link,
-  lstat,
   mkdir,
   mkdtemp,
   open,
@@ -1241,40 +1240,23 @@ describe('JSONL immutable generation publication', () => {
     expect(await readFile(expected, 'utf8')).toBe(line(header(SESSION_FORMAT_VERSION)) + line(event0))
   })
 
-  it.each(['different', 'malformed', 'symlink', 'directory'] as const)(
+  // Creating file symlinks on Windows requires elevated privileges or Developer Mode.
+  const collisionKinds = process.platform === 'win32'
+    ? (['different', 'malformed', 'directory'] as const)
+    : (['different', 'malformed', 'symlink', 'directory'] as const)
+  it.each(collisionKinds)(
     'fails loud without altering a colliding %s target',
     async (kind) => {
       const root = await tempRoot()
       const request = options(root)
       const source = Buffer.from(line(header(0)) + line(event0))
       await writeFile(request.sourcePath, source)
-      let overrides: TestGenerationOverrides = {}
       if (kind === 'different') await writeFile(request.currentPath, line(header(SESSION_FORMAT_VERSION)) + line(event1))
       if (kind === 'malformed') await writeFile(request.currentPath, '{not-json}\n')
-      if (kind === 'symlink') {
-        try {
-          await symlink(request.sourcePath, request.currentPath)
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === 'EPERM' || (error as NodeJS.ErrnoException).code === 'EACCES') {
-            await writeFile(request.currentPath, source)
-            overrides = {
-              fs: {
-                lstat: async (path) => {
-                  if (path === request.currentPath) {
-                    return { isFile: () => false, isSymbolicLink: () => true }
-                  }
-                  return lstat(path)
-                },
-              },
-            }
-          } else {
-            throw error
-          }
-        }
-      }
+      if (kind === 'symlink') await symlink(request.sourcePath, request.currentPath)
       if (kind === 'directory') await mkdir(request.currentPath)
 
-      await expect(ensureWithOverrides(request, overrides)).rejects.toBeInstanceOf(
+      await expect(ensureJsonlGenerationCurrent(request)).rejects.toBeInstanceOf(
         JsonlGenerationTargetConflictError,
       )
 

@@ -32,6 +32,23 @@ export type AskUserQuestionIntent = {
   approve: string
   /** Logged tool invocation whose arguments contain the reviewed plan. */
   callId?: ToolCallId
+} | {
+  /** A blocking permission decision with fixed actions and no free-text answer. */
+  kind: 'approval'
+  /** Option label granting the scope described by the caller. */
+  approve: string
+  /** Option label refusing the requested access. */
+  reject: string
+  /** Optional persistent grant offered only when the caller supports it. */
+  always?: string
+  /** Metadata for human recognition; the caller admits icon sources, which the UI may load as URLs. Never an authorization identity. */
+  subject?: { name: string; icon?: string }
+  /** Localized question and limited-grant label; fixed cards own reject/always wording. Option labels remain answer values. */
+  display?: {
+    question: { en: string; [locale: string]: string }
+    detail?: { en: string; [locale: string]: string }
+    approve?: { en: string; [locale: string]: string }
+  }
 }
 
 /** One question in a user-questions request. */
@@ -124,20 +141,6 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
     userQuestions: UserQuestionProjectionView
   }
 }
-declare module '@deepseek-ai/dsh-session/types' {
-  interface SessionEventMap {
-    /**
-     * Log-only event marking that specific timed questions for this Session
-     * have been explicitly canceled by the Host (e.g., run termination).
-     * Invalidates the named open and continued questions; late answers are rejected.
-     * Future questions in the same Session remain usable.
-     */
-    'user-questions/canceled': { callIds: readonly ToolCallId[] }
-  }
-}
-
-/** Error code for attempting to answer a canceled question. */
-export const USER_QUESTION_CANCELED_CODE = 'QUESTION_CANCELED'
 
 /** Client-safe payload declared for the user-question answerer waterfall. */
 export interface AskUserQuestionRequestEvent {

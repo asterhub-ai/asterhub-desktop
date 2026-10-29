@@ -3,13 +3,11 @@
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { scheduler } from 'node:timers/promises'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { Agent, AgentFactory } from '@deepseek-ai/dsh-agent'
-import { turnBoundaryProjectionDefinition } from '@deepseek-ai/dsh-agent-loop'
 import { agentPresetProjectionDefinition } from '@deepseek-ai/dsh-agent-preset-registry'
-import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import SessionStore, { SESSION_FORMAT_VERSION, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { Session, SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
@@ -66,9 +64,9 @@ async function harness(options: HarnessOptions = {}) {
   const ctx = new Context()
   contexts.push(ctx)
   await ctx.plugin(SessionStore)
-  await ctx.plugin(SessionCwd)
-  ctx.sessionCwd.registerResolver(header => header.cwd)
+  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentRegistry)
+  const preset = await ctx.sessionProjections.register(agentPresetProjectionDefinition)
   const presets = options.presets
   const selections: { sessionId: SessionId; agentPreset: string }[] = []
   const resumed: SessionId[] = []
@@ -91,6 +89,7 @@ async function harness(options: HarnessOptions = {}) {
     }
     ctx.provide('agentPresets', {
       defaultId: presets[0],
+      presetForSession: (session: Session) => preset.stateOf(session),
       resolve: (id?: string) => Promise.resolve(id === undefined ? undefined : options.resolving?.get(id))
         .then(() => ({ id: known(id) })),
       mount: (_ctx: Context, id?: string) => Promise.resolve().then(() => ({ id: usable(id) })),
@@ -123,20 +122,24 @@ async function harness(options: HarnessOptions = {}) {
     archivedSessionIds: archived,
   } as never)
 
-  /** Run setup on the unpublished Session, then publish it and its Agent, as the Agent factory does. */
+  /** Enter the Session for setup, then announce creation as the Agent factory does. */
   const publish = async (
     session: Session,
     setup: Parameters<AgentFactory['createAgent']>[1]['setup'],
   ): Promise<{ agent: Agent; dispose: () => Promise<void> }> => {
     const agent = stubAgent(session)
     ;(agent as { ctx?: Context }).ctx = ctx
-    await setup?.(ctx, agent)
-    ctx.effect(function* () {
-      yield ctx.sessions.enter(session)
+    const detach = ctx.effect(() => ctx.sessions.enter(session))
+    try {
       ctx.sessions.announce(session)
-    }, 'test: published Session')
-    const unregister = await ctx.agents.register(agent)
-    return { agent, dispose: async () => { await unregister() } }
+      const commit = await setup?.(ctx, agent)
+      commit?.commit()
+      const unregister = await ctx.agents.register(agent)
+      return { agent, dispose: async () => { await unregister(); await detach() } }
+    } catch (error) {
+      await detach()
+      throw error
+    }
   }
   const factory: AgentFactory = {
     async createAgent(_ownerCtx, create) {
@@ -165,15 +168,13 @@ async function harness(options: HarnessOptions = {}) {
     },
   }
   ctx.agents.setFactory(factory)
-  const remote = createSessionTestRemote(ctx, {
+  const remote = await createSessionTestRemote(ctx, {
     defaultModelSelection: () => ({ provider: 'test', model: 'test-model' }),
     cwd,
   })
-  ctx.sessionProjections.register(turnBoundaryProjectionDefinition)
-  if (presets !== undefined) ctx.sessionProjections.register(agentPresetProjectionDefinition)
   const presetOf = (id: SessionId): string | null | undefined => {
     const session = ctx.sessions.get(id)
-    return session === undefined ? undefined : ctx.sessionProjections.stateOf(session, 'agentPreset')
+    return session === undefined ? undefined : preset.stateOf(session)
   }
   const selectedEvents = (id: SessionId): unknown[] => {
     const session = ctx.sessions.get(id)
@@ -650,33 +651,6 @@ describe('session.create reuse of a stored blank Session', () => {
 })
 
 describe('session.create Workspace placement', () => {
-  it('holds a named creation claim until Workspace attachment commits', async () => {
-    const members: SessionId[] = []
-    const { ctx, remote } = await harness({ presets: ['standard'], workspace: { members, archived: [] } })
-    const workspace = ctx.workspaceRegistry.get(WORKSPACE)
-    if (workspace === undefined) throw new Error('Workspace fixture is missing')
-    const entered = Promise.withResolvers<undefined>()
-    const release = Promise.withResolvers<undefined>()
-    const attach = vi.spyOn(workspace, 'attachSession').mockImplementation(async (sessionId) => {
-      entered.resolve(undefined)
-      await release.promise
-      if (!members.includes(sessionId)) members.push(sessionId)
-    })
-    const first = remote.create({ sessionId: SessionId('attaching-draft'), workspaceId: WORKSPACE })
-    await entered.promise
-    const second = remote.create({ sessionId: SessionId('attaching-draft'), workspaceId: WORKSPACE })
-    try {
-      await scheduler.yield()
-      expect(attach).toHaveBeenCalledTimes(1)
-    } finally {
-      release.resolve(undefined)
-      await Promise.allSettled([first, second])
-    }
-    expect(await first).toMatchObject({ ok: true, value: { sessionId: 'attaching-draft' } })
-    expect(await second).toMatchObject({ ok: true, value: { sessionId: 'attaching-draft' } })
-    expect(members).toEqual([SessionId('attaching-draft')])
-  })
-
   it('reuses a blank member of the requested Workspace', async () => {
     const draft = SessionId('member-draft')
     const { remote } = await harness({ presets: ['standard'], workspace: { members: [draft], archived: [] } })

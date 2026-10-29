@@ -1,0 +1,37 @@
+{
+  "name": "@deepseek-ai/dsh-project-adopt",
+  "description": "One-shot adoption of project-local Sessions discovered beneath a registered Workspace root",
+  "version": "0.2.1-rc.3",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.js" },
+    "./adopt-session": { "types": "./lib/types/adopt-session.d.ts", "default": "./lib/adopt-session.js" },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/adopt-session.js",
+    "lib/types/**/*.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-session": "workspace:*",
+    "@deepseek-ai/dsh-session-persistence": "workspace:*",
+    "@deepseek-ai/dsh-storage-domain": "workspace:*",
+    "@deepseek-ai/dsh-workspace": "workspace:*"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-session": "workspace:*",
+    "@deepseek-ai/dsh-session-persistence": "workspace:*",
+    "@deepseek-ai/dsh-storage": "workspace:*",
+    "@deepseek-ai/dsh-storage-domain": "workspace:*",
+    "@deepseek-ai/dsh-working-directory": "workspace:*",
+    "@deepseek-ai/dsh-workspace": "workspace:*"
+  }
+}

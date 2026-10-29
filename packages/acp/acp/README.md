@@ -1,5 +1,5 @@
 ---
-description: "Automation-only ACP (Agent Client Protocol) server for programmatic clients and maintainers driving AsterHub agents over JSON-RPC stdio."
+description: "Automation-only ACP (Agent Client Protocol) server for programmatic clients and maintainers driving DeepSeek Harness agents over JSON-RPC stdio."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-acp` lets trusted programs automate persistent AsterHub agents through the standard [ACP](https://agentclientprotocol.com): create or resume sessions, select a model and reasoning effort, attach MCP servers, submit or cancel work, receive semantic updates, and close sessions independently. Choose it for out-of-process subagents, test runners, and scripted controllers; it intentionally omits DSH-specific presentation data and interactive UI features. Persistence supports listing, resuming, and closing sessions across process restarts, but deletion, forks, transcript replay, and additional directories are unsupported. Run `pnpm dsh --profile acp` to start the server; use `dsh-subagent-acp` as the repository client.
+`dsh-acp` lets trusted programs automate persistent DeepSeek Harness agents through the standard [ACP](https://agentclientprotocol.com): create or resume sessions, select a model and reasoning effort, attach MCP servers, submit or cancel work, receive semantic updates, and close sessions independently. Choose it for out-of-process subagents, test runners, and scripted controllers; it intentionally omits DSH-specific presentation data and interactive UI features. Persistence supports listing, resuming, and closing sessions across process restarts, but deletion, forks, transcript replay, and additional directories are unsupported. Run `pnpm dsh --profile acp` to start the server; use `dsh-subagent-acp` as the repository client.
 
 ## Table of Contents
 
@@ -64,16 +64,22 @@ One connection can run several sessions at once, each independent. The calls a c
 | `initialize` | Stable ACP v1 plus `session/list`, `session/resume`, `session/close`, and Streamable HTTP MCP support; image prompts only when the durable attachment store and configured exact route support them. |
 | `authenticate` | Immediate success; the server requires no authentication. |
 | `session/new` | A fresh persistent agent whose absolute workspace and stdio or HTTP MCP servers are validated before publication, plus its complete configuration-option state. |
-| `session/list` | Deterministic newest-first pages of persisted, resumable root sessions; an optional absolute `cwd` filter compares each Session's current execution root, while returned cwd metadata is current. |
-| `session/resume` | A persisted inactive session whose current execution root matches the requested workspace before composition; its log is restored without replaying old updates. |
+| `session/list` | Deterministic newest-first pages of persisted, resumable root sessions; an optional absolute `cwd` filter uses physical-directory identity where possible. |
+| `session/resume` | A persisted inactive session whose canonical workspace is verified before composition; its log is restored without replaying old updates. |
 | `session/close` | Quiescent cancellation, update draining, descendant disposal, persistence flush, and disposal of only the addressed Agent scope. |
 | `session/set_config_option` | A serialized update to the advertised `model` or `reasoning_effort`, returning the complete resulting state. |
-| `session/prompt` | Ordered text, resource links, and supported images, one prompt at a time per session; settlement follows Agent idle and ordered update delivery. |
+| `session/prompt` | Ordered text, resource links, and supported images, one prompt at a time per session; settlement follows root and descendant completion plus ordered update delivery. |
 | `session/cancel` / `$/cancel_request` | The prompt-owned cancellation path; without an ACP prompt in flight it cancels autonomous work, while unknown session ids are no-ops. |
 | `session/update` | Committed assistant messages and thoughts, generic tool lifecycle, configuration changes, and context usage, serialized per session. |
 | `session/request_permission` | A permission prompt with one-shot allow/reject choices; your client can answer automatically. |
 
-Session configuration offers opaque provider/model choices from the live LLM service catalog and a `reasoning_effort` selector when the exact model declares one. A prompt snapshots that selection before asynchronous image admission and pins it across every model step in that turn; a concurrent option change applies to the next turn. ACP clients are trusted controllers: stdio MCP entries authorize their absolute commands and environment, HTTP entries authorize their absolute HTTP(S) URLs and headers, and any initial connection or discovery failure rolls back the unpublished Agent. Unsupported surfaces are omitted or rejected: `session/load`, deletion, fork, additional directories, SSE or ACP-transport MCP, modes, commands, plans, terminals, client filesystem operations, and elicitation.
+Session listing and resume admit ordinary forks, including historical logs with `parentSession`; `origin: subagent` remains excluded.
+
+A prompt remains in flight while managed descendants run, while their results trigger later root turns, and while committed output drains. Root work accepted during that output drain joins the same activity interval before completion. Its completion includes the latest root stop reason and any assistant output delivery failure; only the original prompt turn pins the model selection captured at admission. Cancellation stops the root activity present at that call and waits for that activity and its queued output. Later child messages may start autonomous work and do not delay the cancelled response; the session remains available for later prompts. Idle descendants with parked inbox messages remain resident but do not delay prompt completion. Closing the session also drains its descendants.
+
+A failure to append `turn/start` or `turn/end` rejects the prompt even when a preceding turn completed.
+
+Session configuration offers opaque provider/model choices from the live LLM service catalog and a `reasoning_effort` selector when the exact model declares one. An option change records the Session selection and takes effect at the next model step, including a continuation in the current turn; an already prepared step and its retries keep their captured selection. Image admission checks the selection current when admission begins. Resume restores a recorded selection even when no request has used it yet. ACP clients are trusted controllers: stdio MCP entries authorize their absolute commands and environment, HTTP entries authorize their absolute HTTP(S) URLs and headers, and any initial connection or discovery failure rolls back the unpublished Agent. Unsupported surfaces are omitted or rejected: `session/load`, deletion, fork, additional directories, SSE or ACP-transport MCP, modes, commands, plans, terminals, client filesystem operations, and elicitation.
 
 -----
 
@@ -102,13 +108,10 @@ The decision history lives in the [ACP as an automation-only protocol note](../.
 | [`src/index.ts`](src/index.ts) | Plugin entry: `Config` schema, `AgentSideConnection` wiring, per-session records, admission and settlement, teardown |
 | [`src/content.ts`](src/content.ts) | Wire-content admission and projection: image validation, route recheck, prompt reconstruction, assistant block conversion |
 | [`src/codec.ts`](src/codec.ts) | Pure turn-ending to ACP `stopReason` mapping |
-| — | No runtime invariant companion is published; this transport owns no durable package-local event stream; protocol and lifecycle tests cover its mapping. |
 
 ### Admission and prompt settlement
 
 Each session permits one in-flight prompt. Admission validates the whole prompt batch, snapshots the selected route, rechecks the exact Agent identity and image capability, persists image attachments, and only then queues the user message — a cancellation that wins admission never enqueues a late turn. Once queued, the session module associates the snapshot with the inbox message until claim and pins the same provider, model, and reasoning effort across prompt variables and every model step in that turn. Per-session update delivery is serialized; committed images are re-read and integrity-verified, so a missing or corrupt image fails the correlated prompt instead of emitting a placeholder. Settlement precedence is explicit cancellation, committed-output failure, interval-wide Agent failure, then the correlated turn ending.
-
-When ProjectStorage is mounted, the accepted Session id selects the registered project's attachment directory for each admitted image.
 
 ### Teardown and connection ownership
 

@@ -1,14 +1,18 @@
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
-import ToolRegistry, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
+import ToolRegistry from '@deepseek-ai/dsh-tools'
+import { defineContentToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import { FILE_REFERENCE_PROMPT } from '@deepseek-ai/dsh-file-reference'
 import LocalFileReferenceService, { WorkspaceFileSearch } from '../src/index.ts'
 
@@ -23,9 +27,12 @@ async function harness(): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
   await ctx.plugin(SystemPrompt, { personaPrefix: '' })
-  await ctx.plugin(SessionCwd)
   await ctx.plugin(ToolRegistry)
+  await ctx.plugin(SessionProjectionRegistry)
+  await ctx.plugin(NativeToolExecutor)
   await ctx.plugin(AgentRegistry)
+  await ctx.plugin(LocalFileSystem)
+  await ctx.plugin(WorkingDirectory)
   return ctx
 }
 
@@ -60,37 +67,21 @@ describe('LocalFileReferenceService', () => {
   it('defers guidance until optional prompt and tool services become available', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(AgentRegistry)
+    ctx.provide('workingDirectory', { ensure: vi.fn<WorkingDirectory['ensure']>() })
     await ctx.plugin(LocalFileReferenceService)
     try {
+      expect(ctx.fileReferences).toBeInstanceOf(LocalFileReferenceService)
       const { agent } = await stubAgent(ctx, 'deferred-prompt')
       expect(ctx.agents.get(agent.id)).toBe(agent)
       await ctx.plugin(SystemPrompt, { personaPrefix: '' })
       await ctx.plugin(ToolRegistry)
+      await ctx.plugin(NativeToolExecutor)
       ctx.tools.register(defineContentToolFixture({
         name: 'read', description: 'read a file', parameters: {}, execute: () => Promise.resolve([]),
       }))
       expect(renderPrompt(await ctx.systemPrompt.assemble())).toContain(FILE_REFERENCE_PROMPT)
-    } finally {
-      await ctx.fiber.dispose()
-    }
-  })
-
-  it('refuses historical file discovery after a late-mounted cwd provider disappears', async () => {
-    const ctx = new Context()
-    try {
-      await ctx.plugin(SessionStore)
-      await ctx.plugin(AgentRegistry)
-      await ctx.plugin(LocalFileReferenceService)
-      const { agent } = await stubAgent(ctx, 'late-cwd-provider')
-      const cwdFiber = await ctx.plugin(SessionCwd)
-      const disposeResolver = ctx.sessionCwd.registerResolver(header => header.cwd)
-      const signal = new AbortController().signal
-      await expect(ctx.fileReferences.list(agent, 'README', signal))
-        .resolves.toEqual([{ path: 'README.md', kind: 'file' }])
-      disposeResolver()
-      await cwdFiber.dispose()
-      await expect(ctx.fileReferences.list(agent, 'README', signal)).rejects.toThrow(/unavailable/)
     } finally {
       await ctx.fiber.dispose()
     }
@@ -120,6 +111,25 @@ describe('LocalFileReferenceService', () => {
     expect(renderPrompt(await ctx.systemPrompt.assemble())).not.toContain(FILE_REFERENCE_PROMPT)
   })
 
+  it('rebuilds completion from the current directory after a Session directory change', async () => {
+    const ctx = await harness()
+    try {
+      const { agent } = await stubAgent(ctx)
+      const nextRoot = await mkdtemp(join(tmpdir(), 'dsh-file-reference-next-'))
+      roots.push(nextRoot)
+      await writeFile(join(nextRoot, 'NEXT.md'), 'next')
+      await ctx.plugin(LocalFileReferenceService)
+      const signal = new AbortController().signal
+      expect(await ctx.fileReferences.list(agent, '', signal)).toEqual([{ path: 'README.md', kind: 'file' }])
+      const original = agent.session.header.cwd
+      await ctx.workingDirectory.set(agent, nextRoot, signal)
+      expect(await ctx.fileReferences.list(agent, '', signal)).toEqual([{ path: 'NEXT.md', kind: 'file' }])
+      expect(agent.session.header.cwd).toBe(original)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('invalidates cached searches after tool results and disposes them with the agent', async () => {
     const ctx = await harness()
     const { agent, dispose } = await stubAgent(ctx)
@@ -128,12 +138,12 @@ describe('LocalFileReferenceService', () => {
     await ctx.plugin(LocalFileReferenceService)
     await ctx.fileReferences.list(agent, 'README', new AbortController().signal)
 
-    ctx.emit('session/event', agent.session, { type: 'tool/result' } as never)
+    ctx.emit('session/event', agent.session, { type: 'tool/result', seq: 0, data: {} } as never)
     expect(invalidate).toHaveBeenCalledOnce()
-    ctx.emit('session/event', agent.session, { type: 'assistant/message' } as never)
+    ctx.emit('session/event', agent.session, { type: 'assistant/message', seq: 0, data: {} } as never)
     expect(invalidate).toHaveBeenCalledOnce()
     const orphan = ctx.sessions.create(SessionId('file-reference-orphan'))
-    ctx.emit('session/event', orphan, { type: 'tool/result' } as never)
+    ctx.emit('session/event', orphan, { type: 'tool/result', seq: 0, data: {} } as never)
     expect(invalidate).toHaveBeenCalledOnce()
 
     await dispose()
@@ -167,31 +177,16 @@ describe('LocalFileReferenceService', () => {
       .toThrow('excludedDirectories')
   })
 
-  it('uses the current root for search and refuses an unavailable binding', async () => {
+  it('deduplicates lifecycle announcements and falls back to the process cwd', async () => {
     const ctx = await harness()
-    const { agent } = await stubAgent(ctx, 'moved-root')
-    const currentRoot = await mkdtemp(join(tmpdir(), 'dsh-file-reference-moved-'))
-    roots.push(currentRoot)
-    await writeFile(join(currentRoot, 'NEW_ONLY.md'), 'current project file')
-    const unbind = ctx.sessionCwd.registerResolver(() => currentRoot)
-    await ctx.plugin(LocalFileReferenceService)
-
-    await expect(ctx.fileReferences.list(agent, 'NEW_ONLY', new AbortController().signal))
-      .resolves.toEqual([{ path: 'NEW_ONLY.md', kind: 'file' }])
-
-    unbind()
-    await expect(ctx.fileReferences.list(agent, 'README', new AbortController().signal))
-      .rejects.toThrow('Session cwd provider is unavailable')
-  })
-
-  it('does not use process cwd when the current execution root is unavailable', async () => {
-    const ctx = await harness()
-    const { agent } = await stubAgent(ctx, 'missing-root', false)
-    ctx.sessionCwd.registerResolver(() => undefined)
-    await ctx.plugin(LocalFileReferenceService)
-
-    await expect(ctx.fileReferences.list(agent, '', new AbortController().signal))
-      .rejects.toThrow(`Session ${agent.id} has no current execution directory`)
+    const fiber = ctx.plugin(LocalFileReferenceService)
+    await fiber
+    const { agent } = await stubAgent(ctx, 'cwd-fallback', false)
+    await ctx.serial('agent/created', { agent, source: 'startup' })
+    const list = vi.spyOn(WorkspaceFileSearch.prototype, 'list').mockResolvedValue([])
+    await expect(ctx.fileReferences.list(agent, '', new AbortController().signal)).resolves.toEqual([])
+    await expect(ctx.fileReferences.list(agent, 'src', new AbortController().signal)).resolves.toEqual([])
+    expect(list).toHaveBeenCalledTimes(2)
   })
 
   it('logs rejected prompt cleanup without failing service teardown', async () => {

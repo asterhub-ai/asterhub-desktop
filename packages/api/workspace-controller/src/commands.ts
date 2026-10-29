@@ -2,7 +2,6 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
-import type { ProjectId, ProjectStorage } from '@deepseek-ai/dsh-project-storage/types'
 import {
   WorkspaceActiveSessionError,
   WorkspaceArchivedSessionPinError,
@@ -19,11 +18,6 @@ import type {
   WorkspaceCreateRequest,
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
-  WorkspaceDeleteSessionRequest,
-  WorkspaceDeleteSessionValue,
-  WorkspaceInspectRequest,
-  WorkspaceInspectionView,
-  WorkspaceOpenProjectRequest,
   WorkspaceDeleteValue,
   WorkspaceInsertBeforeRequest,
   WorkspaceInsertSessionBeforeRequest,
@@ -35,7 +29,6 @@ import type {
   WorkspaceUnpinSessionRequest,
   WorkspaceValue,
 } from './types.ts'
-
 
 /** Implements Workspace mutations against the authoritative registry. */
 export class WorkspaceCommands {
@@ -50,129 +43,23 @@ export class WorkspaceCommands {
    * @returns the Workspace and whether this call created it.
    */
   create(request: WorkspaceCreateRequest): Promise<WorkspaceCreateValue> {
-    return this.enqueue(() => this.createInternal(request.path))
-  }
-
-  private async createInternal(path: string): Promise<WorkspaceCreateValue> {
-    try {
-      const projectStorage = this.ctx.get('projectStorage', false) as ProjectStorage | undefined
-      if (projectStorage !== undefined) {
-        const inspection = await projectStorage.inspect(path)
-        if (inspection.kind === 'new') {
-          await projectStorage.open({ root: path, mode: 'new' })
-        } else if (inspection.kind === 'existing') {
-          await projectStorage.open({
-            root: path,
-            mode: 'existing',
-            expectedId: inspection.manifest.id,
-            expectedDigest: inspection.digest,
-          })
-        }
-      }
-      const existing = await this.ctx.workspaceRegistry.resolveByPath(path)
-      const workspace = existing ?? await this.ctx.workspaceRegistry.create(path)
-      if (projectStorage !== undefined) {
-        await this.ctx.workspaceRegistry.reconcileProjectSessions(workspace.path)
-      }
-      return { workspace: workspaceView(workspace), created: existing === undefined }
-    } catch (error) {
-      if (remoteErrorOf(error) !== undefined) throw error
-      throw new RemoteError(
-        'workspace/invalid-path',
-        `cannot create a Workspace at "${path}": ${errorMessage(error)}`,
-        { path },
-        { cause: error },
-      )
-    }
-  }
-
-  /**
-   * Inspect a directory before creating or adopting a Workspace.
-   * @param request - path to inspect.
-   * @param signal - caller cancellation signal.
-   * @returns the inspection view (new, existing, registered, or legacy).
-   */
-  async inspect(request: WorkspaceInspectRequest, signal?: AbortSignal): Promise<WorkspaceInspectionView> {
-    const projectStorage = this.ctx.get('projectStorage', false) as ProjectStorage | undefined
-    if (projectStorage === undefined) {
-      return { kind: 'new', root: request.path }
-    }
-    const inspection = await projectStorage.inspect(request.path, signal)
-    switch (inspection.kind) {
-      case 'new':
-        return { kind: 'new', root: inspection.root }
-      case 'existing':
-        return {
-          kind: 'existing',
-          root: inspection.root,
-          projectId: inspection.manifest.id,
-          title: inspection.manifest.title,
-          sessionCount: inspection.manifest.sessions.length,
-          digest: inspection.digest,
-        }
-      case 'registered': {
-        const workspace = await this.ctx.workspaceRegistry.resolveByPath(inspection.binding.root)
-        if (workspace === undefined) {
-          return {
-            kind: 'existing',
-            root: inspection.binding.root,
-            projectId: String(inspection.binding.id),
-            title: inspection.manifest.title,
-            sessionCount: inspection.manifest.sessions.length,
-            digest: inspection.digest,
-          }
-        }
-        return {
-          kind: 'registered',
-          root: inspection.binding.root,
-          workspaceId: workspace.id,
-          title: inspection.manifest.title,
-          sessionCount: inspection.manifest.sessions.length,
-          digest: inspection.digest,
-        }
-      }
-      case 'legacy':
-        return {
-          kind: 'legacy',
-          root: inspection.root,
-          projectId: inspection.proposal.projectId,
-          title: inspection.proposal.title,
-          sessionCount: inspection.proposal.sessions.length,
-          digest: inspection.digest,
-        }
-      default:
-        throw new Error('unknown inspection kind')
-    }
-  }
-
-  /**
-   * Confirm and open an existing, legacy, or new project directory.
-   * @param request - confirmed parameters including path, mode, and optional expected ID/digest.
-   * @param signal - caller cancellation signal.
-   * @returns the created or resolved Workspace projection.
-   */
-  openProject(request: WorkspaceOpenProjectRequest, signal?: AbortSignal): Promise<WorkspaceCreateValue> {
     return this.enqueue(async () => {
-      const projectStorage = this.ctx.get('projectStorage', false) as ProjectStorage | undefined
-      if (projectStorage !== undefined) {
-        try {
-          await projectStorage.open({
-            root: request.path,
-            mode: request.mode,
-            ...(request.expectedId !== undefined ? { expectedId: request.expectedId as ProjectId } : {}),
-            ...(request.expectedDigest !== undefined ? { expectedDigest: request.expectedDigest } : {}),
-          }, signal)
-        } catch (error) {
-          if (remoteErrorOf(error) !== undefined) throw error
-          throw new RemoteError(
-            'workspace/confirmation-mismatch',
-            `cannot open project at "${request.path}": ${errorMessage(error)}`,
-            { path: request.path, reason: errorMessage(error) },
-            { cause: error },
-          )
+      try {
+        const existing = await this.ctx.workspaceRegistry.resolveByPath(request.path)
+        if (existing !== undefined) {
+          return { workspace: workspaceView(existing), created: false }
         }
+        const workspace = await this.ctx.workspaceRegistry.create(request.path)
+        return { workspace: workspaceView(workspace), created: true }
+      } catch (error) {
+        if (remoteErrorOf(error) !== undefined) throw error
+        throw new RemoteError(
+          'workspace/invalid-path',
+          `cannot create a Workspace at "${request.path}": ${errorMessage(error)}`,
+          { path: request.path },
+          { cause: error },
+        )
       }
-      return this.createInternal(request.path)
     })
   }
 
@@ -210,29 +97,13 @@ export class WorkspaceCommands {
    */
   delete(request: WorkspaceDeleteRequest): Promise<WorkspaceDeleteValue> {
     return this.enqueue(async () => {
-      if (!await this.ctx.workspaceRegistry.delete(
-        WorkspaceId(request.workspaceId),
-        request.sessionAction === undefined ? {} : { sessionAction: request.sessionAction },
-      )) {
+      if (!await this.ctx.workspaceRegistry.delete(WorkspaceId(request.workspaceId))) {
         throw workspaceNotFound(request.workspaceId)
       }
       return { deleted: true }
     })
   }
 
-  /**
-   * Delete one Session permanently from the workspace registry and storage.
-   * @param request - Session identity to delete.
-   * @returns deletion confirmation.
-   */
-  deleteSession(request: WorkspaceDeleteSessionRequest): Promise<WorkspaceDeleteSessionValue> {
-    return this.enqueue(async () => {
-      if (!await this.ctx.workspaceRegistry.deleteSession(request.sessionId)) {
-        throw new RemoteError('session/not-found', `Session not found: ${request.sessionId}`, { sessionId: request.sessionId })
-      }
-      return { deleted: true }
-    })
-  }
   /**
    * Move one Workspace within the durable registry order.
    * @param request - moved Workspace and optional anchor.

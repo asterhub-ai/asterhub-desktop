@@ -1,17 +1,19 @@
 /** Durable attachment storage seam (`ctx.attachments`). @module @deepseek-ai/dsh-attachment */
 
+import { Buffer } from 'node:buffer'
 import { Context, Service } from '@deepseek-ai/cordis'
 import { admitEncodedFile as admitFileInput, admitEncodedImages } from './admission.ts'
 import { AttachmentError, isAttachmentError as matchesAttachmentError } from './error.ts'
 import type {
   AdmittedPromptContentPart,
-  AttachmentScope,
   AttachmentAdmissionPart,
+  AttachmentScope,
   EncodedFileAttachment,
   FileAttachmentRef,
   ImageAttachmentLimits,
   ImageAttachmentRef,
   ImageRequestTarget,
+  PromptContentPart,
   RequestImageAttachment,
   SaveFileAttachment,
   SaveFileStreamAttachment,
@@ -51,16 +53,41 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
+/** Whether one admission part still carries encoded image bytes. */
+function isEncodedImage(part: AttachmentAdmissionPart): part is Extract<PromptContentPart, { readonly type: 'image' }> {
+  return part.type === 'image' && !('attachment' in part)
+}
+
+/** Whether one admission part references an image an earlier upload stored. */
+function isStoredImage(
+  part: AttachmentAdmissionPart,
+): part is Extract<AttachmentAdmissionPart, { readonly type: 'image'; readonly encodedBytes: number }> {
+  return part.type === 'image' && 'attachment' in part
+}
+
+/** Refuse one message whose images exceed the configured count or aggregate byte limit. */
+function assertMessageImages(limits: ImageAttachmentLimits, count: number, bytes: number): void {
+  if (count > limits.maxImagesPerMessage) {
+    throw new AttachmentError('Image batch exceeds the configured image-count limit.', 'TOO_MANY_IMAGES')
+  }
+  if (bytes > limits.maxMessageImageBytes) {
+    throw new AttachmentError('Image batch exceeds the configured aggregate image-byte limit.', 'IMAGES_TOO_LARGE')
+  }
+}
+
 /** Immutable binary attachment service. Implementations validate bytes before publishing a reference. */
 export abstract class AttachmentStore extends Service {
   constructor(ctx: Context) {
     super(ctx, 'attachments')
   }
+
   /** Deployment-resolved image policy used by authoritative and fast-path validation. */
   abstract readonly imageLimits: ImageAttachmentLimits
 
-
-  /** Whether model image access requires a trusted live Session address. */
+  /**
+   * Whether model image access requires a Session scope; project-local storage requires one.
+   * @returns whether scope-less model image resolution must be skipped instead of attempted.
+   */
   get modelImageSessionRequired(): boolean {
     return false
   }
@@ -82,16 +109,10 @@ export abstract class AttachmentStore extends Service {
    * @returns durable references in the exact input order.
    */
   protected validateImageBatch(inputs: readonly SaveImageAttachment[]): void {
-    const { maxImagesPerMessage, maxMessageImageBytes, mediaTypes } = this.imageLimits
-    if (inputs.length > maxImagesPerMessage) {
-      throw new AttachmentError('Image batch exceeds the configured image-count limit.', 'TOO_MANY_IMAGES')
-    }
-    const totalBytes = inputs.reduce((sum, input) => sum + input.data.byteLength, 0)
-    if (totalBytes > maxMessageImageBytes) {
-      throw new AttachmentError('Image batch exceeds the configured aggregate image-byte limit.', 'IMAGES_TOO_LARGE')
-    }
+    const limits = this.imageLimits
+    assertMessageImages(limits, inputs.length, inputs.reduce((sum, input) => sum + input.data.byteLength, 0))
     for (const input of inputs) {
-      if (!mediaTypes.includes(input.mediaType)) {
+      if (!limits.mediaTypes.includes(input.mediaType)) {
         throw new AttachmentError(`Image type ${input.mediaType} is not accepted by this deployment.`, 'UNSUPPORTED_IMAGE_TYPE')
       }
     }
@@ -100,8 +121,7 @@ export abstract class AttachmentStore extends Service {
   /**
    * Validate and durably commit one ordered image batch.
    * @param inputs - encoded images in owning-message order.
-   * @param scope - trusted Session address; required in project-local mode
-   *   and whenever ProjectStorage is mounted, with ownership resolved by the provider.
+   * @param scope - trusted Session address; required by project-local providers, ignored otherwise.
    * @returns durable normalized attachment references in the same order after every member succeeds.
    */
   async saveImages(inputs: readonly SaveImageAttachment[], scope?: AttachmentScope): Promise<readonly ImageAttachmentRef[]> {
@@ -114,11 +134,13 @@ export abstract class AttachmentStore extends Service {
   }
 
   /**
-   * Admit one Host prompt and replace each uploaded image with its durable reference.
-   * Text and durable file references pass through unchanged. A prompt without image parts performs no storage operation.
-   * @param content - prompt parts in message order after file receipt resolution.
-   * @param scope - trusted Session address; required in project-local mode
-   *   and whenever ProjectStorage is mounted, with ownership resolved by the provider.
+   * Admit one Host prompt and replace each encoded image with its durable reference.
+   * Text, durable file references, and already stored images pass through unchanged.
+   * Every image part counts toward `maxImagesPerMessage` and `maxMessageImageBytes`;
+   * a stored image counts the bytes of the upload that stored it. Refused content
+   * starts no writes. A prompt without encoded images performs no storage operation.
+   * @param content - prompt parts in message order after upload receipt resolution.
+   * @param scope - trusted Session address; required by project-local providers, ignored otherwise.
    * @returns admitted prompt parts in the same order as `content`.
    * @throws AttachmentError when the image batch is refused.
    */
@@ -126,16 +148,23 @@ export abstract class AttachmentStore extends Service {
     content: readonly AttachmentAdmissionPart[],
     scope?: AttachmentScope,
   ): Promise<AdmittedPromptContentPart[]> {
-    if (content.every(part => part.type !== 'image')) {
-      return content.map(part => part.type === 'text'
-        ? { type: 'text', text: part.text }
-        : { type: 'file', attachment: part.attachment })
+    const encoded = content.filter(isEncodedImage)
+    const stored = content.filter(isStoredImage)
+    // Each upload passed the limits alone; the encoded batch below checks only itself.
+    if (stored.length > 0) {
+      assertMessageImages(
+        this.imageLimits,
+        encoded.length + stored.length,
+        encoded.reduce((sum, part) => sum + Buffer.byteLength(part.data, 'base64'), 0)
+          + stored.reduce((sum, part) => sum + part.encodedBytes, 0),
+      )
     }
-    const refs = await admitEncodedImages(this, content.filter(part => part.type === 'image'), scope)
+    const refs = encoded.length === 0 ? [] : await admitEncodedImages(this, encoded, scope)
     let next = 0
     return content.map((part) => {
       if (part.type === 'text') return { type: 'text', text: part.text }
       if (part.type === 'file') return { type: 'file', attachment: part.attachment }
+      if ('attachment' in part) return { type: 'image', attachment: part.attachment }
       return { type: 'image', attachment: refs[next++] as ImageAttachmentRef }
     })
   }
@@ -143,8 +172,7 @@ export abstract class AttachmentStore extends Service {
   /**
    * Decode and durably commit one canonical base64 file upload.
    * @param input - canonical base64 bytes and optional display name.
-   * @param scope - trusted Session address; required in project-local mode
-   *   and whenever ProjectStorage is mounted, with ownership resolved by the provider.
+   * @param scope - trusted Session address; required by project-local providers, ignored otherwise.
    * @returns the durable content-addressed file reference.
    * @throws AttachmentError when the encoding or storage operation is refused.
    */
@@ -167,8 +195,7 @@ export abstract class AttachmentStore extends Service {
    * normalization reduces the raster, its `originalDimensions` records the
    * orientation-applied input dimensions.
    * @param input - encoded bytes, declared media type, and optional display name.
-   * @param scope - trusted Session address; required in project-local mode
-   *   and whenever ProjectStorage is mounted, with ownership resolved by the provider.
+   * @param scope - trusted Session address; required by project-local providers, ignored otherwise.
    * @returns the durable content-addressed normalized image reference.
    */
   abstract saveImage(input: SaveImageAttachment, scope?: AttachmentScope): Promise<ImageAttachmentRef>
@@ -177,8 +204,7 @@ export abstract class AttachmentStore extends Service {
    * Read one image and verify that bytes still match the recorded reference.
    * @param ref - durable reference from the session log.
    * @param signal - optional cancellation for backend read and verification work.
-   * @param scope - trusted Session address; required in project-local mode
-   *   and whenever ProjectStorage is mounted, with ownership resolved by the provider.
+   * @param scope - trusted Session address; required by project-local providers, ignored otherwise.
    * @returns the verified bytes and normalized attachment reference.
    * @throws the signal reason when aborted, or a storage error when verification fails.
    */
@@ -187,10 +213,9 @@ export abstract class AttachmentStore extends Service {
   /**
    * Locate the provider-owned normalized object in the harness host filesystem.
    * @param ref - durable normalized attachment reference.
-   * @param scope - trusted Session address; required in project-local mode
-   *   and whenever ProjectStorage is mounted, with ownership resolved by the provider.
+   * @param scope - trusted Session address; required by project-local providers, ignored otherwise.
    * @returns an absolute host path, or undefined when this backend is not host-file-backed.
-   * @throws an AttachmentError when the durable reference or scope is invalid.
+   * @throws an AttachmentError when the durable reference is invalid.
    */
   imageHostPath(ref: ImageAttachmentRef, scope?: AttachmentScope): string | undefined {
     void ref
@@ -204,8 +229,7 @@ export abstract class AttachmentStore extends Service {
    * accepted, and the stored object is the exact submitted bytes. Backends
    * without verbatim file storage keep this default rejection.
    * @param input - exact bytes and optional display name.
-   * @param scope - trusted Session address; required in project-local mode
-   *   and whenever ProjectStorage is mounted, with ownership resolved by the provider.
+   * @param scope - trusted Session address; required by project-local providers, ignored otherwise.
    * @returns the durable content-addressed file reference.
    */
   saveFile(input: SaveFileAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef> {
@@ -222,8 +246,7 @@ export abstract class AttachmentStore extends Service {
    * apply backpressure and must not collect the complete file in memory.
    * Backends without streamed verbatim storage keep this default rejection.
    * @param input - ordered exact bytes, optional cancellation, and display name.
-   * @param scope - trusted Session address; required in project-local mode
-   *   and whenever ProjectStorage is mounted, with ownership resolved by the provider.
+   * @param scope - trusted Session address; required by project-local providers, ignored otherwise.
    * @returns the durable content-addressed file reference.
    */
   saveFileStream(input: SaveFileStreamAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef> {
@@ -241,8 +264,7 @@ export abstract class AttachmentStore extends Service {
    * reads keep this default rejection.
    * @param ref - durable reference from the session log.
    * @param signal - optional cancellation for backend reads and verification work.
-   * @param scope - trusted Session address; required in project-local mode
-   *   and whenever ProjectStorage is mounted, with ownership resolved by the provider.
+   * @param scope - trusted Session address; required by project-local providers, ignored otherwise.
    * @returns exact file bytes in order; integrity failures reject the iteration.
    */
   async *readFileStream(
@@ -260,14 +282,13 @@ export abstract class AttachmentStore extends Service {
   }
 
   /**
-   * Resolve an original file attachment to a host-local path when the backend supports it.
+   * Locate the verbatim stored file object in the harness host filesystem.
    * @param ref - durable file reference.
-   * @param scope - trusted Session address; required in project-local mode
-   *   and whenever ProjectStorage is mounted, with ownership resolved by the provider.
+   * @param scope - trusted Session address; required by project-local providers, ignored otherwise.
    * @returns an absolute host path, or undefined when this backend is not host-file-backed.
-   * @throws an AttachmentError when the durable reference or scope is invalid.
+   * @throws an AttachmentError when the durable reference is invalid.
    */
-  // oxlint-disable-next-line sonarjs/no-identical-functions
+  // oxlint-disable-next-line sonarjs/no-identical-functions -- interface default stub, intentionally identical to imageHostPath.
   fileHostPath(ref: FileAttachmentRef, scope?: AttachmentScope): string | undefined {
     void ref
     void scope
@@ -279,8 +300,7 @@ export abstract class AttachmentStore extends Service {
    * @param ref - durable provider-independent normalized attachment reference.
    * @param target - route-chosen dimensions and byte target; an unmet byte target yields the smallest ladder output.
    * @param signal - optional cancellation.
-   * @param scope - trusted Session address; required in project-local mode
-   *   and whenever ProjectStorage is mounted, with ownership resolved by the provider.
+   * @param scope - trusted Session address; required by project-local providers, ignored otherwise.
    * @returns request bytes and the cache/upload identity covering every transform input.
    */
   readImageRequest(
@@ -290,9 +310,9 @@ export abstract class AttachmentStore extends Service {
     scope?: AttachmentScope,
   ): Promise<RequestImageAttachment> {
     signal?.throwIfAborted()
-    void scope
     void ref
     void target
+    void scope
     return Promise.reject(new AttachmentError(
       'The mounted attachment provider cannot derive model-request images.',
       'ATTACHMENT_PROJECTION_UNSUPPORTED',

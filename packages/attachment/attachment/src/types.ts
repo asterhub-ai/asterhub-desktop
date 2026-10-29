@@ -1,7 +1,7 @@
 /** Durable attachment vocabulary. @module @deepseek-ai/dsh-attachment/types */
 
-import type { AttachmentId, ImageVariantId } from './brand.ts'
 import type { Branded } from '@deepseek-ai/dsh-brand'
+import type { AttachmentId, ImageVariantId } from './brand.ts'
 
 export type { AttachmentId } from './brand.ts'
 
@@ -71,11 +71,17 @@ export interface SaveFileStreamAttachment {
   name?: string
 }
 
-
-/** Trusted Session address used by project-local attachment storage. */
+/**
+ * Trusted Session address routing one attachment operation to its owning
+ * Workspace project. Callers obtain it from the live Session the operation
+ * serves; project-local providers refuse operations without one instead of
+ * falling back to a global root.
+ */
 export interface AttachmentScope {
+  /** Persisted Session identity whose Workspace record owns the attachment bytes. */
   readonly sessionId: Branded<'SessionId'>
 }
+
 /** Deployment-resolved limits used by upload admission and request buffering. */
 export interface ImageAttachmentLimits {
   maxImageBytes: number
@@ -112,10 +118,16 @@ export type PromptContentPart =
     readonly name?: string
   }
 
-/** Host prompt content whose file receipts are resolved and whose image bytes await admission. */
+/**
+ * Host prompt content whose upload receipts are resolved. An image part
+ * carries encoded bytes awaiting admission, or references an image this
+ * service already stored for an upload the same Session staged, with
+ * `encodedBytes` holding the byte length of that upload.
+ */
 export type AttachmentAdmissionPart =
   | PromptContentPart
   | { readonly type: 'file'; readonly attachment: FileAttachmentRef }
+  | { readonly type: 'image'; readonly attachment: ImageAttachmentRef; readonly encodedBytes: number }
 
 /** Host-admitted prompt content with every attachment represented by its durable reference. */
 export type AdmittedPromptContentPart =

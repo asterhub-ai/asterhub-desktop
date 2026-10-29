@@ -55,32 +55,28 @@ export class GitRunner {
   async run(args: readonly string[], options: GitRunOptions): Promise<GitRunResult> {
     const timeout = AbortSignal.timeout(this.limits.timeoutMs)
     const signal = AbortSignal.any([options.signal, timeout])
-    try {
-      const handle = this.subprocess.spawn({
-        argv: [this.executable, ...args],
-        cwd: options.cwd,
-        stdio: {
-          stdin: options.stdin === undefined ? 'ignore' : { data: options.stdin },
-          stdout: { maxBytes: options.maxBytes ?? this.limits.outputMaxBytes },
-          stderr: { maxBytes: STDERR_TAIL_BYTES },
-        },
-        graceMs: TERMINATE_GRACE_MS,
-        signal,
-        // The subprocess credential scrub removes ambient GIT_CONFIG_KEY_n entries.
-        env: { GIT_CONFIG_COUNT: '0', GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C', ...options.env },
-      })
-      const outcome = await handle.done
-      if (signal.aborted) throw signal.reason
-      /* v8 ignore start -- collect-mode stdio always yields both readers. */
-      const stdout = handle.collected.stdout?.readFrom(0) ?? { text: '', lossy: false }
-      const stderr = handle.collected.stderr?.readFrom(0).text ?? ''
-      /* v8 ignore stop */
-      return { exitCode: outcome.exitCode, stdout: stdout.text, stderr, truncated: stdout.lossy }
-    } catch (error) {
-      if (!signal.aborted) throw error
-      const timedOut = timeout.aborted && signal.reason === timeout.reason
-      throw new Error(`git ${args.join(' ')} ${timedOut ? `timed out after ${this.limits.timeoutMs}ms` : 'was aborted'}`)
+    const handle = this.subprocess.spawn({
+      argv: [this.executable, ...args],
+      cwd: options.cwd,
+      stdio: {
+        stdin: options.stdin === undefined ? 'ignore' : { data: options.stdin },
+        stdout: { maxBytes: options.maxBytes ?? this.limits.outputMaxBytes },
+        stderr: { maxBytes: STDERR_TAIL_BYTES },
+      },
+      graceMs: TERMINATE_GRACE_MS,
+      signal,
+      // The subprocess credential scrub removes ambient GIT_CONFIG_KEY_n entries.
+      env: { GIT_CONFIG_COUNT: '0', GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C', ...options.env },
+    })
+    const outcome = await handle.done
+    if (signal.aborted) {
+      throw new Error(`git ${args.join(' ')} ${timeout.aborted ? `timed out after ${this.limits.timeoutMs}ms` : 'was aborted'}`)
     }
+    /* v8 ignore start -- collect-mode stdio always yields both readers. */
+    const stdout = handle.collected.stdout?.readFrom(0) ?? { text: '', lossy: false }
+    const stderr = handle.collected.stderr?.readFrom(0).text ?? ''
+    /* v8 ignore stop */
+    return { exitCode: outcome.exitCode, stdout: stdout.text, stderr, truncated: stdout.lossy }
   }
 }
 

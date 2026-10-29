@@ -7,8 +7,9 @@
     { "path": "../../../vendor/cordis" },
     { "path": "../../../vendor/schemastery" },
     { "path": "../attachment" },
+    { "path": "../../util/brand" },
     { "path": "../../util/home-paths" },
     { "path": "../../util/lazy-require" },
-    { "path": "../../workspace/project-storage" }
+    { "path": "../../workspace/workspace" }
   ]
 }

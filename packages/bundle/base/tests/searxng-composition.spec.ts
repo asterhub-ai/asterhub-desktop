@@ -4,6 +4,7 @@ import { credentialKey } from '@deepseek-ai/dsh-credentials'
 import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import WebRuntime from '@deepseek-ai/dsh-web'
 import * as ToolWeb from '@deepseek-ai/dsh-tool-web'
@@ -28,6 +29,7 @@ it('composes SearXNG with the model-facing web_search tool and returns citeable 
   const ctx = new Context()
   contexts.push(ctx)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeToolExecutor)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(WebRuntime, { searchProvider: 'asterhub-searxng' })
   const credentials = new MemoryCredentials(ctx)
@@ -36,15 +38,19 @@ it('composes SearXNG with the model-facing web_search tool and returns citeable 
   await credentials.modifyRecord(credentialKey('asterhub-account', 'model-api-key'), () =>
     Promise.resolve({ kind: 'api-key', key: 'test-sub2api-key' }))
 
-  const result = await ctx.tools.execute({
-    callId: ToolCallId('web-search-searxng-composition'),
-    name: 'web_search',
-    arguments: { queries: ['AsterHub SearXNG test'] },
+  const batch = await ctx.tools.execute({
     signal: new AbortController().signal,
+    calls: [{
+      type: 'tool-call',
+      id: ToolCallId('web-search-searxng-composition'),
+      name: 'web_search',
+      arguments: JSON.stringify({ queries: ['AsterHub SearXNG test'] }),
+    }],
   })
+  const result = batch.results[0]?.result
 
-  const output = result.content.map(block => block.type === 'text' ? block.text : '').join('')
-  expect(result.isError, output).toBe(false)
+  const output = (result?.content ?? []).map(block => block.type === 'text' ? block.text : '').join('')
+  expect(result?.isError, output).toBe(false)
   expect(output).toContain('Result title')
   expect(output).toContain('https://search-result.example/article')
   expect(output).toContain('Result excerpt')

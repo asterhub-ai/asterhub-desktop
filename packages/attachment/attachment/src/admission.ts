@@ -39,12 +39,14 @@ function saveInput(image: EncodedImageAttachment): SaveImageAttachment {
 
 /**
  * Admit one wire image batch: enforce canonical base64 on every member, then
- * delegate policy and ordered persistence to the deployment attachment store.
- * @param attachments - the store owning batch policy.
+ * delegate batch admission — count and aggregate-byte limits, media-type and
+ * per-image validation, ordered commit — to {@link AttachmentStore.saveImages}.
+ * The shared entry for every RPC endpoint accepting browser uploads.
+ * @param attachments - the deployment attachment store owning batch policy.
  * @param images - base64-encoded uploads in caller order.
- * @param scope - trusted project Session scope; required by project-local providers.
+ * @param scope - trusted Session address; required by project-local providers, ignored otherwise.
  * @returns durable references in the same order as `images`.
- * @throws AttachmentError on a non-canonical payload or refused batch.
+ * @throws AttachmentError on a non-canonical payload or a refused batch.
  */
 export async function admitEncodedImages(
   attachments: AttachmentStore,
@@ -61,7 +63,7 @@ export async function admitEncodedImages(
  * accepting browser file uploads.
  * @param attachments - the deployment attachment store.
  * @param file - base64-encoded upload and optional display name.
- * @param scope - trusted project Session scope; required by project-local providers.
+ * @param scope - trusted Session address; required by project-local providers, ignored otherwise.
  * @returns the durable content-addressed file reference.
  * @throws AttachmentError on a non-canonical payload or a storage failure.
  */

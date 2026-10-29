@@ -11,19 +11,16 @@ interface VerificationRequest {
   readonly expectedId: string
   readonly expectedEventCount: number
   readonly expectedPrefix?: JsonlExpectedPrefix
-  readonly targetVersion?: 4
 }
 
 function parseRequest(value: unknown): VerificationRequest {
   if (typeof value !== 'object' || value === null) throw new Error('migration verifier request must be an object')
-  const targetVersion = (value as Record<string, unknown>).targetVersion
   const request = value as Partial<VerificationRequest>
   if (typeof request.path !== 'string'
     || request.compression !== 'none' && request.compression !== 'zstd'
     || typeof request.expectedId !== 'string'
     || !Number.isSafeInteger(request.expectedEventCount)
     || (request.expectedEventCount as number) < 0
-    || targetVersion !== undefined && targetVersion !== 4
     || request.expectedPrefix !== undefined
       && (!Number.isSafeInteger(request.expectedPrefix.bytes)
         || request.expectedPrefix.bytes < 0
@@ -46,7 +43,6 @@ async function verify(): Promise<void> {
       request.expectedId,
       request.expectedEventCount,
       request.expectedPrefix,
-      request.targetVersion,
     )
     port.postMessage({ ok: true, result })
   } catch (error: unknown) {

@@ -1,5 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { Agent, AgentHandle, CreateAgentOptions } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
@@ -37,10 +38,9 @@ function controllerAgents(
 
 /** A creation outcome that publishes `sessionId` in `cwd` as a stand-in Agent. */
 function publishedSession(ctx: Context, sessionId: SessionId) {
-  return async (request: ApiSessionCreateRequest): Promise<ApiSessionCreated> => {
+  return (request: ApiSessionCreateRequest): Promise<ApiSessionCreated> => {
     const session = ctx.sessions.create(sessionId, { meta: { cwd: request.cwd } })
-    await request.attach?.(session.id)
-    return { agent: { id: session.id, session, status: 'idle', ctx } as Agent, agentPreset: undefined }
+    return Promise.resolve({ agent: { id: session.id, session, status: 'idle', ctx } as Agent, agentPreset: undefined })
   }
 }
 
@@ -48,6 +48,7 @@ async function baseContext(): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(TypertRegistry)
   await ctx.plugin(SessionStore)
+  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentRegistry)
   installSessionReadTestServices(ctx)
   ctx.provide('agentDefaultModel', {

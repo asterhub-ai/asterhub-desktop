@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/workspace/project-adopt/README.md
+/:
+  en: 7b6e64db6cdb70e8
+  zh: 62a5a1b1404cc8ee
+/project-adopt:
+  en: 28f481f0887e59d2
+  zh: 52b9a3edc16868a1
+/project-adopt/summary:
+  en: 1f4844c655dd9d50
+  zh: 675347da1a9440e3
+/project-adopt/host-service:
+  en: d0bb3b016681469c
+  zh: a15b5f5ecb8a9fd0
+/project-adopt/adoption-behavior:
+  en: 1367569f10d4565c
+  zh: 19f745af88da1844
+/project-adopt/packaging-contract:
+  en: 8159921de21bc156
+  zh: 384c06792d07a9b6
+/project-adopt/verification:
+  en: b5c49966af6823b2
+  zh: 9d92176cfbfbadbc
+/project-adopt/model-experience:
+  en: e9ce18c0e4ea3765
+  zh: 13a1cf2389474024
+/project-adopt/known-limitations-and-deferred-work:
+  en: 97938af6eacd5998
+  zh: 4c65738aebe617cf
+/project-adopt/known-limitations-and-deferred-work/dev-note:
+  en: 72461d3ec3b175fe
+  zh: d9953126471fccad

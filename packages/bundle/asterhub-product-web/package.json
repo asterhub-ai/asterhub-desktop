@@ -62,6 +62,7 @@
     "@deepseek-ai/dsh-persona": "workspace:*",
     "@deepseek-ai/dsh-plan-mode": "workspace:*",
     "@deepseek-ai/dsh-plugin-manager": "workspace:*",
+    "@deepseek-ai/dsh-project-adopt": "workspace:*",
     "@deepseek-ai/dsh-project-storage": "workspace:*",
     "@deepseek-ai/dsh-skill-filesystem": "workspace:*",
     "@deepseek-ai/dsh-terminal": "workspace:*",

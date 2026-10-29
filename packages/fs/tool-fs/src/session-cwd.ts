@@ -1,36 +1,25 @@
 /**
- * Resolve the current execution directory for an agent call without changing
- * the immutable session header. Agentless calls keep the provider's default.
+ * Resolution options for filesystem calls in the Session's current directory.
+ * Non-agent calls leave directory defaults to the filesystem provider.
  * @module @deepseek-ai/dsh-tool-fs/session-cwd
  */
 
-import type {} from '@deepseek-ai/dsh-session/cwd'
+import type { Context } from '@deepseek-ai/cordis'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
-/** @param exec - tool context. @returns current session cwd or undefined for agentless calls. */
-export function sessionCwd(exec: ToolExecution): string | undefined {
-  const agent = exec.agent
-  if (agent === undefined) return undefined
-  const sessionCwd = agent.ctx.get('sessionCwd', false)
-  if (sessionCwd !== undefined) {
-    const cwd = sessionCwd.resolve(agent.session.header)
-    if (cwd === undefined) throw new Error(`Session ${agent.session.id} has no current execution directory`)
-    return cwd
-  }
-  return agent.options.cwd ?? agent.session.header.cwd
-}
+import type {} from '@deepseek-ai/dsh-working-directory'
 
 /**
- * Resolution options shared by all model-facing filesystem tools.
- * A sandbox policy root is authoritative for mutations and must not be
- * replaced by a stale or conflicting session value.
+ * Resolve the current directory and cancellation for a filesystem call.
+ * @param ctx - context containing the working-directory service.
+ * @param exec - tool execution supplying the agent and cancellation.
+ * @returns filesystem resolution options for this call.
  */
-export function sessionResolveOptions(
+export async function sessionResolveOptions(
+  ctx: Context,
   exec: ToolExecution,
-  policyWorkspaceRoot?: string,
-): { cwd?: string; signal?: AbortSignal } {
-  const cwd = policyWorkspaceRoot ?? sessionCwd(exec)
-  return {
-    ...cwd !== undefined ? { cwd } : {},
-    signal: exec.signal,
-  }
+): Promise<{ cwd?: string; signal?: AbortSignal }> {
+  const cwd = exec.agent === undefined
+    ? undefined
+    : await ctx.workingDirectory.ensure(exec.agent, exec.signal)
+  return { ...cwd !== undefined ? { cwd } : {}, signal: exec.signal }
 }

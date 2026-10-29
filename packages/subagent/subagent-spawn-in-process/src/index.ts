@@ -8,19 +8,16 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import type {} from '@deepseek-ai/dsh-session/cwd'
 import type {
   ContinuableCreateSpec,
-  ResolvedSubagentStartRequest,
   SubagentCapabilities,
   SubagentProvider,
 } from '@deepseek-ai/dsh-subagent'
-import { startInProcessRun } from '@deepseek-ai/dsh-subagent-in-process-driver'
 
 export const name = 'subagent-spawn-in-process'
 // `tools` is deliberately not injected: the child factory already provides it during setup,
 // and adding it here would unnecessarily change this provider's apply timing.
-export const inject = ['sessionCwd', 'subagents']
+export const inject = ['subagents']
 
 /** Config: the registry name to register the provider under. */
 export interface Config {
@@ -36,28 +33,19 @@ export const Config: z<Config> = z.object({
  * The spawn provider. Supports every start-time capability: `depthLimit` (it
  * constructs the child, so it can enforce a recursion cap), `outputSchema`
  * (the scoped structured runtime), `agentOptions` (merged over the parent
- * route), and `toolFilter`/`persona` (scoped `restrict()` and a scoped
- * shadowing persona section, applied in the child's creation window).
+ * route). The selected preset owns persona and tool composition.
  */
 class SpawnInProcessProvider implements SubagentProvider {
   readonly capabilities: SubagentCapabilities = {
     agentOptions: true,
+    agentPreset: true,
     outputSchema: true,
     depthLimit: true,
-    toolFilter: true,
-    persona: true,
   }
   // Context contract: a spawned child starts fresh — it never sees the parent conversation.
   readonly inheritsParentContext = false
 
-  constructor(readonly name: string, readonly sessionCwd: Context['sessionCwd']) {}
-
-  start(request: ResolvedSubagentStartRequest) {
-    // Fresh child: no seed. The shared driver mints ids, stamps cwd/lineage/
-    // depth, drives the one-shot (including the structured capture when the
-    // request carries an outputSchema), and maps the result.
-    return startInProcessRun(request, {}, this.sessionCwd)
-  }
+  constructor(readonly name: string) {}
 
   prepareContinuable(): Promise<ContinuableCreateSpec> {
     // A spawned child starts fresh, so it contributes no seed; the continuation
@@ -67,5 +55,5 @@ class SpawnInProcessProvider implements SubagentProvider {
 }
 
 export function apply(ctx: Context, config: Config): void {
-  ctx.subagents.registerProvider(new SpawnInProcessProvider(config.providerName, ctx.sessionCwd))
+  ctx.subagents.registerProvider(new SpawnInProcessProvider(config.providerName))
 }

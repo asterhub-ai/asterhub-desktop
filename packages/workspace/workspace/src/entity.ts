@@ -39,12 +39,20 @@ export interface WorkspaceEntityHost {
   table(): KvTable<WorkspaceId, WorkspaceRecord>
 
   /**
-   * Read a session's canonical directory from the registry's header index.
-   * @param id - Session whose indexed path is requested.
-   * @returns the canonical directory, or `undefined` when the header is
-   * missing or its cwd cannot identify an existing directory.
+   * Read a session's canonical directory from the registry index.
+   * @param id - Session whose current path is requested.
+   * @returns the canonical directory, or `undefined` when the path is not indexed.
    */
   sessionPath(id: SessionId): string | undefined
+
+  /**
+   * Validate an already-accounted session, preserving ownership when its fully
+   * qualified cwd cannot resolve because a path component is missing.
+   * @param id - Session already present in this workspace's candidate account.
+   * @param path - Workspace's stored canonical directory.
+   * @returns whether the candidate remains a member.
+   */
+  candidateMatches(id: SessionId, path: string): boolean
 
   /**
    * Read one stored session header for attach validation.
@@ -60,6 +68,12 @@ export interface WorkspaceEntityHost {
    * @param path - Canonical existing directory from the immutable header cwd.
    */
   rememberSessionPath(id: SessionId, path: string): void
+
+  /**
+   * Remove a Session path from the in-memory index after a failed membership write.
+   * @param id - Session whose path must be forgotten.
+   */
+  forgetSessionPath(id: SessionId): void
 }
 
 /** Chain-slot abort sentinel thrown by the update fn when the record needs no change; only `mutate` observes it. */
@@ -99,7 +113,7 @@ export class WorkspaceEntity implements Workspace {
   }
 
   get sessionIds(): readonly SessionId[] {
-    return this.record.sessionIds.filter(id => this.host.sessionPath(id) === this.record.path)
+    return this.record.sessionIds.filter(id => this.host.candidateMatches(id, this.record.path))
   }
 
   async setTitle(title: string): Promise<void> {
@@ -112,50 +126,59 @@ export class WorkspaceEntity implements Workspace {
     // (stored header cwd, workspace path) are immutable. Membership itself is
     // decided on the write chain inside `mutate`, never on this snapshot.
     if (!this.record.sessionIds.includes(sessionId)) {
-      const knownPath = this.host.sessionPath(sessionId)
-      if (knownPath !== undefined) {
-        if (knownPath !== this.record.path) {
-          throw new Error(
-            `cannot attach session '${sessionId}' to workspace '${this.record.path}': `
-            + `its cwd resolves to '${knownPath}'`,
-          )
-        }
-      } else {
-        const header = await this.host.readSessionHeader(sessionId)
-        if (header.cwd === undefined) {
-          throw new Error(
-            `cannot attach session '${sessionId}' to workspace '${this.record.path}': `
-            + 'its stored header carries no cwd to validate against',
-          )
-        }
-        let cwd: string
-        try {
-          cwd = await realpathNormalize(header.cwd)
-        } catch (error) {
-          throw new Error(
-            `cannot attach session '${sessionId}' to workspace '${this.record.path}': `
-            + `its cwd '${header.cwd}' does not resolve, so it cannot be validated`,
-            { cause: error },
-          )
-        }
-        if (!(await stat(cwd)).isDirectory()) {
-          throw new Error(
-            `cannot attach session '${sessionId}' to workspace '${this.record.path}': `
-            + `its cwd '${header.cwd}' is not a directory`,
-          )
-        }
-        if (cwd !== this.record.path) {
-          throw new Error(
-            `cannot attach session '${sessionId}' to workspace '${this.record.path}': `
-            + `its cwd resolves to '${cwd}'`,
-          )
-        }
-        this.host.rememberSessionPath(sessionId, cwd)
+      const header = await this.host.readSessionHeader(sessionId)
+      if (header.cwd === undefined) {
+        throw new Error(
+          `cannot attach session '${sessionId}' to workspace '${this.record.path}': `
+          + 'its stored header carries no cwd to validate against',
+        )
       }
+      let cwd: string
+      try {
+        cwd = await realpathNormalize(header.cwd)
+      } catch (error) {
+        throw new Error(
+          `cannot attach session '${sessionId}' to workspace '${this.record.path}': `
+          + `its cwd '${header.cwd}' does not resolve, so it cannot be validated`,
+          { cause: error },
+        )
+      }
+      if (!(await stat(cwd)).isDirectory()) {
+        throw new Error(
+          `cannot attach session '${sessionId}' to workspace '${this.record.path}': `
+          + `its cwd '${header.cwd}' is not a directory`,
+        )
+      }
+      if (cwd !== this.record.path) {
+        throw new Error(
+          `cannot attach session '${sessionId}' to workspace '${this.record.path}': `
+          + `its cwd resolves to '${cwd}'`,
+        )
+      }
+      this.host.rememberSessionPath(sessionId, cwd)
     }
     await this.mutate(record => record.sessionIds.includes(sessionId)
       ? record
       : { ...record, sessionIds: [sessionId, ...record.sessionIds] })
+  }
+
+  async adoptSession(sessionId: SessionId, currentCwd: string): Promise<void> {
+    await this.host.readSessionHeader(sessionId)
+    const cwd = await realpathNormalize(currentCwd)
+    if (!(await stat(cwd)).isDirectory() || cwd !== this.record.path) {
+      throw new Error(`cannot adopt session '${sessionId}' into workspace '${this.record.path}' from '${cwd}'`)
+    }
+    const previousPath = this.host.sessionPath(sessionId)
+    this.host.rememberSessionPath(sessionId, cwd)
+    try {
+      await this.mutate(record => record.sessionIds.includes(sessionId)
+        ? record
+        : { ...record, sessionIds: [sessionId, ...record.sessionIds] })
+    } catch (error) {
+      if (previousPath === undefined) this.host.forgetSessionPath(sessionId)
+      else this.host.rememberSessionPath(sessionId, previousPath)
+      throw error
+    }
   }
 
   async insertSessionBefore(sessionId: SessionId, beforeSessionId?: SessionId): Promise<void> {
@@ -200,7 +223,7 @@ export class WorkspaceEntity implements Workspace {
   /**
    * The single write path: run `fn` on the domain write chain via
    * `table.update`, stamping `updatedAt` and pruning candidates that no
-   * longer pass the id-plus-canonical-cwd membership check, then swap the
+   * longer pass the candidate membership check, then swap the
    * snapshot.
    *
    * `fn` sees the value current at its chain slot, so membership decisions
@@ -215,7 +238,7 @@ export class WorkspaceEntity implements Workspace {
       next = await this.host.table().update(this.id, (current) => {
         const changed = fn(current)
         const sessionIds = changed.sessionIds.filter(
-          id => this.host.sessionPath(id) === changed.path,
+          id => this.host.candidateMatches(id, changed.path),
         )
         if (changed === current && sessionIds.length === current.sessionIds.length) {
           throw unchangedSentinel

@@ -55,9 +55,6 @@
     },
     {
       "path": "../../settings/settings"
-    },
-    {
-      "path": "../../workspace/project-storage"
     }
   ]
 }

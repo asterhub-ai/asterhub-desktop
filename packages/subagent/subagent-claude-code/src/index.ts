@@ -7,13 +7,12 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-session/cwd'
 import z from '@deepseek-ai/schemastery'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import {
   assertPositiveFinite,
   NO_START_CAPABILITIES,
-  resolveChildCwd,
+  assertUsableCwd,
   type ResolvedSubagentStartRequest,
   type SubagentCapabilities,
   type SubagentProvider,
@@ -29,7 +28,7 @@ import {
 } from './run.ts'
 
 export const name = 'subagent-claude-code'
-export const inject = ['sessionCwd', 'subagents', 'subprocess']
+export const inject = ['subagents', 'subprocess']
 
 const DEFAULT_PROVIDER_NAME = 'claude-code'
 
@@ -82,19 +81,9 @@ class ClaudeCodeProvider implements SubagentProvider {
   ) {}
 
   async start(request: ResolvedSubagentStartRequest) {
-    const parentCwd = this.ctx.sessionCwd.resolve(request.parent.session.header)
-    if (parentCwd === undefined) {
-      throw new Error(
-        'subagent-claude-code: no current working directory for the child — delegate from a parent session with one',
-      )
-    }
     let cwd: string
     try {
-      cwd = resolveChildCwd(
-        'subagent-claude-code',
-        undefined,
-        parentCwd,
-      )
+      cwd = assertUsableCwd('subagent-claude-code', 'child cwd', request.cwd)
     } catch (error: unknown) {
       if (request.signal.aborted) {
         throw new Error(

@@ -47,11 +47,11 @@ describe('GitRunner', () => {
 
   it('reports timeouts and external aborts as failures', async () => {
     const cwd = await scratchDir('dsh-git-runner-', cleanups)
-    const { git: slow } = await runner({ timeoutMs: 100, outputMaxBytes: 1024 }, process.execPath)
-    await expect(slow.run(['-e', 'setInterval(() => {}, 1000)'], { cwd, signal })).rejects.toThrow('timed out after 100ms')
+    const { git: slow } = await runner({ timeoutMs: 1, outputMaxBytes: 1024 })
+    await expect(slow.run(['--version'], { cwd, signal })).rejects.toThrow('timed out after 1ms')
     const { git: quick } = await runner()
     const aborted = new AbortController()
-    aborted.abort()
+    setTimeout(() => { aborted.abort() }, 0)
     await expect(quick.run(['--version'], { cwd, signal: aborted.signal })).rejects.toThrow('git --version was aborted')
     const ok = await quick.run(['--version'], { cwd, signal })
     expect(ok.exitCode).toBe(0)

@@ -1,8 +1,11 @@
 - dialog "设置":
+  - text: 设置
   - navigation:
-    - text: 设置
     - button "通用设置"
-    - button "精选插件"
+    - button "模型"
+    - button "内置插件"
+    - button "Agent 预设"
+  - button "打开配置文件"
   - button "关闭"
   - text: 权限 选择新会话的默认权限模式
   - button "工作区内修改"
@@ -15,8 +18,14 @@
   - text: 字号大小 仅影响会话内容的字号 14
   - button "增大字号"
   - button "减小字号"
-  - text: px 工作步骤展示 选择希望看到多少工具调用细节
+  - text: px
+  - button "更多字体设置"
+  - text: 工作步骤展示 选择希望看到多少工具调用细节
   - button "详细"
+  - text: 工作步骤收起时机 选择何时自动收起工作步骤
+  - button "回答结束后"
+  - text: 收起后显示的回复 工作步骤收起后，保留哪些助手回复
+  - button "全部回复"
   - text: 显示代码工作视图 开启后，显示轨迹、本轮代码差异，可选择完整的 Agent 预设切换
   - switch "显示代码工作视图"
   - text: 快捷键
@@ -26,6 +35,6 @@
   - button "排队发送"
   - text: 性能与用量 选择性能与用量信息展示的详细程度
   - button "详细"
-  - text: 在使用官方模型 API 时上传 Session Log 帮助改进 AsterHub 及其 AI 服务
+  - text: 在使用官方模型 API 时上传 Session Log 帮助改进 DeepSeek 模型与产品
   - switch "在使用官方模型 API 时上传 Session Log"
   - text: 当前版本：{{version}}

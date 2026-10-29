@@ -10,10 +10,13 @@
   "references": [
     { "path": "../../vendor/cordis" },
     { "path": "../../packages/core/agent" },
-    { "path": "../../packages/browser-use/browser-use-desktop" },
     { "path": "../../packages/jobs/jobs" },
     { "path": "../../packages/schedule/schedule" },
+    { "path": "../../packages/browser-use/browser-use-desktop" },
     { "path": "../../packages/schedule/asterhub-automation" },
+    { "path": "../../packages/credentials/credentials" },
+    { "path": "../../packages/bundle/asterhub-product" },
+    { "path": "../../packages/workspace/workspace" },
     { "path": "../../packages/skill/skill-office" },
     { "path": "../../packages/util/home-paths" },
     { "path": "../../packages/skill/tool-workspace-dependencies" },
@@ -33,8 +36,25 @@
       "path": "../../packages/credentials/deepseek-account"
     },
     {
-      "path": "../../packages/credentials/credentials"
+      "path": "../../packages/boot/plugin-manager"
     },
-    { "path": "../../packages/bundle/asterhub-product" }
+    {
+      "path": "../../packages/fs/fs"
+    },
+    {
+      "path": "../../packages/core/session"
+    },
+    {
+      "path": "../../packages/session/session-persistence"
+    },
+    {
+      "path": "../../packages/sandbox/sandbox-policy"
+    },
+    {
+      "path": "../../packages/util/workspace-path"
+    },
+    {
+      "path": "../../packages/util/brand"
+    }
   ]
 }

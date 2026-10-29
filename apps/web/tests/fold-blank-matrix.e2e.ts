@@ -10,7 +10,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Browser, Page, Route } from 'playwright'
+import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
@@ -37,10 +37,14 @@ const MODE = webSnapshotMode()
 const SEEDED_TURNS = 8
 const SEEDED_STEPS = 6
 const LIVE_STEPS = 6
+/** Live Steps the steered Turn replays before the steering message is delivered. */
+const STEER_STEPS = 3
 const BLANK_LIMIT = 120
 /**
  * Frames whose layout gap may exceed {@link BLANK_LIMIT}. The gap counts rows by their boxes, so a
- * closing row that has faded but not finished shrinking still covers its space.
+ * closing row that has faded but not finished shrinking still covers its space. A band whose rows on
+ * both sides have faded to full transparency shows the same background as those rows and does not
+ * count; a band beside a visible row always counts.
  */
 const TRANSIENT_FRAMES = 1
 const EVIDENCE = fileURLToPath(new URL('../../../.artifacts/screenshots/fold-blank-matrix/', import.meta.url))
@@ -153,23 +157,37 @@ function installMeasure(): void {
     if (composer === null) throw new Error(`composer is absent: ${root}`)
     const composerTop = composer.getBoundingClientRect().top
     const spacer = host.querySelector<HTMLElement>('[data-chat-turn-spacer]')?.getBoundingClientRect().height ?? 0
+    // Fold motion writes row opacity, so a row is transparent when it or a moving ancestor has opacity 0.
+    const visible = (element: HTMLElement): boolean => {
+      for (let box = element.closest<HTMLElement>('[data-chat-motion]'); box !== null && host.contains(box);
+        box = box.parentElement?.closest<HTMLElement>('[data-chat-motion]') ?? null) {
+        if (Number.parseFloat(getComputedStyle(box).opacity) === 0) return false
+      }
+      return true
+    }
     const intervals = [...host.querySelectorAll<HTMLElement>('[data-chat-flow-key], [data-submission-echo], [data-pending-steering], [data-streaming], [data-chat-running]')]
       .filter(element => element.closest('[hidden]') === null)
       .map((element) => {
         const rect = element.getBoundingClientRect()
-        return [Math.max(rect.top, viewport.top), Math.min(rect.bottom, composerTop)] as const
+        return [Math.max(rect.top, viewport.top), Math.min(rect.bottom, composerTop), visible(element)] as const
       })
       .filter(([top, bottom]) => bottom - top > 0.5)
       .sort((left, right) => left[0] - right[0])
     let cursor = viewport.top
+    let cursorVisible = true
     let maxGap = 0
     let gapAt = 0
-    for (const [top, bottom] of intervals) {
-      if (top - cursor > maxGap) {
+    for (const [top, bottom, rowVisible] of intervals) {
+      if (top - cursor > maxGap && (cursorVisible || rowVisible)) {
         maxGap = top - cursor
         gapAt = cursor - viewport.top
       }
-      cursor = Math.max(cursor, bottom)
+      if (bottom > cursor) {
+        cursor = bottom
+        cursorVisible = rowVisible
+      } else if (bottom === cursor && rowVisible) {
+        cursorVisible = true
+      }
     }
     if (composerTop - cursor > maxGap) {
       maxGap = composerTop - cursor
@@ -284,7 +302,7 @@ function replayFor(scenario: Case): ReplayEntry[] {
     case 'queued':
       return [...liveLongTurn('FOLDMX_LIVE'), replyEntry('FOLDMX_REPLY')]
     case 'steer':
-      return [...liveLongTurn('FOLDMX_LIVE').slice(0, 3), replyEntry('FOLDMX_STEERED')]
+      return [...liveLongTurn('FOLDMX_LIVE').slice(0, STEER_STEPS), replyEntry('FOLDMX_STEERED')]
     case 'parent-message':
       return [replyEntry('FOLDMX_PARENT_REPLY')]
     case 'error':
@@ -295,24 +313,26 @@ function replayFor(scenario: Case): ReplayEntry[] {
   }
 }
 
-async function stableScroll(page: Page, root: string): Promise<void> {
-  await page.evaluate(async (selector) => {
+async function stableScroll(page: Page, root: string, timeoutMs = 20_000): Promise<void> {
+  await page.evaluate(async ([selector, limit]) => {
     const host = document.querySelector<HTMLElement>(selector)
     if (host === null) throw new Error(`scrollport is absent: ${selector}`)
     let previous = host.scrollTop
-    let stableSince = performance.now()
-    await new Promise<void>((resolveStable) => {
+    const started = performance.now()
+    let stableSince = started
+    await new Promise<void>((resolveStable, reject) => {
       const check = (): void => {
         const now = performance.now()
         const moving = host.querySelector('[data-chat-motion="collapse"], [data-chat-motion="reveal"]') !== null
         if (Math.abs(host.scrollTop - previous) > 0.25 || moving) stableSince = now
         previous = host.scrollTop
         if (now - stableSince >= 300) resolveStable()
+        else if (now - started >= limit) reject(new Error(`scroll did not settle within ${String(limit)}ms: top ${String(host.scrollTop)}, motion ${String(moving)}`))
         else requestAnimationFrame(check)
       }
       requestAnimationFrame(check)
     })
-  }, root)
+  }, [root, timeoutMs] as const)
 }
 
 function measure(page: Page, root: string): Promise<Geometry> {
@@ -428,25 +448,61 @@ async function expandSeededSteps(page: Page, root: string, scenario: Case): Prom
   await page.evaluate(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur() })
 }
 
-/** Hold the finish of one future model call; calls are counted from installation. */
-function holdFinishOf(scaffold: WebScaffold, callIndex: number): { readonly reached: Promise<void>; release(): void; dispose(): void } {
+/** Model-call barrier for one live Turn. */
+interface FinishHold {
+  /** Resolves when the held call streams its finish; rejects after the timeout. */
+  reached(timeoutMs: number): Promise<void>
+  release(): void
+  dispose(): void
+  /** Model calls observed since installation and the target Session's latest event types. */
+  describe(): string
+}
+
+/**
+ * Hold the finish of the first model call for `session` whose streamed text contains `marker`.
+ * The call is identified by its replayed content, so auxiliary or reordered calls cannot shift the barrier.
+ */
+function holdFinishOf(scaffold: WebScaffold, session: SessionId, marker: string): FinishHold {
   const gate = Promise.withResolvers<undefined>()
   const reached = Promise.withResolvers<undefined>()
-  let calls = 0
-  const dispose = scaffold.ctx.on('llm/stream', async function* (_options, next) {
-    const index = calls++
+  const calls: string[] = []
+  let held = false
+  const dispose = scaffold.ctx.on('llm/stream', async function* (options, next) {
+    const index = calls.length
+    calls.push(`#${String(index)} ${options.sessionId ?? 'no-session'}/${options.purpose ?? 'turn'}`)
+    let matched = false
     for await (const chunk of next()) {
-      if (index === callIndex && chunk.type === 'finish') {
-        reached.resolve(undefined)
-        await gate.promise
+      if (chunk.type === 'block-end' && chunk.block.type === 'text' && chunk.block.text.includes(marker)) matched = true
+      if (chunk.type === 'finish') {
+        calls[index] = `${calls[index] ?? ''} finish=${chunk.reason.kind}${matched ? ` ${marker}` : ''}`
+        if (!held && matched && options.sessionId === session) {
+          held = true
+          reached.resolve(undefined)
+          await gate.promise
+        }
       }
       yield chunk
     }
   })
+  const describe = (): string => {
+    const events = scaffold.ctx.agents.get(session)?.session.snapshotEvents() ?? []
+    return `model calls: [${calls.join('; ')}]; ${session} event tail: ${events.slice(-12).map(event => event.type).join(', ')}`
+  }
   return {
-    reached: reached.promise.then(() => undefined),
+    reached: async (timeoutMs) => {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const expired = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => { reject(new Error(`no model call streamed ${marker} within ${String(timeoutMs)}ms`)) }, timeoutMs)
+      })
+      try {
+        await Promise.race([reached.promise, expired])
+      } finally {
+        clearTimeout(timer)
+      }
+    },
     release: () => { gate.resolve(undefined) },
     dispose: () => { gate.resolve(undefined); dispose() },
+    describe,
   }
 }
 
@@ -639,31 +695,37 @@ async function run(world: World, scenario: Case): Promise<RunResult> {
       const disposeFailure = scenario.origin === 'error'
         ? scaffold.ctx.on('system-prompt/assemble', async () => { throw new Error('FOLDMX_TURN_FAILED') })
         : () => undefined
-      // A subagent child's composer sends through the subagent continuation route.
-      const promptRoute = scenario.surface === 'side' ? '**/api/subagents/prompt' : '**/api/session/prompt'
-      const promptGate = Promise.withResolvers<undefined>()
-      const promptHeld = Promise.withResolvers<undefined>()
-      const holdPrompt = async (route: Route): Promise<void> => {
-        promptHeld.resolve(undefined)
-        await promptGate.promise
-        await route.continue()
+      // The accepted message waits before its model call, so the fold settles before the Turn streams.
+      const turnGate = Promise.withResolvers<undefined>()
+      let held: Promise<unknown> = Promise.resolve()
+      let disposeHold = (): void => {}
+      if (scenario.surface === 'side') {
+        // A subagent child's composer sends through the continuation route, which resumes the cold child.
+        disposeHold = scaffold.ctx.on('agent/pre-step', async ({ agent }, next) => {
+          if (agent.id === target) await turnGate.promise
+          return await next()
+        })
+      } else {
+        const agent = scaffold.ctx.agents.get(target)
+        if (agent === undefined) throw new Error(`${scenario.id}: the target Agent is not live`)
+        // Maintenance keeps the accepted message in the inbox without starting its Turn.
+        held = agent.runMaintenance(() => turnGate.promise)
       }
-      await page.route(promptRoute, holdPrompt)
       const ended = turnEnded(scaffold, target)
       try {
         await expandSeededSteps(page, root, scenario)
         await placeReader(page, root, scenario.reader)
         await begin()
         await send(world, NEXT_INPUT)
-        await promptHeld.promise
         await page.locator(`${root} [data-submission-echo]`).waitFor()
         afterFold = await folded()
-        promptGate.resolve(undefined)
+        turnGate.resolve(undefined)
+        await held
         await ended
       } finally {
-        promptGate.resolve(undefined)
+        turnGate.resolve(undefined)
+        disposeHold()
         disposeFailure()
-        await page.unroute(promptRoute, holdPrompt)
       }
       break
     }
@@ -686,13 +748,15 @@ async function run(world: World, scenario: Case): Promise<RunResult> {
     }
     case 'queued':
     case 'steer': {
-      const steps = scenario.origin === 'queued' ? LIVE_STEPS : 2
-      const gate = holdFinishOf(scaffold, steps)
+      // Queued: hold the long final body. Steer: hold the last replayed Step so the steering message lands in this Turn.
+      const gate = holdFinishOf(scaffold, target, scenario.origin === 'queued' ? 'FOLDMX_LIVE_BODY' : `FOLDMX_LIVE_STEP_${String(STEER_STEPS)}`)
+      const first = turnEnded(scaffold, target, scenario.origin === 'queued' ? 2 : 1)
+      // A failed earlier step reports itself; the success path still awaits and rethrows this rejection.
+      first.catch(() => undefined)
       try {
-        const first = turnEnded(scaffold, target, scenario.origin === 'queued' ? 2 : 1)
         await toBottom(page, root)
         await send(world, 'FOLDMX_START_LIVE_TURN')
-        await gate.reached
+        await gate.reached(60_000)
         await stableScroll(page, root)
         if (scenario.origin === 'queued' && scenario.reader.kind === 'marker') {
           await page.locator(root).getByText('FOLDMX_LIVE_BODY', { exact: false }).last().waitFor()
@@ -712,6 +776,8 @@ async function run(world: World, scenario: Case): Promise<RunResult> {
           .first().waitFor({ timeout: 30_000 })
         afterFold = await folded()
         await first
+      } catch (error) {
+        throw new Error(`${scenario.id}: ${error instanceof Error ? error.message : String(error)}\n${gate.describe()}`, { cause: error })
       } finally {
         gate.dispose()
       }
@@ -824,8 +890,32 @@ describe.skipIf(MODE === 'record')('web e2e: blank area after next-message foldi
         if (failures.length === 1) throw failures[0]
         if (failures.length > 1) throw new AggregateError(failures, `${scenario.id}: cleanup failed`)
       }
-    }, 240_000)
+    })
   }
 })
 
 export {}
+
+describe('web e2e: fold blank measurement', () => {
+  it('skips a band between fully transparent rows and counts a band beside a visible row', async () => {
+    const browser = await chromium.launch()
+    try {
+      const page = await browser.newPage()
+      await page.setContent(`<body style="margin:0"><div data-measure-root style="height:800px">
+        <div data-chat-flow-key="a" style="height:100px"></div>
+        <div data-chat-motion="collapse" data-chat-flow-key="b" style="height:50px;opacity:0;margin-bottom:300px"></div>
+        <div data-chat-motion="collapse" data-chat-flow-key="c" style="height:50px;opacity:0"></div>
+        <div data-chat-flow-key="d" style="height:50px;margin-top:150px"></div>
+        <div data-composer-seat style="height:50px"></div>
+      </div></body>`)
+      await page.evaluate(installMeasure)
+      const transparent = await page.evaluate(() => window.foldMeasure!('[data-measure-root]'))
+      expect([transparent.maxGap, transparent.gapAt]).toEqual([150, 500])
+      await page.locator('[data-chat-flow-key="c"]').evaluate((element) => { element.style.opacity = '1' })
+      const visible = await page.evaluate(() => window.foldMeasure!('[data-measure-root]'))
+      expect([visible.maxGap, visible.gapAt]).toEqual([300, 150])
+    } finally {
+      await browser.close()
+    }
+  })
+})

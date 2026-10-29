@@ -9,16 +9,17 @@
  * occupant's own create-folder affordance already covers creating one.
  */
 import type { ReactNode, RefObject } from 'react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Button, IconFolderCloseRegular, IconPlusOutlineRegular, Menu, Modal, type MenuEntry,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
-  WorkspaceId, WorkspaceInspectionView, WorkspaceSnapshot, WorkspaceView,
+  WorkspaceId, WorkspaceSnapshot, WorkspaceView,
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { workspaceDisplayTitle } from '@deepseek-ai/dsh-api-workspace-controller/default-workspace'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DirectoryFlowOwnerProps, WorkspacePickerProps } from './contract/slots.ts'
+import { distinguishingPathSuffixes } from './path-suffix.ts'
 import css from './WorkspacePicker.module.css'
 
 const ADD_WORKSPACE = '::add-workspace'
@@ -35,10 +36,6 @@ export interface WorkspacePickFlowProps {
   useWorkspaces: <S>(selector: (state: WorkspaceSnapshot) => S) => S
   /** Adopt a picked host directory as a real Workspace. */
   createWorkspace: (input: { path: string }) => Promise<WorkspaceView>
-  /** Inspect a directory before creating or adopting a Workspace. */
-  inspectWorkspace?: ((input: { path: string }, signal?: AbortSignal) => Promise<WorkspaceInspectionView>) | undefined
-  /** Confirm and open an existing, legacy, or new project workspace. */
-  openProjectWorkspace?: ((input: { path: string; mode: 'new' | 'existing' | 'legacy'; expectedId?: string; expectedDigest?: string }, signal?: AbortSignal) => Promise<WorkspaceView>) | undefined
   /** Bound occupancy selector hook for this surface's directory-flow hole (empty leaves the surface with no add action). */
   useDirectoryFlow: SnapshotSelectorHook<boolean>
   /** Render this surface's directory-flow hole with the owner conversation (the entry's narrowed renderSlot). */
@@ -68,8 +65,6 @@ export function WorkspacePickFlow({
   anchorRef,
   useWorkspaces,
   createWorkspace,
-  inspectWorkspace,
-  openProjectWorkspace,
   useDirectoryFlow,
   renderDirectoryFlow,
   onPick,
@@ -87,9 +82,6 @@ export function WorkspacePickFlow({
   )
   const [errorOpen, setErrorOpen] = useState(false)
   const [modalError, setModalError] = useState<string | null>(null)
-  const [discoveryOpen, setDiscoveryOpen] = useState(false)
-  const [discoveryInspection, setDiscoveryInspection] = useState<WorkspaceInspectionView | null>(null)
-  const [confirmingDiscovery, setConfirmingDiscovery] = useState(false)
   const [flowOpen, setFlowOpen] = useState(false)
   const [pickingFolder, setPickingFolder] = useState(false)
   // One picking interaction at a time: while the flow is open (native chooser
@@ -118,10 +110,33 @@ export function WorkspacePickFlow({
   // With workspaces listed, the add action pins below the scroll region
   // (divider + always visible); otherwise it IS the menu.
   const pinAdd = !addOnly && workspaces.length > 0
-  const items: MenuEntry[] = pinAdd
-    ? workspaces.map(workspace => ({
+  // The resolved name, not `t`, is the memo dependency: the bound seat keeps
+  // its identity across a language switch.
+  const defaultWorkspaceName = t('workspace.defaultName')
+  const listed = useMemo(() => {
+    if (!pinAdd) return []
+    const rows = workspaces.map(workspace => ({
       id: workspace.workspaceId,
-      label: workspaceDisplayTitle(workspace.title, t('workspace.defaultName')),
+      title: workspaceDisplayTitle(workspace.title, defaultWorkspaceName),
+      path: workspace.path,
+    }))
+    const suffixes = distinguishingPathSuffixes(rows)
+    return rows.map(row => ({ ...row, suffix: suffixes.get(row.id) }))
+  }, [pinAdd, workspaces, defaultWorkspaceName])
+  const items: MenuEntry[] = pinAdd
+    ? listed.map(({ id, title, path, suffix }) => ({
+      id,
+      // The title gives way first, so the suffix that tells the rows apart
+      // stays visible; the native tooltip carries the full path.
+      label: suffix === undefined
+        ? title
+        : (
+          <span className={css.disambiguated} title={path}>
+            <span className={css.title}>{title}</span>
+            {' '}
+            <span className={css.pathSuffix}>{suffix}</span>
+          </span>
+        ),
       icon: <IconFolderCloseRegular size={16} />,
       disabled: flowBusy,
     }))
@@ -136,64 +151,17 @@ export function WorkspacePickFlow({
     setModalError(null)
   }
 
-  const closeDiscovery = (): void => {
-    setDiscoveryOpen(false)
-    setDiscoveryInspection(null)
-  }
-
-  const confirmDiscovery = async (): Promise<void> => {
-    if (discoveryInspection === null || openProjectWorkspace === undefined) {
-      closeDiscovery()
-      return
-    }
-    setConfirmingDiscovery(true)
-    try {
-      const target = discoveryInspection as Extract<WorkspaceInspectionView, { projectId: string }>
-      const workspace = await openProjectWorkspace({
-        path: target.root,
-        mode: target.kind,
-        expectedId: target.projectId,
-        expectedDigest: target.digest,
-      })
-      closeDiscovery()
-      onPick(workspace.workspaceId)
-    } catch (reason: unknown) {
-      closeDiscovery()
-      setModalError(reason instanceof Error ? reason.message : String(reason))
-      setErrorOpen(true)
-    } finally {
-      setConfirmingDiscovery(false)
-    }
-  }
-
   /** Adopt a picked directory; failures land in the folder-error dialog (Choose again reopens the flow). */
-  const adoptDirectory = async (path: string): Promise<void> => {
-    try {
-      if (inspectWorkspace !== undefined) {
-        const inspection = await inspectWorkspace({ path })
-        if (inspection.kind === 'registered') {
-          setFlowOpen(false)
-          onPick(inspection.workspaceId)
-          return
-        }
-        if (inspection.kind === 'existing' || inspection.kind === 'legacy') {
-          setDiscoveryInspection(inspection)
-          setDiscoveryOpen(true)
-          setFlowOpen(false)
-          return
-        }
-      }
-      const workspace = openProjectWorkspace !== undefined
-        ? await openProjectWorkspace({ path, mode: 'new' })
-        : await createWorkspace({ path })
+  const adoptDirectory = (path: string): Promise<void> =>
+    createWorkspace({ path }).then((workspace) => {
       setFlowOpen(false)
       onPick(workspace.workspaceId)
-    } catch (reason: unknown) {
+    }).catch((reason: unknown) => {
       setModalError(reason instanceof Error ? reason.message : String(reason))
       setFlowOpen(false)
       setErrorOpen(true)
-    }
-  }
+    })
+
   const openDirectoryFlow = useCallback((): void => {
     onClose()
     setErrorOpen(false)
@@ -273,28 +241,6 @@ export function WorkspacePickFlow({
       >
         <div className={css.modalError} role="alert">{modalError}</div>
       </Modal>
-      <Modal
-        open={discoveryOpen}
-        onClose={closeDiscovery}
-        closeLabel={t('close')}
-        title={t('discovery.title')}
-        footer={(
-          <>
-            <Button variant="outline" className={css.modalAction} onClick={closeDiscovery}>{t('discovery.action.cancel')}</Button>
-            <Button variant="primary" className={css.modalAction} disabled={confirmingDiscovery} onClick={() => { void confirmDiscovery() }}>{t('discovery.action.open')}</Button>
-          </>
-        )}
-      >
-        <div className={css.modalError}>
-          <p>{t('discovery.desc')}</p>
-          {discoveryInspection !== null && 'title' in discoveryInspection && (
-            <div style={{ marginTop: '8px', opacity: 0.85 }}>
-              <div>{t('discovery.projectName', { title: discoveryInspection.title })}</div>
-              <div>{t('discovery.sessionCount', { n: discoveryInspection.sessionCount })}</div>
-            </div>
-          )}
-        </div>
-      </Modal>
     </>
   )
 }
@@ -313,8 +259,6 @@ export function WorkspacePicker({
   onPick,
   onClose,
   createWorkspace,
-  inspectWorkspace,
-  openProjectWorkspace,
   useDirectoryFlow,
   renderSlot,
   t,
@@ -326,8 +270,6 @@ export function WorkspacePicker({
       anchorRef={anchorRef}
       useWorkspaces={useWorkspaces}
       createWorkspace={createWorkspace}
-      inspectWorkspace={inspectWorkspace}
-      openProjectWorkspace={openProjectWorkspace}
       useDirectoryFlow={useDirectoryFlow}
       renderDirectoryFlow={owner => renderSlot('conversation.hero.workspace.directoryFlow', owner)}
       selectedId={selectedId}

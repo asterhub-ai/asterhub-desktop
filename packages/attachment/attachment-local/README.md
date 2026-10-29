@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Store image and file attachments in grouped profiles below `DSH_HOME`, or beside project history in project-local mode. Images are validated, normalized for model requests, and cached per route; generic files are preserved byte-for-byte. Identical bytes deduplicate within each owning store; reads verify length and content. Scoped operations accept only the trusted `SessionId`; with ProjectStorage mounted, the provider resolves ownership and status. Grouped profiles retain global behavior without ProjectStorage, but never fall back after a mounted project owner becomes unavailable. Objects are never deleted automatically.
+Store images and generic file attachments durably below `DSH_HOME` on the machine running DSH, or below the attachment's owning Workspace project when `projectLocal` is enabled. Images are validated, normalized for model requests, and cached per route; generic files are preserved byte-for-byte without admission limits. Identical bytes are stored once even when uploads use different display names, reads verify file length and content, and admitted images remain readable if limits later tighten. The shipped `dsh` composition uses this package without configuration. Objects remain local to one machine and are never deleted automatically.
 
 ## Table of Contents
 
@@ -37,23 +37,23 @@ Mount the plugin with no required configuration. The defaults below define what 
 
 | Field | Default | Meaning |
 |---|---|---|
-| `dshHome` | resolved | Explicit harness home; omitted follows `$DSH_HOME`, then `~/.asterhub` |
-| `projectLocal` | `false` | Require a trusted Session scope and store original bytes under that project's `.aster/attachments/v1` |
-| `maxImageBytes` | `20 MiB` | Maximum encoded source bytes accepted for one image |
+| `dshHome` | resolved | Explicit harness home; omitted follows `$DSH_HOME`, then `~/.dsh` |
+| `maxImageBytes` | `50 MiB` | Maximum encoded source bytes accepted for one image |
 | `maxImagesPerMessage` | `20` | Maximum image count accepted in one submitted message |
 | `maxMessageImageBytes` | `200 MiB` | Maximum aggregate encoded source bytes in one submitted message |
 | `maxImagePixels` | `64,000,000` | Maximum source width multiplied by height |
-| `maxImageDimension` | `8192` | Maximum source width or height |
+| `maxImageDimension` | `65,535` | Maximum source width or height; the default leaves admission to `maxImagePixels`, and normalization downscales long sides |
 | `normalizedImageMaxPixels` | `2048 × 2048` | Total-pixel budget of the stored normalized image |
 | `normalizedImageMaxDimension` | `8192` | Maximum long edge after applying the total-pixel budget |
 | `normalizedImageMaxBytes` | `4 MiB` | Encoded-byte target; the smallest quality-ladder output is kept when none fits |
 | `imageCompressionConcurrency` | `2` | FIFO limit for concurrent normalization and request transforms |
+| `projectLocal` | `false` | Store every attachment below the owning Workspace project's `.aster/attachments/v1` instead of the global root; every operation then requires a Session scope |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-attachment-local) is the exhaustive source for every accepted field and its JSDoc.
 
 ### Where your images are stored and how long they last
 
-Grouped mode stores attachments below `<DSH_HOME>/attachments/v1`. With `projectLocal: true`, each scoped operation uses the owning project's `.aster/attachments/v1`; a missing project or Session owner fails without reading or writing the global store. Request-image variants remain rebuildable cache data. Original objects are never deleted automatically.
+Attached images are kept below `<DSH_HOME>/attachments/v1` on this machine. With `projectLocal` enabled, every operation routes through the Session's owning Workspace project and lands below `<project>/.aster/attachments/v1`; an operation without a Session scope, without the Workspace registry, or with a Session no Workspace record owns fails instead of falling back to the global root. Stored images are never deleted automatically, identical images are stored only once, and a later tightening of the limits never makes already-saved images unreadable. If your images must be readable from another machine, this package is not the right fit.
 
 ### What happens when you attach an image
 
@@ -61,7 +61,7 @@ Attach an image and its source limits, media, dimensions, and pixels are checked
 
 ### What can go wrong
 
-An image can be refused when you attach it: unsupported format, over the byte, pixel, or per-side dimension limits, or bytes that do not match their declared type. On a later read, an image that was deleted or corrupted on disk fails with a stable attachment error code. A missing Session owner is an internal ownership error, not an attachment-input error. Project metadata errors propagate unchanged; only an absent project path is classified as unavailable attachment scope.
+An image can be refused when you attach it: unsupported format, over the byte, pixel, or per-side dimension limits, or bytes that do not match their declared type. On a later read, an image that was deleted or corrupted on disk fails with a clear error. Each failure carries a stable code so the client and protocol adapters can explain it in their own words.
 
 -----
 
@@ -84,7 +84,7 @@ This section explains the durability and verification design behind the storage,
 
 Objects land at `<DSH_HOME>/attachments/v1/objects/<sha256-prefix>/<sha256>`; equal bytes deduplicate to one object and one `sha256:` id. Before the first write, the process syncs every ancestor directory of the home down to the filesystem root once, so a directory another process created but has not yet synced is never mistaken for a safe boundary. Writes then stage bytes in `v1/tmp`, sync the temporary file, publish with an atomic exclusive hard link, and sync the publication directories — on Windows, filesystem metadata journaling owns entry durability. Once the save resolves, the reported reference is durable.
 
-Admission accepts up to 20 images and 200 MiB of source bytes per message; one source may use up to 20 MiB, 64 million pixels, and 8192 pixels per side. It applies orientation, removes metadata and color profiles, and normalizes under a 2048×2048 total-pixel budget, an 8192-pixel long edge, and a 4 MiB encoded-byte target. Extreme aspect ratios therefore retain their short-edge resolution. Clean single-frame 8-bit sRGB/sRGBA PNG, JPEG, or WebP input already within those limits passes through byte-identically; GIF, animation, metadata, orientation, 16-bit PNG, and incompatible color spaces force conversion.
+Admission accepts up to 20 images and 200 MiB of source bytes per message; one source may use up to 50 MiB, 64 million pixels, and 65,535 pixels per side. It applies orientation, removes metadata and color profiles, and normalizes under a 2048×2048 total-pixel budget, an 8192-pixel long edge, and a 4 MiB encoded-byte target. Extreme aspect ratios therefore retain their short-edge resolution. Clean single-frame 8-bit sRGB/sRGBA PNG, JPEG, or WebP input already within those limits passes through byte-identically; GIF, animation, metadata, orientation, 16-bit PNG, and incompatible color spaces force conversion.
 
 Request versions live below `<DSH_HOME>/cache/attachments/request-images/`, resolved by `dshCachePath`; an explicit `dshHome` setting applies to both cache and durable storage. Clearing this cache between requests preserves durable attachments, and later reads regenerate the variants. `readImageRequest` scales without enlargement to the route-chosen target, resizing by the long edge only so the encoder derives the short edge as the route predicts, then applies a separate encoded-byte target through the same alpha routing and quality ladder. Its cache identity includes the attachment id, transform version, target dimensions, byte target, and fixed encoder settings; cached bytes are header-probed for format, 8-bit sRGB/sRGBA, dimensions, and alpha facts, and a mismatch regenerates the entry. Concurrent callers share one transform and cache write, while cancellation stops shared work only when no waiter remains. `imageHostPath` derives the normalized object's host path, and the mounted filesystem may map that path into its execution world without writing it to durable history.
 
@@ -100,7 +100,6 @@ Generic-file bytes have one canonical object at `<DSH_HOME>/attachments/v1/file-
 | [`src/normalization.ts`](src/normalization.ts) + [`src/encoding.ts`](src/encoding.ts) | Provider-independent normalization and bounded format/quality candidates |
 | [`src/request-image.ts`](src/request-image.ts) | Route-specific request transforms, cache identity, and singleflight |
 | [`src/image.ts`](src/image.ts) | Full raster decode and metadata verification |
-| — | No runtime invariant companion is published; immutable writes and verified reads are enforced directly at the backend boundary. |
 
 </details>
 

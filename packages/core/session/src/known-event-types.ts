@@ -22,8 +22,6 @@
 export const KNOWN_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
   'agent-preset/selected',
   'agent/inbox/spliced',
-  'anima/extraction-request',
-  'anima/extraction-result',
   'approval/asked',
   'approval/decided',
   'approval/policy',
@@ -80,9 +78,9 @@ export const KNOWN_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
   'tool/result',
   'turn/end',
   'turn/start',
-  'user-questions/canceled',
   'user/message',
   'web/deepseek-search-llm-request',
+  'working-directory/change',
   'workspace/changes',
 ])
 

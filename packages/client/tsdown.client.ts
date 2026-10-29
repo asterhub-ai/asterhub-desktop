@@ -20,6 +20,7 @@ import { transform } from 'lightningcss'
 import { optionalStringArray } from './modules/src/client/manifest.ts'
 import { PLATFORM_MODULES, PRELOADED_CLIENT_EXTERNALS } from './web/src/platform.ts'
 import { clientBuildEnvironmentDefines } from '../../scripts/client-build-environment.ts'
+import { isExperimentalPackageName } from '../../scripts/experimental-package-policy.ts'
 import { BundleInputIsolation, physicalBundleInput } from '../../scripts/bundle-input-isolation.ts'
 
 /**
@@ -99,8 +100,9 @@ function browserSourcePath(source: string, sourcemapPath: string): string {
  * the package without lib/index.js and the host Loader cannot import its node
  * half. The Client build consumes `lib/types` and chains those tsc maps, with
  * original source content, into the standalone plugin map.
- * @param id - plugin id (package name), stamped into the __ModuleLoader__.load
- * handoff and onto the injected style tags.
+ * @param id - plugin id (package name, or the package directory spelled at the
+ * call site), stamped into the __ModuleLoader__.load handoff and onto the
+ * injected style tags.
  * @param libEntry - node-half entries, spelled at the call site so the
  * package-invariants gate can see `lib/types/invariant.js` in each package's
  * own tsdown.config.ts (a preset-side glob hides it from the mechanical check).
@@ -112,11 +114,12 @@ export function clientBundle(
   libEntry: readonly string[],
   options: ClientBundleOptions = {},
 ): BuildFaceConfig {
-  const lib = clientLibraryConfig(id, libEntry, options.lib)
+  const name = presetPackageName(id)
+  const lib = clientLibraryConfig(name, libEntry, options.lib)
   return ({ env }) => {
     const face = buildFace(env?.DSH_BUILD_FACE)
     const clientEntry = face === undefined ? 'src/client/index.ts' : 'lib/types/client/index.js'
-    const client = clientConfig(id, clientEntry, options.clientBanner)
+    const client = clientConfig(name, clientEntry, options.clientBanner, options.dualClient === true)
     const node = [lib, ...(options.companions ?? [])]
     if (face === 'host') return options.hostPhase === true ? node : [SKIP_WORKSPACE_BUILD]
     if (face === 'client') {
@@ -148,20 +151,22 @@ export function clientBundle(
  * 4. stylesheets ship with the package: a relative `.css` import survives as a
  *    relative external and the sheet is emitted under `lib/` at its
  *    `src`-relative path, so vite stays the only owner of class hashing.
- * @param id - package name, used in tsdown diagnostics.
+ * @param id - package name, or the package directory spelled at the preset call
+ * site; used in tsdown diagnostics.
  * @param libEntry - emitted JavaScript entries consumed from `lib/types`, one
  * bundle each: a multi-entry build would emit a hash-named shared chunk that
  * the exact `files` list cannot publish.
  * @returns ENV-selected tsdown config for the Client build face.
  */
 export function staticLinked(id: string, libEntry: readonly string[]): BuildFaceConfig {
+  const name = presetPackageName(id)
   // Each entry names its own output file, so two entries with the same basename
   // would overwrite one artifact instead of emitting two.
   const names = new Set(libEntry.map(entry => basename(entry, '.js')))
   if (names.size !== libEntry.length) {
-    throw new Error(`tsdown: ${id} entries collide on an output name: ${libEntry.join(', ')}`)
+    throw new Error(`tsdown: ${name} entries collide on an output name: ${libEntry.join(', ')}`)
   }
-  return clientOnly(libEntry.map(entry => staticLinkedConfig(id, entry)))
+  return clientOnly(libEntry.map(entry => staticLinkedConfig(name, entry)))
 }
 
 /**
@@ -178,12 +183,13 @@ export function isStaticLinkedConfig(configs: readonly UserConfig[]): boolean {
 
 /**
  * Build a Client-only Node library during the Client pass.
- * @param id - Package name used in tsdown diagnostics.
+ * @param id - Package name, or the package directory spelled at the preset call
+ * site; used in tsdown diagnostics.
  * @param libEntry - Emitted JavaScript entries consumed from `lib/types`.
  * @returns ENV-selected tsdown config for the Client build face.
  */
 export function clientLibrary(id: string, libEntry: readonly string[]): BuildFaceConfig {
-  const lib = clientLibraryConfig(id, libEntry)
+  const lib = clientLibraryConfig(presetPackageName(id), libEntry)
   return clientOnly([lib])
 }
 
@@ -201,6 +207,8 @@ export function clientOnly(configs: readonly UserConfig[]): BuildFaceConfig {
 interface ClientBundleOptions {
   /** Emit the Node-side artifacts during the Host pass instead of the Client pass. */
   readonly hostPhase?: boolean
+  /** Emit the browser-factory `client.browser.js` bundle beside the Node client entry. */
+  readonly dualClient?: boolean
   /** Additional Node-side configs emitted alongside the package library. */
   readonly companions?: readonly UserConfig[]
   /** Overrides for the package's primary Node-side library config. */
@@ -346,18 +354,37 @@ const productionExternalCache = new Map<string, readonly RegExp[]>()
 const clientExternalCache = new Map<string, ReadonlySet<string>>()
 
 /**
- * Read one workspace package's manifest. Located by package name rather than by
- * cwd, because tsdown evaluates every package config with the repository root as
- * `process.cwd()` during a workspace build. Callers read it on the first
- * resolveId of a build, not while a config is built, so selecting a build face
- * never touches a manifest.
- * @param id - package name, as spelled at the preset call site.
+ * Normalize a preset call-site id to the package name every internal consumer
+ * keys on: config names (`${name}/client` is what gates such as the
+ * third-party-notices browser walk match), manifest caches, and the
+ * experimental-package prefix test in input isolation. Upstream call sites
+ * pass their tsdown.config.ts's `import.meta.dirname`; fork call sites may
+ * spell the package name directly.
+ * @param id - package name, or the package directory spelled at the preset call site.
+ * @returns the `name` field of the package's own manifest.
+ */
+function presetPackageName(id: string): string {
+  return isAbsolute(id) ? workspaceManifest(id).name : id
+}
+
+/**
+ * Read one workspace package's manifest. Located by package name — or, when the
+ * caller passes an absolute directory (upstream-style call sites hand the
+ * preset their tsdown.config.ts's `import.meta.dirname`), by that directory's
+ * own `package.json`. Callers read it on the first resolveId of a build, not
+ * while a config is built, so selecting a build face never touches a manifest.
+ * @param id - package name, or the package directory spelled at the preset call site.
  * @returns the parsed manifest.
  * @throws {Error} when no workspace package declares that name.
  */
 function workspaceManifest(id: string): WorkspaceManifest {
   const cached = manifestCache.get(id)
   if (cached !== undefined) return cached
+  if (isAbsolute(id)) {
+    const manifest = JSON.parse(readFileSync(resolvePath(id, 'package.json'), 'utf8')) as WorkspaceManifest
+    manifestCache.set(id, manifest)
+    return manifest
+  }
   for (const manifestPath of globSync('packages/*/*/package.json', { cwd: REPOSITORY_ROOT })) {
     const manifest = JSON.parse(
       readFileSync(resolvePath(REPOSITORY_ROOT, manifestPath), 'utf8'),
@@ -470,7 +497,7 @@ function asyncChunkRequirePlugin(): TsdownPlugin {
   }
 }
 
-function clientConfig(id: string, entry: string, clientBanner?: (fileName: string) => string | undefined): UserConfig {
+function clientConfig(id: string, entry: string, clientBanner?: (fileName: string) => string | undefined, dualClient = false): UserConfig {
   const isRequested = (specifier: string): boolean => clientExternals(id).has(specifier)
   const isolation = clientInputIsolation(id)
   return {
@@ -602,10 +629,10 @@ function clientConfig(id: string, entry: string, clientBanner?: (fileName: strin
       },
     }],
     outputOptions: {
-      entryFileNames: 'client.js',
+      entryFileNames: dualClient ? 'client.browser.js' : 'client.js',
       // The imported source basename becomes the published chunk name; package
       // files lists and artifact tests pin every intentional chunk.
-      chunkFileNames: 'client.[name].js',
+      chunkFileNames: dualClient ? 'client.browser.[name].js' : 'client.[name].js',
       sourcemapExcludeSources: false,
       // The map is served from /plugins/<scoped-package>/client.js.map. The
       // browser resolves its local sources back into URLs that mirror the
@@ -631,7 +658,7 @@ function clientInputIsolation(id: string): {
   plugin: TsdownPlugin
   sourcePath: (source: string, mapPath: string) => string
 } {
-  const experimental = id.startsWith('@deepseek-ai/dsh-experimental-')
+  const experimental = isExperimentalPackageName(id)
   const inputs = new BundleInputIsolation(REPOSITORY_ROOT, `client bundle isolation (${id})`)
   return {
     plugin: {

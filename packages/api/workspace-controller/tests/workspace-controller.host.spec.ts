@@ -1,22 +1,17 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { cp, rm } from 'node:fs/promises'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import SessionStore, { SESSION_FORMAT_VERSION, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
-import type { SessionHeader } from '@deepseek-ai/dsh-session'
-import SessionCwd from '@deepseek-ai/dsh-session/cwd'
-import { sessionDir } from '../../../session/session-persistence-jsonl/src/format.ts'
+import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import Storage from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
-import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
+import { RemoteError, type PeerId, type Principal, type RemoteInvocation } from '@deepseek-ai/dsh-typert-protocol'
 import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
+import RemoteAccessService, { type RemoteAccessCondition, type RemoteAccessRole } from '@deepseek-ai/dsh-api-remote-access'
 import WorkspaceController from '../src/index.ts'
 import { DEFAULT_WORKSPACE_DIRECTORY } from '../src/default-workspace.ts'
-import ProjectStorage from '@deepseek-ai/dsh-project-storage'
-import ProjectSessionPersistence from '@deepseek-ai/dsh-project-storage/persistence'
 import { WorkspaceFeed } from '../src/feed.ts'
 import type { WorkspaceFollowFrame } from '../src/types.ts'
 import { MemoryStorageBackend } from '../../../storage/storage-domain/tests/helpers/memory-backend.ts'
@@ -73,26 +68,43 @@ async function harness(options: { systemDocuments?: boolean } = {}) {
   ctx.provide('typert', {
     lookups: { configure: () => dispose },
     contexts: { configureHost: () => dispose },
+    resources: { register: vi.fn(() => dispose) },
   } as never)
+  new RemoteAccessService(ctx)
   const controller = new WorkspaceController(ctx, options.systemDocuments === true ? {} : { documentsDirectory: root })
   return { controller, ctx, root, storageDomain }
+}
+
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface PrincipalMap {
+    /** Test-only non-owner caller shared by the access specs. */
+    'test-guest': { readonly kind: 'test-guest'; readonly guest: string }
+  }
+}
+
+/** Opens the Workspace follow stream; each Workspace and Session in it still needs its own role. */
+const FOLLOWER: RemoteAccessRole<'global'> = { name: 'test:workspace-follower', resource: 'global', actions: ['workspace/follow'] }
+/** Shows one Workspace in the follow stream. */
+const WORKSPACE_VIEWER: RemoteAccessRole<'workspace'> = { name: 'test:workspace-viewer', resource: 'workspace', actions: ['workspace/follow'] }
+/** Shows one Session id in the follow stream. */
+const SESSION_VIEWER: RemoteAccessRole<'session'> = { name: 'test:session-viewer', resource: 'session', actions: ['workspace/follow'] }
+
+/** The Context a Gateway dispatch of `workspace/follow` binds for `principal`. */
+function followerContext(ctx: Context, principal: Principal): Context {
+  const invocation: RemoteInvocation = {
+    request: { namespace: 'workspace', method: 'follow', args: {} },
+    service: 'workspaceController',
+    peer: { id: 'workspace-access-peer' as PeerId, ctx, principal, interactions: 'answer', signal: new AbortController().signal, dispose: async () => {} },
+    signal: new AbortController().signal,
+    uplink: <In>(): AsyncIterable<In> => ({ [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true, value: undefined }) }) }),
+  }
+  return ctx.extend({ invocation })
 }
 
 function stageDir(root: string, name: string): string {
   const path = join(root, name)
   mkdirSync(path, { recursive: true })
   return path
-}
-
-async function mountProjectStorage(ctx: Context, root: string): Promise<void> {
-  await ctx.plugin(SessionCwd)
-  await ctx.plugin(ProjectStorage, {
-    sessionMode: 'project-local',
-    locatorPath: join(root, 'locator.json'),
-    legacySessionRoot: '',
-    metadataLimitBytes: 1024 * 1024,
-    lockDeadlineMs: 5000,
-  })
 }
 
 async function nextFrame(
@@ -291,80 +303,6 @@ describe('WorkspaceController commands', () => {
       .resolves.toEqual({ archivedSessionIds: [] })
   })
 
-  it('permanently deletes an individual session log and cleans up references', async () => {
-    const { controller, ctx, root } = await harness()
-    await mountProjectStorage(ctx, root)
-    const created = await controller.create({ path: stageDir(root, 'del-session') })
-    const session = ctx.sessions.create(SessionId('to-purge'), { meta: { cwd: created.workspace.path } })
-    const location = await ctx.projectStorage.bindSession(session.header)
-    const sessionFolder = sessionDir(location.sessionsRoot, created.workspace.path, session.id)
-    mkdirSync(sessionFolder, { recursive: true })
-    writeFileSync(join(sessionFolder, 'session.v5.jsonl.zstd'), 'session log')
-    const workspace = ctx.workspaceRegistry.get(created.workspace.workspaceId)!
-    await workspace.attachSession(session.id)
-    await controller.pinSession({ sessionId: session.id })
-
-    expect(workspace.sessionIds).toContain(session.id)
-    await expect(controller.deleteSession({ sessionId: session.id })).resolves.toEqual({ deleted: true })
-    expect(workspace.sessionIds).not.toContain(session.id)
-    expect(ctx.workspaceRegistry.pinnedSessionIds).not.toContain(session.id)
-    expect(ctx.workspaceRegistry.archivedSessionIds).not.toContain(session.id)
-    expect(existsSync(sessionFolder)).toBe(false)
-    expect(ctx.projectStorage.locateSession(session.id)).toBeUndefined()
-  })
-
-  it('deletes workspace and purges its project-owned session logs when requested', async () => {
-    const { controller, ctx, root } = await harness()
-    await mountProjectStorage(ctx, root)
-    const created = await controller.create({ path: stageDir(root, 'del-ws-purge') })
-    const session = ctx.sessions.create(SessionId('ws-purged-session'), { meta: { cwd: created.workspace.path } })
-    const location = await ctx.projectStorage.bindSession(session.header)
-    const sessionFolder = sessionDir(location.sessionsRoot, created.workspace.path, session.id)
-    mkdirSync(sessionFolder, { recursive: true })
-    writeFileSync(join(sessionFolder, 'session.v5.jsonl.zstd'), 'session log')
-    const workspace = ctx.workspaceRegistry.get(created.workspace.workspaceId)!
-    await workspace.attachSession(session.id)
-
-    await expect(controller.delete({
-      workspaceId: created.workspace.workspaceId,
-      sessionAction: 'delete',
-    })).resolves.toEqual({ deleted: true })
-    expect(ctx.workspaceRegistry.get(created.workspace.workspaceId)).toBeUndefined()
-    expect(ctx.workspaceRegistry.archivedSessionIds).not.toContain(session.id)
-    expect(existsSync(sessionFolder)).toBe(false)
-    expect(ctx.projectStorage.locateSession(session.id)).toBeUndefined()
-    expect(existsSync(created.workspace.path)).toBe(true)
-  })
-
-  it('stops every workspace session before purging any session data', async () => {
-    const { controller, ctx, root } = await harness()
-    await mountProjectStorage(ctx, root)
-    const created = await controller.create({ path: stageDir(root, 'delete-stop-failure') })
-    const workspace = ctx.workspaceRegistry.get(created.workspace.workspaceId)!
-    const ids = [SessionId('first-to-stop'), SessionId('second-to-stop')]
-    const folders: string[] = []
-    for (const id of ids) {
-      const session = ctx.sessions.create(id, { meta: { cwd: created.workspace.path } })
-      const location = await ctx.projectStorage.bindSession(session.header)
-      const folder = sessionDir(location.sessionsRoot, created.workspace.path, id)
-      mkdirSync(folder, { recursive: true })
-      writeFileSync(join(folder, 'session.v5.jsonl.zstd'), id)
-      folders.push(folder)
-      await workspace.attachSession(id)
-    }
-    ctx.effect(() => ctx.on('workspace/session-stop', ({ sessionId }) => {
-      if (sessionId === ids[1]) throw new Error('test stop refused')
-    }))
-
-    await expect(controller.delete({
-      workspaceId: created.workspace.workspaceId,
-      sessionAction: 'delete',
-    })).rejects.toThrow()
-
-    expect(ctx.workspaceRegistry.get(created.workspace.workspaceId)).toBe(workspace)
-    expect(folders.every(folder => existsSync(folder))).toBe(true)
-  })
-
   it('pins only known unarchived Sessions and unpins idempotently', async () => {
     const { controller, ctx, root } = await harness()
     const created = await controller.create({ path: stageDir(root, 'pins') })
@@ -507,6 +445,110 @@ describe('WorkspaceController follow', () => {
     await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined })
   })
 
+  it('follows only the Workspaces and Sessions a non-owner may follow', async () => {
+    const { controller, ctx, root } = await harness()
+    // oxlint-disable-next-line typescript/unbound-method -- the assertion inspects the spy and never calls it.
+    expect(ctx.typert.resources.register).toHaveBeenCalledWith('workspace', { field: 'workspaceId' })
+    const shown = await controller.create({ path: stageDir(root, 'shown') })
+    const hiddenWorkspace = await controller.create({ path: stageDir(root, 'hidden') })
+    const shownId = shown.workspace.workspaceId
+    const hiddenId = hiddenWorkspace.workspace.workspaceId
+    const shared = ctx.sessions.create(SessionId('shared'), { meta: { cwd: shown.workspace.path } })
+    const secret = ctx.sessions.create(SessionId('secret'), { meta: { cwd: shown.workspace.path } })
+    const workspace = ctx.workspaceRegistry.get(shownId)
+    if (workspace === undefined) throw new Error('fixture Workspace disappeared')
+    await workspace.attachSession(shared.id)
+    await workspace.attachSession(secret.id)
+    await controller.pinSession({ sessionId: shared.id })
+    await controller.pinSession({ sessionId: secret.id })
+    ctx.remoteAccess.registerPolicy('test-guest', {
+      bindings: () => [
+        { role: FOLLOWER, resource: { kind: 'global' } },
+        { role: WORKSPACE_VIEWER, resource: { kind: 'workspace', id: shownId } },
+        { role: SESSION_VIEWER, resource: { kind: 'session', id: shared.id } },
+      ],
+    })
+    const guest: Principal = { kind: 'test-guest', guest: 'workspace-controller' }
+    const abort = new AbortController()
+    const iterator = followerContext(ctx, guest).workspaceController.follow(abort.signal)[Symbol.asyncIterator]()
+    await expect(nextFrame(iterator)).resolves.toEqual({
+      type: 'baseline',
+      value: {
+        items: [expect.objectContaining({ workspaceId: shownId, sessionIds: [shared.id] })],
+        archivedSessionIds: [],
+        pinnedSessionIds: [shared.id],
+      },
+    })
+
+    await controller.rename({ workspaceId: hiddenId, title: 'still hidden' })
+    await controller.rename({ workspaceId: shownId, title: 'renamed' })
+    await expect(nextFrame(iterator)).resolves.toMatchObject({
+      type: 'upsert', workspace: { workspaceId: shownId, title: 'renamed', sessionIds: [shared.id] },
+    })
+    await controller.unpinSession({ sessionId: secret.id })
+    await expect(nextFrame(iterator)).resolves.toEqual({ type: 'pinned', pinnedSessionIds: [shared.id] })
+    await controller.unpinSession({ sessionId: shared.id })
+    await controller.archiveSession({ sessionId: secret.id })
+    await controller.archiveSession({ sessionId: shared.id })
+    await expect(nextFrame(iterator)).resolves.toEqual({ type: 'pinned', pinnedSessionIds: [] })
+    await expect(nextFrame(iterator)).resolves.toEqual({ type: 'archived', archivedSessionIds: [] })
+    await expect(nextFrame(iterator)).resolves.toEqual({ type: 'archived', archivedSessionIds: [shared.id] })
+    await controller.delete({ workspaceId: hiddenId })
+    await expect(nextFrame(iterator)).resolves.toEqual({ type: 'order', workspaceIds: [shownId] })
+    await controller.delete({ workspaceId: shownId })
+    await expect(nextFrame(iterator)).resolves.toEqual({ type: 'order', workspaceIds: [] })
+    await expect(nextFrame(iterator)).resolves.toEqual({ type: 'remove', workspaceId: shownId })
+
+    abort.abort()
+    await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined })
+  })
+
+  it('sends a non-owner a replace increment when a delivered Workspace loses visibility, so it can reappear', async () => {
+    const { controller, ctx, root } = await harness()
+    const first = (await controller.create({ path: stageDir(root, 'first') })).workspace.workspaceId
+    const second = (await controller.create({ path: stageDir(root, 'second') })).workspace.workspaceId
+    // One Remote call reads its bindings once, so visibility changes during the stream come from the condition.
+    const allowedWorkspaces = new Set<string>([first, second])
+    const stillShared: RemoteAccessCondition<'workspace'> = ({ resource }) =>
+      allowedWorkspaces.has(resource.id) ? { kind: 'allow' } : { kind: 'deny', reason: 'test:unshared' }
+    ctx.remoteAccess.registerPolicy('test-guest', {
+      bindings: () => [
+        { role: FOLLOWER, resource: { kind: 'global' } },
+        ...[first, second].map(id => ({ role: WORKSPACE_VIEWER, resource: { kind: 'workspace', id } as const, condition: stillShared })),
+      ],
+    })
+    const abort = new AbortController()
+    const iterator = followerContext(ctx, { kind: 'test-guest', guest: 'withdrawn' }).workspaceController.follow(abort.signal)[Symbol.asyncIterator]()
+    const ids = (frame: WorkspaceFollowFrame): string[] =>
+      frame.type === 'baseline' || frame.type === 'replace' ? frame.value.items.map(item => item.workspaceId).sort() : []
+    const opening = await nextFrame(iterator)
+    expect(opening.type).toBe('baseline')
+    expect(ids(opening)).toEqual([first, second].sort())
+
+    // Revoked: the next change replaces the state instead of sending a `remove` the Client would never undo.
+    allowedWorkspaces.delete(first)
+    await controller.rename({ workspaceId: first, title: 'revoked' })
+    const withoutFirst = await nextFrame(iterator)
+    expect(withoutFirst.type).toBe('replace')
+    expect(ids(withoutFirst)).toEqual([second])
+    allowedWorkspaces.delete(second)
+    const third = (await controller.create({ path: stageDir(root, 'third') })).workspace.workspaceId
+    const empty = await nextFrame(iterator)
+    expect(empty.type).toBe('replace')
+    expect(ids(empty)).toEqual([])
+    // A deletion reaches only a Client that received the Workspace.
+    await controller.delete({ workspaceId: third })
+    await expect(nextFrame(iterator)).resolves.toEqual({ type: 'order', workspaceIds: [] })
+
+    // Restored: the Workspace reappears through an ordinary upsert.
+    allowedWorkspaces.add(first)
+    await controller.rename({ workspaceId: first, title: 'restored' })
+    await expect(nextFrame(iterator)).resolves.toMatchObject({ type: 'upsert', workspace: { workspaceId: first, title: 'restored' } })
+
+    abort.abort()
+    await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined })
+  })
+
   it('ignores unrelated domain writes and closes active followers on disposal', async () => {
     const { controller, ctx, root } = await harness()
     const abort = new AbortController()
@@ -552,7 +594,7 @@ describe('first-use Remote', () => {
     const { controller, ctx, root } = await harness()
     const signal = new AbortController().signal
     const result = await controller.initializeDefault(signal)
-    expect(result!.workspace.path).toBe(join(root, 'AsterHub', DEFAULT_WORKSPACE_DIRECTORY))
+    expect(result!.workspace.path).toBe(join(root, 'deepseek-harness', DEFAULT_WORKSPACE_DIRECTORY))
     expect(result!.workspace.title).toBe(DEFAULT_WORKSPACE_DIRECTORY)
     expect(existsSync(result!.workspace.path)).toBe(true)
     expect(ctx.sessions.list()).toEqual([])
@@ -567,364 +609,5 @@ describe('first-use Remote', () => {
     vi.spyOn(ctx.workspaceRegistry, 'initializeDefault').mockRejectedValueOnce(new Error('permission denied'))
     await expect(controller.initializeDefault(new AbortController().signal))
       .rejects.toThrow('permission denied')
-  })
-})
-
-describe('project discovery and confirmed opening', () => {
-  it('inspect returns new when projectStorage is unmounted', async () => {
-    const { controller, root } = await harness()
-    const signal = new AbortController().signal
-    await expect(controller.inspect({ path: root }, signal)).resolves.toEqual({
-      kind: 'new',
-      root,
-    })
-  })
-
-  it('inspect returns existing project details when projectStorage locates metadata', async () => {
-    const { controller, ctx, root } = await harness()
-    const signal = new AbortController().signal
-    ctx.provide('projectStorage', {
-      inspect: async (path: string) => ({
-        kind: 'existing' as const,
-        root: path,
-        manifest: { id: 'proj-1', title: 'My Project', sessions: [{ id: 's1' }] },
-        digest: 'sha256-test',
-      }),
-      open: async () => {},
-    } as never)
-
-    const result = await controller.inspect({ path: root }, signal)
-    expect(result).toEqual({
-      kind: 'existing',
-      root,
-      projectId: 'proj-1',
-      title: 'My Project',
-      sessionCount: 1,
-      digest: 'sha256-test',
-    })
-  })
-
-  it('openProject confirms existing project parameters and registers the workspace', async () => {
-    const { controller, ctx, root } = await harness()
-    const signal = new AbortController().signal
-    const openMock = vi.fn(async () => {})
-    ctx.provide('projectStorage', {
-      inspect: async () => ({ kind: 'new' as const, root }),
-      open: openMock,
-    } as never)
-
-    const result = await controller.openProject({
-      path: root,
-      mode: 'existing',
-      expectedId: 'proj-1',
-      expectedDigest: 'sha256-test',
-    }, signal)
-
-    expect(openMock).toHaveBeenCalledWith({
-      root,
-      mode: 'existing',
-      expectedId: 'proj-1',
-      expectedDigest: 'sha256-test',
-    }, signal)
-    expect(result.workspace.path).toBe(root)
-  })
-  it('imports moved project history into a live Workspace without changing historical cwd', async () => {
-    const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-workspace-controller-import-')))
-    tempDirs.push(root)
-    const ctx = new Context()
-    roots.push(ctx)
-    await ctx.plugin(SessionStore)
-    await ctx.plugin(Storage)
-    ctx.storage.backend.register('memory', new MemoryStorageBackend())
-    const storageDomain = new DomainFacility(ctx, { backend: 'memory', routes: {} })
-    ctx.storage.mount('domain', storageDomain)
-    ctx.provide('storageDomain', storageDomain)
-    await ctx.plugin(SessionCwd)
-    await ctx.plugin(ProjectStorage, {
-      sessionMode: 'project-local',
-      locatorPath: join(root, 'locator.json'),
-      legacySessionRoot: '',
-      metadataLimitBytes: 1024 * 1024,
-      lockDeadlineMs: 5000,
-    })
-    await ctx.plugin(ProjectSessionPersistence, { compression: 'none' })
-    await ctx.plugin(WorkspaceRegistry)
-    const controller = new WorkspaceController(ctx, { documentsDirectory: root })
-    const originalRoot = stageDir(root, 'original-project')
-    const movedRoot = stageDir(root, 'moved-project')
-    const sourceBinding = await ctx.projectStorage.open({ root: originalRoot, mode: 'new' })
-
-    const sessionId = SessionId('portable-prior-session')
-    const oldHeader: SessionHeader = {
-      version: SESSION_FORMAT_VERSION,
-      id: sessionId,
-      createdAt: 1000,
-      cwd: originalRoot,
-      isSeeded: false,
-      delegationDepth: 0,
-    }
-    const writer = await ctx.sessionPersistence.create(oldHeader)
-    await writer.append([
-      { type: 'turn/start', seq: SessionSeq(0), time: 1001, data: { turn: 1 } },
-      { type: 'turn/end', seq: SessionSeq(1), time: 1002, data: { turn: 1, reason: { kind: 'completed' as const } } },
-    ])
-    await writer.close()
-
-    await cp(join(originalRoot, '.aster'), join(movedRoot, '.aster'), { recursive: true })
-    await rm(originalRoot, { recursive: true, force: true })
-    const inspection = await ctx.projectStorage.inspect(movedRoot)
-    if (inspection.kind !== 'existing') throw new Error('expected copied project metadata')
-
-    const opened = await controller.openProject({
-      path: movedRoot,
-      mode: 'existing',
-      expectedId: sourceBinding.id,
-      expectedDigest: inspection.digest,
-    }, new AbortController().signal)
-    expect(opened.workspace.sessionIds).toEqual([sessionId])
-    expect((await ctx.sessionPersistence.list()).map(snapshot => snapshot.header.id)).toContain(sessionId)
-
-    const reader = await ctx.sessionPersistence.open(sessionId, 'read')
-    try {
-      expect(reader.header.cwd).toBe(originalRoot)
-      expect((await reader.read()).events.map(event => event.type)).toEqual(['turn/start', 'turn/end'])
-      expect(ctx.sessionCwd.resolve(reader.header)).toBe(movedRoot)
-    } finally {
-      await reader.close()
-    }
-  })
-
-  it('imports project across separate synthetic machines and binds historical session without ungrouped regression', async () => {
-    const machineA = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-machine-a-')))
-    const machineB = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-machine-b-')))
-    tempDirs.push(machineA, machineB)
-
-    // Machine A creates project and writes session
-    const ctxA = new Context()
-    roots.push(ctxA)
-    await ctxA.plugin(SessionStore)
-    await ctxA.plugin(Storage)
-    ctxA.storage.backend.register('memory', new MemoryStorageBackend())
-    const storageDomainA = new DomainFacility(ctxA, { backend: 'memory', routes: {} })
-    ctxA.storage.mount('domain', storageDomainA)
-    ctxA.provide('storageDomain', storageDomainA)
-    await ctxA.plugin(SessionCwd)
-    await ctxA.plugin(ProjectStorage, {
-      sessionMode: 'project-local',
-      locatorPath: join(machineA, 'locator.json'),
-      legacySessionRoot: '',
-      metadataLimitBytes: 1024 * 1024,
-      lockDeadlineMs: 5000,
-    })
-    await ctxA.plugin(ProjectSessionPersistence, { compression: 'none' })
-    await ctxA.plugin(WorkspaceRegistry)
-    const projectA = stageDir(machineA, 'my-project-a')
-    const bindingA = await ctxA.projectStorage.open({ root: projectA, mode: 'new' })
-
-    const sessId = SessionId('cross-machine-sess-1')
-    const headerA: SessionHeader = {
-      version: SESSION_FORMAT_VERSION,
-      id: sessId,
-      createdAt: 1000,
-      cwd: projectA,
-      isSeeded: false,
-      delegationDepth: 0,
-    }
-    const writer = await ctxA.sessionPersistence.create(headerA)
-    await writer.append([
-      { type: 'turn/start', seq: SessionSeq(0), time: 1001, data: { turn: 1 } },
-      { type: 'turn/end', seq: SessionSeq(1), time: 1002, data: { turn: 1, reason: { kind: 'completed' as const } } },
-    ])
-    await writer.close()
-    await ctxA.fiber.dispose()
-    const projectB = stageDir(machineB, 'my-imported-project-b')
-    await cp(join(projectA, '.aster'), join(projectB, '.aster'), { recursive: true })
-    await rm(projectA, { recursive: true, force: true })
-
-    const ctxB = new Context()
-    roots.push(ctxB)
-    await ctxB.plugin(SessionStore)
-    await ctxB.plugin(Storage)
-    ctxB.storage.backend.register('memory', new MemoryStorageBackend())
-    const storageDomainB = new DomainFacility(ctxB, { backend: 'memory', routes: {} })
-    ctxB.storage.mount('domain', storageDomainB)
-    ctxB.provide('storageDomain', storageDomainB)
-    await ctxB.plugin(SessionCwd)
-    await ctxB.plugin(ProjectStorage, {
-      sessionMode: 'project-local',
-      locatorPath: join(machineB, 'locator.json'),
-      legacySessionRoot: '',
-      metadataLimitBytes: 1024 * 1024,
-      lockDeadlineMs: 5000,
-    })
-    await ctxB.plugin(ProjectSessionPersistence, { compression: 'none' })
-    await ctxB.plugin(WorkspaceRegistry)
-    const controllerB = new WorkspaceController(ctxB, { documentsDirectory: machineB })
-
-    const inspection = await controllerB.inspect({ path: projectB }, new AbortController().signal)
-    expect(inspection.kind).toBe('existing')
-    if (inspection.kind !== 'existing') throw new Error('expected existing project')
-    expect(inspection.sessionCount).toBe(1)
-
-    const opened = await controllerB.openProject({
-      path: projectB,
-      mode: 'existing',
-      expectedId: bindingA.id,
-      expectedDigest: inspection.digest,
-    }, new AbortController().signal)
-    expect(opened.workspace.sessionIds).toEqual([sessId])
-    const listedB = await ctxB.sessionPersistence.list()
-    expect(listedB.map(s => s.header.id)).toEqual([sessId])
-    const entityB = ctxB.workspaceRegistry.get(opened.workspace.workspaceId)
-    expect(entityB?.sessionIds).toEqual([sessId])
-
-    const readerB = await ctxB.sessionPersistence.open(sessId, 'read')
-    try {
-      expect(readerB.header.cwd).toBe(projectA)
-      expect(ctxB.sessionCwd.resolve(readerB.header)).toBe(projectB)
-    } finally {
-      await readerB.close()
-    }
-    await ctxB.fiber.dispose()
-  })
-
-
-  it('restores archived history when a deleted workspace reimports from its moved root', async () => {
-    const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-workspace-rearchive-')))
-    tempDirs.push(root)
-    const ctx = new Context()
-    roots.push(ctx)
-    await ctx.plugin(SessionStore)
-    await ctx.plugin(Storage)
-    ctx.storage.backend.register('memory', new MemoryStorageBackend())
-    const storageDomain = new DomainFacility(ctx, { backend: 'memory', routes: {} })
-    ctx.storage.mount('domain', storageDomain)
-    ctx.provide('storageDomain', storageDomain)
-    await ctx.plugin(SessionCwd)
-    await ctx.plugin(ProjectStorage, {
-      sessionMode: 'project-local',
-      locatorPath: join(root, 'locator.json'),
-      legacySessionRoot: '',
-      metadataLimitBytes: 1024 * 1024,
-      lockDeadlineMs: 5000,
-    })
-    await ctx.plugin(ProjectSessionPersistence, { compression: 'none' })
-    await ctx.plugin(WorkspaceRegistry)
-    const controller = new WorkspaceController(ctx, { documentsDirectory: root })
-
-    const originalRoot = stageDir(root, 'original-project')
-    const created = await controller.create({ path: originalRoot })
-    const sessionId = SessionId('archived-then-moved')
-    const movedHeader: SessionHeader = {
-      version: SESSION_FORMAT_VERSION,
-      id: sessionId,
-      createdAt: 1000,
-      cwd: originalRoot,
-      isSeeded: false,
-      delegationDepth: 0,
-    }
-    const writer = await ctx.sessionPersistence.create(movedHeader)
-    await writer.append([
-      { type: 'turn/start', seq: SessionSeq(0), time: 1001, data: { turn: 1 } },
-      { type: 'turn/end', seq: SessionSeq(1), time: 1002, data: { turn: 1, reason: { kind: 'completed' as const } } },
-    ])
-    await writer.close()
-    const workspace = ctx.workspaceRegistry.get(created.workspace.workspaceId)
-    if (workspace === undefined) throw new Error('fixture Workspace disappeared')
-    await workspace.attachSession(sessionId)
-
-    // Deleting with the default sessionAction archives the workspace's
-    // sessions globally while their logs stay in the project directory.
-    await expect(controller.delete({ workspaceId: created.workspace.workspaceId }))
-      .resolves.toEqual({ deleted: true })
-    expect(ctx.workspaceRegistry.archivedSessionIds).toContain(sessionId)
-
-    // The directory moves and the project reimports under the new path.
-    const movedRoot = stageDir(root, 'moved-project')
-    await cp(join(originalRoot, '.aster'), join(movedRoot, '.aster'), { recursive: true })
-    await rm(originalRoot, { recursive: true, force: true })
-    const inspection = await controller.inspect({ path: movedRoot }, new AbortController().signal)
-    if (inspection.kind !== 'existing') throw new Error('expected existing project')
-    expect(inspection.sessionCount).toBeGreaterThanOrEqual(1)
-
-    const reopened = await controller.openProject({
-      path: movedRoot,
-      mode: 'existing',
-      expectedId: inspection.projectId,
-      expectedDigest: inspection.digest,
-    }, new AbortController().signal)
-    expect(reopened.workspace.sessionIds).toContain(sessionId)
-    // The archive entry the deletion wrote must not keep the restored history
-    // hidden: reattachment through the project location drops it from the
-    // registry-global archive set and the session lists again.
-    expect(ctx.workspaceRegistry.archivedSessionIds).not.toContain(sessionId)
-    expect((await ctx.sessionPersistence.list()).map(snapshot => snapshot.header.id)).toContain(sessionId)
-  })
-
-  it('openProject throws workspace/confirmation-mismatch when projectStorage rejects confirmation', async () => {
-    const { controller, ctx, root } = await harness()
-    const signal = new AbortController().signal
-    ctx.provide('projectStorage', {
-      inspect: async () => ({ kind: 'new' as const, root }),
-      open: async () => { throw new Error('stale digest') },
-    } as never)
-
-    await expect(controller.openProject({
-      path: root,
-      mode: 'existing',
-      expectedId: 'proj-1',
-      expectedDigest: 'wrong',
-    }, signal)).rejects.toMatchObject({
-      name: 'RemoteError',
-      code: 'workspace/confirmation-mismatch',
-    })
-  })
-
-  it('returns a registered Workspace identity usable by the registry, not its project identity', async () => {
-    const { controller, ctx, root } = await harness()
-    await mountProjectStorage(ctx, root)
-    const binding = await ctx.projectStorage.open({ root, mode: 'new' })
-    const workspace = await ctx.workspaceRegistry.create(root)
-    const result = await controller.inspect({ path: root }, new AbortController().signal)
-    if (result.kind !== 'registered') throw new Error('Expected registered workspace inspection')
-    expect(result.workspaceId).toBe(workspace.id)
-    expect(result.workspaceId).not.toBe(String(binding.id))
-    expect(ctx.workspaceRegistry.get(result.workspaceId)?.path).toBe(workspace.path)
-  })
-
-  it('keeps inspection read-only when a project has no Workspace registration', async () => {
-    const { controller, ctx, root } = await harness()
-    await mountProjectStorage(ctx, root)
-    const binding = await ctx.projectStorage.open({ root, mode: 'new' })
-    const result = await controller.inspect({ path: root }, new AbortController().signal)
-    expect(result).toMatchObject({ kind: 'existing', projectId: String(binding.id) })
-    expect(await ctx.workspaceRegistry.resolveByPath(root)).toBeUndefined()
-  })
-
-  it('allows a Session to bind to the automatically initialized default project', async () => {
-    const { controller, ctx, root } = await harness()
-    await mountProjectStorage(ctx, root)
-    const result = await controller.initializeDefault(new AbortController().signal)
-    if (result === undefined) throw new Error('Expected initialized default workspace')
-    const sessionId = SessionId('default-project-session')
-    const location = await ctx.projectStorage.bindSession({
-      version: SESSION_FORMAT_VERSION, id: sessionId, createdAt: 10,
-      cwd: result.workspace.path, isSeeded: false, delegationDepth: 0,
-    })
-    expect(location.projectRoot).toBe(result.workspace.path)
-    expect(ctx.projectStorage.locateSession(sessionId)).toEqual(location)
-  })
-
-  it('allows a Session to bind to a Workspace created through the controller', async () => {
-    const { controller, ctx, root } = await harness()
-    await mountProjectStorage(ctx, root)
-    const result = await controller.create({ path: stageDir(root, 'auto-project') })
-    const sessionId = SessionId('created-project-session')
-    const location = await ctx.projectStorage.bindSession({
-      version: SESSION_FORMAT_VERSION, id: sessionId, createdAt: 10,
-      cwd: result.workspace.path, isSeeded: false, delegationDepth: 0,
-    })
-    expect(location.projectRoot).toBe(result.workspace.path)
-    expect(ctx.projectStorage.locateSession(sessionId)).toEqual(location)
   })
 })

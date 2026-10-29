@@ -1,26 +1,14 @@
 import type { z } from 'zod'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join, relative } from 'node:path'
-import { createUserMessage, LlmAdapter } from '@deepseek-ai/dsh-llm'
-import type { GenerateOptions, LlmResolvedModelInfo } from '@deepseek-ai/dsh-llm'
-import AgentLoop from '@deepseek-ai/dsh-agent-loop'
-import { boot } from '@deepseek-ai/dsh-app-boot'
-import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
-import SessionCwd from '@deepseek-ai/dsh-session/cwd'
-import ProjectStorage from '@deepseek-ai/dsh-project-storage'
-import ProjectSessionPersistence from '@deepseek-ai/dsh-project-storage/persistence'
-import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
-import { ApiSessionAgentController } from '../../../api/session-controller/src/agent.ts'
 import { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-agent'
-import type {} from '@deepseek-ai/dsh-workspace'
 import Storage from '@deepseek-ai/dsh-storage'
 import type { StorageBackend } from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
-import SessionStore, { SESSION_FORMAT_VERSION, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
+import SessionStore, { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionHeader } from '@deepseek-ai/dsh-session'
 import { SessionPersistenceRevision } from '@deepseek-ai/dsh-session-persistence'
 import type { SessionPersistenceSnapshot } from '@deepseek-ai/dsh-session-persistence'
@@ -33,6 +21,7 @@ import WorkspaceRegistry, {
 } from '../src/index.ts'
 import type { WorkspaceDomainState, WorkspaceRecord } from '../src/index.ts'
 import { defaultWorkspaceTitle, fullyQualifiedWorkspacePath } from '../src/paths.ts'
+import * as workspacePaths from '../src/paths.ts'
 
 const DOMAIN_VERSION = 2
 
@@ -44,40 +33,14 @@ const header = (id: string, cwd?: string, createdAt = 0): SessionHeader => ({
   ...(cwd === undefined ? {} : { cwd }),
 })
 
-function pendingAdapter() {
-  let resolveEntered: () => void
-  const entered = new Promise<void>((res) => { resolveEntered = res })
-  let wasCancelled = false
-  class PendingAdapter extends LlmAdapter {
-    override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
-      return Promise.resolve({ provider, id: model, name: model })
-    }
-    override async *stream(options: GenerateOptions) {
-      resolveEntered()
-      let rejectAborted: (err: Error) => void
-      const aborted = new Promise<void>((_, rej) => { rejectAborted = rej })
-      const signal = options.signal
-      const abort = () => {
-        wasCancelled = true
-        rejectAborted(new Error('controlled pending Agent was cancelled'))
-      }
-      if (signal === undefined) throw new Error('Agent request did not carry an abort signal')
-      if (signal.aborted) abort()
-      else signal.addEventListener('abort', abort, { once: true })
-      await aborted
-    }
-  }
-  return { adapter: new PendingAdapter(), entered, wasCancelled: () => wasCancelled }
-}
-
 interface HarnessOptions {
   pool?: MemoryMediaPool
   sessions?: SessionHeader[]
   liveSessions?: SessionHeader[]
   sessionStore?: boolean
   backend?: StorageBackend
-  projectLocations?: ReadonlyMap<SessionId, string>
 }
+
 /** Boot the real storage/domain/registry composition over controllable header-only peers. */
 async function harness(options: HarnessOptions = {}) {
   const pool = options.pool ?? new MemoryMediaPool()
@@ -94,14 +57,6 @@ async function harness(options: HarnessOptions = {}) {
   const open = vi.fn(() => { throw new Error('event bodies must not be opened') })
   const stat = vi.fn(() => { throw new Error('per-session stat must not be needed') })
   ctx.provide('sessionPersistence', { list, open, stat } as never)
-  if (options.projectLocations !== undefined) {
-    ctx.provide('projectStorage', {
-      locateSession: (id: SessionId) => {
-        const projectRoot = options.projectLocations!.get(id)
-        return projectRoot === undefined ? undefined : { projectRoot }
-      },
-    } as never)
-  }
 
   if (options.sessionStore === true) {
     await ctx.plugin(SessionStore)
@@ -129,17 +84,6 @@ async function harness(options: HarnessOptions = {}) {
     open,
     stat,
     setSessions: (headers: SessionHeader[]) => { listed = headers },
-  }
-}
-
-async function makeDirectorySymlink(source: string, target: string, skip: (reason: string) => never): Promise<void> {
-  try {
-    await symlink(source, target)
-  } catch (error: unknown) {
-    if (process.platform === 'win32' && error instanceof Error && 'code' in error && error.code === 'EPERM') {
-      skip('Windows account lacks the symlink privilege required by this case')
-    }
-    throw error
   }
 }
 
@@ -263,124 +207,12 @@ describe('WorkspaceRegistry lifecycle and bootstrap', () => {
     expect(storedState(pool)).toEqual({ initialized: true, workspaceIds: [], archivedSessionIds: [], pinnedSessionIds: [] })
   })
 
-  it('reconciles newly imported project history against its moved root without changing stored cwd', async () => {
-    const movedRoot = await makeDir('imported-project')
-    const originalRoot = join(base, 'old-device', 'workspace')
-    const imported = header('imported-session', originalRoot, 100)
-    const h = await harness({
-      sessions: [],
-      projectLocations: new Map([[imported.id, movedRoot]]),
-    })
-    try {
-      const workspace = await h.registry.create(movedRoot)
-      h.setSessions([imported])
-
-      await h.registry.reconcileProjectSessions(movedRoot)
-
-      expect(workspace.sessionIds).toEqual([imported.id])
-      expect(storedRecord(h.pool, workspace.id).sessionIds).toEqual([imported.id])
-      expect(h.open).not.toHaveBeenCalled()
-    } finally {
-      await h.fiber.dispose()
-    }
-  })
-
-  it('attaches and projects sessions when projectStorage is present even if header.cwd is completely nonexistent on current machine', async () => {
-    const movedRoot = await makeDir('portable-target-project')
-    const nonexistentCwd = 'Z:\\nonexistent\\machine\\path\\never\\here'
-    const imported = header('cross-machine-session', nonexistentCwd, 100)
-    const h = await harness({
-      sessions: [],
-      projectLocations: new Map([[imported.id, movedRoot]]),
-    })
-    try {
-      const workspace = await h.registry.create(movedRoot)
-      h.setSessions([imported])
-
-      await h.registry.reconcileProjectSessions(movedRoot)
-
-      expect(workspace.sessionIds).toEqual([imported.id])
-      expect(storedRecord(h.pool, workspace.id).sessionIds).toEqual([imported.id])
-    } finally {
-      await h.fiber.dispose()
-    }
-  })
-
-  it('unarchives a moved-root session that reconcile newly accounts to the reopened workspace', async () => {
-    const movedRoot = await makeDir('rearchive-target-project')
-    const staleCwd = join(base, 'old-device', 'deleted-workspace')
-    const imported = header('rearchive-session', staleCwd, 100)
-    const h = await harness({
-      sessions: [],
-      projectLocations: new Map([[imported.id, movedRoot]]),
-    })
-    try {
-      const workspace = await h.registry.create(movedRoot)
-      h.setSessions([imported])
-      // Deleting the previous registration archived the session globally; its
-      // log stayed in the project and the record is gone with the registration.
-      await h.registry.archiveSession(imported.id)
-      expect(h.registry.archivedSessionIds).toEqual([imported.id])
-
-      await h.registry.reconcileProjectSessions(movedRoot)
-
-      expect(workspace.sessionIds).toEqual([imported.id])
-      expect(h.registry.archivedSessionIds).toEqual([])
-      expect(storedRecord(h.pool, workspace.id).sessionIds).toEqual([imported.id])
-      expect(storedState(h.pool).archivedSessionIds).toEqual([])
-    } finally {
-      await h.fiber.dispose()
-    }
-  })
-
-  it('attaches every project-located session from a fresh registry without ungrouped leftovers', async () => {
-    const movedRoot = await makeDir('imported-multi-project')
-    const staleCwd = join(base, 'old-device', 'multi-workspace')
-    const first = header('multi-import-1', staleCwd, 100)
-    const second = header('multi-import-2', staleCwd, 200)
-    const h = await harness({
-      sessions: [first, second],
-      projectLocations: new Map([[first.id, movedRoot], [second.id, movedRoot]]),
-    })
-    try {
-      // No workspace existed for the stale cwd, so bootstrap left both
-      // sessions ungrouped; importing the moved root must account both.
-      const workspace = await h.registry.create(movedRoot)
-      await h.registry.reconcileProjectSessions(movedRoot)
-
-      expect(h.registry.list()).toEqual([workspace])
-      expect(workspace.sessionIds).toHaveLength(2)
-      expect(new Set(workspace.sessionIds)).toEqual(new Set([first.id, second.id]))
-      expect(storedRecord(h.pool, workspace.id).sessionIds).toHaveLength(2)
-    } finally {
-      await h.fiber.dispose()
-    }
-  })
-
-  it('keeps an already-recorded session archived across a repeated reconcile', async () => {
-    const dir = await makeDir('deliberate-archive-reopen')
-    const result = await harness({ sessions: [header('deliberate', dir, 100)] })
-    const workspace = result.registry.list()[0]!
-    try {
-      await result.registry.archiveSession(SessionId('deliberate'))
-      expect(result.registry.archivedSessionIds).toEqual([SessionId('deliberate')])
-
-      await result.registry.reconcileProjectSessions(dir)
-
-      expect(result.registry.archivedSessionIds).toEqual([SessionId('deliberate')])
-      expect(workspace.sessionIds).toContain(SessionId('deliberate'))
-      expect(storedState(result.pool).archivedSessionIds).toEqual([SessionId('deliberate')])
-    } finally {
-      await result.fiber.dispose()
-    }
-  })
-
-  it('bootstraps once from list headers only, in workspace/session createdAt order', async ({ skip }) => {
+  it.skipIf(process.platform === 'win32')('bootstraps once from list headers only, in workspace/session createdAt order', async () => {
     const older = await makeDir('older')
     const newer = await makeDir('newer')
     const alias = join(base, 'older-link')
     const plain = join(base, 'plain.txt')
-    await makeDirectorySymlink(older, alias, skip)
+    await symlink(older, alias)
     await writeFile(plain, 'not a directory')
     const missing = join(base, 'missing')
     const result = await harness({
@@ -547,11 +379,11 @@ describe('WorkspaceRegistry create and lookup', () => {
     expect(fullyQualifiedWorkspacePath('work', 'linux')).toBe(false)
   })
 
-  it('creates newest-first and idempotently reuses a canonical path without retitling', async ({ skip }) => {
+  it.skipIf(process.platform === 'win32')('creates newest-first and idempotently reuses a canonical path without retitling', async () => {
     const firstDir = await makeDir('first')
     const secondDir = await makeDir('second')
     const alias = join(base, 'first-link')
-    await makeDirectorySymlink(firstDir, alias, skip)
+    await symlink(firstDir, alias)
     const { registry, pool } = await harness()
     const first = await registry.create(firstDir, 'Original')
     const second = await registry.create(secondDir)
@@ -679,7 +511,7 @@ describe('WorkspaceRegistry create and lookup', () => {
     })
   })
 
-  it('deletes only the registration, archives its sessions, and leaves its directory untouched', async () => {
+  it('deletes only the registration and leaves its directory and session headers untouched', async () => {
     const dir = await makeDir('delete-registration')
     const result = await harness({ sessions: [header('kept-session', dir)] })
     const workspace = await result.registry.create(dir)
@@ -689,13 +521,7 @@ describe('WorkspaceRegistry create and lookup', () => {
     await expect(result.registry.delete(workspace.id)).resolves.toBe(false)
     expect(result.registry.get(workspace.id)).toBeUndefined()
     expect(result.registry.list()).toEqual([])
-    expect(result.registry.archivedSessionIds).toEqual([SessionId('kept-session')])
-    expect(storedState(result.pool)).toEqual({
-      initialized: true,
-      workspaceIds: [],
-      archivedSessionIds: [SessionId('kept-session')],
-      pinnedSessionIds: [],
-    })
+    expect(storedState(result.pool)).toEqual({ initialized: true, workspaceIds: [], archivedSessionIds: [], pinnedSessionIds: [] })
     expect(result.pool.media.get('workspace')!.tables.get('workspaces')!.has(workspace.id)).toBe(false)
     await expect(realpath(dir)).resolves.toBe(dir)
     expect(result.list).toHaveBeenCalledTimes(1)
@@ -706,189 +532,6 @@ describe('WorkspaceRegistry create and lookup', () => {
     expect(reregistered.id).not.toBe(workspace.id)
     expect(reregistered.path).toBe(dir)
     expect(reregistered.sessionIds).toEqual([])
-  })
-
-  it('permanently deletes sessions when workspace is deleted with sessionAction delete', async () => {
-    const dir = await makeDir('delete-sessions-action')
-    const result = await harness({ sessions: [header('purged-session', dir)] })
-    const workspace = await result.registry.create(dir)
-    await workspace.attachSession(SessionId('purged-session'))
-
-    const deleted = vi.fn()
-    result.ctx.on('workspace/session-deleted', deleted)
-    await expect(result.registry.delete(workspace.id, { sessionAction: 'delete' })).resolves.toBe(true)
-    expect(deleted).toHaveBeenCalledExactlyOnceWith({ sessionId: SessionId('purged-session') })
-    expect(result.registry.get(workspace.id)).toBeUndefined()
-    expect(result.registry.archivedSessionIds).toEqual([])
-    expect(storedState(result.pool)).toEqual({
-      initialized: true,
-      workspaceIds: [],
-      archivedSessionIds: [],
-      pinnedSessionIds: [],
-    })
-  })
-  it('preserves session storage when a live Agent owner does not release it', async () => {
-    const dir = await makeDir('delete-live-unowned-session')
-    const result = await harness({ sessions: [header('live-session', dir)] })
-    const workspace = await result.registry.create(dir)
-    await workspace.attachSession(SessionId('live-session'))
-    const liveAgent = { id: SessionId('live-session') }
-    result.ctx.provide('agents', { get: (id: SessionId) => id === liveAgent.id ? liveAgent : undefined } as never)
-    result.ctx.on('workspace/session-delete', () => undefined)
-
-    await expect(result.registry.deleteSession(SessionId('live-session'))).rejects.toThrow(
-      "Agent 'live-session' remains live after workspace deletion teardown",
-    )
-    expect(workspace.sessionIds).toEqual([SessionId('live-session')])
-    expect(result.registry.get(workspace.id)).toBe(workspace)
-    expect(result.registry.list()).toContain(workspace)
-  })
-
-  it('loads the explicit SessionCwd leaf through the profile boot tree and releases its resolver on teardown', async () => {
-    const projectRoot = await makeDir('profile-session-cwd-project')
-    const configPath = join(base, 'session-cwd-profile.cordis.yml')
-    const locatorPath = join(base, 'session-cwd-profile-locator.json')
-    await writeFile(configPath, [
-      '- id: session-cwd',
-      '  name: "cordis:session-cwd"',
-      '- id: project-storage',
-      '  name: "cordis:project-storage"',
-      '  config:',
-      '    sessionMode: project-local',
-      `    locatorPath: ${JSON.stringify(locatorPath)}`,
-      '    legacySessionRoot: ""',
-      '    metadataLimitBytes: 1048576',
-      '    lockDeadlineMs: 5000',
-      '',
-    ].join('\n'))
-
-    const ctx = await boot('workspace-test', configPath, undefined, (setupCtx) => {
-      setupCtx.loader.builtins['session-cwd'] = SessionCwd
-      setupCtx.loader.builtins['project-storage'] = ProjectStorage
-    })
-    const meta = header('profile-loaded-session', projectRoot)
-    const cwdService = ctx.sessionCwd
-    try {
-      const binding = await ctx.projectStorage.open({ root: projectRoot, mode: 'new' })
-      await ctx.projectStorage.bindSession(meta)
-      expect(cwdService.resolve(meta)).toBe(projectRoot)
-      expect(ctx.projectStorage.manifest(binding.id).sessions.map(({ id }) => id)).toEqual([meta.id])
-    } finally {
-      await ctx.fiber.dispose()
-    }
-    expect(() => cwdService.resolve(meta)).toThrow(/unavailable/)
-  })
-
-
-  it('cancels and closes a pending live Agent before deleting only its persisted project generation', async () => {
-    const projectRoot = await makeDir('delete-active-project-session')
-    const ctx = new Context()
-    const activeId = SessionId('active-delete-session')
-    const siblingId = SessionId('preserved-sibling-session')
-    const pending = pendingAdapter()
-    try {
-      await ctx.plugin(Storage)
-      const pool = new MemoryMediaPool()
-      ctx.storage.backend.register('memory', new MemoryStorageBackend(pool))
-      const facility = new DomainFacility(ctx, { backend: 'memory', routes: {} })
-      ctx.storage.mount('domain', facility)
-      ctx.provide('storageDomain', facility)
-      await ctx.plugin(TypertRegistry)
-      await mountAgentLoopTestDependencies(ctx)
-      await ctx.plugin(ProjectStorage, {
-        sessionMode: 'project-local',
-        locatorPath: join(base, 'active-delete-locator.json'),
-        legacySessionRoot: '',
-        metadataLimitBytes: 1024 * 1024,
-        lockDeadlineMs: 5000,
-      })
-      const binding = await ctx.projectStorage.open({ root: projectRoot, mode: 'new' })
-      await ctx.plugin(ProjectSessionPersistence, { compression: 'none' })
-      await ctx.plugin(WorkspaceRegistry)
-      await ctx.plugin(AgentLoop, { agents: [] })
-      const agentController = new ApiSessionAgentController(ctx)
-      ctx.llm.registerAdapter(['pending'], pending.adapter)
-
-      const workspace = await ctx.workspaceRegistry.create(projectRoot)
-      await ctx.projectStorage.bindSession(header(siblingId, projectRoot))
-      const siblingWriter = await ctx.sessionPersistence.create(header(siblingId, projectRoot))
-      await siblingWriter.append([{ type: 'turn/start', time: 1, seq: SessionSeq(0), data: { turn: 1 } }])
-      await siblingWriter.close()
-      const handle = await agentController.createForkAgent({
-        sessionId: activeId,
-        meta: { cwd: projectRoot },
-        agentOptions: { provider: 'pending', model: 'pending', cwd: projectRoot },
-      })
-      handle.followup(createUserMessage({
-        content: [{ type: 'text', text: 'hold until Workspace deletes this Session' }],
-        source: { kind: 'user' },
-      }))
-      await pending.entered
-      await workspace.attachSession(activeId)
-      await workspace.attachSession(siblingId)
-
-      const location = ctx.projectStorage.locateSession(activeId)
-      expect(location).toBeDefined()
-      const sharedAttachment = join(location!.attachmentsRoot, 'shared-fixture.bin')
-      const attachmentBytes = Buffer.from('shared project attachment')
-      await mkdir(location!.attachmentsRoot, { recursive: true })
-      await writeFile(sharedAttachment, attachmentBytes)
-      await ctx.sessionPersistence.flush()
-
-      const deleted: SessionId[] = []
-      let stateAtDeleted: {
-        cancelled: boolean
-        agent: unknown
-        session: unknown
-      } | undefined
-      ctx.on('workspace/session-deleted', ({ sessionId }) => {
-        deleted.push(sessionId)
-        stateAtDeleted = {
-          cancelled: pending.wasCancelled(),
-          agent: ctx.agents.get(sessionId),
-          session: ctx.sessions.get(sessionId),
-        }
-      })
-
-      await expect(ctx.workspaceRegistry.deleteSession(activeId)).resolves.toBe(true)
-
-      expect(deleted).toEqual([activeId])
-      expect(stateAtDeleted).toEqual({ cancelled: true, agent: undefined, session: undefined })
-      expect(ctx.agents.get(activeId)).toBeUndefined()
-      expect(ctx.sessions.get(activeId)).toBeUndefined()
-      expect(workspace.sessionIds).toEqual([siblingId])
-      expect(ctx.projectStorage.manifest(binding.id).sessions.map(({ id }) => id)).toEqual([siblingId])
-      expect((await ctx.sessionPersistence.list()).map(({ header: stored }) => stored.id)).toEqual([siblingId])
-      await expect(ctx.sessionPersistence.stat(activeId)).rejects.toThrow()
-      await expect(readFile(sharedAttachment)).resolves.toEqual(attachmentBytes)
-      expect((await stat(projectRoot)).isDirectory()).toBe(true)
-      expect(ctx.projectStorage.locateSession(activeId)).toBeUndefined()
-      expect(ctx.projectStorage.locateSession(siblingId)).toBeDefined()
-    } finally {
-      await ctx.fiber.dispose()
-    }
-  })
-  it('deleteSession removes an individual session from workspace and registry', async () => {
-    const dir = await makeDir('delete-individual-session')
-    const result = await harness({ sessions: [header('s1', dir), header('s2', dir)] })
-    const workspace = await result.registry.create(dir)
-    await workspace.attachSession(SessionId('s1'))
-    await workspace.attachSession(SessionId('s2'))
-    await result.registry.pinSession(SessionId('s1'))
-
-    expect(workspace.sessionIds).toEqual([SessionId('s1'), SessionId('s2')])
-    expect(result.registry.pinnedSessionIds).toEqual([SessionId('s1')])
-
-    const deleted = vi.fn()
-    result.ctx.on('workspace/session-deleted', deleted)
-    await expect(result.registry.deleteSession(SessionId('s1'))).resolves.toBe(true)
-    expect(workspace.sessionIds).toEqual([SessionId('s2')])
-    expect(result.registry.pinnedSessionIds).toEqual([])
-    expect(result.registry.archivedSessionIds).toEqual([])
-    expect(deleted).toHaveBeenCalledExactlyOnceWith({ sessionId: SessionId('s1') })
-
-    // Idempotent delete on non-existent session
-    await expect(result.registry.deleteSession(SessionId('unknown'))).resolves.toBe(false)
   })
 
   it('rolls registry order and cache back when record deletion fails', async () => {
@@ -1122,6 +765,150 @@ describe('Workspace session ordering', () => {
 })
 
 describe('header-validated membership projection', () => {
+  it('preserves owned sessions and manual order after directory removal and restart', async () => {
+    const dir = await makeDir('removed-owned')
+    const sessions = [header('first', dir), header('second', dir)]
+    const initial = await harness()
+    onTestFinished(() => initial.ctx.fiber.dispose())
+    initial.setSessions(sessions)
+    const workspace = await initial.registry.create(dir)
+    await workspace.attachSession(SessionId('first'))
+    await workspace.attachSession(SessionId('second'))
+    await initial.ctx.fiber.dispose()
+    await rm(dir, { recursive: true })
+
+    const restarted = await harness({ pool: initial.pool, sessions: [...sessions, header('unowned', dir)] })
+    onTestFinished(() => restarted.ctx.fiber.dispose())
+    const restored = restarted.registry.get(workspace.id)!
+    expect(restored.sessionIds).toEqual(['second', 'first'])
+    expect(await restored.status()).toBe('missing-dir')
+    await restored.setTitle('Still owned')
+    await restored.insertSessionBefore(SessionId('first'), SessionId('second'))
+    expect(storedRecord(initial.pool, workspace.id).sessionIds).toEqual(['first', 'second'])
+    await expect(restored.attachSession(SessionId('unowned'))).rejects.toThrow(/does not resolve/)
+    expect(restored.sessionIds).toEqual(['first', 'second'])
+    await restarted.ctx.fiber.dispose()
+
+    const again = await harness({ pool: initial.pool, sessions })
+    onTestFinished(() => again.ctx.fiber.dispose())
+    expect(again.registry.get(workspace.id)!.sessionIds).toEqual(['first', 'second'])
+  })
+
+  it('preserves an owned session when its symlink target disappears without bootstrapping missing paths', async () => {
+    const target = await makeDir('removed-symlink-target')
+    const alias = join(base, 'removed-symlink-alias')
+    await symlink(target, alias, 'junction')
+    const sessions = [header('linked', alias)]
+    const initial = await harness()
+    onTestFinished(() => initial.ctx.fiber.dispose())
+    initial.setSessions(sessions)
+    const workspace = await initial.registry.create(target)
+    await workspace.attachSession(SessionId('linked'))
+    await initial.ctx.fiber.dispose()
+    await rm(target, { recursive: true })
+
+    const restarted = await harness({ pool: initial.pool, sessions })
+    onTestFinished(() => restarted.ctx.fiber.dispose())
+    expect(restarted.registry.get(workspace.id)!.sessionIds).toEqual(['linked'])
+    const fresh = await harness({ sessions })
+    onTestFinished(() => fresh.ctx.fiber.dispose())
+    expect(fresh.registry.list()).toEqual([])
+  })
+
+  it('preserves an owned session when the directory disappears between realpath and stat', async () => {
+    const dir = await makeDir('stat-missing')
+    const id = WorkspaceId('stat-missing-workspace')
+    const pool = storedPool([[id, record(dir, ['kept'])]], { initialized: true, workspaceIds: [id] })
+    const normalize = workspacePaths.realpathNormalize
+    const spy = vi.spyOn(workspacePaths, 'realpathNormalize').mockImplementation(async (path) => {
+      const canonical = await normalize(path)
+      if (path === dir) await rm(dir, { recursive: true })
+      return canonical
+    })
+    onTestFinished(() => { spy.mockRestore() })
+    const result = await harness({ pool, sessions: [header('kept', dir)] })
+    onTestFinished(() => result.ctx.fiber.dispose())
+    expect(result.registry.get(id)!.sessionIds).toEqual(['kept'])
+  })
+
+  it.each(['EACCES', 'ELOOP', 'ENOTDIR'])('does not preserve candidates after a %s path failure', async (code) => {
+    const dir = await makeDir(`path-error-${code}`)
+    const id = WorkspaceId(`path-error-${code}`)
+    const pool = storedPool([[id, record(dir, ['invalid'])]], { initialized: true, workspaceIds: [id] })
+    const spy = vi.spyOn(workspacePaths, 'realpathNormalize').mockRejectedValue(Object.assign(new Error(code), { code }))
+    onTestFinished(() => { spy.mockRestore() })
+    const result = await harness({ pool, sessions: [header('invalid', dir)] })
+    onTestFinished(() => result.ctx.fiber.dispose())
+    const workspace = result.registry.get(id)!
+    expect(workspace.sessionIds).toEqual([])
+    await workspace.setTitle('Pruned')
+    expect(storedRecord(pool, id).sessionIds).toEqual([])
+  })
+
+  it('clears the missing-path exemption when a later header index resolves elsewhere or becomes invalid', async () => {
+    const dir = await makeDir('reindexed-missing')
+    const elsewhere = await makeDir('reindexed-elsewhere')
+    const id = WorkspaceId('reindexed-workspace')
+    const pool = storedPool([[id, record(dir, ['kept'])]], { initialized: true, workspaceIds: [id] })
+    await rm(dir, { recursive: true })
+    const result = await harness({ pool, sessions: [header('kept', dir)] })
+    onTestFinished(() => result.ctx.fiber.dispose())
+    const workspace = result.registry.get(id)!
+    expect(workspace.sessionIds).toEqual(['kept'])
+    result.setSessions([header('kept', elsewhere), header('trigger-one', elsewhere)])
+    await result.registry.pinSession(SessionId('trigger-one'))
+    expect(workspace.sessionIds).toEqual([])
+    result.setSessions([header('kept', dir), header('trigger-two', elsewhere)])
+    await result.registry.pinSession(SessionId('trigger-two'))
+    expect(workspace.sessionIds).toEqual(['kept'])
+    result.setSessions([header('kept'), header('trigger-three', elsewhere)])
+    await result.registry.pinSession(SessionId('trigger-three'))
+    expect(workspace.sessionIds).toEqual([])
+    await workspace.setTitle('Pruned')
+    expect(storedRecord(pool, id).sessionIds).toEqual([])
+  })
+
+  it('filters absent headers and invalid cwd facts while retaining only missing-directory candidates', async () => {
+    const dir = await makeDir('candidate-validation')
+    const elsewhere = await makeDir('candidate-elsewhere')
+    const missing = join(base, 'candidate-missing')
+    const file = join(base, 'candidate-file')
+    await writeFile(file, 'not a directory')
+    const id = WorkspaceId('candidate-validation')
+    const pool = storedPool(
+      [[id, record(dir, ['missing-dir', 'no-header', 'no-cwd', 'relative', 'file', 'elsewhere'])]],
+      { initialized: true, workspaceIds: [id] },
+    )
+    const result = await harness({
+      pool,
+      sessions: [
+        header('missing-dir', missing), header('no-cwd'), header('relative', 'relative-missing'),
+        header('file', file), header('elsewhere', elsewhere), header('unowned', missing),
+      ],
+    })
+    onTestFinished(() => result.ctx.fiber.dispose())
+    const workspace = result.registry.get(id)!
+    expect(workspace.sessionIds).toEqual(['missing-dir'])
+    await workspace.setTitle('Validated')
+    expect(storedRecord(pool, id).sessionIds).toEqual(['missing-dir'])
+  })
+
+  it('can detach and reattach a missing-directory candidate after the directory is restored', async () => {
+    const dir = await makeDir('reattach-restored')
+    const id = WorkspaceId('reattach-restored')
+    const pool = storedPool([[id, record(dir, ['restored'])]], { initialized: true, workspaceIds: [id] })
+    await rm(dir, { recursive: true })
+    const result = await harness({ pool, sessions: [header('restored', dir)] })
+    onTestFinished(() => result.ctx.fiber.dispose())
+    const workspace = result.registry.get(id)!
+    await workspace.detachSession(SessionId('restored'))
+    expect(workspace.sessionIds).toEqual([])
+    await mkdir(dir)
+    await workspace.attachSession(SessionId('restored'))
+    expect(workspace.sessionIds).toEqual(['restored'])
+    expect(await workspace.status()).toBe('ok')
+  })
+
   it('requires both candidate id and matching canonical cwd without re-reading on list()', async () => {
     const owned = await makeDir('owned')
     const elsewhere = await makeDir('projection-elsewhere')
@@ -1702,12 +1489,12 @@ describe('first-use Workspace preparation', () => {
     expect((await h.registry.initializeDefault(h.resolveDirectory))?.path).toBe(path)
   })
 
-  it('titles the Workspace after the requested directory when that path is a symlink', async ({ skip }) => {
+  it.skipIf(process.platform === 'win32')('titles the Workspace after the requested directory when that path is a symlink', async () => {
     const h = await firstUse()
     const target = join(h.directoryRoot, 'elsewhere')
     await mkdir(target)
     await mkdir(join(h.directoryRoot, 'nested'))
-    await makeDirectorySymlink(target, join(h.directoryRoot, 'nested', 'Workspace'), skip)
+    await symlink(target, join(h.directoryRoot, 'nested', 'Workspace'))
     const workspace = await h.registry.initializeDefault(h.resolveDirectory)
     expect(workspace?.path).toBe(await realpath(target))
     // Not 'elsewhere': the title names the directory the caller asked for, so
@@ -1750,44 +1537,28 @@ describe('first-use Workspace preparation', () => {
   })
 })
 
-describe('projectStorage-backed session location and attachment', () => {
-  it('indexes and attaches a moved session whose header.cwd does not resolve when location is registered', async () => {
-    const workspaceDir = await makeDir('current-workspace')
-    const canonicalWorkspaceDir = await realpath(workspaceDir)
+describe('project-local Workspace extension', () => {
+  it('adopts a moved Session under its current root without rewriting the stored header', async () => {
+    const target = await makeDir('adopted-project')
+    const sourceCwd = join(target, 'old-machine', 'project')
+    const sessionId = SessionId('portable-adopted-session')
+    const current = await harness({ sessions: [header(String(sessionId), sourceCwd)] })
+    const workspace = await current.registry.create(target)
 
-    const legacyCwd = join(workspaceDir, 'nonexistent-legacy-cwd')
-    const sessionId = SessionId('legacy-moved-session')
-    const legacyHeader = header(String(sessionId), legacyCwd)
-
-    const pool = new MemoryMediaPool()
-    const ctx = new Context()
-    await ctx.plugin(Storage)
-    ctx.storage.backend.register('memory', new MemoryStorageBackend(pool))
-    const facility = new DomainFacility(ctx, { backend: 'memory', routes: {} })
-    ctx.storage.mount('domain', facility)
-    ctx.provide('storageDomain', facility)
-
-    const list = vi.fn(async () => [
-      { header: legacyHeader, revision: SessionPersistenceRevision('rev-1') },
-    ])
-    ctx.provide('sessionPersistence', {
-      list,
-      open: vi.fn(),
-      stat: vi.fn(),
-    } as never)
-
-    ctx.provide('projectStorage', {
-      locateSession: (id: SessionId) => (id === sessionId ? { projectRoot: canonicalWorkspaceDir } : undefined),
-    } as never)
-
-    await ctx.plugin(SessionStore)
-    await ctx.plugin(WorkspaceRegistry)
-
-    const workspace = await ctx.workspaceRegistry.create(canonicalWorkspaceDir)
-    await workspace.attachSession(sessionId)
+    await current.registry.adoptSession(workspace.id, sessionId, target)
 
     expect(workspace.sessionIds).toContain(sessionId)
-    await ctx.fiber.dispose()
+    expect((await current.list())[0]!.header.cwd).toBe(sourceCwd)
+    await current.fiber.dispose()
+  })
+
+  it('exposes registered roots during WorkspaceRegistry startup', async () => {
+    const root = await makeDir('registered-project-root')
+    const current = await harness()
+    const workspace = await current.registry.create(root)
+
+    expect(current.registry.listProjectRoots()).toEqual([workspace.path])
+    await current.fiber.dispose()
   })
 })
 

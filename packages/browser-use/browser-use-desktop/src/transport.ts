@@ -121,11 +121,11 @@ export function createDesktopBrowserTransport(port: DesktopBrowserTransportPort)
 
   const transport: DesktopBrowserTransport = {
     request(caller, operation, signal) {
-      if (disposed || disconnected) return Promise.reject(new Error('Desktop Browser transport is disposed'))
+      if (disposed) return Promise.reject(new Error('Desktop Browser transport is disposed'))
       if (signal.aborted) return Promise.reject(abortError(signal.reason))
       if (!port.connected()) return Promise.reject(new Error('Desktop Browser Host is unavailable'))
       if (!isDesktopBrowserOperation(operation)) return Promise.reject(new TypeError('Invalid Desktop Browser operation'))
-      if (!Number.isSafeInteger(nextRequestId) || nextRequestId < 1) {
+      if (!Number.isSafeInteger(nextRequestId)) {
         return Promise.reject(new Error('Desktop Browser request id space is exhausted'))
       }
 

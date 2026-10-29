@@ -1,4 +1,7 @@
+import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import { spawnSync } from 'node:child_process'
+import { unsupportedModel, provideWorkingDirectoryFixture, unsupportedInbox } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { release, tmpdir, version } from 'node:os'
 import { join } from 'node:path'
@@ -23,7 +26,6 @@ import { resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local/src/resolve.ts'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRegistry from '@deepseek-ai/dsh-tools'
 import * as ToolPwshPersistent from '@deepseek-ai/dsh-tool-pwsh-persistent'
-import { unsupportedInbox } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { ReadinessTimeline, TIMELINE_HEADER } from './readiness-timeline.ts'
 
 const pwshPath = resolvePwshPath()
@@ -83,6 +85,7 @@ async function agent(ctx: Context, cwd: string): Promise<Agent> {
     id,
     options: {},
     session,
+    model: unsupportedModel(),
     inbox: unsupportedInbox(),
     status: 'idle',
     ctx: scope.ctx,
@@ -110,6 +113,7 @@ describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader comp
       "- name: '@deepseek-ai/dsh-agent'",
       "- name: '@deepseek-ai/dsh-system-prompt'",
       "- name: '@deepseek-ai/dsh-tools'",
+      "- name: '@deepseek-ai/dsh-tool-executor-native'",
       "- name: '@deepseek-ai/dsh-terminal'",
       "- name: '@deepseek-ai/dsh-test-sandbox'",
       "- name: '@deepseek-ai/dsh-session-projection'",
@@ -148,6 +152,8 @@ describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader comp
     ].join('\n'))
 
     context = new Context()
+
+    provideWorkingDirectoryFixture(context)
     context.baseUrl = pathToFileURL(root).href + '/'
     await context.plugin(Loader)
     context.loader.builtins.include = Include
@@ -155,6 +161,7 @@ describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader comp
       ['@deepseek-ai/dsh-agent', AgentRegistry],
       ['@deepseek-ai/dsh-system-prompt', SystemPrompt],
       ['@deepseek-ai/dsh-tools', ToolRegistry],
+      ['@deepseek-ai/dsh-tool-executor-native', NativeToolExecutor],
       ['@deepseek-ai/dsh-terminal', TerminalSessionService],
       ['@deepseek-ai/dsh-test-sandbox', PassthroughSandbox],
       ['@deepseek-ai/dsh-session-projection', SessionProjectionRegistry],
@@ -212,7 +219,7 @@ describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader comp
     const signal = new AbortController().signal
     const execute = (id: string, command: string) => {
       timeline.label(id)
-      return context!.tools.execute({
+      return executeToolFixture(context!, {
         signal,
         callId: ToolCallId(id),
         name: 'pwsh',
@@ -244,6 +251,7 @@ describe.skipIf(!hasPwsh)('persistent pwsh through a real cordis.yml Loader comp
     expect(large.startsWith('1\n2\n3\n')).toBe(true)
     expect(large).toContain('<response clipped>')
     expect(large).not.toContain('beginning of this command output was dropped')
+
     const afterScroll = text(await execute('after-scroll', 'Write-Output "cwd=$PWD keep=$env:KEEP"'))
     expect(afterScroll).toBe(`cwd=${join(root, 'nested')} keep=loader`)
 

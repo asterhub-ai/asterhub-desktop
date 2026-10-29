@@ -1,3 +1,5 @@
+import { mountWorkingDirectoryFixture } from '../../subagent/tests/working-directory-fixture.ts'
+import { startExternalActivation } from '../../subagent/tests/external-activation-helpers.ts'
 import { execFile } from 'node:child_process'
 import {
   existsSync,
@@ -22,7 +24,6 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
-import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import type {
   SubprocessHandle,
   SubprocessOutcome,
@@ -194,9 +195,9 @@ async function realRuntime(): Promise<RealRuntime> {
   const ctx = new Context()
   contexts.push(ctx)
   await ctx.plugin(SessionProjectionRegistry)
+  await mountWorkingDirectoryFixture(ctx)
   await ctx.plugin(SubagentRuntime)
   await ctx.plugin(LocalSubprocessRuntime)
-  await ctx.plugin(SessionCwd)
   const handles: SubprocessHandle[] = []
   const spawnSpecs: SubprocessSpawnSpec[] = []
   const spawn = ctx.subprocess.spawn.bind(ctx.subprocess)
@@ -281,7 +282,7 @@ function startRequest(
   prompt: string,
   signal = new AbortController().signal,
 ) {
-  return harness.ctx.subagents.start('claude-code', {
+  return startExternalActivation(harness.ctx, 'claude-code', {
     prompt: [{ type: 'text', text: prompt }],
     parent: harness.parent,
     signal,
@@ -414,12 +415,12 @@ describe('real Claude Agent SDK 0.3.263 and its distributed Claude Code 2.1.263 
     const safeController = new AbortController()
 
     const [safeRun, bypassRun] = await Promise.all([
-      ctx.subagents.start('claude-safe', {
+      startExternalActivation(ctx, 'claude-safe', {
         prompt: [{ type: 'text', text: 'Hold the safe instance.' }],
         parent: safeParent,
         signal: safeController.signal,
       }),
-      ctx.subagents.start('claude-bypass', {
+      startExternalActivation(ctx, 'claude-bypass', {
         prompt: [{ type: 'text', text: 'Complete the bypass instance.' }],
         parent: bypassParent,
         signal: new AbortController().signal,
@@ -428,7 +429,7 @@ describe('real Claude Agent SDK 0.3.263 and its distributed Claude Code 2.1.263 
     await safeInstance.fixture.requestStarted
     await safeFiber.dispose()
     expect(ctx.subagents.list()).toEqual(['claude-bypass'])
-    await expect(ctx.subagents.start('claude-safe', {
+    await expect(startExternalActivation(ctx, 'claude-safe', {
       prompt: [{ type: 'text', text: 'This start must fail.' }],
       parent: safeParent,
       signal: new AbortController().signal,
@@ -438,7 +439,7 @@ describe('real Claude Agent SDK 0.3.263 and its distributed Claude Code 2.1.263 
       output: [{ type: 'text', text: 'NAMED_BYPASS_RESULT' }],
       stopReason: 'completed',
     })
-    safeController.abort(new Error('cancel only the published safe run'))
+    void safeRun.dispose()
     await expect(safeRun.result).resolves.toEqual({
       output: [],
       stopReason: 'aborted',
@@ -563,7 +564,7 @@ describe('real Claude Agent SDK 0.3.263 and its distributed Claude Code 2.1.263 
       controller.signal,
     )
     await fixture.requestStarted
-    controller.abort(new Error('real product cancellation'))
+    void run.dispose()
     await expect(run.result).resolves.toEqual({
       output: [],
       stopReason: 'aborted',

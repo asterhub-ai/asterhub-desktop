@@ -4,21 +4,26 @@
  * policy-service dependency. Assertions read files back byte-for-byte rather than trusting tool
  * messages.
  */
+import { executeToolFixture, executeModelToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 
+import * as PtcToolExecutor from '@deepseek-ai/dsh-tool-executor-ptc'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import { mountAgentLoopTestDependencies, provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import type { Agent } from '@deepseek-ai/dsh-agent'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import { PtcRuntime, type PtcRunRequest, type PtcRunResult, type PtcRunSpec } from '@deepseek-ai/dsh-ptc-runtime'
+import SandboxPolicyService from '@deepseek-ai/dsh-sandbox-policy'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import type { FsVersion } from '@deepseek-ai/dsh-fs'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { TOOL_ABORTED_BEFORE_DISPATCH } from '@deepseek-ai/dsh-tools'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import * as FsPolicy from '@deepseek-ai/dsh-fs-observation-policy'
-import SessionCwd from '@deepseek-ai/dsh-session/cwd'
-import { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
-import { createTestAgent } from './agent-fixture.ts'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 
 const testToolSignal = new AbortController().signal
@@ -26,39 +31,17 @@ const testToolSignal = new AbortController().signal
 let dir: string
 let ctx: Context
 let fiber: Awaited<ReturnType<Context['plugin']>>
-let trustedRoot: string | undefined
-let session: Session
-let owner: Agent
-let sessionCounter = 0
-const agents = new WeakMap<Session, Agent>()
-
-function createSession(cwd: string): Session {
-  const id = SessionId(`tool-fs-integration-${++sessionCounter}`)
-  return Session.create(id, [], { version: SESSION_FORMAT_VERSION, id, createdAt: 0, cwd, isSeeded: false })
-}
-
-function agentFor(session: Session): Agent {
-  const existing = agents.get(session)
-  if (existing !== undefined) return existing
-  const agent = createTestAgent(ctx, session)
-  agents.set(session, agent)
-  return agent
-}
+// The consumer fixture supplies the configured temporary workspace.
+const session = { header: { get cwd() { return dir } } }
 
 let callCounter = 0
-async function installSessionCwd(root: string) {
-  trustedRoot = root
-  await ctx.plugin(SessionCwd)
-  ctx.sessionCwd.registerResolver(() => trustedRoot)
-}
-
 function call(name: string, args: unknown) {
-  return ctx.tools.execute({
+  return executeToolFixture(ctx, {
     signal: testToolSignal,
     callId: ToolCallId(`call-${++callCounter}`),
     name,
     arguments: args,
-    agent: owner,
+    agent: { session } as never,
   })
 }
 
@@ -82,17 +65,31 @@ describe('default deployment (with dsh-fs-observation-policy)', () => {
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'dsh-tool-fs-'))
     ctx = new Context()
+    provideWorkingDirectoryFixture(ctx)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
+    await ctx.plugin(NativeToolExecutor)
     await ctx.plugin(LocalFileSystem, { cwd: dir })
-    await installSessionCwd(dir)
-    session = createSession(dir)
-    owner = agentFor(session)
     await ctx.plugin(FsPolicy)
     fiber = await ctx.plugin(ToolFs)
   })
 
   describe('write → disk', () => {
+    it('without read, creates and edits a new file while protecting unobserved existing files', async () => {
+      await fiber.dispose()
+      fiber = await ctx.plugin(ToolFs, { read: false })
+      await writeFile(join(dir, 'existing.txt'), 'original')
+      expect((await call('write', { file_path: 'new.txt', content: 'created' })).isError).toBe(false)
+      expect((await call('edit', { file_path: 'new.txt', old_string: 'created', new_string: 'edited' })).isError).toBe(false)
+      expect(await readFile(join(dir, 'new.txt'), 'utf8')).toBe('edited')
+      expect(await call('write', { file_path: 'existing.txt', content: 'overwrite' }))
+        .toMatchObject({ isError: true, error: { info: { code: 'FS_NOT_OBSERVED' } } })
+      expect(await call('edit', { file_path: 'existing.txt', old_string: 'original', new_string: 'overwrite' }))
+        .toMatchObject({ isError: true, error: { info: { code: 'FS_NOT_OBSERVED' } } })
+      expect(await readFile(join(dir, 'existing.txt'), 'utf8')).toBe('original')
+      expect(ctx.tools.get('read')).toBeUndefined()
+    })
+
     it('creates a file with exactly the requested bytes', async () => {
       const result = await call('write', { file_path: 'new.txt', content: 'line one\nline two\n' })
       expect(result.isError).toBe(false)
@@ -343,12 +340,11 @@ describe('bare provider (no dsh-fs-observation-policy)', () => {
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'dsh-tool-fs-bare-'))
     ctx = new Context()
+    provideWorkingDirectoryFixture(ctx)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
+    await ctx.plugin(NativeToolExecutor)
     await ctx.plugin(LocalFileSystem, { cwd: dir })
-    await installSessionCwd(dir)
-    session = createSession(dir)
-    owner = agentFor(session)
     fiber = await ctx.plugin(ToolFs)
   })
 
@@ -405,36 +401,36 @@ describe('bare provider (no dsh-fs-observation-policy)', () => {
   })
 })
 
-// Per-session cwd: relative paths resolve through the current trusted execution root, not a
-// historical Session header or the filesystem backend's configured startup cwd.
+// Per-session cwd: a relative file_path resolves against the calling session's workspace
+// (`exec.agent.session.header.cwd`), not the backend's config.cwd, so the
+// caller-selected session workspace wins, matching dsh-tool-bash.
 describe('per-session cwd', () => {
   let sessionDir: string
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'dsh-tool-fs-cfg-'))
     sessionDir = await mkdtemp(join(tmpdir(), 'dsh-tool-fs-session-'))
     ctx = new Context()
+    provideWorkingDirectoryFixture(ctx)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
+    await ctx.plugin(NativeToolExecutor)
     await ctx.plugin(LocalFileSystem, { cwd: dir }) // config.cwd = dir, NOT sessionDir
-    await installSessionCwd(sessionDir)
-    session = createSession(sessionDir)
-    owner = agentFor(session)
     await ctx.plugin(FsPolicy)
     fiber = await ctx.plugin(ToolFs)
   })
   afterEach(async () => { await rm(sessionDir, { recursive: true, force: true }) })
 
-  const callIn = (sessionObj: Session, name: string, args: unknown) =>
-    ctx.tools.execute({
+  const callIn = (sessionObj: object, name: string, args: unknown) =>
+    executeToolFixture(ctx, {
       signal: testToolSignal,
       callId: ToolCallId(`call-${++callCounter}`),
       name,
       arguments: args,
-      agent: agentFor(sessionObj),
+      agent: { session: sessionObj } as never,
     })
 
   it('writes a relative path into the SESSION cwd, not config.cwd', async () => {
-    const result = await callIn(createSession(sessionDir), 'write', { file_path: 'note.txt', content: 'hi' })
+    const result = await callIn({ header: { cwd: sessionDir } }, 'write', { file_path: 'note.txt', content: 'hi' })
     expect(result.isError).toBe(false)
     // Verify the WORLD: the file is in the session dir, and NOT in config.cwd.
     expect(await readFile(join(sessionDir, 'note.txt'), 'utf8')).toBe('hi')
@@ -444,57 +440,37 @@ describe('per-session cwd', () => {
   it('read + edit both resolve against the session cwd (end-to-end)', async () => {
     // ONE session object across both calls — observed-state keys by owner
     // identity, so read must record under the same owner the edit reads.
-    const session = createSession(sessionDir)
+    const session = { header: { cwd: sessionDir } }
     await writeFile(join(sessionDir, 'code.txt'), 'alpha')
     expect((await callIn(session, 'read', { file_path: 'code.txt' })).isError).toBe(false)
     const edited = await callIn(session, 'edit', { file_path: 'code.txt', old_string: 'alpha', new_string: 'beta' })
     expect(edited.isError).toBe(false)
     expect(await readFile(join(sessionDir, 'code.txt'), 'utf8')).toBe('beta')
   })
-  it('writes against the live root after relocation and refuses an unavailable provider', async () => {
-    const moved = await mkdtemp(join(tmpdir(), 'dsh-tool-fs-moved-'))
-    try {
-      const historicalHeader = createSession(sessionDir)
-      trustedRoot = moved
-      expect((await callIn(historicalHeader, 'write', { file_path: 'moved.txt', content: 'new root' })).isError).toBe(false)
-      expect(await readFile(join(moved, 'moved.txt'), 'utf8')).toBe('new root')
-      await expect(readFile(join(sessionDir, 'moved.txt'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
-
-      await rm(sessionDir, { recursive: true, force: true })
-      expect((await callIn(historicalHeader, 'write', { file_path: 'after-old-root-removal.txt', content: 'still moved' })).isError).toBe(false)
-      expect(await readFile(join(moved, 'after-old-root-removal.txt'), 'utf8')).toBe('still moved')
-
-      trustedRoot = undefined
-      expect((await callIn(historicalHeader, 'write', { file_path: 'must-not-fallback.txt', content: 'no' })).isError).toBe(true)
-      await expect(readFile(join(moved, 'must-not-fallback.txt'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
-    } finally {
-      await rm(moved, { recursive: true, force: true })
-    }
-  })
 })
 
 // --------------------------------------------------------------------------
 // Abort-through-the-tool, tool-tier concurrency, and the fs/observed contract —
-// all through ctx.tools.execute() against the REAL backend + policy.
+// all through executeToolFixture() against the REAL backend + policy.
 // --------------------------------------------------------------------------
 describe('signal, concurrency, and the fs/observed contract', () => {
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'dsh-tool-fs-'))
     ctx = new Context()
+    provideWorkingDirectoryFixture(ctx)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
+    await ctx.plugin(NativeToolExecutor)
     await ctx.plugin(LocalFileSystem, { cwd: dir })
-    await installSessionCwd(dir)
-    session = createSession(dir)
-    owner = agentFor(session)
     await ctx.plugin(FsPolicy)
     fiber = await ctx.plugin(ToolFs)
   })
 
+  const session = { header: { get cwd() { return dir } } }
   const callSig = (signal: AbortSignal, name: string, args: unknown) =>
-    ctx.tools.execute({ callId: ToolCallId(`c-${++callCounter}`), name, arguments: args, agent: owner, signal })
+    executeToolFixture(ctx, { callId: ToolCallId(`c-${++callCounter}`), name, arguments: args, agent: { session } as never, signal })
   const callOwned = (name: string, args: unknown) =>
-    ctx.tools.execute({ signal: testToolSignal, callId: ToolCallId(`c-${++callCounter}`), name, arguments: args, agent: owner })
+    executeToolFixture(ctx, { signal: testToolSignal, callId: ToolCallId(`c-${++callCounter}`), name, arguments: args, agent: { session } as never })
 
   it('a pre-aborted registry call skips read/write/edit with ABORTED_BEFORE_DISPATCH', async () => {
     await writeFile(join(dir, 'a.txt'), 'hello')
@@ -518,19 +494,38 @@ describe('signal, concurrency, and the fs/observed contract', () => {
 
   it('two concurrent edits of the same file, same session: one wins, one FS_STALE_VERSION', async () => {
     await writeFile(join(dir, 'a.txt'), 'base value here')
-    // One read establishes the observed version both edits guard against; then
-    // race two edits so both carry the SAME observed version (the barrier).
     expect((await callOwned('read', { file_path: 'a.txt' })).isError).toBe(false)
-    const [one, two] = await Promise.all([
-      callOwned('edit', { file_path: 'a.txt', old_string: 'base', new_string: 'ONE', replaceAll: false }),
-      callOwned('edit', { file_path: 'a.txt', old_string: 'value', new_string: 'TWO', replaceAll: false }),
-    ])
-    const errors = [one, two].filter(r => r.isError)
-    expect(errors).toHaveLength(1)
-    expect(errors[0]?.error).toMatchObject({ info: { code: 'FS_STALE_VERSION' } })
-    // The world is consistent: exactly one edit landed.
-    const onDisk = await readFile(join(dir, 'a.txt'), 'utf8')
-    expect(onDisk === 'ONE value here' || onDisk === 'base TWO here').toBe(true)
+    const captured = Promise.withResolvers<undefined>()
+    const versions: (FsVersion | undefined)[] = []
+    // Both guards must be captured before a successful edit refreshes the session's observed version.
+    const dispose = ctx.on('fs/edit-intent', async (_target, _actor, next) => {
+      const intent = await next()
+      versions.push(intent?.version)
+      if (versions.length === 2) captured.resolve(undefined)
+      await captured.promise
+      return intent
+    }, { prepend: true })
+    // An early tool failure must release any peer already waiting at the barrier.
+    const pending = [
+      callOwned('edit', { file_path: 'a.txt', old_string: 'base', new_string: 'ONE', replace_all: false }),
+      callOwned('edit', { file_path: 'a.txt', old_string: 'value', new_string: 'TWO', replace_all: false }),
+    ].map(pendingCall => pendingCall.finally(() => { captured.resolve(undefined) }))
+    try {
+      const results = await Promise.all(pending)
+      expect(versions).toHaveLength(2)
+      expect(versions[0]).toBeDefined()
+      expect(versions[1]).toBe(versions[0])
+      const errors = results.filter(r => r.isError)
+      expect(errors).toHaveLength(1)
+      expect(errors[0]?.error).toMatchObject({ info: { code: 'FS_STALE_VERSION' } })
+      // The world is consistent: exactly one edit landed.
+      const onDisk = await readFile(join(dir, 'a.txt'), 'utf8')
+      expect(onDisk === 'ONE value here' || onDisk === 'base TWO here').toBe(true)
+    } finally {
+      captured.resolve(undefined)
+      await Promise.allSettled(pending)
+      dispose()
+    }
   })
 
   it('a stale observed version from an older read fails closed at edit CAS', async () => {
@@ -548,7 +543,7 @@ describe('signal, concurrency, and the fs/observed contract', () => {
     expect((await callOwned('read', { file_path: 'a.txt' })).isError).toBe(false)
 
     // Reproduce an older concurrent read winning the observation race.
-    ctx.emit('fs/observed', target, { kind: 'present', version: firstInfo.version }, { agent: owner })
+    ctx.emit('fs/observed', target, { kind: 'present', version: firstInfo.version }, { agent: { session } })
 
     const edit = await callOwned('edit', {
       file_path: 'a.txt',
@@ -567,5 +562,84 @@ describe('signal, concurrency, and the fs/observed contract', () => {
     const result = await callOwned('write', { file_path: 'w.txt', content: 'durable' })
     expect(result.isError).toBe(true)
     expect(await readFile(join(dir, 'w.txt'), 'utf8')).toBe('durable')
+  })
+})
+
+
+describe('current working directory', () => {
+  it('routes subsequent files to the new directory while keeping the original permission root', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'dsh-tool-fs-current-'))
+    const next = join(dir, 'next')
+    await mkdir(next)
+    await writeFile(join(dir, 'note.txt'), 'original')
+    await writeFile(join(next, 'note.txt'), 'current')
+    ctx = new Context()
+    try {
+      await ctx.plugin(LocalFileSystem, { cwd: dir })
+      await mountAgentLoopTestDependencies(ctx, { workingDirectory: true })
+      await ctx.plugin(AgentLoop, { agents: [] })
+      await ctx.plugin(SandboxPolicyService, { mode: 'workspace-write', workspaceRoot: dir })
+      fiber = await ctx.plugin(ToolFs)
+      const handle = await ctx.agents.create({
+        sessionId: SessionId('current-directory-files'), meta: { cwd: dir },
+        agentOptions: { provider: 'mock', model: 'mock' },
+      })
+      const agent = handle.agent
+      const session = agent.session
+      const policy = ctx.sandboxPolicy.resolve({ session })
+      await ctx.workingDirectory.set(agent, next)
+      const current = ctx.workingDirectory.get(session)
+      const read = await executeToolFixture(ctx, {
+        signal: testToolSignal, callId: ToolCallId('read-current'), name: 'read',
+        arguments: { file_path: 'note.txt' }, agent,
+      })
+      expect(read.isError).toBe(false)
+      expect(text(read)).toContain('current')
+      expect(read.meta).toMatchObject({ path: join(current, 'note.txt') })
+      const write = await executeToolFixture(ctx, {
+        signal: testToolSignal, callId: ToolCallId('write-current'), name: 'write',
+        arguments: { file_path: 'created.txt', content: 'new' }, agent,
+      })
+      expect(write.isError).toBe(false)
+      expect(write.meta).toEqual({ operation: 'create', path: join(current, 'created.txt'), diffs: [] })
+      const edit = await executeToolFixture(ctx, {
+        signal: testToolSignal, callId: ToolCallId('edit-current'), name: 'edit',
+        arguments: { file_path: 'created.txt', old_string: 'new', new_string: 'edited' }, agent,
+      })
+      expect(edit.isError).toBe(false)
+      expect(edit.meta).toMatchObject({ path: join(current, 'created.txt'), diffs: [{ path: join(current, 'created.txt') }] })
+      class ReadBindingRuntime extends PtcRuntime {
+        readonly language = 'typescript'
+        readonly isolation = 'fixture'
+        resolve(request: PtcRunRequest): PtcRunSpec {
+          return { ...request, cwd: current, timeoutMs: 120_000 }
+        }
+        async run(spec: PtcRunSpec): Promise<PtcRunResult> {
+          const read = spec.bindings.find(binding => binding.global === 'tools')?.functions.read
+          if (read === undefined) throw new Error('missing read binding')
+          const value = await read({ file_path: 'note.txt' })
+          expect(JSON.stringify(value)).toContain('current')
+          return { logs: [], value }
+        }
+      }
+      await ctx.plugin(ReadBindingRuntime)
+      await agent.ctx.plugin(PtcToolExecutor)
+      const nested = await executeModelToolFixture(ctx, {
+        signal: testToolSignal, callId: ToolCallId('ptc-read-current'), name: 'run_code',
+        arguments: { code: 'return await tools.read({file_path: "note.txt"})', description: 'Read the current note' }, agent,
+      })
+      expect(nested.isError).toBe(false)
+      const dispatch = session.snapshotEvents().find(event => event.type === 'tool/ptc-dispatch')
+      expect(dispatch?.data.meta).toMatchObject({ path: join(current, 'note.txt') })
+      await ctx.workingDirectory.set(agent, dir)
+      expect(dispatch?.data.meta).toMatchObject({ path: join(current, 'note.txt') })
+      expect(write.meta).toMatchObject({ path: join(current, 'created.txt') })
+      expect(await readFile(join(next, 'created.txt'), 'utf8')).toBe('edited')
+      await expect(readFile(join(dir, 'created.txt'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+      expect(ctx.sandboxPolicy.resolve({ session }).workspaceRoot).toBe(policy.workspaceRoot)
+      expect(session.header.cwd).toBe(dir)
+    } finally {
+      await ctx.fiber.dispose()
+    }
   })
 })

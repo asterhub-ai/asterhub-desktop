@@ -1,36 +1,38 @@
 /** Session Remote owner: cold reads, explicit Agent commands, and live control state. */
 
 import { hostname } from 'node:os'
-import { relative, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-fs'
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { errorChain, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import { errorChain, ReasoningEffortId, type MessageSource } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-client-file-upload'
 import { canOpenNativePath, nativeFileManager, nativeFileApplications, openNativeFileApplication, openNativeAssociatedPath, revealNativePath } from '@deepseek-ai/dsh-native-command'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence'
+import type {} from '@deepseek-ai/dsh-session-projection-cache'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
-import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { Remote, RemoteError, TypertRemoteService, principalOf, type TypertResourceResolveInput } from '@deepseek-ai/dsh-typert-protocol'
+import { canonicalClientTimeZone } from '@deepseek-ai/dsh-util-time'
+import { assertNever } from '@deepseek-ai/dsh-util-values'
+import type {} from '@deepseek-ai/dsh-api-remote-access'
 import {
   ApiSessionAgentController,
-  inspectApiSession,
   type ApiSessionAgentResult,
 } from './agent.ts'
-import { SessionCommandController } from './commands.ts'
+import { SessionCommandController, hasPromptContent } from './commands.ts'
 import { SessionControlController } from './control.ts'
 import { SessionHistoryController } from './history.ts'
 import { SessionFileReferences } from './file-references.ts'
 import { ApiSessionList } from './list.ts'
 import { buildModelCatalog, hasProviderApiKey } from './catalog.ts'
-import { installModelSelectionProjection } from './model-selection-projection.ts'
 import { SessionSkillCatalog } from './skill-catalog.ts'
 import { SessionMediaReferences } from './media-references.ts'
 import { ArchivedSessionGate } from './archived-session-gate.ts'
 import type {
   ModelCatalog,
   SessionWorkspacePathApplication,
+  SessionAddress,
   SessionAttachmentRequest,
   SessionAttachmentValue,
   SessionCancelRequest,
@@ -75,13 +77,44 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
+/**
+ * Extract the Session resource from an ID or a history address.
+ *
+ * Registers as the `session` kind default, so it applies to every Remote method of
+ * every namespace: a top-level `sessionId` parameter, otherwise the first object
+ * parameter carrying `sessionId` or an `address`. A new request type whose first
+ * object parameter has an unrelated `address` field would be read as an address.
+ * @param input - validated wire arguments and their ordered parameter descriptions.
+ * @returns the named Session identity, otherwise the first object's Session identity or history address.
+ * @throws Error when the request object supplies both sessionId and address.
+ */
+function resolveSessionResource({ args, parameters }: TypertResourceResolveInput): SessionId | undefined {
+  const sessionParameter = parameters.find(parameter => parameter.name === 'sessionId' || parameter.wire === 'sessionId')
+  if (sessionParameter !== undefined) return args[sessionParameter.wire] as SessionId | undefined
+  for (const parameter of parameters) {
+    const value = args[parameter.wire]
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) continue
+    const request = value as { readonly sessionId?: SessionId; readonly address?: SessionAddress }
+    const address = request.address
+    if (request.sessionId !== undefined && address !== undefined) {
+      throw new Error('Session resource request must not contain both sessionId and address')
+    }
+    return request.sessionId ?? (address === undefined ? undefined
+      : address.kind === 'session' ? address.sessionId : address.childSessionId)
+  }
+  return undefined
+}
+
 /** Session Controller deployment policy. */
 export interface Config {
   /** Override platform desktop-opener detection. */
   readonly nativeOpen?: boolean
-  /** Use only the Host's deployment model route for every Session. */
-  readonly modelSelectionPolicy?: 'session' | 'fixed'
+  /** Positive integral milliseconds of list work before yielding between complete rows. */
+  readonly listWorkSliceMs?: number
 }
+
+/** Deployment policy after schema defaults have been applied. */
+type ResolvedConfig = Config & { readonly listWorkSliceMs: number }
 
 /** Host integrations replaceable by direct unit tests. */
 export interface SessionControllerInternals {
@@ -97,48 +130,6 @@ export interface SessionControllerInternals {
   readonly canOpenPath?: () => boolean
 }
 
-/** Handle returned by {@link SessionController.registerExecutionInputOwner} that
- * serializes prompt admission and can temporarily block or release it. */
-export interface SessionExecutionInputOwner {
-  /**
-   * Serialize one work unit behind any already-admitted work. If the owner
-   * has already been closed, wait for {@link release} to resolve normally.
-   * When a creation readiness promise was supplied to
-   * {@link SessionController.registerExecutionInputOwner}, this first waits
-   * for that promise (outside the FIFO) before submitting the work, so work
-   * never reaches a Session whose creation has not yet completed.
-   * @param work - async work to execute serially behind already-admitted work.
-   * @param signal - caller cancellation; aborting drops the wait.
-   * @returns the work result.
-   */
-  admit<T>(work: () => Promise<T>, signal: AbortSignal): Promise<T>
-  /**
-   * Wait until all already-admitted work settles, then evaluate the predicate.
-   * If it passes, mark this Session's input as closed; future work waits for
-   * release and then executes normally. Does NOT await the creation readiness
-   * promise: failure cleanup must be able to close the owner before creation
-   * settles.
-   * @param check - synchronous predicate; serialized behind admitted work.
-   * @returns `true` only when the predicate passed and the owner was newly closed.
-   */
-  closeIf(check: () => boolean): Promise<boolean>
-  /**
-   * Release this owner. Pending closed work executes normally; new work
-   * bypasses this owner entirely. When a creation readiness promise was
-   * supplied, releasing it lets a failed creation report not-found without
-   * hanging waiting admits.
-   */
-  release(): void
-}
-
-/** Error thrown when attempting to register an execution input owner for a Session that already has one. */
-export class DuplicateExecutionInputOwnerError extends Error {
-  constructor(sessionId: SessionId) {
-    super(`Execution input owner already registered for session ${sessionId}`)
-    this.name = 'DuplicateExecutionInputOwnerError'
-  }
-}
-
 /** Host service backing the generated `ctx.remote.session` namespace. */
 export class SessionController extends TypertRemoteService {
   static inject = [
@@ -148,45 +139,54 @@ export class SessionController extends TypertRemoteService {
     'fileUploads',
     'fs',
     'llm',
+    'remoteAccess',
     'sessions',
     'sessionProjections',
-    'sessionCwd',
     'sessionQuery',
     'typert',
     'workspaceRegistry',
   ]
 
-  static Config: z<Config> = z.object({
+  static Config: z<Config, ResolvedConfig> = z.object({
     nativeOpen: z.boolean(),
-    modelSelectionPolicy: z.union(['session', 'fixed'] as const).default('session'),
+    listWorkSliceMs: z.natural().min(1).default(16),
   })
 
-  private readonly fixedModelSelection: boolean
-
-  private readonly agents: ApiSessionAgentController
-  private readonly commands: SessionCommandController
-  private readonly controlState: SessionControlController
-  private readonly history: SessionHistoryController
-  private readonly listState: ApiSessionList
+  private agents!: ApiSessionAgentController
+  private commands!: SessionCommandController
+  private controlState!: SessionControlController
+  private history!: SessionHistoryController
+  private listState!: ApiSessionList
   private readonly openPath: (path: string, signal: AbortSignal) => Promise<void>
   private readonly fileApplications: typeof nativeFileApplications
   private readonly openFileApplication: typeof openNativeFileApplication
   private readonly revealPath: (path: string, signal: AbortSignal) => Promise<void>
   private readonly canOpenPath: () => boolean
-  private readonly executionInputOwners = new Map<SessionId, SessionExecutionInputOwner>()
+  private readonly listWorkSliceMs: number
   private readonly promotions = new Set<Promise<void>>()
 
   /**
    * @param ctx - Host context containing the Session capability assembly.
-   * @param config - native-opener deployment policy.
+   * @param config - native-opener and list-scheduling deployment policy.
    * @param internals - host integrations replaceable by direct unit tests.
    */
   constructor(ctx: Context, config: Config, internals: SessionControllerInternals = {}) {
     super(ctx, 'sessionController', { namespace: 'session' })
-    installModelSelectionProjection(ctx)
-    this.fixedModelSelection = config.modelSelectionPolicy === 'fixed'
-    this.agents = new ApiSessionAgentController(ctx, this.fixedModelSelection)
-    this.commands = new SessionCommandController(ctx, this.agents, process.cwd(), this.fixedModelSelection)
+    this.listWorkSliceMs = SessionController.Config(config).listWorkSliceMs
+    this.fileApplications = internals.fileApplications ?? nativeFileApplications
+    this.openFileApplication = internals.openFileApplication ?? openNativeFileApplication
+    this.openPath = internals.openPath ?? openNativeAssociatedPath
+    this.revealPath = internals.revealPath ?? revealNativePath
+    this.canOpenPath = internals.canOpenPath
+      ?? (() => config.nativeOpen ?? (internals.openPath !== undefined || canOpenNativePath()))
+  }
+
+  protected async [Service.init](): Promise<void> {
+    const ctx = this.ctx
+    ctx.typert.resources.register('session', { resolve: resolveSessionResource })
+    this.agents = new ApiSessionAgentController(ctx)
+    this.agents.initialize()
+    this.commands = new SessionCommandController(ctx, this.agents, process.cwd())
     ctx.effect(() => ctx.fileUploads.registerAgentResolver(async (sessionId) => {
       const result = await this.agents.resolveAgent(sessionId)
       if ('error' in result) throw result.error
@@ -199,13 +199,8 @@ export class SessionController extends TypertRemoteService {
       await Promise.allSettled([...this.promotions])
     }, 'session-controller.promotions')
     this.history = new SessionHistoryController(ctx, (observation) => { this.promote(observation) })
-    this.listState = new ApiSessionList(ctx)
-    this.fileApplications = internals.fileApplications ?? nativeFileApplications
-    this.openFileApplication = internals.openFileApplication ?? openNativeFileApplication
-    this.openPath = internals.openPath ?? openNativeAssociatedPath
-    this.revealPath = internals.revealPath ?? revealNativePath
-    this.canOpenPath = internals.canOpenPath
-      ?? (() => config.nativeOpen ?? (internals.openPath !== undefined || canOpenNativePath()))
+    this.listState = new ApiSessionList(ctx, this.listWorkSliceMs)
+    await this.listState.initialize()
     ctx.plugin(SessionFileReferences)
     ctx.plugin(SessionMediaReferences)
     ctx.plugin(SessionSkillCatalog)
@@ -219,9 +214,6 @@ export class SessionController extends TypertRemoteService {
     })
     ctx.on('session/disposed', (session) => {
       ctx.emit('api-session/removed', session.id)
-    })
-    ctx.on('workspace/session-deleted', ({ sessionId }) => {
-      ctx.emit('api-session/removed', sessionId)
     })
     const publishAgentAvailability = ({ agent }: { agent: Agent }): undefined => {
       if (ctx.sessions.get(agent.id) === agent.session) {
@@ -237,15 +229,6 @@ export class SessionController extends TypertRemoteService {
       ctx.emit('api-session/error', agent.id, errorChain(error))
     })
     ctx.on('session/event', (session, event) => {
-      if (event.type === 'request/header') {
-        const agent = ctx.agents.get(session.id)
-        if (agent?.session === session) this.agents.consumeSelection(
-          agent,
-          event.data.header.config.provider,
-          event.data.header.config.model,
-          event.data.header.config.reasoningEffort,
-        )
-      }
       if (event.type !== 'user/message' || event.data.source.kind !== 'user') return
       ctx.emit('api-session/activity', session.id, event.time)
     })
@@ -263,114 +246,7 @@ export class SessionController extends TypertRemoteService {
     this.promotions.add(task)
     void task.finally(() => { this.promotions.delete(task) })
   }
-  /**
-   * Register an execution input owner for one Session. The owner serializes work
-   * behind a check predicate: `closeIf` waits until the predicate passes,
-   * then blocks further work until `release` is called. This prevents terminal
-   * scheduler close from overlapping with incoming work and ensures pending
-   * work waits for the owner to release before executing normally.
-   *
-   * When `ready` is supplied, `admit` first awaits it (outside the FIFO) before
-   * submitting work, so work never reaches a Session whose creation has not yet
-   * completed. This lets the caller register the owner before the Session/Agent
-   * is fully created, install observers, enqueue the initial message, and then
-   * resolve `ready`. `closeIf` does NOT await `ready`: failure cleanup must be
-   * able to close the owner before creation settles. Releasing the owner
-   * resolves `ready` so a failed creation does not hang waiting admits; the
-   * normal resolver then reports the Session as not-found.
-   * @param sessionId - Session identity to own.
-   * @param ready - Optional creation readiness promise; `admit` awaits it before
-   *   submitting work. Omit for an already-created Session.
-   * @returns The owner handle that controls work admission for this Session.
-   * @throws {DuplicateExecutionInputOwnerError} when an owner already exists for this Session.
-   */
-  registerExecutionInputOwner(sessionId: SessionId, ready?: Promise<void>): SessionExecutionInputOwner {
-    if (this.executionInputOwners.has(sessionId)) {
-      throw new DuplicateExecutionInputOwnerError(sessionId)
-    }
-    // Work admitted before closeIf runs completes first; the close chain
-    // serializes behind `admitChain`. After `closed` is set, new work waits
-    // on `releaseGate` until release() resolves them, then executes normally.
-    // `readyGate` gates every admit on creation readiness outside the FIFO;
-    // release() resolves it so a failed creation does not hang waiting admits.
-    let admitChain: Promise<void> = Promise.resolve()
-    const state = { closed: false, released: false, ready: ready === undefined }
-    const releaseGate = Promise.withResolvers<void>()
-    const readyGate = Promise.withResolvers<void>()
 
-    const markReady = (): void => { state.ready = true; readyGate.resolve() }
-    if (ready !== undefined) {
-      void ready.then(markReady, markReady)
-    } else {
-      markReady()
-    }
-    const executionInputOwners = this.executionInputOwners
-    // Sentinel returned by the FIFO callback when the owner is closed at
-    // execution time. The admit method detects it and awaits release outside
-    // the FIFO before running work, so closure-attributed work never runs
-    // inside the FIFO and never blocks closeIf's chain.
-    const waitForRelease = Symbol('wait-for-release')
-    const owner: SessionExecutionInputOwner = {
-      async admit<T>(work: () => Promise<T>, signal: AbortSignal): Promise<T> {
-        if (state.released) return work()
-        // Wait for creation readiness outside the FIFO before submitting work.
-        if (!state.ready) await raceAbort(readyGate.promise, signal)
-        if (state.released as boolean) return work()
-        if (state.closed) {
-          // Already closed at queue time: wait for release outside FIFO,
-          // then execute work. Aborting drops the wait.
-          await raceAbort(releaseGate.promise, signal)
-          return work()
-        }
-        // Append to FIFO. The callback rechecks closed/signal at EXECUTION
-        // time (not queue time) so it respects races with closeIf/release.
-        // If closed at execution, return the sentinel so admit awaits release
-        // outside the FIFO instead of running work inside it.
-        const fifoResult = admitChain.then(async (): Promise<T | typeof waitForRelease> => {
-          if (signal.aborted) throw signal.reason
-          if (state.closed || state.released) return waitForRelease
-          return work()
-        }, async (): Promise<T | typeof waitForRelease> => {
-          if (signal.aborted) throw signal.reason
-          if (state.closed || state.released) return waitForRelease
-          return work()
-        })
-        admitChain = fifoResult.then(() => undefined, () => undefined)
-        const result = await raceAbort(fifoResult, signal)
-        if (result === waitForRelease) {
-          // Closed while queued: await release outside FIFO, then run work.
-          await raceAbort(releaseGate.promise, signal)
-          return work()
-        }
-        return result
-      },
-      async closeIf(check: () => boolean): Promise<boolean> {
-        if (state.released) return false
-        // Append to FIFO as an actual serialized operation: wait for pending
-        // work to complete, then evaluate the predicate. This ensures closeIf
-        // runs serially with admits and no admit queued behind it executes
-        // before the predicate sets `closed`.
-        const closePromise = admitChain.then(() => {
-          if (state.closed || state.released) return false
-          const result = check()
-          if (!result) return false
-          state.closed = true
-          return true
-        })
-        admitChain = closePromise.then(() => undefined, () => undefined)
-        return closePromise
-      },
-      release(): void {
-        if (state.released) return
-        state.released = true
-        releaseGate.resolve()
-        markReady()
-        executionInputOwners.delete(sessionId)
-      },
-    }
-    this.executionInputOwners.set(sessionId, owner)
-    return owner
-  }
   /**
    * Resolve or resume one ordinary Session for another Host API domain.
    * @param sessionId - Session identity whose Agent owns the operation.
@@ -381,50 +257,29 @@ export class SessionController extends TypertRemoteService {
   }
 
   /**
-   * Inspect one attached or persisted Session without activating its Agent.
-   * @param sessionId - durable Session identity.
-   * @param signal - optional caller cancellation for persistence reads.
-   * @returns the current attached state or persisted header and event prefix.
-   */
-  async inspect(
-    sessionId: SessionId,
-    signal?: AbortSignal,
-  ): Promise<SessionInspection> {
-    const attached = this.ctx.sessions.get(sessionId)
-    if (attached !== undefined) {
-      using observation = await this.ctx.sessionQuery.observeSession(sessionId, {
-        ...(signal === undefined ? {} : { signal }),
-        projectionMode: 'none',
-      })
-      return {
-        meta: observation.header,
-        inheritedEventCount: observation.inheritedEventCount,
-        events: observation.events,
-      }
-    }
-    return inspectApiSession(this.ctx, sessionId, signal)
-  }
-
-  /**
    * Read all visible Session rows without resuming an Agent.
    * @param _request - reserved empty list request.
-   * @param signal - cancellation for persistence reads.
+   * @param signal - cancellation for persistence reads and summary generation.
    * @returns visible Session summaries ordered by activity.
    */
   @Remote('list')
   async list(_request: SessionListRequest, signal: AbortSignal): Promise<SessionListValue> {
-    return { items: await this.listState.list(signal) }
+    const items = await this.listState.list(signal)
+    return { items: items.filter(item => this.ctx.remoteAccess.allows({ kind: 'session', id: item.sessionId })) }
   }
 
   /**
-   * Search visible Session content without resuming an Agent.
+   * Search visible Session content without resuming an Agent. A non-owner
+   * receives only the hits whose Session `allows()` admits; `hasMore`
+   * describes the bounded result before that filtering.
    * @param request - literal message-content query.
    * @param signal - cancellation for list and search reads.
    * @returns authorized bounded Session search results.
    */
   @Remote('search')
-  search(request: SessionSearchRequest, signal: AbortSignal): Promise<SessionSearchValue> {
-    return this.listState.search(request.query, signal)
+  async search(request: SessionSearchRequest, signal: AbortSignal): Promise<SessionSearchValue> {
+    const result = await this.listState.search(request.query, signal)
+    return { ...result, items: result.items.filter(item => this.ctx.remoteAccess.allows({ kind: 'session', id: item.sessionId })) }
   }
 
   /**
@@ -471,7 +326,7 @@ export class SessionController extends TypertRemoteService {
    */
   @Remote('modelCatalog')
   modelCatalog(): Promise<ModelCatalog> {
-    return buildModelCatalog(this.ctx, this.ctx.agentDefaultModel.currentSelection(), this.fixedModelSelection)
+    return buildModelCatalog(this.ctx)
   }
 
   /**
@@ -550,11 +405,12 @@ export class SessionController extends TypertRemoteService {
     const hostPath = resolve(path)
     const { fs } = this.ctx
     const mapped = fs.processPathFromHostPath(hostPath)
-    if (mapped === undefined) {
-      throw new RemoteError('gateway/bad-request', 'Path has no verified Host path', {})
-    }
-    const processPath = fs.processPath(await fs.resolve(mapped, { signal }))
-    if (relative(hostPath, processPath) !== '') {
+    // Windows realpath canonicalizes on-disk letter case, so the resolved target may
+    // spell differently than the request while naming the same path.
+    const verified = mapped === undefined ? undefined : fs.processPath(await fs.resolve(mapped, { signal }))
+    const samePath = verified !== undefined
+      && (process.platform === 'win32' ? verified.toLowerCase() === hostPath.toLowerCase() : verified === hostPath)
+    if (!samePath) {
       throw new RemoteError('gateway/bad-request', 'Path has no verified Host path', {})
     }
     signal.throwIfAborted()
@@ -575,11 +431,19 @@ export class SessionController extends TypertRemoteService {
    * Fork one cold-readable exact event prefix into a new Session. An omitted
    * boundary selects the latest completed-turn prefix; an open cut receives
    * synthetic fork closers.
-   * @param request - source Session and optional exact inclusive event boundary.
+   * @param request - source Session, optional exact inclusive event boundary, and migration preflight choice.
    * @returns the new Session identity.
    */
   @Remote('fork')
-  fork(request: SessionForkRequest): Promise<SessionForkValue> {
+  async fork(request: SessionForkRequest): Promise<SessionForkValue> {
+    if (request.allowMigration === false && this.ctx.sessions.get(request.sessionId) === undefined) {
+      const stored = await this.ctx.get('sessionPersistence')?.stat(request.sessionId)
+      if (stored?.formatStatus === 'migration-required' && this.ctx.sessions.get(request.sessionId) === undefined) {
+        throw new RemoteError('session/migration-required', 'Open the source Session to complete migration before forking', {
+          sessionId: request.sessionId,
+        })
+      }
+    }
     return this.commands.fork(request)
   }
 
@@ -592,14 +456,28 @@ export class SessionController extends TypertRemoteService {
   @Remote('prompt')
   async prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue> {
     signal.throwIfAborted()
-    const owner = this.executionInputOwners.get(request.sessionId)
-    if (owner !== undefined) {
-      return owner.admit(() => {
-        signal.throwIfAborted()
-        return this.commands.prompt(request)
-      }, signal)
+    if (!hasPromptContent(request.content)) {
+      throw new RemoteError('gateway/bad-request', 'prompt content must include non-whitespace text or an attachment', {})
     }
-    return this.commands.prompt(request)
+    const clientTimeZone = request.clientTimeZone === undefined
+      ? undefined
+      : canonicalClientTimeZone(request.clientTimeZone)
+    if (request.clientTimeZone !== undefined && clientTimeZone === undefined) {
+      throw new RemoteError(
+        'session/invalid-time-zone',
+        'clientTimeZone must be UTC or a valid IANA Area/Location name',
+        { value: request.clientTimeZone },
+      )
+    }
+    // The caller is recorded only when it is not the owner, so owner messages keep their exact source.
+    const principal = principalOf(this.ctx.invocation)
+    const source: MessageSource = {
+      kind: 'user',
+      rpcId: request.requestId,
+      ...(clientTimeZone === undefined ? {} : { clientTimeZone }),
+      ...(principal === undefined ? {} : { principal }),
+    }
+    return this.commands.prompt(request, source)
   }
 
   /**
@@ -656,10 +534,10 @@ export class SessionController extends TypertRemoteService {
   }
 
   /**
-   * Read all registered projections without activating an Agent.
+   * Read exact projections, returning cached hints only when migration is required.
    * @param request - Session whose current values are required.
-   * @param signal - cancellation for the Session observation.
-   * @returns complete baseline, or null when the Session does not exist.
+   * @param signal - cancellation for the Session read.
+   * @returns a sequenced baseline, cached hints when migration is deferred, or null when absent.
    */
   @Remote('projections')
   async projections(request: SessionProjectionsRequest, signal: AbortSignal): Promise<SessionProjectionsValue> {
@@ -668,21 +546,43 @@ export class SessionController extends TypertRemoteService {
       throw new RemoteError('gateway/bad-request', 'sessionId must not be empty', {})
     }
     try {
+      signal.throwIfAborted()
+      const live = this.liveProjections(sessionId)
+      if (live !== undefined) return live
+      const stored = await this.ctx.get('sessionPersistence')?.stat(sessionId, { signal })
+      signal.throwIfAborted()
+      const attached = this.liveProjections(sessionId)
+      if (attached !== undefined) return attached
+      if (stored === undefined) return null
+      if (stored.formatStatus === 'migration-required') {
+        const cached = this.ctx.get('sessionProjectionCache')?.cachedSnapshot(stored.header)
+        return { kind: 'migration-required', values: { ...cached?.values } as SessionProjectionValues }
+      }
       using observation = await this.ctx.sessionQuery.observeSession(sessionId, { signal })
       const projections = observation.projections
       if (projections === undefined) {
         throw new RemoteError('session/projections-unavailable', 'Session projections are unavailable', {})
       }
-      return { asOfSeq: projections.asOfSeq, values: projections.values as SessionProjectionValues }
+      return { kind: 'sequenced', asOfSeq: projections.asOfSeq, values: projections.values as SessionProjectionValues }
     } catch (error: unknown) {
-      if (error instanceof SessionQueryError && error.code === 'SESSION_QUERY_SESSION_NOT_FOUND') return null
-      if (signal.aborted
-        || (error instanceof SessionQueryError && error.code === 'SESSION_QUERY_ABORTED')) {
+      if (error instanceof SessionQueryError && error.code === 'SESSION_QUERY_SESSION_NOT_FOUND') {
+        return this.liveProjections(sessionId) ?? null
+      }
+      if (signal.aborted || (error instanceof SessionQueryError && error.code === 'SESSION_QUERY_ABORTED')) {
         throw new RemoteError('gateway/cancelled', 'Session projection read was cancelled', {}, { cause: error })
       }
       if (error instanceof RemoteError) throw error
       throw new RemoteError('gateway/internal', 'Session projection read failed', {}, { cause: error })
     }
+  }
+
+  private liveProjections(
+    sessionId: SessionId,
+  ): Extract<SessionProjectionsValue, { readonly kind: 'sequenced' }> | undefined {
+    const session = this.ctx.sessions.get(sessionId)
+    if (session === undefined) return undefined
+    const snapshot = this.ctx.sessionProjections.snapshot(session)
+    return { kind: 'sequenced', asOfSeq: snapshot.asOfSeq, values: snapshot.values as SessionProjectionValues }
   }
 
   /**
@@ -691,35 +591,24 @@ export class SessionController extends TypertRemoteService {
    * @returns one complete baseline followed by live replacement frames.
    */
   @Remote({ mode: 'stream' })
-  control(signal: AbortSignal): AsyncIterable<SessionControlFrame> {
-    return this.controlState.control(signal)
-  }
-}
-
-function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) {
-    const reason: unknown = signal.reason
-    // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- AbortSignal reasons retain their original identity.
-    return Promise.reject(reason)
-  }
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => {
-      signal.removeEventListener('abort', onAbort)
-      const reason: unknown = signal.reason
-      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- AbortSignal reasons retain their original identity.
-      reject(reason)
+  async *control(signal: AbortSignal): AsyncIterable<SessionControlFrame> {
+    for await (const frame of this.controlState.control(signal)) {
+      switch (frame.type) {
+        case 'baseline': {
+          const projections = Object.fromEntries(Object.entries(frame.value.projections)
+            .filter(([sessionId]) => this.ctx.remoteAccess.allows({ kind: 'session', id: sessionId as SessionId })))
+          yield { type: 'baseline', value: { ...frame.value, projections } }
+          break
+        }
+        case 'projection':
+          if (this.ctx.remoteAccess.allows({ kind: 'session', id: frame.sessionId })) yield frame
+          break
+        /* v8 ignore next -- closed control-frame union. */
+        default:
+          assertNever(frame)
+      }
     }
-    signal.addEventListener('abort', onAbort, { once: true })
-    promise.then(
-      (value) => { signal.removeEventListener('abort', onAbort); resolve(value) },
-      (error: unknown) => {
-        signal.removeEventListener('abort', onAbort)
-        // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Forward the work's rejection without replacement.
-        reject(error)
-      },
-    )
-  })
+  }
 }
 
-export { buildModelCatalog }
 export default SessionController

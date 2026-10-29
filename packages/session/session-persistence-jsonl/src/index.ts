@@ -13,9 +13,8 @@ import {
   SessionFormatUnsupportedMigrationError,
   sessionFormatCatalog,
 } from '@deepseek-ai/dsh-session-format-catalog'
-import { releasedV4SessionFormatCodec } from '@deepseek-ai/dsh-session-format-v3-to-v4'
 import { readdirSync, type Dirent } from 'node:fs'
-import { open, mkdir, readdir, realpath, rename, link, rm, stat, truncate, type FileHandle } from 'node:fs/promises'
+import { open, mkdir, readdir, realpath, link, rm, stat, truncate } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { scheduler } from 'node:timers/promises'
@@ -58,7 +57,6 @@ import {
   type PreparedJsonlMigration,
 } from './generation.ts'
 
-export { sessionDir } from './format.ts'
 export type { JsonlCompression } from './format.ts'
 
 /**
@@ -92,63 +90,6 @@ export const JsonlCompressionSchema: z<JsonlCompression> = z.union([
 /** Default maximum listing filesystem operations in flight per backend. */
 const DEFAULT_LIST_CONCURRENCY = 3
 
-/** Default initial retry backoff in milliseconds when opening an append handle under transient Windows file locking. */
-const DEFAULT_APPEND_OPEN_RETRY_INITIAL_MS = 20
-
-/** Default maximum retry backoff in milliseconds when opening an append handle under transient Windows file locking. */
-const DEFAULT_APPEND_OPEN_RETRY_MAX_MS = 200
-
-/** Default retry attempt limit when opening an append handle under transient Windows file locking. */
-const DEFAULT_APPEND_OPEN_RETRY_LIMIT = 8
-
-/**
- * Transient Windows sharing and access errors retried during append open.
- *
- * Windows file-locking semantics cause transient `EBUSY`, `EPERM`, and `EACCES`
- * (Win32 `ERROR_SHARING_VIOLATION` / `ERROR_ACCESS_DENIED`) when antivirus scanners,
- * search indexers, or asynchronous handle cleanups momentarily contend on the file.
- * On POSIX systems, `EACCES` and `EPERM` represent deterministic permission denials
- * rather than transient file-sharing locks, so retrying them is restricted to Windows.
- */
-const WINDOWS_TRANSIENT_OPEN_SHARING_ERRORS: ReadonlySet<string> = new Set(['EBUSY', 'EPERM', 'EACCES'])
-
-/** Whether an open error represents transient filesystem sharing interference. */
-function isTransientOpenSharingError(error: unknown): boolean {
-  if (process.platform !== 'win32') return false
-  return WINDOWS_TRANSIENT_OPEN_SHARING_ERRORS.has((error as NodeJS.ErrnoException | null)?.code ?? '')
-}
-
-/** Fully resolved append-open retry specification. */
-export interface JsonlAppendOpenRetrySpec {
-  /** Initial delay before the first retry in milliseconds. */
-  readonly initialMs: number
-  /** Maximum backoff delay cap in milliseconds. */
-  readonly maxMs: number
-  /** Maximum number of retry attempts before giving up. */
-  readonly limit: number
-}
-
-/**
- * Explicitly resolve and validate append-open retry configuration into an immutable spec.
- * @param config - Plugin configuration options.
- * @returns Fully resolved append-open retry parameters.
- */
-export function resolveAppendOpenRetrySpec(config: Config): JsonlAppendOpenRetrySpec {
-  const initialMs = config.appendOpenRetryInitialMs ?? DEFAULT_APPEND_OPEN_RETRY_INITIAL_MS
-  const maxMs = config.appendOpenRetryMaxMs ?? DEFAULT_APPEND_OPEN_RETRY_MAX_MS
-  const limit = config.appendOpenRetryLimit ?? DEFAULT_APPEND_OPEN_RETRY_LIMIT
-  if (!Number.isSafeInteger(initialMs) || initialMs < 1) {
-    throw new Error('session-persistence-jsonl: appendOpenRetryInitialMs must be a positive safe integer')
-  }
-  if (!Number.isSafeInteger(maxMs) || maxMs < initialMs) {
-    throw new Error('session-persistence-jsonl: appendOpenRetryMaxMs must be a safe integer greater than or equal to appendOpenRetryInitialMs')
-  }
-  if (!Number.isSafeInteger(limit) || limit < 0) {
-    throw new Error('session-persistence-jsonl: appendOpenRetryLimit must be a non-negative safe integer')
-  }
-  return { initialMs, maxMs, limit }
-}
-
 /** Plugin config for the JSONL backend's root, physical encoding, and listing concurrency. */
 export interface Config {
   /**
@@ -167,22 +108,14 @@ export interface Config {
    * fingerprints). Defaults to 3.
    */
   listConcurrency?: number
-  /**
-   * Initial delay in milliseconds before retrying a transient Windows sharing error
-   * when opening an append handle. Defaults to 20 ms.
-   */
-  appendOpenRetryInitialMs?: number
-  /**
-   * Maximum backoff delay cap in milliseconds when retrying a transient Windows sharing
-   * error when opening an append handle. Defaults to 200 ms.
-   */
-  appendOpenRetryMaxMs?: number
-  /**
-   * Maximum number of retry attempts before surfacing an open error when opening an
-   * append handle under transient Windows sharing interference. Defaults to 8 attempts.
-   */
-  appendOpenRetryLimit?: number
 }
+
+/** Logical header paired with the catalog's selected physical-generation classification. */
+interface GenerationHeader {
+  readonly header: SessionHeader
+  readonly formatStatus: NonNullable<SessionPersistenceSnapshot['formatStatus']>
+}
+
 /** One stored event graph whose producer has established immutable sharing. */
 interface FrozenStoredEvents extends SessionHandleReadResult {
   readonly eventState: 'shared-frozen'
@@ -349,29 +282,11 @@ function waitWithAbort<T>(operation: Promise<T>, signal?: AbortSignal): Promise<
   })
 }
 
-class LegacyFlatLayoutError extends Error {
-  readonly code = 'LEGACY_FLAT_LAYOUT'
-  constructor(readonly path: string) {
-    super(`session artifact "${path}" uses the unsupported flat-file layout; use a separate root or move it into a project/session directory before loading`)
-  }
-}
-
-function isLegacyFlatLayoutError(error: unknown): error is LegacyFlatLayoutError {
-  return typeof error === 'object' && error !== null
-    && 'code' in error && error.code === 'LEGACY_FLAT_LAYOUT'
-    && 'path' in error && typeof error.path === 'string'
-}
-
 /**
- * Concrete SessionPersistence service implementation storing logs as canonical JSONL.
- *
- * Sessions materialize lazily: a created session is visible to this process immediately,
- * reaches disk on its first append or flush, and never existed if the process crashes before that.
- *
- * Consumers typically mount persistence using `ctx.plugin(JsonlSessionPersistence, config)`
- * or `apply(ctx, config)`. The class is exported for type-level references, `instanceof` narrowing,
- * and test harness interception. Direct construction requires a Cordis context, a validated
- * {@link Config}, and an active {@link JsonlBackendTracker}.
+ * The JSONL backend registered as `ctx.sessionPersistence` by the plugin.
+ * Sessions materialize lazily: a created session is
+ * visible to this process immediately, reaches disk on its first append or
+ * flush, and never existed if the process crashes before that.
  */
 class JsonlSessionPersistence extends SessionPersistence {
   /** Backend label for diagnostics and effects; shadows `Service.name` without changing the service key. */
@@ -386,11 +301,7 @@ class JsonlSessionPersistence extends SessionPersistence {
    */
   private readonly listLimit: LimitFunction
   private rootEncodingCheck: Promise<void> | undefined
-  private readonly legacyMigrations = new Map<string, Promise<void>>()
   private readonly generationFormat: Omit<JsonlGenerationFormatAdapter, 'createRestore'>
-  /** Reader catalog capped at the migration target; normal persistence uses the generated current catalog. */
-  private readonly formatCatalog: typeof sessionFormatCatalog
-  private readonly targetVersion: number
   /**
    * Bounded LRU of parsed, validated stored logs keyed by session id and
    * guarded by the stat-derived revision, so an immediate cold-read handoff
@@ -402,21 +313,7 @@ class JsonlSessionPersistence extends SessionPersistence {
   /** One joinable decode/migration operation per selected historical Session file revision. */
   private readonly migrationPreparations = new Map<SessionId, MigrationPreparation>()
 
-  private readonly appendOpenRetry: JsonlAppendOpenRetrySpec
-
-  /**
-   * Instantiate the JSONL persistence backend service.
-   * @param ctx - Cordis context owning this service instance.
-   * @param config - Validated persistence configuration.
-   * @param tracker - Backend lifecycle and connection tracker.
-   * @param targetVersion - Optional target format generation cutoff; literal 4 for offline migration, or omitted for current format.
-   */
-  constructor(
-    ctx: Context,
-    public config: Config,
-    private readonly tracker: JsonlBackendTracker,
-    targetVersion?: 4,
-  ) {
+  constructor(ctx: Context, public config: Config, private readonly tracker: JsonlBackendTracker) {
     super(ctx)
     /* v8 ignore next 5 -- generated catalog and Session source share one build-time version owner. */
     if (sessionFormatCatalog.currentVersion !== SESSION_FORMAT_VERSION) {
@@ -429,21 +326,11 @@ class JsonlSessionPersistence extends SessionPersistence {
     this.root = resolve(config.root)
     this.compression = config.compression ?? DEFAULT_COMPRESSION
     this.listLimit = pLimit(config.listConcurrency ?? DEFAULT_LIST_CONCURRENCY)
-    this.appendOpenRetry = resolveAppendOpenRetrySpec(config)
-    this.targetVersion = targetVersion ?? sessionFormatCatalog.currentVersion
-    this.formatCatalog = targetVersion === 4
-      ? createSessionFormatCatalogWithChildren([], 4)
-      : sessionFormatCatalog
     this.generationFormat = {
-      currentVersion: this.targetVersion,
+      currentVersion: sessionFormatCatalog.currentVersion,
       encodeHeader: (header, inheritedEventCount) =>
-        this.targetVersion === 4
-          ? releasedV4SessionFormatCodec.encodeHeader(header, inheritedEventCount)
-          : sessionFormatCatalog.encodeCurrentHeader(header, inheritedEventCount),
-      encodeEvent: event =>
-        this.targetVersion === 4
-          ? releasedV4SessionFormatCodec.encodeEvent(event)
-          : sessionFormatCatalog.encodeCurrentEvent(event),
+        sessionFormatCatalog.encodeCurrentHeader(header, inheritedEventCount),
+      encodeEvent: event => sessionFormatCatalog.encodeCurrentEvent(event),
       isUnsupportedMigrationError: (error): error is SessionFormatUnsupportedMigrationError =>
         error instanceof SessionFormatUnsupportedMigrationError,
     }
@@ -499,13 +386,6 @@ class JsonlSessionPersistence extends SessionPersistence {
    * @returns the open handle.
    */
   async open(id: SessionId, access: SessionAccess, options?: SessionPersistenceOpenOptions): Promise<SessionHandle> {
-    if (SessionPersistence.openInterceptor) {
-      return SessionPersistence.openInterceptor(this, id, access, options, () => this.openInternal(id, access, options))
-    }
-    return this.openInternal(id, access, options)
-  }
-
-  private async openInternal(id: SessionId, access: SessionAccess, options?: SessionPersistenceOpenOptions): Promise<SessionHandle> {
     options?.signal?.throwIfAborted()
     await this.ensureRootEncoding()
     options?.signal?.throwIfAborted()
@@ -613,17 +493,18 @@ class JsonlSessionPersistence extends SessionPersistence {
     }
     const selected = await this.findLog(id, options?.signal)
     if (selected === undefined) return undefined
-    const header = await this.readGenerationHeader(selected, id, options?.signal)
-    if (header === undefined) return undefined
+    const metadata = await this.readGenerationHeader(selected, id, options?.signal)
+    if (metadata === undefined) return undefined
     try {
       const identity = await stat(selected.sourcePath, { bigint: true })
       options?.signal?.throwIfAborted()
       return {
-        header,
-        revision: selected.sourceVersion < this.targetVersion
+        ...metadata,
+        revision: selected.sourceVersion < SESSION_FORMAT_VERSION
           ? SessionPersistenceRevision(`${fileRevision(identity)}:${await this.historicalCorpusRevision(options?.signal)}`)
           : fileRevision(identity),
         sizeBytes: Number(identity.size),
+        location: { kind: 'jsonl', path: selected.sourcePath },
       }
     } catch (error: unknown) {
       options?.signal?.throwIfAborted()
@@ -646,16 +527,8 @@ class JsonlSessionPersistence extends SessionPersistence {
     // append lands mid-scan is then still in this snapshot (its artifact may
     // predate the scan), so create-to-list visibility never has a hole.
     const pending = [...this.tracker.pendingEntries()]
-    let artifacts: Awaited<ReturnType<JsonlSessionPersistence['listArtifacts']>>
-    try {
-      artifacts = await this.listArtifacts(signal)
-    } catch (error: unknown) {
-      if (!isLegacyFlatLayoutError(error)) throw error
-      await this.migrateLegacyDirectoryOnce(error.path, signal)
-      this.rootEncodingCheck = undefined
-      artifacts = await this.listArtifacts(signal)
-    }
-    const corpusRevision = artifacts.some(artifact => artifact.sourceVersion < this.targetVersion)
+    const artifacts = await this.listArtifacts(signal)
+    const corpusRevision = artifacts.some(artifact => artifact.sourceVersion < SESSION_FORMAT_VERSION)
       ? await this.historicalCorpusRevision(signal) : undefined
     const statted = settledValues(await settleLimited(this.listLimit, artifacts, async (artifact) => {
       signal?.throwIfAborted()
@@ -675,10 +548,12 @@ class JsonlSessionPersistence extends SessionPersistence {
       listed.add(artifact.header.id)
       snapshots.push({
         header: artifact.header,
-        revision: artifact.sourceVersion < this.targetVersion
+        formatStatus: artifact.formatStatus,
+        revision: artifact.sourceVersion < SESSION_FORMAT_VERSION
           ? SessionPersistenceRevision(`${fileRevision(identity)}:${corpusRevision}`)
           : fileRevision(identity),
         sizeBytes: Number(identity.size),
+        location: { kind: 'jsonl', path: artifact.path },
       })
     }
     for (const [id, entry] of pending) {
@@ -694,7 +569,7 @@ class JsonlSessionPersistence extends SessionPersistence {
   private async requireStoredLog(id: SessionId, signal?: AbortSignal): Promise<StoredLog> {
     const selected = await this.findLog(id, signal)
     if (selected === undefined) throw new SessionPersistenceNotFoundError(id)
-    if (selected.sourceVersion < this.targetVersion) {
+    if (selected.sourceVersion < SESSION_FORMAT_VERSION) {
       const sourceRevision = fileRevision(await stat(selected.sourcePath, { bigint: true }))
       signal?.throwIfAborted()
       let preparation = this.migrationPreparations.get(id)
@@ -724,7 +599,7 @@ class JsonlSessionPersistence extends SessionPersistence {
       signal?.throwIfAborted()
       return this.waitForPreparation(id, preparation, signal)
     }
-    if (selected.sourceVersion > this.targetVersion) {
+    if (selected.sourceVersion > SESSION_FORMAT_VERSION) {
       const header = await this.readGenerationHeader(selected, id, signal)
       /* v8 ignore else -- a readable future header is rejected inside readGenerationHeader. */
       if (header === undefined) {
@@ -832,23 +707,12 @@ class JsonlSessionPersistence extends SessionPersistence {
         compression: this.compression,
         format: {
           ...this.generationFormat,
-          createRestore: header => createSessionFormatCatalogWithChildren(
-            related.facts, this.targetVersion === 4 ? 4 : undefined,
-          ).createRestore(header, {
+          createRestore: header => createSessionFormatCatalogWithChildren(related.facts).createRestore(header, {
             recovery: 'recoverable', validation: 'transformed',
           }),
         },
         validateRelatedSources,
-        verifyCurrentFile: (path, compression, expectedId, expectedEventCount, expectedPrefix, signal) =>
-          verifyCurrentGenerationInWorker(
-            path,
-            compression,
-            expectedId,
-            expectedEventCount,
-            expectedPrefix,
-            signal,
-            this.targetVersion === 4 ? 4 : undefined,
-          ),
+        verifyCurrentFile: verifyCurrentGenerationInWorker,
         validateHistoricalHeader: headerValue => this.validateSourceIdentity(
           selected,
           headerValue,
@@ -967,7 +831,7 @@ class JsonlSessionPersistence extends SessionPersistence {
         parsed = await this.readZstdPrefix(buffer, signal)
       } else {
         signal?.throwIfAborted()
-        const { meta, inheritedEventCount, events, committedBytes } = scanLog(buffer, this.formatCatalog)
+        const { meta, inheritedEventCount, events, committedBytes } = scanLog(buffer)
         signal?.throwIfAborted()
         parsed = {
           meta,
@@ -991,7 +855,7 @@ class JsonlSessionPersistence extends SessionPersistence {
       throw new SessionPersistenceCorruptionError(`session "${expectedId}": stored log is corrupt: ${String(error)} (raw log: ${path})`, { cause: error })
     }
     signal?.throwIfAborted()
-    await this.assertStoredIdentity(path, this.targetVersion, parsed.meta, expectedId, signal)
+    await this.assertStoredIdentity(path, SESSION_FORMAT_VERSION, parsed.meta, expectedId, signal)
     signal?.throwIfAborted()
     assertStoredId(expectedId, parsed.meta)
     const location = this.locate(parsed.meta)
@@ -1028,8 +892,8 @@ class JsonlSessionPersistence extends SessionPersistence {
     signal?.throwIfAborted()
     const selected = await this.findLog(id, signal)
     if (selected === undefined) return undefined
-    if (selected.sourceVersion === this.targetVersion) return selected.sourcePath
-    if (selected.sourceVersion < this.targetVersion) return undefined
+    if (selected.sourceVersion === SESSION_FORMAT_VERSION) return selected.sourcePath
+    if (selected.sourceVersion < SESSION_FORMAT_VERSION) return undefined
     const reason = sessionFormatVersionRefusal(id, selected.sourceVersion)
     throw new SessionFormatUnsupportedError(
       `${reason} (raw log: ${selected.sourcePath})`,
@@ -1152,7 +1016,7 @@ class JsonlSessionPersistence extends SessionPersistence {
       /* v8 ignore next -- a non-empty structural frame list makes the decoder yield its first frame or throw. */
       if (headerFrame.done) throw new Error('empty or header-less Zstandard session log')
       assertZstdHeaderFrame(headerFrame.value)
-      const scanner = new SessionLogScanner(headerFrame.value, 'recoverable', this.formatCatalog)
+      const scanner = new SessionLogScanner(headerFrame.value)
 
       let remainingFrames = frames.length - 1
       for (const plaintext of decodedFrames) {
@@ -1273,7 +1137,7 @@ class JsonlSessionPersistence extends SessionPersistence {
 
   private async listArtifacts(
     signal?: AbortSignal,
-  ): Promise<Array<{ header: SessionHeader; path: string; sourceVersion: number }>> {
+  ): Promise<Array<GenerationHeader & { path: string; sourceVersion: number }>> {
     signal?.throwIfAborted()
     await this.ensureRootEncoding()
     signal?.throwIfAborted()
@@ -1281,25 +1145,25 @@ class JsonlSessionPersistence extends SessionPersistence {
     const headers = await settleLimited(this.listLimit, generations, async (selected) => {
       signal?.throwIfAborted()
       try {
-        return { selected, header: await this.readGenerationHeader(selected, undefined, signal) }
+        return { selected, metadata: await this.readGenerationHeader(selected, undefined, signal) }
       } catch (error: unknown) {
         if (error instanceof SessionFormatUnsupportedError || error instanceof SessionPersistenceCorruptionError) {
-          return { selected, header: undefined }
+          return { selected, metadata: undefined }
         }
         throw error
       }
     })
-    const artifacts: Array<{ header: SessionHeader; path: string; sourceVersion: number }> = []
+    const artifacts: Array<GenerationHeader & { path: string; sourceVersion: number }> = []
     const ids = new Set<SessionId>()
     for (const outcome of headers) {
       if (outcome.status === 'rejected') throw outcome.reason
-      const { selected, header } = outcome.value
-      if (header === undefined) continue
-      if (ids.has(header.id)) {
-        throw new Error(`duplicate JSONL session id "${header.id}" appears in multiple project directories`)
+      const { selected, metadata } = outcome.value
+      if (metadata === undefined) continue
+      if (ids.has(metadata.header.id)) {
+        throw new Error(`duplicate JSONL session id "${metadata.header.id}" appears in multiple project directories`)
       }
-      ids.add(header.id)
-      artifacts.push({ header, path: selected.sourcePath, sourceVersion: selected.sourceVersion })
+      ids.add(metadata.header.id)
+      artifacts.push({ ...metadata, path: selected.sourcePath, sourceVersion: selected.sourceVersion })
     }
     signal?.throwIfAborted()
     return artifacts
@@ -1310,7 +1174,7 @@ class JsonlSessionPersistence extends SessionPersistence {
     selected: ResolvedJsonlGeneration,
     expectedId?: SessionId,
     signal?: AbortSignal,
-  ): Promise<SessionHeader | undefined> {
+  ): Promise<GenerationHeader | undefined> {
     let first: string | undefined
     try {
       first = this.compression === 'zstd'
@@ -1330,7 +1194,7 @@ class JsonlSessionPersistence extends SessionPersistence {
       return undefined
     }
     assertNoRetiredHeaderFields(value)
-    const result = this.formatCatalog.readHeader(value)
+    const result = sessionFormatCatalog.readHeader(value)
     if ('storedVersion' in result && result.storedVersion !== selected.sourceVersion) {
       throw new Error(
         `session generation filename identifies v${selected.sourceVersion}, `
@@ -1341,7 +1205,7 @@ class JsonlSessionPersistence extends SessionPersistence {
       const physicalId = String((value as { id?: unknown }).id)
       let reason = result.reason
       /* v8 ignore else -- released historical header migrations cannot refuse after physical decoding. */
-      if (result.storedVersion > this.targetVersion) {
+      if (result.storedVersion > SESSION_FORMAT_VERSION) {
         reason = sessionFormatVersionRefusal(physicalId, result.storedVersion)
       }
       throw new SessionFormatUnsupportedError(
@@ -1358,7 +1222,10 @@ class JsonlSessionPersistence extends SessionPersistence {
       expectedId,
       signal,
     )
-    return header
+    return {
+      header,
+      formatStatus: result.status,
+    }
   }
 
   /** Convert format-catalog string identities to current branded Session metadata. */
@@ -1374,7 +1241,7 @@ class JsonlSessionPersistence extends SessionPersistence {
     readonly agentPreset?: string
   }): SessionHeader {
     /* v8 ignore next 3 -- readable catalog results are restored to its configured current version. */
-    if (header.version !== this.targetVersion) {
+    if (header.version !== SESSION_FORMAT_VERSION) {
       throw new Error(`format catalog returned non-current logical header v${header.version}`)
     }
     return {
@@ -1538,20 +1405,6 @@ class JsonlSessionPersistence extends SessionPersistence {
   }
   /* v8 ignore stop */
 
-  /** Open the log file for append with bounded retries for transient sharing interference. */
-  private async openLogForAppend(path: string): Promise<FileHandle> {
-    let delay = this.appendOpenRetry.initialMs
-    for (let retries = 0;; retries += 1) {
-      try {
-        return await open(path, 'a')
-      } catch (error) {
-        if (!isTransientOpenSharingError(error) || retries >= this.appendOpenRetry.limit) throw error
-      }
-      await new Promise(resolve => setTimeout(resolve, delay))
-      delay = Math.min(delay * 2, this.appendOpenRetry.maxMs)
-    }
-  }
-
   /**
    * Append and fsync event lines. On a partial write or sync failure, restore the
    * previous size before rethrowing because the unchanged cursor will retry the
@@ -1560,7 +1413,7 @@ class JsonlSessionPersistence extends SessionPersistence {
   private async appendLines(meta: SessionHeader, events: readonly SessionEvent[]): Promise<void> {
     const content = await this.encodeEventBatch(events)
     const path = logPath(this.root, meta.cwd, meta.id, this.compression)
-    const handle = await this.openLogForAppend(path)
+    const handle = await open(path, 'a')
     let closed = false
     const closeAppendHandle = async (): Promise<void> => {
       if (closed) return
@@ -1713,7 +1566,7 @@ class JsonlSessionPersistence extends SessionPersistence {
       sourceVersion: latest.version,
       currentPath: join(
         dir,
-        generationLogFilename(this.targetVersion, this.compression),
+        generationLogFilename(sessionFormatCatalog.currentVersion, this.compression),
       ),
     }
   }
@@ -1783,7 +1636,7 @@ class JsonlSessionPersistence extends SessionPersistence {
     expectedId: SessionId,
     signal?: AbortSignal,
   ): void | Promise<void> {
-    const result = this.formatCatalog.readHeader(headerValue)
+    const result = sessionFormatCatalog.readHeader(headerValue)
     if (result.status !== 'current' && result.status !== 'migration-required') return
     return this.assertStoredIdentity(
       selected.sourcePath,
@@ -1828,101 +1681,6 @@ class JsonlSessionPersistence extends SessionPersistence {
     }
   }
 
-  private migrateLegacyDirectoryOnce(path: string, signal?: AbortSignal): Promise<void> {
-    let migration = this.legacyMigrations.get(path)
-    if (migration === undefined) {
-      migration = this.migrateLegacyDirectory(path, signal)
-      this.legacyMigrations.set(path, migration)
-      const cleanup = (): void => {
-        if (this.legacyMigrations.get(path) === migration) this.legacyMigrations.delete(path)
-      }
-      void migration.then(cleanup, cleanup)
-    }
-    return migration
-  }
-
-  /**
-   * Move one legacy flat artifact into its project-keyed session directory. File-valued flat
-   * artifacts and directory-valued legacy buckets are supported; header identity and target
-   * absence are checked first, and source bytes are moved without rewriting.
-   */
-  private async migrateLegacyDirectory(legacyPath: string, signal?: AbortSignal): Promise<void> {
-    signal?.throwIfAborted()
-    const info = await stat(legacyPath)
-    if (info.isFile()) {
-      const compression = legacyPath.endsWith('.jsonl.zstd') ? 'zstd' : legacyPath.endsWith('.jsonl') ? 'none' : undefined
-      if (compression === undefined) throw new Error(`legacy session artifact "${legacyPath}" has an unsupported suffix; source was not changed`)
-      if (compression !== this.compression) throw this.encodingMismatch(legacyPath)
-      const identity = await this.peekLegacyHeader(legacyPath, signal)
-      if (identity === undefined) throw new Error(`legacy session artifact "${legacyPath}" has no supported header; source was not changed`)
-      const sourceName = legacyPath.slice(dirname(legacyPath).length + 1)
-      const legacyIdName = `${encodeSegment(identity.id)}${compression === 'zstd' ? '.jsonl.zstd' : '.jsonl'}`
-      const generationVersion = parseGenerationLogFilename(sourceName, compression)
-      if (sourceName !== legacyIdName && generationVersion === undefined) {
-        throw new Error(`legacy session artifact "${legacyPath}" does not match a supported flat filename; source was not changed`)
-      }
-      if (generationVersion !== undefined && generationVersion !== identity.version) {
-        throw new Error(`legacy session artifact "${legacyPath}" filename version does not match its header; source was not changed`)
-      }
-      const targetDir = sessionDir(this.root, identity.cwd, identity.id)
-      const target = join(targetDir, generationLogFilename(identity.version, this.compression))
-      if (await this.exists(target)) throw new Error(`legacy layout migration target "${target}" already exists; source was not changed`)
-      await mkdir(targetDir, { recursive: true })
-      await rename(legacyPath, target)
-      return
-    }
-    if (!info.isDirectory()) throw new Error(`legacy session artifact "${legacyPath}" is not a regular file or directory`)
-    const parent = dirname(legacyPath)
-    const sourceName = legacyPath.slice(parent.length + 1)
-    const inner = await readdir(legacyPath, { withFileTypes: true })
-    const generationNames = inner
-      .filter(item => item.isFile() && (item.name.endsWith('.jsonl') || item.name.endsWith('.jsonl.zstd')))
-      .map(item => item.name)
-    if (generationNames.length === 0) throw new Error(`legacy session directory "${legacyPath}" contains no supported generation files`)
-    let identity: { id: SessionId; cwd: string | undefined } | undefined
-    for (const name of generationNames) {
-      signal?.throwIfAborted()
-      const compression = name.endsWith('.jsonl.zstd') ? 'zstd' : 'none'
-      if (compression !== this.compression) throw this.encodingMismatch(join(legacyPath, name))
-      const version = parseGenerationLogFilename(name, compression)
-      if (version === undefined) throw new Error(`legacy session artifact "${join(legacyPath, name)}" has a noncanonical generation filename; source was not changed`)
-      const header = await this.peekLegacyHeader(join(legacyPath, name), signal)
-      if (header === undefined) throw new Error(`legacy session artifact "${join(legacyPath, name)}" has no supported header; source was not changed`)
-      if (header.version !== version) throw new Error(`legacy session artifact "${join(legacyPath, name)}" filename version does not match its header; source was not changed`)
-      if (encodeSegment(header.id) !== sourceName) throw new Error(`legacy session directory "${legacyPath}" does not match header id "${header.id}"; source was not changed`)
-      if (identity === undefined) identity = header
-      else if (identity.id !== header.id || identity.cwd !== header.cwd) throw new Error(`legacy session directory "${legacyPath}" contains conflicting generation identities; source was not changed`)
-    }
-    if (identity === undefined) return
-    const targetDir = sessionDir(this.root, identity.cwd, identity.id)
-    if (resolve(targetDir) === resolve(legacyPath)) return
-    if (await this.exists(targetDir)) throw new Error(`legacy layout migration target "${targetDir}" already exists; source was not changed`)
-    signal?.throwIfAborted()
-    await mkdir(dirname(targetDir), { recursive: true })
-    await rename(legacyPath, targetDir)
-  }
-
-
-  private async peekLegacyHeader(
-    path: string,
-    signal?: AbortSignal,
-  ): Promise<{ id: SessionId; cwd: string | undefined; version: number } | undefined> {
-    const first = path.endsWith('.jsonl.zstd')
-      ? await this.readFirstZstdLine(path, signal)
-      : await this.readFirstLine(path, signal)
-    if (first === undefined) return undefined
-    let value: unknown
-    try {
-      value = JSON.parse(first)
-    } catch {
-      return undefined
-    }
-    assertNoRetiredHeaderFields(value)
-    const decoded = this.formatCatalog.readHeader(value)
-    if (decoded.status !== 'current' && decoded.status !== 'migration-required') return undefined
-    return { id: makeSessionId(decoded.header.id), cwd: decoded.header.cwd, version: decoded.storedVersion }
-  }
-
   /** List session-owned directories and reject the obsolete flat-file layout. */
   private async listSessionDirs(project: string, signal?: AbortSignal): Promise<string[]> {
     signal?.throwIfAborted()
@@ -1936,17 +1694,7 @@ class JsonlSessionPersistence extends SessionPersistence {
 
   /** Reject a root that already belongs to the other physical encoding. */
   private ensureRootEncoding(): Promise<void> {
-    if (this.rootEncodingCheck === undefined) {
-      const check = this.checkRootEncoding().catch(async (error: unknown) => {
-        if (!isLegacyFlatLayoutError(error)) throw error
-        await this.migrateLegacyDirectoryOnce(error.path)
-        await this.checkRootEncoding()
-      })
-      this.rootEncodingCheck = check
-      void check.catch(() => {
-        if (this.rootEncodingCheck === check) this.rootEncodingCheck = undefined
-      })
-    }
+    this.rootEncodingCheck ??= this.checkRootEncoding()
     return this.rootEncodingCheck
   }
 
@@ -1968,10 +1716,7 @@ class JsonlSessionPersistence extends SessionPersistence {
       const path = join(project, encoded + logSuffix(compression))
       const artifactExists = await this.exists(path)
       signal?.throwIfAborted()
-      if (artifactExists) {
-        await this.migrateLegacyDirectoryOnce(path, signal)
-        return
-      }
+      if (artifactExists) throw this.legacyLayout(path)
     }
   }
 
@@ -2011,7 +1756,10 @@ class JsonlSessionPersistence extends SessionPersistence {
   }
 
   private legacyLayout(path: string): Error {
-    return new LegacyFlatLayoutError(path)
+    return new Error(
+      `session artifact ${JSON.stringify(path)} uses the unsupported flat-file layout; `
+      + 'use a separate root or move it into a project/session directory before loading',
+    )
   }
 
   private async exists(path: string): Promise<boolean> {
@@ -2063,39 +1811,7 @@ export const Config: z<Config> = z.object({
   root: z.string().required(),
   compression: JsonlCompressionSchema,
   listConcurrency: z.natural().min(1).default(DEFAULT_LIST_CONCURRENCY),
-  appendOpenRetryInitialMs: z.natural().min(1).default(DEFAULT_APPEND_OPEN_RETRY_INITIAL_MS),
-  appendOpenRetryMaxMs: z.natural().min(1).default(DEFAULT_APPEND_OPEN_RETRY_MAX_MS),
-  appendOpenRetryLimit: z.natural().default(DEFAULT_APPEND_OPEN_RETRY_LIMIT),
 })
-
-/**
- * Mount persistence with live routing and handles retained through the
- * consumer unloads triggered by removing this provider. Consumers must own
- * cleanup in their injecting scope; concurrent root disposal is not ordered.
- * @param ctx - the owning plugin context.
- * @param config - the storage root, physical encoding, and listing concurrency.
- * @param targetVersion - optional target format generation cutoff; literal 4 for offline migration, or omitted for current format.
- * @returns resolves when the service is ready.
- */
-async function mountPersistence(ctx: Context, config: Config, targetVersion?: 4): Promise<void> {
-  let service!: Fiber
-  ctx.effect(function* () {
-    const tracker = new JsonlBackendTracker(name)
-    yield tracker.install(ctx)
-    service = ctx.plugin({
-      name: targetVersion === 4
-        ? 'session-persistence-jsonl-v4-migration-service'
-        : 'session-persistence-jsonl-service',
-      apply(serviceCtx: Context) {
-        new JsonlSessionPersistence(serviceCtx, config, tracker, targetVersion)
-      },
-    })
-    yield service.dispose
-  }, targetVersion === 4
-    ? 'session-persistence-jsonl-v4-migration resources'
-    : 'session-persistence-jsonl resources')
-  await service.await()
-}
 
 /**
  * Mount persistence with live routing and handles retained through the
@@ -2106,17 +1822,18 @@ async function mountPersistence(ctx: Context, config: Config, targetVersion?: 4)
  * @returns resolves when the service is ready.
  */
 export async function apply(ctx: Context, config: Config): Promise<void> {
-  await mountPersistence(ctx, config)
-}
-
-/**
- * One-time offline migration installer used by `scripts/migrate-sessions-to-v4.ts`.
- * It mounts a backend that writes V4 successors; normal application persistence uses {@link apply}.
- * @param ctx - the migration context.
- * @param config - the migration root, physical encoding, and listing concurrency.
- * @returns resolves when the V4 persistence service is ready.
- * @internal
- */
-export async function applyV4MigrationPersistence(ctx: Context, config: Config): Promise<void> {
-  await mountPersistence(ctx, config, 4)
+  let service!: Fiber
+  // Keep this generator synchronous so thenable disposers are registered as functions, not awaited.
+  ctx.effect(function* () {
+    const tracker = new JsonlBackendTracker(name)
+    yield tracker.install(ctx)
+    service = ctx.plugin({
+      name: 'session-persistence-jsonl-service',
+      apply(serviceCtx: Context) {
+        new JsonlSessionPersistence(serviceCtx, config, tracker)
+      },
+    })
+    yield service.dispose
+  }, 'session-persistence-jsonl resources')
+  await service.await()
 }

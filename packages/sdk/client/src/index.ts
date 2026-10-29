@@ -1,5 +1,5 @@
 /**
- * TypeScript client SDK for the AsterHub runtime: spawn the
+ * TypeScript client SDK for the DeepSeek Harness runtime: spawn the
  * same-version `dsh --profile sdk` runtime as a subprocess and drive agent
  * turns over stdio JSON-RPC. `DeepSeekHarness` is the high-level run API;
  * `HarnessClient` is the lower-level protocol client. A pure library — it
@@ -9,7 +9,7 @@
  * @module @deepseek-ai/dsh-sdk-client
  */
 
-export { DeepSeekHarness, HarnessSession } from './api.ts'
+export { DeepSeekHarness, HarnessSession, validatedSessionEvent } from './api.ts'
 export type { RunOptions } from './api.ts'
 export {
   HarnessClient,
@@ -22,6 +22,8 @@ export { JsonRpcResponseError } from '@deepseek-ai/dsh-sdk-protocol'
 export type {
   ContentBlock,
   SdkPromptContentBlock,
+  SdkUserQuestionAnswer,
+  SdkUserQuestionRequest,
   DeepSeekHarnessOptions,
   HarnessClientOptions,
   HarnessNotification,

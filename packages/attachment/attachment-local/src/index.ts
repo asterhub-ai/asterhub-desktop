@@ -1,9 +1,12 @@
-/** Local durable attachment backend rooted below `DSH_HOME`. @module @deepseek-ai/dsh-attachment-local */
+/**
+ * Local durable attachment backend rooted below `DSH_HOME`, or below the owning Workspace project in project-local mode.
+ * @module @deepseek-ai/dsh-attachment-local
+ */
 
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { AttachmentError, AttachmentStore } from '@deepseek-ai/dsh-attachment'
+import { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import type {
   AttachmentScope,
   FileAttachmentRef,
@@ -16,9 +19,8 @@ import type {
   SaveImageAttachment,
   StoredImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
-import type {} from '@deepseek-ai/dsh-project-storage'
-import type { ProjectSessionLocation } from '@deepseek-ai/dsh-project-storage/types'
 import { dshCachePath, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import type { WorkspaceRegistry } from '@deepseek-ai/dsh-workspace'
 import type { NormalizationPolicy } from './normalization.ts'
 import { CompressionLimiter, compressionFailure } from './compression-limiter.ts'
 import { commitPreparedImageFile, normalizedImagePath, prepareImageFile, readImageFile, validateImageFile } from './store.ts'
@@ -34,15 +36,19 @@ export type { PreparedImageFile } from './store.ts'
 export { readRequestImageFile, requestImageVariantId } from './request-image.ts'
 
 /** Default maximum encoded bytes for one submitted image; oversized sources are refused, not shrunk. */
-export const DEFAULT_MAX_IMAGE_BYTES = 20 * 1024 * 1024
+export const DEFAULT_MAX_IMAGE_BYTES = 50 * 1024 * 1024
 /** Default maximum images in one prompt. */
 export const DEFAULT_MAX_IMAGES_PER_MESSAGE = 20
 /** Default maximum aggregate image bytes in one prompt. */
 export const DEFAULT_MAX_MESSAGE_IMAGE_BYTES = 200 * 1024 * 1024
 /** Default maximum intrinsic pixels for one submitted image. */
 export const DEFAULT_MAX_IMAGE_PIXELS = 64_000_000
-/** Default per-side pixel cap for one submitted image. */
-export const DEFAULT_MAX_IMAGE_DIMENSION = 8192
+/**
+ * Default per-side pixel cap for one submitted image: the largest side a JPEG
+ * can carry. Normalization downscales a long side, so by default the
+ * decoded-pixel limit alone bounds admission.
+ */
+export const DEFAULT_MAX_IMAGE_DIMENSION = 65_535
 /**
  * Default total-pixel budget of the stored normalized image. A larger source
  * is admitted and downscaled proportionally, so admission bounds what rides
@@ -62,9 +68,9 @@ export const MAX_IMAGE_COMPRESSION_CONCURRENCY = 8
 
 /** Local attachment backend configuration. */
 export interface Config {
-  /** Explicit harness home; omitted follows `DSH_HOME`, then `~/.asterhub`. */
+  /** Explicit harness home; omitted follows `DSH_HOME`, then `~/.dsh`. */
   dshHome?: string
-  /** Maximum encoded bytes accepted for one submitted image. Default: 20 MiB. */
+  /** Maximum encoded bytes accepted for one submitted image. Default: 50 MiB. */
   maxImageBytes?: number
   /** Maximum image count accepted in one submitted message. Default: 20. */
   maxImagesPerMessage?: number
@@ -72,7 +78,7 @@ export interface Config {
   maxMessageImageBytes?: number
   /** Maximum intrinsic width multiplied by height accepted for one submitted image. Default: 64,000,000. */
   maxImagePixels?: number
-  /** Maximum intrinsic width and maximum intrinsic height accepted for one submitted image. Default: 8192px. */
+  /** Maximum intrinsic width and maximum intrinsic height accepted for one submitted image. Default: 65,535px. */
   maxImageDimension?: number
   /** Total-pixel budget of the stored provider-independent normalized image. */
   normalizedImageMaxPixels?: number
@@ -85,7 +91,11 @@ export interface Config {
   normalizedImageMaxBytes?: number
   /** Maximum simultaneous normalization or request-image transformations in this service instance. */
   imageCompressionConcurrency?: number
-  /** Require a verified project Session scope for every durable attachment operation. */
+  /**
+   * Route every durable attachment operation through the owning Workspace
+   * project root and require a Session scope on every operation; disabled
+   * keeps the global `DSH_HOME` root. Default: false.
+   */
   projectLocal?: boolean
 }
 
@@ -165,7 +175,7 @@ export class LocalAttachmentStore extends AttachmentStore {
     projectLocal: z.boolean().default(false),
   })
 
-  /** Absolute versioned storage root. */
+  /** Absolute versioned global storage root; the only root unless `projectLocal` is enabled. */
   readonly root: string
   readonly imageLimits: ImageAttachmentLimits
   /** Resolved provider-independent normalization policy. */
@@ -176,17 +186,12 @@ export class LocalAttachmentStore extends AttachmentStore {
   private readonly compression: CompressionLimiter
   private readonly requestInflight = new Map<string, SharedRequest<RequestImageAttachment>>()
   private readonly projectLocal: boolean
-  private projectStorageObserved: boolean
 
   constructor(ctx: Context, config: Config) {
     super(ctx)
     const dshHome = resolveDshHome(config.dshHome)
     this.root = join(dshHome, 'attachments', 'v1')
     this.projectLocal = config.projectLocal ?? false
-    this.projectStorageObserved = this.projectLocal || ctx.get('projectStorage', false) !== undefined
-    ctx.on('internal/service', () => {
-      if (ctx.get('projectStorage', false) !== undefined) this.projectStorageObserved = true
-    })
     this.cacheRoot = dshCachePath({ dshHome }, 'attachments')
     this.imageLimits = Object.freeze({
       maxImageBytes: config.maxImageBytes ?? DEFAULT_MAX_IMAGE_BYTES,
@@ -213,10 +218,9 @@ export class LocalAttachmentStore extends AttachmentStore {
     this.compression = new CompressionLimiter(compressionConcurrency)
   }
 
-  /** Grouped storage is also session-addressed while project ownership is mounted. */
+  /** Project-local mode routes every operation through the owning project and refuses scope-less calls. */
   override get modelImageSessionRequired(): boolean {
-    if (this.ctx.get('projectStorage', false) !== undefined) this.projectStorageObserved = true
-    return this.projectStorageObserved
+    return this.projectLocal
   }
 
   async validateImage(input: SaveImageAttachment): Promise<void> {
@@ -224,7 +228,7 @@ export class LocalAttachmentStore extends AttachmentStore {
   }
 
   override async saveImages(inputs: readonly SaveImageAttachment[], scope?: AttachmentScope): Promise<readonly ImageAttachmentRef[]> {
-    const root = await this.rootFor(scope, true)
+    const root = this.scopeRoot(scope)
     this.validateImageBatch(inputs)
     const prepared = await Promise.all(inputs.map(input => this.compression.run(
       () => prepareImageFile(input, this.imageLimits, this.normalizationPolicy),
@@ -235,7 +239,7 @@ export class LocalAttachmentStore extends AttachmentStore {
   }
 
   async saveImage(input: SaveImageAttachment, scope?: AttachmentScope): Promise<ImageAttachmentRef> {
-    const root = await this.rootFor(scope, true)
+    const root = this.scopeRoot(scope)
     const prepared = await this.compression.run(
       () => prepareImageFile(input, this.imageLimits, this.normalizationPolicy),
     )
@@ -243,31 +247,27 @@ export class LocalAttachmentStore extends AttachmentStore {
   }
 
   async readImage(ref: ImageAttachmentRef, signal?: AbortSignal, scope?: AttachmentScope): Promise<StoredImageAttachment> {
-    return readImageFile(await this.rootFor(scope, false), ref, signal)
+    return readImageFile(this.scopeRoot(scope), ref, signal)
   }
 
   override imageHostPath(ref: ImageAttachmentRef, scope?: AttachmentScope): string {
-    return normalizedImagePath(this.locationForScope(scope)?.attachmentsRoot ?? this.root, ref)
+    return normalizedImagePath(this.scopeRoot(scope), ref)
   }
 
   override async saveFile(input: SaveFileAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef> {
-    return saveFileVerbatim(await this.rootFor(scope, true), input)
+    return saveFileVerbatim(this.scopeRoot(scope), input)
   }
 
   override async saveFileStream(input: SaveFileStreamAttachment, scope?: AttachmentScope): Promise<FileAttachmentRef> {
-    return saveFileStreamVerbatim(await this.rootFor(scope, true), input)
+    return saveFileStreamVerbatim(this.scopeRoot(scope), input)
   }
 
-  override async *readFileStream(
-    ref: FileAttachmentRef,
-    signal?: AbortSignal,
-    scope?: AttachmentScope,
-  ): AsyncIterable<Uint8Array> {
-    yield* readFileStreamVerbatim(await this.rootFor(scope, false), ref, signal)
+  override readFileStream(ref: FileAttachmentRef, signal?: AbortSignal, scope?: AttachmentScope): AsyncIterable<Uint8Array> {
+    return readFileStreamVerbatim(this.scopeRoot(scope), ref, signal)
   }
 
   override fileHostPath(ref: FileAttachmentRef, scope?: AttachmentScope): string {
-    return storedFilePath(this.locationForScope(scope)?.attachmentsRoot ?? this.root, ref)
+    return storedFilePath(this.scopeRoot(scope), ref)
   }
 
   override async readImageRequest(
@@ -276,12 +276,7 @@ export class LocalAttachmentStore extends AttachmentStore {
     signal?: AbortSignal,
     scope?: AttachmentScope,
   ): Promise<RequestImageAttachment> {
-    const location = this.locationForScope(scope)
-    const attachmentsRoot = await this.rootFor(scope, false, location)
-    const requestCacheRoot = location === undefined
-      ? this.cacheRoot
-      : join(this.cacheRoot, 'projects', String(location.projectId))
-    return this.requestVersion(ref, target, undefined, signal, attachmentsRoot, requestCacheRoot, location?.projectId)
+    return this.requestVersion(ref, target, undefined, signal, scope)
   }
 
   private requestVersion(
@@ -289,13 +284,11 @@ export class LocalAttachmentStore extends AttachmentStore {
     target: ImageRequestTarget,
     stored: StoredImageAttachment | undefined,
     signal: AbortSignal | undefined,
-    attachmentsRoot: string,
-    requestCacheRoot: string,
-    projectId: string | undefined,
+    scope: AttachmentScope | undefined,
   ): Promise<RequestImageAttachment> {
     signal?.throwIfAborted()
     const variantId = requestImageVariantId(ref, target)
-    const key = `${projectId ?? 'global'}:${String(variantId)}`
+    const key = String(variantId)
     let operation = this.requestInflight.get(key)
     if (operation?.controller.signal.aborted) {
       this.requestInflight.delete(key)
@@ -304,8 +297,8 @@ export class LocalAttachmentStore extends AttachmentStore {
     if (operation === undefined) {
       const shared = new SharedRequest<RequestImageAttachment>(sharedSignal => this.compression.run(async () => {
         const request = await readRequestImageFile(
-          requestCacheRoot,
-          stored ?? await readImageFile(attachmentsRoot, ref, sharedSignal),
+          this.cacheRoot,
+          stored ?? await this.readImage(ref, sharedSignal, scope),
           target,
           sharedSignal,
         )
@@ -320,50 +313,21 @@ export class LocalAttachmentStore extends AttachmentStore {
     return operation.wait(signal)
   }
 
-  private locationForScope(scope?: AttachmentScope): ProjectSessionLocation | undefined {
-    const storage = this.ctx.get('projectStorage', false)
-    if (storage !== undefined) this.projectStorageObserved = true
-    if (scope === undefined) {
-      if (this.modelImageSessionRequired) {
-        throw new AttachmentError('A project Session scope is required.', 'ATTACHMENT_SCOPE_REQUIRED')
-      }
-      return undefined
-    }
-    if (storage === undefined) {
-      if (this.projectStorageObserved) {
-        throw new AttachmentError('Project storage is unavailable for this attachment scope.', 'ATTACHMENT_SCOPE_UNAVAILABLE')
-      }
-      if (this.projectLocal) {
-        throw new AttachmentError('Project storage is unavailable for this attachment scope.', 'ATTACHMENT_SCOPE_UNAVAILABLE')
-      }
-      return undefined
-    }
-    let location: ProjectSessionLocation | undefined
-    try {
-      location = storage.locateSession(scope.sessionId)
-    } catch (error: unknown) {
-      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
-      throw new AttachmentError('Project storage is unavailable for this attachment scope.', 'ATTACHMENT_SCOPE_UNAVAILABLE', { cause: error })
-    }
-    if (location === undefined) {
+  /**
+   * Resolve the storage root for one attachment operation.
+   * @param scope - Session address; required in project-local mode, ignored otherwise.
+   * @returns the global root, or the owning Workspace project's `.aster/attachments/v1`.
+   */
+  private scopeRoot(scope: AttachmentScope | undefined): string {
+    if (!this.projectLocal) return this.root
+    if (scope === undefined) throw new Error('A project Session scope is required.')
+    const registry: WorkspaceRegistry | undefined = this.ctx.get('workspaceRegistry', false)
+    if (registry === undefined) throw new Error('project-local attachment storage requires the Workspace registry')
+    const projectRoot = registry.projectRootForSession(scope.sessionId)
+    if (projectRoot === undefined) {
       throw new Error(`Session ${scope.sessionId} has no registered project attachment owner.`)
     }
-    return location
-  }
-
-  private async rootFor(
-    scope: AttachmentScope | undefined,
-    writing: boolean,
-    location = this.locationForScope(scope),
-  ): Promise<string> {
-    if (location === undefined) return this.root
-    const storage = this.ctx.get('projectStorage', false)
-    if (storage === undefined) throw new AttachmentError('Project storage is unavailable for this attachment scope.', 'ATTACHMENT_SCOPE_UNAVAILABLE')
-    const status = await storage.status(location.projectId)
-    if (status === 'missing' || (writing && status !== 'available')) {
-      throw new AttachmentError(`Project ${location.projectId} is ${status}; attachment access is unavailable.`, 'ATTACHMENT_SCOPE_UNAVAILABLE')
-    }
-    return location.attachmentsRoot
+    return join(projectRoot, '.aster', 'attachments', 'v1')
   }
 
 }

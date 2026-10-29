@@ -95,6 +95,7 @@ External packages installed for runtime use or distributed inside the prebuilt b
 | [`fast-xml-parser`](https://github.com/NaturalIntelligence/fast-xml-parser) | MIT |
 | [`fflate`](https://github.com/101arrowz/fflate) | MIT |
 | [`got`](https://github.com/sindresorhus/got) | MIT |
+| [`hosted-git-info`](https://github.com/npm/hosted-git-info) | ISC |
 | [`immer`](https://github.com/immerjs/immer) | MIT |
 | [`ipaddr.js`](https://github.com/whitequark/ipaddr.js) | MIT |
 | [`js-yaml`](https://github.com/nodeca/js-yaml) | MIT |
@@ -114,6 +115,7 @@ External packages installed for runtime use or distributed inside the prebuilt b
 | [`micromark-util-sanitize-uri`](https://github.com/micromark/micromark/tree/main/packages/micromark-util-sanitize-uri) | MIT |
 | [`micromark-util-symbol`](https://github.com/micromark/micromark/tree/main/packages/micromark-util-symbol) | MIT |
 | [`mime-types`](https://github.com/jshttp/mime-types) | MIT |
+| [`minisearch`](https://github.com/lucaong/minisearch) | MIT |
 | [`negotiator`](https://github.com/jshttp/negotiator) | MIT |
 | [`neo4j-driver`](https://github.com/neo4j/neo4j-javascript-driver) | Apache-2.0 |
 | [`node-addon-require-builtin`](https://www.npmjs.com/package/node-addon-require-builtin) | MIT |
@@ -129,6 +131,7 @@ External packages installed for runtime use or distributed inside the prebuilt b
 | [`resolve.exports`](https://github.com/lukeed/resolve.exports) | MIT |
 | [`semver`](https://github.com/npm/node-semver) | ISC |
 | [`sharp`](https://github.com/lovell/sharp) | Apache-2.0 |
+| [`shell-quote`](http://github.com/ljharb/shell-quote) | MIT |
 | [`sherpa-onnx-node`](https://github.com/csukuangfj/sherpa-onnx) | Apache-2.0 |
 | [`shiki`](https://github.com/shikijs/shiki) | MIT |
 | [`simple-icons`](https://github.com/simple-icons/simple-icons) | CC0-1.0 |
@@ -202,6 +205,7 @@ External packages **directly declared** for development, tests, types, or toolin
 | [`@testing-library/react`](https://github.com/testing-library/react-testing-library) | MIT |
 | [`@types/babel__code-frame`](https://github.com/DefinitelyTyped/DefinitelyTyped) | MIT |
 | [`@types/compression`](https://github.com/DefinitelyTyped/DefinitelyTyped) | MIT |
+| [`@types/hosted-git-info`](https://github.com/DefinitelyTyped/DefinitelyTyped) | MIT |
 | [`@types/js-yaml`](https://github.com/DefinitelyTyped/DefinitelyTyped) | MIT |
 | [`@types/jsdom`](https://github.com/DefinitelyTyped/DefinitelyTyped) | MIT |
 | [`@types/mdast`](https://github.com/DefinitelyTyped/DefinitelyTyped) | MIT |
@@ -248,6 +252,7 @@ External packages **directly declared** for development, tests, types, or toolin
 | [`playwright-core`](https://github.com/microsoft/playwright) | Apache-2.0 |
 | [`pnpm`](https://github.com/pnpm/pnpm) | MIT |
 | [`publint`](https://github.com/publint/publint) | MIT |
+| [`selfsigned`](https://github.com/jfromaniello/selfsigned) | MIT |
 | [`smol-toml`](https://github.com/squirrelchat/smol-toml) | BSD-3-Clause |
 | [`spdx-expression-parse`](https://github.com/jslicense/spdx-expression-parse.js) | MIT |
 | [`tsdown`](https://github.com/rolldown/tsdown) | MIT |

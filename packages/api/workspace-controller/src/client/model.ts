@@ -4,19 +4,13 @@ import { notifySubscribers } from '@deepseek-ai/dsh-client-store'
 import type {} from '@deepseek-ai/dsh-api-workspace-controller/remote'
 import { isRemoteFailure } from '@deepseek-ai/dsh-api-gateway/client'
 import type { RemoteFailure, RemoteResult, TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
   WorkspaceBaseline,
   WorkspaceCreateRequest,
   WorkspaceCreateValue,
-  WorkspaceInspectRequest,
-  WorkspaceInspectionView,
-  WorkspaceOpenProjectRequest,
   WorkspaceDeleteValue,
-  WorkspaceDeleteSessionRequest,
-  WorkspaceDeleteSessionValue,
   WorkspaceInsertSessionBeforeRequest,
   WorkspaceOrderValue,
   WorkspacePinSessionRequest,
@@ -27,15 +21,6 @@ import type {
   WorkspaceId,
   WorkspaceView,
 } from '../types.ts'
-
-declare module '@deepseek-ai/dsh-typert-protocol' {
-  interface TypertRemoteNamespace$776f726b7370616365 {
-    deleteSession: (request: WorkspaceDeleteSessionRequest) => Promise<RemoteResult<WorkspaceDeleteSessionValue>>
-  }
-  interface TypertRemoteMap {
-    'workspace/deleteSession': (request: WorkspaceDeleteSessionRequest) => Promise<RemoteResult<WorkspaceDeleteSessionValue>>
-  }
-}
 
 /** Complete generated `ctx.remote.workspace` namespace. */
 export type WorkspaceRemote = TypertClientRemote['workspace']
@@ -117,28 +102,6 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
   }
 
   /**
-   * Inspect a directory before creating or adopting a Workspace.
-   * @param input - directory path to inspect.
-   * @param signal - optional cancellation.
-   * @returns generated Remote result.
-   */
-  inspect(input: WorkspaceInspectRequest, signal?: AbortSignal): Promise<RemoteResult<WorkspaceInspectionView>> {
-    return this.remote.inspect(input, signal ?? new AbortController().signal)
-  }
-
-  /**
-   * Confirm and open an existing, legacy, or new project directory.
-   * @param input - confirmed parameters.
-   * @param signal - optional cancellation.
-   * @returns generated Remote result.
-   */
-  async openProject(input: WorkspaceOpenProjectRequest, signal?: AbortSignal): Promise<RemoteResult<WorkspaceCreateValue>> {
-    const result = await this.remote.openProject(input, signal ?? new AbortController().signal)
-    if (result.ok) this.upsert(result.value.workspace)
-    return result
-  }
-
-  /**
    * Initialize the default Workspace and merge its authoritative row.
    * @param signal - caller lifetime.
    * @returns generated Remote result.
@@ -164,30 +127,11 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
   /**
    * Delete a Workspace and remove it from the local projection immediately.
    * @param workspaceId - target Workspace.
-   * @param sessionAction - Whether to archive or permanently delete the Workspace's Sessions.
    * @returns generated Remote result.
    */
-  async delete(workspaceId: WorkspaceId, sessionAction?: 'archive' | 'delete'): Promise<RemoteResult<WorkspaceDeleteValue>> {
-    const result = await this.remote.delete({
-      workspaceId,
-      ...sessionAction === undefined ? {} : { sessionAction },
-    })
+  async delete(workspaceId: WorkspaceId): Promise<RemoteResult<WorkspaceDeleteValue>> {
+    const result = await this.remote.delete({ workspaceId })
     if (result.ok) this.remove(workspaceId, true)
-    return result
-  }
-
-  /**
-   * Delete one Session permanently from Workspace grouping surfaces.
-   * @param sessionId - Session to delete.
-   * @returns generated Remote result.
-   */
-  async deleteSession(
-    sessionId: WorkspaceDeleteSessionRequest['sessionId'],
-  ): Promise<RemoteResult<WorkspaceDeleteSessionValue>> {
-    const result = await this.remote.deleteSession({ sessionId })
-    if (result.ok) {
-      this.removeSession(sessionId)
-    }
     return result
   }
 
@@ -465,31 +409,6 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
     }
     this.items = items
     this.invalidate(immediate)
-  }
-
-  private removeSession(sessionId: SessionId): void {
-    let changed = false
-    const nextItems: WorkspaceView[] = []
-    for (const item of this.items) {
-      if (item.sessionIds.includes(sessionId)) {
-        changed = true
-        nextItems.push({ ...item, sessionIds: item.sessionIds.filter(id => id !== sessionId) })
-      } else {
-        nextItems.push(item)
-      }
-    }
-    if (changed) this.items = nextItems
-    const nextArchived = this.archivedSessionIds.filter(id => id !== sessionId)
-    if (nextArchived.length !== this.archivedSessionIds.length) {
-      this.archivedSessionIds = nextArchived
-      changed = true
-    }
-    const nextPinned = this.pinnedSessionIds.filter(id => id !== sessionId)
-    if (nextPinned.length !== this.pinnedSessionIds.length) {
-      this.pinnedSessionIds = nextPinned
-      changed = true
-    }
-    if (changed) this.invalidate(true)
   }
 
   private installViews(views: readonly WorkspaceView[]): void {

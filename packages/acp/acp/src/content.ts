@@ -4,9 +4,7 @@ import type { ContentBlock as AcpContentBlock } from '@agentclientprotocol/sdk'
 import type { Context } from '@deepseek-ai/cordis'
 import { isImageAdmissionError } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef, ImageMediaType, SaveImageAttachment } from '@deepseek-ai/dsh-attachment'
-import type { AttachmentScope } from '@deepseek-ai/dsh-attachment'
 import type { ModelSelection } from '@deepseek-ai/dsh-agent'
-import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 
 /** Raster formats shared by ACP image blocks and the core attachment vocabulary. */
@@ -116,11 +114,10 @@ function resourceLinkText(block: Extract<AcpContentBlock, { type: 'resource_link
  * writing; cancellation after a successful content-addressed write may leave an
  * unreachable object but never queues a late user message.
  * @param ctx - bridge context carrying attachment and model services.
- * @param route - selection pinned to the accepted prompt.
+ * @param route - Agent model selection current at prompt admission.
  * @param prompt - untrusted ACP prompt blocks in wire order.
- * @param imageEnabled - whether the connection advertised inline image prompts.
+ * @param imageEnabled - capability result advertised during initialization.
  * @param signal - admission cancellation signal.
- * @param scope - owning project Session for persisted image bytes.
  * @returns core content with durable image references in wire order.
  */
 export async function admitAcpPrompt(
@@ -129,7 +126,6 @@ export async function admitAcpPrompt(
   prompt: readonly AcpContentBlock[],
   imageEnabled: boolean,
   signal: AbortSignal,
-  scope?: AttachmentScope,
 ): Promise<ContentBlock[]> {
   const images: SaveImageAttachment[] = []
   for (const block of prompt) {
@@ -158,9 +154,7 @@ export async function admitAcpPrompt(
     await assertImageRoute(ctx, route, signal)
     signal.throwIfAborted()
     try {
-      refs = scope === undefined
-        ? await attachments.saveImages(images)
-        : await attachments.saveImages(images, scope)
+      refs = await attachments.saveImages(images)
     } catch (error: unknown) {
       if (isImageAdmissionError(error)) {
         throw new AcpContentError(error.message, 'invalid', { cause: error })
@@ -220,7 +214,6 @@ export async function admitAcpPrompt(
 export async function assistantBlockToAcp(
   ctx: Context,
   block: ContentBlock,
-  sessionId: SessionId,
 ): Promise<AcpContentBlock | undefined> {
   if (block.type === 'text') {
     return block.text.length === 0 ? undefined : { type: 'text', text: block.text }
@@ -232,7 +225,7 @@ export async function assistantBlockToAcp(
   }
   let stored: Awaited<ReturnType<typeof attachments.readImage>>
   try {
-    stored = await attachments.readImage(block.attachment, undefined, { sessionId })
+    stored = await attachments.readImage(block.attachment)
   } catch (error: unknown) {
     throw new AcpContentError('cannot deliver assistant image: the attachment is unavailable or corrupt', 'internal', { cause: error })
   }

@@ -220,6 +220,7 @@ export class TestClient {
           ...connection,
           apply: (connectionCtx) => {
             installConnection(connectionCtx, {
+              interactions: 'answer',
               transport: { rpc: mock.rpc },
               ...(pageLocation === undefined ? {} : { location: pageLocation }),
             })

@@ -1,6 +1,6 @@
 /** Profile patch edits and credential updates reach the next real adapter request. */
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -11,9 +11,6 @@ import Include from '@deepseek-ai/cordis-plugin-include'
 import LlmRuntime, { createMessage, createUserMessage, userAgent } from '@deepseek-ai/dsh-llm'
 import type { PiAiProviderProfile } from '../src/config.ts'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
-import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
-import ProjectStorage from '@deepseek-ai/dsh-project-storage'
-import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import { profileComposition } from '../../../settings/settings/tests/profile-composition.ts'
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
 import { APPLICATION_MODEL_ROUTE } from '../../../bundle/asterhub-product/src/index.ts'
@@ -42,7 +39,7 @@ afterEach(async () => {
 })
 
 /** Boot the dormant composition: a bare `llm-pi-ai` row with no config at all. */
-async function loadComposition(withProjectStorage = false): Promise<{ ctx: Context; settingsPath: string }> {
+async function loadComposition(): Promise<{ ctx: Context; settingsPath: string }> {
   root = await mkdtemp(join(tmpdir(), 'dsh-pi-composition-'))
   await writeFile(join(root, '.credentials.yaml'), 'version: 1\nrefs:\n  PI_COMPOSITION_KEY: key-from-store\n', { mode: 0o600 })
 
@@ -55,18 +52,6 @@ async function loadComposition(withProjectStorage = false): Promise<{ ctx: Conte
     '  config:',
     `    path: ${JSON.stringify(join(root, '.credentials.yaml'))}`,
     '    debounceMs: 10',
-    ...withProjectStorage ? [
-      '- id: session-cwd',
-      "  name: '@deepseek-ai/dsh-session/cwd'",
-      '- id: project-storage',
-      "  name: '@deepseek-ai/dsh-project-storage'",
-      '  config:',
-      "    sessionMode: 'project-local'",
-      `    locatorPath: ${JSON.stringify(join(root, 'locator.json'))}`,
-      `    legacySessionRoot: ${JSON.stringify(join(root, 'sessions'))}`,
-      '    metadataLimitBytes: 1048576',
-      '    lockDeadlineMs: 5000',
-    ] : [],
     '- id: llm-pi-ai',
     "  name: '@deepseek-ai/dsh-llm-pi-ai'",
     '',
@@ -81,10 +66,6 @@ async function loadComposition(withProjectStorage = false): Promise<{ ctx: Conte
     ['test-llm-service', LlmRuntime],
     ['@deepseek-ai/dsh-credentials-local', LocalCredentialProvider],
     ['@deepseek-ai/dsh-llm-pi-ai', LlmPiAi],
-    ...withProjectStorage ? [
-      ['@deepseek-ai/dsh-session/cwd', SessionCwd] as const,
-      ['@deepseek-ai/dsh-project-storage', ProjectStorage] as const,
-    ] : [],
   ])
   const internal: ModuleLoaderV2 = {
     version: 'v2',
@@ -135,40 +116,6 @@ describe('llm-pi-ai real dormant composition', () => {
     expect(ctx.llm.listProviders().map(provider => provider.id)).toEqual([APPLICATION_MODEL_ROUTE.provider])
   })
 
-  it('resolves an optional project attachment service from a real Loader composition', { timeout: 30_000 }, async () => {
-    vi.stubEnv('PI_COMPOSITION_KEY', '')
-    const server = await mockServer([{ events: textEvents }])
-    const { ctx, settingsPath } = await loadComposition(true)
-    await writeFile(settingsPath, [
-      '- id: llm-pi-ai',
-      '  config:',
-      '    providers:',
-      '      deepseek:',
-      '        apiKeyEnv: PI_COMPOSITION_KEY',
-      `        baseURL: ${server.url}`,
-      '',
-    ].join('\n'))
-    await vi.waitFor(() => {
-      expect(ctx.llm.listProviders().map(provider => provider.id)).toEqual(['deepseek'])
-    }, { timeout: 20_000 })
-
-    const projectRoot = join(root!, 'project')
-    await mkdir(projectRoot)
-    const binding = await ctx.projectStorage.open({ root: projectRoot, mode: 'new' })
-    const sessionId = SessionId('project-scope-session')
-    await ctx.projectStorage.bindSession({
-      version: SESSION_FORMAT_VERSION, id: sessionId, createdAt: 10,
-      cwd: projectRoot, isSeeded: false, delegationDepth: 0,
-    })
-
-    const locateSession = vi.spyOn(ctx.projectStorage, 'locateSession')
-    const result = await assemble(ctx, { provider: 'deepseek', model: 'deepseek-flash', messages: [], sessionId })
-    expect(result.message.content).toEqual([{ type: 'text', text: 'hello' }])
-    expect(ctx.projectStorage.locateSession(sessionId)?.projectId).toBe(binding.id)
-    expect(locateSession).toHaveBeenCalledWith(sessionId)
-    locateSession.mockRestore()
-    expect(server.requests).toHaveLength(1)
-  })
 
   it('boots with zero routes and registers one the moment settings supply a profile', async () => {
     vi.stubEnv('PI_COMPOSITION_KEY', '')

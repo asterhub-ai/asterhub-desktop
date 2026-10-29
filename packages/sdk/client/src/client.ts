@@ -1,5 +1,5 @@
 /**
- * Low-level JSON-RPC client for a AsterHub SDK runtime subprocess.
+ * Low-level JSON-RPC client for a DeepSeek Harness SDK runtime subprocess.
  * {@link HarnessClient} owns the child process: it spawns the runtime, speaks
  * the `@deepseek-ai/dsh-sdk-protocol` wire over the child's stdio, fans
  * server notifications out to subscriptions, and tears the child down to
@@ -20,6 +20,7 @@ import {
   type InitializeResult,
   type SessionPromptParams,
   type SdkPromptContentBlock,
+  type SdkUserQuestionRequest,
 } from '@deepseek-ai/dsh-sdk-protocol'
 import { disposeRuntimeProcess } from './dispose.ts'
 import { resolveDshLaunch, type RuntimeProcessOptions } from './launch.ts'
@@ -174,7 +175,7 @@ class NotificationSubscriptionImpl implements NotificationSubscription {
 }
 
 /**
- * JSON-RPC client for the AsterHub SDK runtime over subprocess stdio.
+ * JSON-RPC client for the DeepSeek Harness SDK runtime over subprocess stdio.
  *
  * The subprocess starts lazily on {@link start} and is owned by this instance
  * until {@link close}, which requests protocol `shutdown` and then walks the
@@ -196,6 +197,9 @@ export class HarnessClient {
   private spawnError: Error | undefined
   private streamsSettled: Promise<void> = Promise.resolve()
   private closeTask: Promise<void> | undefined
+  private readonly userQuestions = new Map<string, AbortController>()
+  private userQuestionHandler: HarnessClientOptions['onUserQuestion']
+  private requestHandler: ((method: string, params: Record<string, unknown>) => Promise<unknown>) | undefined
 
   /** @param options - dsh profile, patch, home, process, environment, and timeout options. */
   constructor(options?: HarnessClientOptions)
@@ -209,8 +213,9 @@ export class HarnessClient {
    * the process is live; rejects reuse after {@link close}.
    */
   start(): void {
-    if (this.closeTask !== undefined) throw new TransportClosedError('AsterHub runtime client is closed')
+    if (this.closeTask !== undefined) throw new TransportClosedError('DeepSeek Harness runtime client is closed')
     if (this.child !== undefined) return
+    this.userQuestionHandler = this.options.onUserQuestion
     const child = spawn(this.runtime.command, this.runtime.args, {
       cwd: this.runtime.cwd,
       env: this.runtime.environment(),
@@ -222,7 +227,7 @@ export class HarnessClient {
       // A spawn failure destroys the pipes without an input 'end' edge, so the
       // transport's pending requests must be failed here.
       this.transport?.close()
-      this.failSubscriptions(this.closedError('AsterHub runtime failed to start'))
+      this.failSubscriptions(this.closedError('DeepSeek Harness runtime failed to start'))
     })
     // Writes racing the runtime's death EPIPE on stdin; the exit edge below is
     // the real signal, so the stream-level error only needs to be non-fatal.
@@ -254,7 +259,7 @@ export class HarnessClient {
       this.exitCode = code
       settled.exited = true
       maybeSettle()
-      this.failSubscriptions(this.closedError('AsterHub runtime exited'))
+      this.failSubscriptions(this.closedError('DeepSeek Harness runtime exited'))
     })
     child.once('close', () => {
       // All stdio has settled: stdout 'end' already drained every tail frame,
@@ -263,18 +268,72 @@ export class HarnessClient {
       this.transport?.close()
     })
     const transport = new JsonRpcLineTransport(child.stdout, child.stdin)
-    transport.onNotification((method, params) => { this.dispatchNotification({ method, params }) })
+    transport.onRequest(async (method, params) => {
+      if (method !== 'user-question/ask') {
+        if (this.requestHandler !== undefined) return this.requestHandler(method, params)
+        throw new SdkProtocolError(`unknown runtime request: ${method}`)
+      }
+      const handler = this.userQuestionHandler
+      if (handler === undefined) throw new SdkProtocolError('user-question/ask requires an onUserQuestion callback')
+      if (!isUserQuestionRequest(params)) {
+        throw new SdkProtocolError('user-question/ask requires requestId, sessionId, and questions')
+      }
+      const requestId = params.requestId
+      if (this.userQuestions.has(requestId)) throw new SdkProtocolError('duplicate user-question requestId')
+      const controller = new AbortController()
+      this.userQuestions.set(requestId, controller)
+      const cancelled = Promise.withResolvers<never>()
+      const onAbort = (): void => { cancelled.reject(controller.signal.reason) }
+      controller.signal.addEventListener('abort', onAbort, { once: true })
+      try {
+        return await Promise.race([
+          Promise.resolve().then(() => {
+            controller.signal.throwIfAborted()
+            return handler(params, { signal: controller.signal })
+          }),
+          cancelled.promise,
+        ])
+      } finally {
+        controller.signal.removeEventListener('abort', onAbort)
+        this.userQuestions.delete(requestId)
+      }
+    })
+    transport.onNotification((method, params) => {
+      if (method === 'user-question.cancelled' && typeof params.requestId === 'string') {
+        this.userQuestions.get(params.requestId)?.abort(new Error('SDK runtime cancelled the user question'))
+      }
+      this.dispatchNotification({ method, params })
+    })
     transport.start()
     this.transport = transport
   }
 
   /**
-   * Perform the process-wide handshake.
+   * Install the additional-request handler; native questions retain their onUserQuestion callback.
+   * @param handler - receives wire parameters and returns the JSON-RPC result; rejection sends an error.
+   * @throws when the client has not started or has already closed.
+   */
+  onRequest(handler: (method: string, params: Record<string, unknown>) => Promise<unknown>): void {
+    if (this.closeTask !== undefined) {
+      throw new TransportClosedError('DeepSeek Harness runtime client is closed; create a new client to install a request handler')
+    }
+    if (this.transport === undefined) {
+      throw new TransportClosedError('start the SDK client before installing a request handler')
+    }
+    this.requestHandler = handler
+  }
+
+  /**
+   * Start the runtime if needed, then perform the process-wide handshake.
    * @param params - workspace cwd plus the provider/model route.
    * @returns the runtime's wire identity.
    */
   async initialize(params: InitializeParams): Promise<InitializeResult> {
-    const result = await this.request('initialize', { ...params }, this.runtime.initializeTimeoutMs)
+    this.start()
+    const result = await this.request('initialize', {
+      ...params,
+      ...this.userQuestionHandler === undefined ? {} : { capabilities: { ...params.capabilities, userQuestions: true } },
+    }, this.runtime.initializeTimeoutMs)
     if (!isRecord(result) || !isRecord(result.serverInfo)
       || typeof result.serverInfo.name !== 'string' || typeof result.serverInfo.version !== 'string') {
       throw new SdkProtocolError(`initialize returned no server identity: ${JSON.stringify(result)}`)
@@ -298,6 +357,42 @@ export class HarnessClient {
   }
 
   /**
+   * Restore persisted history without sending a prompt; failures propagate without creating a session.
+   * @param sessionId - persisted identity in this runtime's configured persistence store.
+   * @returns after the session is ready for prompts.
+   */
+  async resumeSession(sessionId: string): Promise<void> {
+    await this.request('session/resume', { sessionId })
+  }
+
+  /**
+   * Read a Session's effective working directory, recovering it if missing.
+   * @param sessionId - target Session; an unknown id creates it.
+   * @returns the absolute effective directory.
+   */
+  getWorkingDirectory(sessionId: string): Promise<string> {
+    return this.workingDirectoryRequest('session/working-directory/get', { sessionId })
+  }
+
+  /**
+   * Change a Session's effective directory without changing origin or permissions.
+   * @param sessionId - target Session; an unknown id creates it.
+   * @param path - absolute or Session-current-directory-relative path.
+   * @returns the validated absolute directory.
+   */
+  setWorkingDirectory(sessionId: string, path: string): Promise<string> {
+    return this.workingDirectoryRequest('session/working-directory/set', { sessionId, path })
+  }
+
+  private async workingDirectoryRequest(method: string, params: object): Promise<string> {
+    const result = await this.request(method, params)
+    if (!isRecord(result) || typeof result.cwd !== 'string') {
+      throw new SdkProtocolError(`${method} returned no working directory: ${JSON.stringify(result)}`)
+    }
+    return result.cwd
+  }
+
+  /**
    * Send one JSON-RPC request and await its result.
    * @param method - the wire method name.
    * @param params - the params object; omitted params send `{}`.
@@ -312,11 +407,11 @@ export class HarnessClient {
     // writing into a destroyed pipe and hanging until the timeout.
     if (this.exitCode !== undefined || this.spawnError !== undefined) {
       await this.settleStreams()
-      throw this.closedError('AsterHub runtime is not running')
+      throw this.closedError('DeepSeek Harness runtime is not running')
     }
     const transport = this.transport
     /* v8 ignore next -- start() either sets the transport or throws */
-    if (transport === undefined) throw new TransportClosedError('AsterHub runtime is not running')
+    if (transport === undefined) throw new TransportClosedError('DeepSeek Harness runtime is not running')
     const timeout = timeoutMs ?? this.runtime.requestTimeoutMs
     try {
       if (timeout === undefined) return await transport.request(method, params ?? {})
@@ -353,7 +448,7 @@ export class HarnessClient {
     const state: SubscriptionState = { queue: [], waiters: [], filter, failure: undefined }
     const subscription = new NotificationSubscriptionImpl(state, () => { this.subscriptions.delete(id) })
     if (this.closeTask !== undefined || this.exitCode !== undefined || this.spawnError !== undefined) {
-      subscription.fail(this.closedError('AsterHub runtime closed'))
+      subscription.fail(this.closedError('DeepSeek Harness runtime closed'))
       return subscription
     }
     this.subscriptions.set(id, subscription)
@@ -392,6 +487,7 @@ export class HarnessClient {
   }
 
   private async performClose(): Promise<void> {
+    this.abortUserQuestions(new TransportClosedError('SDK client is closing'))
     const child = this.child
     if (child === undefined) return
     try {
@@ -406,7 +502,7 @@ export class HarnessClient {
       disposeGraceMs: this.runtime.disposeGraceMs ?? 3_000,
     })
     this.transport?.close()
-    this.failSubscriptions(this.closedError('AsterHub runtime closed'))
+    this.failSubscriptions(this.closedError('DeepSeek Harness runtime closed'))
   }
 
   private dispatchNotification(notification: HarnessNotification): void {
@@ -439,7 +535,12 @@ export class HarnessClient {
   }
 
   private failSubscriptions(error: Error): void {
+    this.abortUserQuestions(error)
     for (const subscription of this.subscriptions.values()) subscription.fail(error)
+  }
+
+  private abortUserQuestions(error: Error): void {
+    for (const controller of this.userQuestions.values()) controller.abort(error)
   }
 
   private appendStderr(lines: string[]): void {
@@ -488,4 +589,12 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 function errorMessage(error: unknown): string {
   /* v8 ignore next -- the transport and dispose ladder reject only with Errors */
   return error instanceof Error ? error.message : String(error)
+}
+
+/** Check the question envelope before handing runtime input to application code. */
+function isUserQuestionRequest(value: unknown): value is SdkUserQuestionRequest {
+  return isRecord(value) && typeof value.requestId === 'string' && value.requestId.length > 0
+    && typeof value.sessionId === 'string' && Array.isArray(value.questions)
+    && value.questions.length > 0 && value.questions.every((question: unknown) => isRecord(question)
+      && typeof question.id === 'string' && typeof question.question === 'string')
 }

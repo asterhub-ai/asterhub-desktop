@@ -43,6 +43,10 @@
     "./tools": {
       "types": "./lib/types/tools.d.ts",
       "default": "./lib/types/tools.js"
+    },
+    "./diagnostic": {
+      "types": "./lib/types/diagnostic.d.ts",
+      "default": "./lib/types/diagnostic.js"
     }
   },
   "files": [

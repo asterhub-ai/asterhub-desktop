@@ -422,8 +422,7 @@ async function prepareImageProjection(
   }
 
   try {
-    const scope = exec.agent === undefined ? undefined : { sessionId: exec.agent.session.id }
-    const refs = await attachments.saveImages(decoded, scope)
+    const refs = await attachments.saveImages(decoded)
     const byIndex = new Map(imageIndexes.map((index, offset) => [index, refs[offset] as ImageAttachmentRef] as const))
     return projectContent(content, toolName, (_block, index) => ({
       type: 'image',

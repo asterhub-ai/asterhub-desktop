@@ -4,6 +4,7 @@
  * the explicit disposer contract.
  */
 
+import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
@@ -74,12 +75,9 @@ describe('ShellEnvRegistry', () => {
     const fromEnvironment = new ShellEnvRegistry(new Context())
     expect(fromEnvironment.collect(execution()).DSH_HOME).toBe(resolve('./ambient-dsh-home'))
 
-    const isolatedHome = resolve('./isolated-test-home')
     vi.stubEnv('DSH_HOME', undefined)
-    vi.stubEnv('HOME', isolatedHome)
-    vi.stubEnv('USERPROFILE', isolatedHome)
     const fromDefault = new ShellEnvRegistry(new Context())
-    expect(fromDefault.collect(execution()).DSH_HOME).toBe(join(isolatedHome, '.asterhub'))
+    expect(fromDefault.collect(execution()).DSH_HOME).toBe(join(homedir(), '.dsh'))
   })
 
   it('collects declared contributor variables and omits unavailable values', () => {
