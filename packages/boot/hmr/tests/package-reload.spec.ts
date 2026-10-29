@@ -538,31 +538,22 @@ export default class Addon {
   expect(f.trace).toEqual(['start:service'])
 })
 
-for (const kind of ['link', 'missing'] as const) {
-  it(`finds the host module graph through a process entry given as a ${kind} path`, async ({ skip }) => {
-    const argv = process.argv
-    onTestFinished(() => { process.argv = argv })
-    const f = await fixture(undefined, async (home, dir) => {
-      const main = join(dir, 'main.mjs')
-      file(main, "import './node_modules/shared-lib/index.mjs'\n")
-      await ModuleLoader.fromInternal()!.import(pathToFileURL(main).href, import.meta.url, {})
-      const entry = join(home, 'bin-dsh')
-      if (kind === 'link') {
-        try { symlinkSync(main, entry) } catch (error) {
-          if (process.platform === 'win32' && (error as NodeJS.ErrnoException).code === 'EPERM') {
-            skip('Windows file symlinks require Developer Mode or elevated privileges')
-          }
-          throw error
-        }
-      }
-      process.argv = [argv[0]!, entry]
-    })
-    shared(f.dir, 2)
-    const url = pathToFileURL(join(f.dir, 'node_modules', 'shared-lib', 'index.mjs')).href
-    await expect(f.reconcile()).resolves.toEqual({ warnings: [],
-      pending: kind === 'link' ? [{ url, reason: 'host-module' }] : [] })
+it.each(['link', 'missing'] as const)('finds the host module graph through a process entry given as a %s path', async (kind) => {
+  const argv = process.argv
+  onTestFinished(() => { process.argv = argv })
+  const f = await fixture(undefined, async (home, dir) => {
+    const main = join(dir, 'main.mjs')
+    file(main, "import './node_modules/shared-lib/index.mjs'\n")
+    await ModuleLoader.fromInternal()!.import(pathToFileURL(main).href, import.meta.url, {})
+    const entry = join(home, 'bin-dsh')
+    if (kind === 'link') symlinkSync(main, entry)
+    process.argv = [argv[0]!, entry]
   })
-}
+  shared(f.dir, 2)
+  const url = pathToFileURL(join(f.dir, 'node_modules', 'shared-lib', 'index.mjs')).href
+  await expect(f.reconcile()).resolves.toEqual({ warnings: [],
+    pending: kind === 'link' ? [{ url, reason: 'host-module' }] : [] })
+})
 
 it('leaves a CommonJS plugin registered outside a Loader entry, and its cache, for a restart', async () => {
   const f = await fixture([])
@@ -1168,7 +1159,7 @@ it('records freshly mounted plugin files so installing the next bundle does not 
   expect(f.trace).toEqual(['start:other'])
 })
 
-it('walks Node 22 null-prototype linked arrays', async () => {
+it('walks v1-loader null-prototype linked arrays', async () => {
   const f = await fixture()
   const internal = ModuleLoader.fromInternal()!
   const url = pathToFileURL(join(f.dir, 'node_modules', 'addon', 'index.mjs')).href

@@ -30,9 +30,38 @@ export const textEvents = [
   '[DONE]',
 ]
 
+/**
+ * One Anthropic Messages SSE frame, named by its own `type`.
+ * @param data - the frame payload.
+ * @returns the frame as a named SSE event.
+ */
+export function anthropicFrame(data: Record<string, unknown>): { event: string; data: string } {
+  return { event: String(data['type']), data: JSON.stringify(data) }
+}
+
+/** The opening frame of every scripted Anthropic Messages response. */
+export const anthropicMessageStart = anthropicFrame({
+  type: 'message_start',
+  message: {
+    id: 'msg_1', type: 'message', role: 'assistant', model: 'm', content: [],
+    stop_reason: null, stop_sequence: null, usage: { input_tokens: 3, output_tokens: 1 },
+  },
+})
+
+/** The same minimal text generation in Anthropic Messages frames. */
+export const anthropicTextEvents = [
+  anthropicMessageStart,
+  anthropicFrame({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }),
+  anthropicFrame({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'hello' } }),
+  anthropicFrame({ type: 'content_block_stop', index: 0 }),
+  anthropicFrame({ type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 1 } }),
+  anthropicFrame({ type: 'message_stop' }),
+]
+
 /** Local provider stand-in: replays scripted behaviors per request. */
 export async function mockServer(script: {
   status?: number
+  /** SSE frames: a string is sent as `data:` alone; a pair also names the frame's `event:`. */
   events?: (string | { event: string; data: string })[]
   body?: string
   delayMs?: number
@@ -57,7 +86,7 @@ export async function mockServer(script: {
     request.on('data', (chunk: Buffer) => { chunks.push(chunk) })
     request.on('end', () => {
       const bytes = Buffer.concat(chunks)
-      // pi-ai sends Codex SSE requests compressed when the host supports zstd.
+      // Codex SSE requests use zstd compression when the host supports it.
       const body = (request.headers['content-encoding'] === 'zstd' ? zstdDecompressSync(bytes) : bytes).toString('utf8')
       paths.push(request.url ?? '')
       requests.push(body.length === 0 ? undefined : JSON.parse(body))
@@ -83,9 +112,7 @@ export async function mockServer(script: {
           if (!behavior.holdOpen) response.end()
           return
         }
-        response.write(typeof event === 'string'
-          ? `data: ${event}\n\n`
-          : `event: ${event.event}\ndata: ${event.data}\n\n`)
+        response.write(typeof event === 'string' ? `data: ${event}\n\n` : `event: ${event.event}\ndata: ${event.data}\n\n`)
         if (behavior.delayMs === undefined) writeNext()
         else timer = setTimeout(writeNext, behavior.delayMs)
       }
@@ -105,13 +132,4 @@ export async function mockServer(script: {
     responseClosed: responseClosed.promise,
     get closedResponses() { return closedResponses },
   }
-}
-
-/**
- * Encode one Anthropic Messages payload as a named SSE event.
- * @param data - payload whose type supplies the event name.
- * @returns event name and JSON data.
- */
-export function anthropicFrame(data: Record<string, unknown>): { event: string; data: string } {
-  return { event: String(data['type']), data: JSON.stringify(data) }
 }

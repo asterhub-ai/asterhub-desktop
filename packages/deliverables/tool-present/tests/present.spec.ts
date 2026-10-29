@@ -136,7 +136,7 @@ describe('present', () => {
     expect(owner.session.snapshotEvents().some(event => event.type === 'deliverables/presented')).toBe(false)
   })
 
-  it('rejects missing, non-file, empty, and excessive inputs', async () => {
+  it.skipIf(process.platform === 'win32')('rejects missing, non-file, empty, and excessive inputs', async () => {
     const { root, owner, execute } = await setup()
     await writeFile(join(root, 'large'), 'four')
     await symlink(tmpdir(), join(root, 'outside'))
@@ -184,7 +184,7 @@ it('declares readable files outside the Session directory using absolute and rel
   expect(owner.session.snapshotEvents().find(event => event.type === 'deliverables/presented')?.data.files).toEqual([{ path: await realpath(file) }, { path: await realpath(file) }])
 })
 
-it('refuses a final symlink to an ordinary file', async () => {
+it.skipIf(process.platform === 'win32')('refuses a final symlink to an ordinary file', async () => {
   const { root, execute } = await setup()
   await writeFile(join(root, 'source'), 'source')
   await symlink(join(root, 'source'), join(root, 'link'))

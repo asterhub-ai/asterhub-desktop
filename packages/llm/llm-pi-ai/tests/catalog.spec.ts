@@ -7,12 +7,12 @@ const configurations = new WeakMap<Context, Awaited<ReturnType<typeof liveConfig
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
 import { PiAiAdapter } from '@deepseek-ai/dsh-llm-pi-ai'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
-import { getBuiltinModels } from '@earendil-works/pi-ai/providers/all'
+import { getAllBuiltinModels, getBuiltinModels, getBuiltinProviders } from '@earendil-works/pi-ai/providers/all'
 import { AssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-stream'
 import { normalizeContext } from '@earendil-works/pi-ai/utils/transcript'
 import type { Api, Model, OpenAICompletionsCompat, Provider } from '@earendil-works/pi-ai'
+import { catalogModels, catalogProvider } from '../src/catalog.ts'
 import { resolveProfiles } from '../src/config.ts'
-import { catalogProvider } from '../src/catalog.ts'
 import { createModels, createProvider, getSupportedThinkingLevels } from '../src/models.ts'
 import { buildProvider, supportedProtocols } from '../src/provider.ts'
 import { assemble } from './assemble.ts'
@@ -170,7 +170,7 @@ describe('hand-declared providers', () => {
       resolved.get(route)?.piProvider?.getModels() ?? []
 
     expect(modelsOf('acme-gateway')).toMatchObject([
-      { id: 'bare', contextWindow: 262_144, maxTokens: 32_768 },
+      { id: 'bare', contextWindow: 1_000_000, maxTokens: 128_000 },
       { id: 'sized', contextWindow: 8192, maxTokens: 512 },
     ])
     // The fallback is a guess, so a deployment whose gateway serves smaller
@@ -442,13 +442,14 @@ describe('hand-declared providers', () => {
 describe('catalog routes with per-model configuration', () => {
   it('keeps both Azure protocols under the azure catalog route', () => {
     const provider = resolveProfiles({ azure: {} }).get('azure')?.piProvider
-    const models = provider?.getModels()
+    if (provider === undefined) throw new Error('the installed catalog ships no azure provider')
+    const models = provider.getModels()
+    const protocols = new Set(models.map(model => model.api))
 
-    expect(provider?.id).toBe('azure')
-    expect(models).toEqual(expect.arrayContaining([
-      expect.objectContaining({ provider: 'azure', api: 'azure-openai-responses' }),
-      expect.objectContaining({ provider: 'azure', api: 'openai-completions' }),
-    ]))
+    expect(provider.id).toBe('azure')
+    expect(protocols).toContain('azure-openai-responses')
+    expect(protocols).toContain('openai-completions')
+    expect(models.every(model => model.provider === 'azure')).toBe(true)
     expect(catalogProvider('azure-openai-responses')).toBeUndefined()
   })
 
@@ -1171,7 +1172,7 @@ describe('resolution snapshots', () => {
       profiles: () => current,
       // Credential resolution is the real await inside a stream call, and the
       // window a configuration change has to land in.
-      resolveApiKey: async () => { await held; return 'k' },
+      resolveApiKey: async (provider) => { if (provider === 'deepseek') await held; return 'k' },
       auth: memoryAuth(),
     })
 
@@ -1284,9 +1285,25 @@ describe('configurable-provider directory', () => {
     expect(offered).not.toContain('azure-openai-responses')
   })
 
+  it('leaves out an installed catalog route that ships no chat model', async () => {
+    const ctx = await harness({})
+    const offered = ctx.llm.listConfigurableProviders().map(entry => entry.provider)
+
+    // The installed catalog ships `typesafe` with classifier models only; with
+    // nothing to dispatch a chat request to, the route is not offered and is
+    // not a catalog route anywhere else either.
+    expect(getBuiltinProviders()).toContain('typesafe')
+    expect(getAllBuiltinModels('typesafe').length).toBeGreaterThan(0)
+    expect(getBuiltinModels('typesafe')).toEqual([])
+    expect(offered).not.toContain('typesafe')
+    expect(catalogProvider('typesafe')).toBeUndefined()
+    expect(catalogModels('typesafe').size).toBe(0)
+  })
+
   it('lists a route a stored profile names as a catalog route, not a declared one', async () => {
     // `declared` answers catalog membership, so a profile stored against a
-    // route pi-ai ships is not mislabelled as one this deployment invented.
+    // route pi-ai ships is not mislabelled as one this deployment invented,
+    // and it keeps the catalog's endpoint and OAuth-only native auth.
     const ctx = await harness({ providers: { 'openai-codex': { apiKeyEnv: KEY_ENV } } })
 
     expect(ctx.llm.listConfigurableProviders()).toContainEqual({
@@ -1295,6 +1312,8 @@ describe('configurable-provider directory', () => {
       settingsNs: 'llm-pi-ai',
       settingsPath: ['providers', 'openai-codex'],
       declared: false,
+      defaultBaseURL: 'https://chatgpt.com/backend-api',
+      nativeAuth: { env: [], oauth: true },
     })
   })
 })

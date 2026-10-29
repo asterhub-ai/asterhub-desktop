@@ -377,13 +377,13 @@ describe('package manifest reader parity', { concurrent: false }, () => {
     expect(reader.getPackageScopeConfig(pathToFileURL(source).href).type).toBe('module')
     rmSync(f.manifest)
     f.manifests.invalidate(f.manifest)
-    const scope = reader.getPackageScopeConfig(pathToFileURL(source).href)
-    expect(scope).toMatchObject({ exists: true, type: 'commonjs' })
-    expect(realpathSync.native(scope.pjsonPath)).toBe(realpathSync.native(enclosing))
+    expect(reader.getPackageScopeConfig(pathToFileURL(source).href)).toMatchObject({
+      exists: true, type: 'commonjs', pjsonPath: toNamespacedPath(enclosing),
+    })
     expect(formats.defaultGetFormatWithoutErrors(pathToFileURL(join(f.dir, 'bin', 'tool')))).toBe(
       formats.defaultGetFormatWithoutErrors(pathToFileURL(join(f.root, 'packages', 'tool'))),
     )
-    expect(realpathSync.native(reader.getNearestParentPackageJSON(source)!.path)).toBe(realpathSync.native(enclosing))
+    expect(reader.getNearestParentPackageJSON(source)?.path).toBe(toNamespacedPath(enclosing))
   })
 
   it('stops a scope lookup at a node_modules boundary like Node', () => {

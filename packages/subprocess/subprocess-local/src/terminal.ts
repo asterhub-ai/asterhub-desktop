@@ -137,18 +137,21 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
   }
 
   // node-pty writes synchronously; the seam returns a promise for remote transports.
-  // oxlint-disable-next-line typescript/require-await -- Preserve Promise rejection semantics for synchronous node-pty calls.
+  // oxlint-disable-next-line typescript/require-await -- Preserve promise rejection semantics at the async provider contract.
   async write(data: string): Promise<void> {
     if (this.exited) throw new Error('terminal process has exited')
     this.shellActivity?.invalidate()
     this.terminal.write(data)
   }
-  // oxlint-disable-next-line typescript/require-await -- Preserve the Promise-returning terminal API.
+
+  // oxlint-disable-next-line typescript/require-await -- Provider operations share promise rejection semantics.
   async resize(cols: number, rows: number): Promise<void> {
     if (this.exited) throw new Error('terminal process has exited')
     this.terminal.resize(cols, rows)
   }
-  // oxlint-disable-next-line typescript/require-await -- Preserve the Promise-returning terminal API.
+
+  // Local inspection is synchronous; the seam returns a promise for remote transports.
+  // oxlint-disable-next-line typescript/require-await -- Preserve promise rejection semantics at the async provider contract.
   async inspectForeground(): Promise<SubprocessTerminalForeground | undefined> {
     this.descendants(this.inspector.snapshot())
     const processGroupId = this.inspector.foregroundPgid(this.pid)
@@ -159,7 +162,7 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
     }
   }
 
-  // oxlint-disable-next-line typescript/require-await -- Preserve the Promise-returning terminal API.
+  // oxlint-disable-next-line typescript/require-await -- Local inspection is synchronous; SSH shares this promise interface.
   async inspectActivity(): Promise<SubprocessTerminalActivity> {
     let state: SubprocessTerminalActivity['state'] = this.quiescent ? 'idle' : 'unknown'
     let revision = 0
@@ -201,6 +204,7 @@ export class LocalTerminalHandle implements SubprocessTerminalHandle {
     }
     if (this.platform === 'win32') {
       if (signal === 'SIGINT') {
+        // Windows has no process-group signalling: a `\x03` input write is the
         // Ctrl-C delivery path the console host turns into a console-wide
         // CTRL_C event for attached processes. node-pty's signal kills throw on Windows, so
         // no signal ever reaches the inspector.

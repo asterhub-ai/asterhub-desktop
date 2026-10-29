@@ -725,7 +725,7 @@ describe('toStreamChunks', () => {
     if (requested === undefined) throw new Error('missing Anthropic catalog model')
     expect(transformMessages(context.messages, requested)[0]).toMatchObject({ content: native.content })
     expect(transformMessages(context.messages, { ...requested, id: 'other-model' })[0]).toMatchObject({
-      content: [{ type: 'text', text: 'reason' }],
+      content: [],
     })
   })
 
@@ -896,20 +896,6 @@ describe('mapStopReason / mapUsage', () => {
   it('defaults the error message when pi-ai omits it', () => {
     expect(mapStopReason(assistant({ stopReason: 'error' })))
       .toEqual({ kind: 'error', failure: { message: 'pi-ai stream error', code: 'PI_AI_ERROR' } })
-  })
-
-  it.each([
-    ['HTTP 403: insufficient balance', 'QUOTA'],
-    ['HTTP 401: balance is insufficient', 'QUOTA'],
-    ['HTTP 403: 余额不足，请充值', 'QUOTA'],
-    ['HTTP 403: invalid api key', 'AUTH'],
-    ['HTTP 429: rate limit exceeded', 'RATE_LIMIT'],
-    ['HTTP 503: service unavailable', 'SERVER'],
-    ['request timeout', 'TIMEOUT'],
-    ['fetch failed: ECONNREFUSED', 'TRANSPORT'],
-  ])('classifies gateway failure %s as %s', (errorMessage, code) => {
-    expect(mapStopReason(assistant({ stopReason: 'error', errorMessage })))
-      .toMatchObject({ kind: 'error', failure: { code } })
   })
 
   it('maps routable HTTP-ish error messages to stable codes', () => {

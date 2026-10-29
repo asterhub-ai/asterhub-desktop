@@ -111,7 +111,7 @@ function captureEsmResolveCache(native: NativeAccess, parentURL: string): Map<st
   }
   try {
     const loader = native.esmLoader
-    /* v8 ignore else -- CI coverage runs the Node 24 loader; the Node 22 matrix exercises the v1 signature */
+    /* v8 ignore else -- CI coverage runs the Node 24 loader; the Node 24.0 matrix exercises the v1 signature */
     if ('getOrCreateModuleJob' in loader) loader.resolveSync(parentURL, { specifier: 'node:path', attributes: {} })
     else loader.resolveSync('node:path', parentURL, {})
   } finally {
@@ -306,9 +306,7 @@ export class PackageManifests {
     }
     const normalizePackageJsonField = (value: unknown): unknown =>
       value !== null && (typeof value === 'string' || typeof value === 'object') ? value : undefined
-    // Node's nearest-package reader exposes data as a null-prototype record.
-    const data = {
-      __proto__: null,
+    const data: PackageConfig = {
       ...typeof fields.name === 'string' ? { name: fields.name } : {},
       ...typeof fields.main === 'string' && fields.main.isWellFormed() ? { main: fields.main } : {},
       type: fields.type === 'module' || fields.type === 'commonjs' ? fields.type : 'none',

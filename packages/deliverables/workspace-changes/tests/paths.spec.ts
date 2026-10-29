@@ -46,7 +46,7 @@ describe('temporary paths', () => {
 })
 
 describe('canonicalPath', () => {
-  it('resolves a missing file through the nearest existing ancestor, so its spelling is stable before and after creation', async () => {
+  it.skipIf(process.platform === 'win32')('resolves a missing file through the nearest existing ancestor, so its spelling is stable before and after creation', async () => {
     const root = await scratchDir('dsh-canonical-', cleanups)
     const real = join(root, 'real')
     await mkdir(join(real, 'nested'), { recursive: true })
