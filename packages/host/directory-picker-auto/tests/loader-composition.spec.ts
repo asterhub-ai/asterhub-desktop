@@ -63,7 +63,7 @@ async function probeBindableAddress(candidates: string[], description: string): 
     try {
       const { promise, resolve, reject } = Promise.withResolvers<undefined>()
       server.once('error', reject)
-      server.listen({ host: address, port: 0 }, resolve)
+      server.listen({ host: address, port: 0 }, () => resolve(undefined))
       await promise
     } catch (error) {
       refused.push(`${address}: ${error instanceof Error ? error.message : String(error)}`)
