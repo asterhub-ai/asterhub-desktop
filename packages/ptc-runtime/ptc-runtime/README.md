@@ -29,7 +29,9 @@ Choose this package when you compose a deployment that executes model-written pr
 
 ### Run a program
 
-Give the runtime a program and binding namespaces, then call `resolve(request)` followed by `run(spec)`. Resolution validates optional cwd, timeout and sandbox policy against the provider's capabilities and fills deployment defaults. The program runs as an async function body, so top-level `await` and `return` work; a lossless-JSON completion becomes `result.value`, captured text becomes `result.logs`, and program failures become `result.error`. Each output channel preserves its own order, while cross-channel interleaving is backend-dependent.
+Give the runtime a program and binding namespaces, then call `resolve(request)` followed by `run(spec)`. Resolution validates optional cwd, timeout and sandbox policy against the provider's capabilities and fills deployment defaults. Programs use the provider's declared `programFormat`; the default is an async function body with top-level `await` and `return`. A lossless-JSON completion becomes `result.value`, captured text becomes `result.logs`, and program failures become `result.error`. Each output channel preserves its own order, while cross-channel interleaving is backend-dependent.
+
+Consumers call `release(owner)` when an execution owner's scope closes. Stateless providers report `retainsState: false`; their release operation has no retained owner state to clear.
 
 ```text
 const spec = ctx.ptcRuntime.resolve({

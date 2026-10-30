@@ -9,7 +9,7 @@ import { remapV3References } from '../src/references.ts'
 const header = { type: 'session', version: 3, id: 'restart', createdAt: 1, isSeeded: false, delegationDepth: 0 }
 const nativeHeader: SessionFormatHeader = { version: 4, id: header.id, createdAt: 1, isSeeded: false, delegationDepth: 0 }
 const currentHeader: SessionHeader = {
-  version: 5, id: SessionId(header.id), createdAt: nativeHeader.createdAt,
+  version: 4, id: SessionId(header.id), createdAt: nativeHeader.createdAt,
   isSeeded: nativeHeader.isSeeded, delegationDepth: nativeHeader.delegationDepth,
 }
 const user = (id: string) => ({ id, role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: id }] })

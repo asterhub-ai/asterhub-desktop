@@ -19,6 +19,15 @@
     },
     {
       "path": "../../core/tools"
+    },
+    {
+      "path": "../../core/tool-executor-native"
+    },
+    {
+      "path": "../../core/tool-executor-ptc"
+    },
+    {
+      "path": "../../test-support/agent-loop-testkit"
     }
   ]
 }

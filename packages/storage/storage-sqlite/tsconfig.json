@@ -17,9 +17,11 @@
     {
       "path": "../../../vendor/schemastery"
     },
-    { "path": "../../util/atomic-write" },
     {
       "path": "../storage"
+    },
+    {
+      "path": "../../util/atomic-write"
     }
   ]
 }

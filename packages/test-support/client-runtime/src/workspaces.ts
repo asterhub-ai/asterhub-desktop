@@ -1,7 +1,7 @@
 /** Test-owned workspaces face: the renderer standard-kit observable plus recorded actions. */
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type {
-  IWorkspaces, WorkspaceId, WorkspaceInspectionView, WorkspaceSnapshot, WorkspaceView,
+  IWorkspaces, WorkspaceId, WorkspaceSnapshot, WorkspaceView,
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -81,35 +81,6 @@ export class TestWorkspaces implements IWorkspaces {
   }
 
   /**
-   * Inspect a directory before creating or adopting a Workspace.
-   * @param input - Host inspect payload.
-   * @param signal - optional caller lifetime.
-   * @returns the inspection view.
-   */
-  async inspect(input: { path: string }, signal?: AbortSignal): Promise<WorkspaceInspectionView> {
-    this.calls.push({ method: 'inspect', args: [input, signal] })
-    const stub = this.stubs.get('inspect')
-    if (stub !== undefined) return await (stub(input, signal) as Promise<WorkspaceInspectionView>)
-    return { kind: 'new', root: input.path }
-  }
-
-  /**
-   * Confirm and open an existing, legacy, or new project workspace.
-   * @param input - confirmed parameters.
-   * @param signal - optional caller lifetime.
-   * @returns the created or resolved Workspace.
-   */
-  async openProject(
-    input: { path: string; mode: 'new' | 'existing' | 'legacy'; expectedId?: string; expectedDigest?: string },
-    signal?: AbortSignal,
-  ): Promise<WorkspaceView> {
-    this.calls.push({ method: 'openProject', args: [input, signal] })
-    const stub = this.stubs.get('openProject')
-    if (stub !== undefined) return await (stub(input, signal) as Promise<WorkspaceView>)
-    return await this.create({ path: input.path })
-  }
-
-  /**
    * Initialize the default Workspace through a test stub; defaults to an ineligible first use.
    * @param signal - caller lifetime.
    * @returns the stubbed Workspace, or undefined when initialization is ineligible.
@@ -137,30 +108,9 @@ export class TestWorkspaces implements IWorkspaces {
    * Delete a Workspace (recorded; default no-op).
    * @param workspaceId - target workspace.
    */
-  async delete(workspaceId: WorkspaceId, sessionAction?: 'archive' | 'delete'): Promise<void> {
-    this.calls.push({ method: 'delete', args: [workspaceId, sessionAction] })
-    await (this.stubs.get('delete')?.(workspaceId, sessionAction) as Promise<void> | undefined)
-  }
-
-  /**
-   * Delete a session permanently (recorded).
-   * @param sessionId - session to delete.
-   */
-  async deleteSession(sessionId: SessionId): Promise<void> {
-    this.calls.push({ method: 'deleteSession', args: [sessionId] })
-    const stub = this.stubs.get('deleteSession')
-    if (stub !== undefined) {
-      await (stub(sessionId) as Promise<void>)
-      return
-    }
-    await this.update((draft) => {
-      draft.archivedSessionIds = draft.archivedSessionIds.filter(id => id !== sessionId)
-      draft.pinnedSessionIds = draft.pinnedSessionIds.filter(id => id !== sessionId)
-      draft.items = draft.items.map(item => ({
-        ...item,
-        sessionIds: item.sessionIds.filter(id => id !== sessionId),
-      }))
-    })
+  async delete(workspaceId: WorkspaceId): Promise<void> {
+    this.calls.push({ method: 'delete', args: [workspaceId] })
+    await (this.stubs.get('delete')?.(workspaceId) as Promise<void> | undefined)
   }
 
   /**

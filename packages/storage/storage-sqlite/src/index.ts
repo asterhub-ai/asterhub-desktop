@@ -51,7 +51,9 @@ export const Config: z<Config> = z.object({
 /**
  * The SQLite {@link StorageBackend}. Owns one `DatabaseSync` connection and
  * the open-unit table; `kv.open` validates names, enforces the per-unit
- * version stamp in `units`, and ensures the unit's record tables.
+ * version stamp in `units`, and ensures the unit's record tables. A failed
+ * rollback makes all reads, writes, and opens reject the retained failure;
+ * close the backend and recreate it before further use.
  */
 export class SqliteStorageBackend implements StorageBackend {
   /** The key-value facet; the only shape this backend serves. */
@@ -61,6 +63,7 @@ export class SqliteStorageBackend implements StorageBackend {
   /** Open (or still-opening) units by name; presence is the double-open guard. */
   private readonly units = new Map<string, Promise<SqliteKvUnit>>()
   private closing: Promise<void> | undefined
+  private failure: StorageError | undefined
   /** Database file path for exclusive lock computation. */
   private readonly path: string
 
@@ -80,6 +83,7 @@ export class SqliteStorageBackend implements StorageBackend {
     if (this.closing !== undefined) {
       return Promise.reject(new StorageError('closed', 'sqlite storage backend is closed'))
     }
+    if (this.failure !== undefined) return Promise.reject(this.failure)
     if (!UNIT_NAME_RE.test(descriptor.name)) {
       return Promise.reject(new Error(`kv unit name '${descriptor.name}' violates ${UNIT_NAME_RE}`))
     }
@@ -95,12 +99,13 @@ export class SqliteStorageBackend implements StorageBackend {
     // name rejects instead of racing past the guard during the awaits below.
     const pending = this.materializeUnit(descriptor)
     this.units.set(descriptor.name, pending)
-    void pending.catch(() => { this.units.delete(descriptor.name) })
+    pending.catch(() => this.units.delete(descriptor.name))
     return pending
   }
 
   private async materializeUnit(descriptor: KvUnitDescriptor): Promise<SqliteKvUnit> {
     const db = await this.ready
+    this.ensureUsable()
     let lease: FileLockLease | undefined
     if (descriptor.exclusive === true) {
       if (this.path === ':memory:') throw new StorageError('exclusive-open', 'in-memory SQLite cannot provide cross-process unit ownership')
@@ -113,20 +118,37 @@ export class SqliteStorageBackend implements StorageBackend {
         | undefined
       if (row === undefined) {
         db.prepare('INSERT INTO units (name, version) VALUES (?, ?)').run(descriptor.name, descriptor.version)
-      } else if (row.version !== descriptor.version) {
-        throw new StorageError('version-mismatch', `kv unit '${descriptor.name}' is stamped version ${row.version} on the medium, incompatible with descriptor version ${descriptor.version}`)
+      } else if (row.version !== descriptor.version && !descriptor.compatibleVersions?.includes(row.version)) {
+        throw new StorageError(
+          'version-mismatch',
+          `kv unit '${descriptor.name}' is stamped version ${row.version} on the medium, incompatible with descriptor version ${descriptor.version}`,
+        )
       }
       for (const table of descriptor.tables) {
-        db.exec(`CREATE TABLE IF NOT EXISTS "${recordTableName(descriptor.name, table)}" (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT`)
+        // Both segments passed UNIT_NAME_RE, so the identifier is safe in DDL.
+        db.exec(`
+          CREATE TABLE IF NOT EXISTS "${recordTableName(descriptor.name, table)}" (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+          ) STRICT
+        `)
       }
-      return new SqliteKvUnit(db, descriptor, async () => {
-        await lease?.release()
-        this.units.delete(descriptor.name)
-      })
+      return new SqliteKvUnit(
+        db,
+        descriptor,
+        row?.version ?? descriptor.version,
+        () => { void lease?.release(); this.units.delete(descriptor.name) },
+        () => { this.ensureUsable() },
+        (error) => { this.failure = error },
+      )
     } catch (error) {
       await lease?.release()
       throw error
     }
+  }
+
+  private ensureUsable(): void {
+    if (this.failure !== undefined) throw this.failure
   }
 
   /**

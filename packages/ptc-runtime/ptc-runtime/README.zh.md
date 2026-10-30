@@ -29,7 +29,9 @@ kind: "package-reference"
 
 ### 运行一个程序
 
-向运行时提供程序与绑定命名空间，然后依次调用 `resolve(request)` 和 `run(spec)`。解析根据提供方能力验证可选 cwd、timeout 与沙箱策略，并填入部署默认值。程序作为异步函数体运行，支持顶层 `await` 与 `return`；无损 JSON 完成值成为 `result.value`，捕获文本成为 `result.logs`，程序失败成为 `result.error`。每个输出通道保持自身顺序，跨通道交错由后端决定。
+向运行时提供程序与绑定命名空间，然后依次调用 `resolve(request)` 和 `run(spec)`。解析根据提供方能力验证可选 cwd、timeout 与沙箱策略，并填入部署默认值。程序按提供方声明的 `programFormat` 求值，默认是支持顶层 `await` 与 `return` 的异步函数体。无损 JSON 完成值成为 `result.value`，捕获文本成为 `result.logs`，程序失败成为 `result.error`。每个输出通道保持自身顺序，跨通道交错由后端决定。
+
+执行所有者的作用域关闭时，消费方调用 `release(owner)`。无状态提供方报告 `retainsState: false`，释放操作无需清理所有者的驻留状态。
 
 ```text
 const spec = ctx.ptcRuntime.resolve({

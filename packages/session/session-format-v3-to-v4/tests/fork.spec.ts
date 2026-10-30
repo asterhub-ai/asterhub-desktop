@@ -29,7 +29,7 @@ function fork() {
   }, { surfaceOp: 'append' })
   const seed = buildForkSeed(source.snapshotEvents(), SessionSeq(2))
   return Session.create(SessionId('fork-child'), seed, {
-    version: 5, id: SessionId('fork-child'), createdAt: 1, delegationDepth: 0, isSeeded: true, parentSession: source.id,
+    version: 4, id: SessionId('fork-child'), createdAt: 1, delegationDepth: 0, isSeeded: true, parentSession: source.id,
   }, SessionLogOffset(3))
 }
 
@@ -77,7 +77,7 @@ describe('V4 fork results', () => {
     expect(result.data.message.id).toBe(`forked-tool-result-read-one-${result.seq}`)
     expect(JSON.stringify(result)).toContain('The parent session may have executed it after the fork point.')
     const nested = Session.create(SessionId('fork-grandchild'), buildForkSeed(child.snapshotEvents(), result.seq), {
-      version: 5, id: SessionId('fork-grandchild'), createdAt: 1, delegationDepth: 0, isSeeded: true, parentSession: child.id,
+      version: 4, id: SessionId('fork-grandchild'), createdAt: 1, delegationDepth: 0, isSeeded: true, parentSession: child.id,
     }, SessionLogOffset(result.seq + 1))
     expect(restoreReleasedV4Artifact(artifact(nested), new Set(original.map(event => event.type)))).toBeDefined()
   })

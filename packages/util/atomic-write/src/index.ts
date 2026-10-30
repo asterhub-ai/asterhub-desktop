@@ -14,6 +14,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { setTimeout as wait } from 'node:timers/promises'
 
 const WINDOWS_TRANSIENT_RENAME_ERRORS: ReadonlySet<string> = new Set(['EACCES', 'EBUSY', 'EPERM'])
 const WINDOWS_RENAME_RETRY_INITIAL_MS = 20
@@ -76,7 +77,7 @@ export interface WriteFileAtomicOptions {
  * @param content - complete next file content.
  * @param options - permission bits for the replacement inode.
  */
-export async function writeFileAtomic(filename: string, content: string, options: WriteFileAtomicOptions): Promise<void> {
+export async function writeFileAtomic(filename: string, content: string | Uint8Array, options: WriteFileAtomicOptions): Promise<void> {
   await mkdir(dirname(filename), {
     recursive: true,
     ...options.dirMode === undefined ? {} : { mode: options.dirMode },
@@ -197,6 +198,8 @@ const DEFAULT_LOCK_WAIT_MS = 2_000
 
 /** Options for one {@link withFileLock} acquisition. */
 export interface FileLockOptions {
+  /** Cancel lock acquisition; an admitted operation retains ownership until release. */
+  signal?: AbortSignal
   /**
    * Maximum time to wait for the lock, in milliseconds. State one when the
    * holder's operation legitimately runs longer than file work — a credential
@@ -226,6 +229,7 @@ export async function acquireFileLock(filename: string, options?: FileLockOption
   let delay = LOCK_RETRY_INITIAL_MS
   let retriedUnconfirmedPermissionError = false
   for (;;) {
+    options?.signal?.throwIfAborted()
     try {
       await writeFile(lockPath, `${process.pid}\n`, { mode: 0o600, flag: 'wx' })
       break
@@ -238,13 +242,16 @@ export async function acquireFileLock(filename: string, options?: FileLockOption
       } else if (await takeOverExitedLock(lockPath)) continue
     }
     if (Date.now() >= deadline) throw new Error(`atomic-write: timed out waiting for the writer lock at ${lockPath}`)
-    const waited = Promise.withResolvers<void>()
-    setTimeout(waited.resolve, delay)
-    await waited.promise
+    await wait(delay, undefined, options)
     delay = Math.min(delay * 2, LOCK_RETRY_MAX_MS)
   }
   let released: Promise<void> | undefined
-  return { release: () => released ??= rm(lockPath, { force: true }) }
+  const lease = { release: () => released ??= rm(lockPath, { force: true }) }
+  if (options?.signal?.aborted) {
+    await lease.release()
+    options.signal.throwIfAborted()
+  }
+  return lease
 }
 
 /**
@@ -278,6 +285,7 @@ export async function withFileLock<T>(
 ): Promise<T> {
   const lease = await acquireFileLock(filename, options)
   try {
+    options?.signal?.throwIfAborted()
     return await operation()
   } finally {
     await lease.release()

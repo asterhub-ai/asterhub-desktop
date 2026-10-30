@@ -23,6 +23,12 @@ function assertMessageContent(message: unknown, subject: string): void {
  */
 export function assertV4RetiredSyntax(row: unknown): void {
   if (!isSessionFormatJsonObject(row)) return
+  if (row['sourceEventSeqs'] !== undefined) {
+    const sources = row['sourceEventSeqs']
+    if (!Array.isArray(sources) || sources.length === 0) {
+      throw new SessionFormatError(`format v4 ${String(row['type'])} rejects noncanonical sourceEventSeqs`)
+    }
+  }
   if ((row['type'] === 'tool/code-dispatch-start' || row['type'] === 'tool/code-dispatch') && row['ignorable'] !== true) {
     throw new SessionFormatUnsupportedMigrationError(`format v4 rejects retired event type ${row['type']}`)
   }

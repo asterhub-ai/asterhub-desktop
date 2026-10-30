@@ -25,7 +25,7 @@ Use `dsh-atomic-write` to replace a file without exposing partial content or fol
 <a id="use-this-package"></a>
 ## Use this package
 
-Use `writeFileAtomic` when a file-backed store must replace one already-rendered string without ever exposing a partial, symlink-hijacked, or wider-permission state, and `withFileLock` when several processes read-modify-write the same file. The smallest path is one call with the final content and the replacement's permission bits.
+Use `writeFileAtomic` when a file-backed store must replace one already-rendered string or byte payload without ever exposing a partial, symlink-hijacked, or wider-permission state, and `withFileLock` when several processes read-modify-write the same file. The smallest path is one call with the final content and the replacement's permission bits.
 
 ### Writing a file atomically
 
@@ -55,6 +55,8 @@ await withFileLock('/home/u/.dsh/cordis.patch.yml', async () => {
 ```
 
 Only writers contend — readers never take the lock — and a contender backs off exponentially and fails with a timed-out error rather than blocking forever. How long a contender waits is stated per call through `waitMs`: the default is sized for file work alone, so a holder whose cycle includes a network round trip — a credential mutation that refreshes an expired token — states a longer one, because leaving the default would fail every other writer of that file for the duration. The retry cadence stays fixed. A contender removes an existing lock only when the lock names a process that no longer exists; file age alone never removes a lock.
+
+Pass `signal` to cancel acquisition before admission, including while waiting on another writer. Cancellation never removes another holder's lock. If cancellation arrives while creating the lock, acquisition releases that lock before rejecting. Once the operation starts, it owns its cancellation and retains the lock until it settles.
 
 ### Failures to plan for
 

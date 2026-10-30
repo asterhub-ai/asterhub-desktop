@@ -20,6 +20,9 @@
 /deepseek-ai-dsh-util-values/use-this-package/validate-or-snapshot-json-data:
   en: dc6de9f27cc98557
   zh: 9c2bac179e536147
+/deepseek-ai-dsh-util-values/use-this-package/read-streamed-tool-arguments:
+  en: a650fea5e3515190
+  zh: 450162c10753b673
 /deepseek-ai-dsh-util-values/use-this-package/publish-compare-or-retain-keyed-values:
   en: 13628af2abe3eea6
   zh: e284bb8d3ebe38ea
@@ -30,8 +33,8 @@
   en: 36866610a9a7f898
   zh: aa2f0e4c3cc12335
 /deepseek-ai-dsh-util-values/understand-the-implementation/source-map:
-  en: a3e80436a6006043
-  zh: 1de25c1bf436e494
+  en: 88abaca3aeff1080
+  zh: d7ddf5817a8fba3f
 /deepseek-ai-dsh-util-values/further-exploration:
   en: 3be59be736dc8e9a
   zh: 4f419cb5db38fd12

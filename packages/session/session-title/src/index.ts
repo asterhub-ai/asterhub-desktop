@@ -17,7 +17,7 @@ import type {
 } from '@deepseek-ai/dsh-session'
 import { SessionSeq } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-projection'
-import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
+import type { ProjectionDefinition, ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-agent'
 export type {
   SessionTitleEventData,
@@ -293,7 +293,7 @@ export function foldSessionTitle(events: readonly SessionEvent[]): SessionTitleS
 
 /** Log-backed title fold plus asynchronous fallback generation. */
 export class SessionTitleService extends Service {
-  static inject = ['sessions', 'sessionProjections']
+  static inject = ['sessions', 'sessionProjections', 'agents']
   static Config: z<Config> = z.object({
     fallbackMaxWords: z.number().step(1).min(1).required(),
     fallbackMaxBytes: z.number().step(1).min(1).required(),
@@ -306,6 +306,7 @@ export class SessionTitleService extends Service {
   private readonly work = new Map<Session, SessionTitleWorkState>()
   private readonly lifetime = new AbortController()
   private readonly inFlight = new Set<Promise<unknown>>()
+  private titleInputProjectionHandle!: ProjectionHandle<TitleInputState>
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'sessionTitle')
@@ -322,7 +323,10 @@ export class SessionTitleService extends Service {
       throw new Error('session-title: fallbackMaxBytes must not exceed maxTitleBytes')
     }
     this.config = deepFreeze({ ...value })
+  }
 
+  protected async [Service.init](): Promise<void> {
+    const ctx = this.ctx
     ctx.effect(() => async () => {
       this.lifetime.abort(new Error('session-title service disposed'))
       if (this.registration !== undefined) this.registration.closing = true
@@ -337,7 +341,7 @@ export class SessionTitleService extends Service {
 
     ctx.sessionProjections.register(titleProjectionDefinition)
 
-    ctx.sessionProjections.register<'titleInput', TitleInputState>({
+    this.titleInputProjectionHandle = await ctx.sessionProjections.register<'titleInput', TitleInputState>({
       key: 'titleInput',
       stateVersion: 3,
       stateSchema: titleInputStateSchema,
@@ -542,7 +546,7 @@ export class SessionTitleService extends Service {
     const state = session === undefined ? undefined : this.work.get(session)
     const pending = state?.pending
     if (session === undefined || state === undefined || pending === undefined) return
-    const boundary = this.ctx.sessionProjections.stateOf(session, 'turnBoundary')?.lastStepBoundary
+    const boundary = this.ctx.agents.turnBoundaryOf(session).lastStepBoundary
     const route = session.requestHeader()?.config
     if (boundary?.kind !== 'start'
       || boundary.seq <= pending.throughSeq
@@ -719,7 +723,7 @@ export class SessionTitleService extends Service {
   }
 
   private titleInputOf(session: Session): TitleInputState {
-    return this.ctx.sessionProjections.stateOf(session, 'titleInput') as TitleInputState
+    return this.titleInputProjectionHandle.stateOf(session)
   }
 
   /** Queue detached service work and retain it through service disposal. */

@@ -37,6 +37,10 @@ if (!isJsonValue(input)) throw new TypeError('expected lossless JSON')
 const snapshot = snapshotJsonValue(input) as JsonValue
 ```
 
+### Read streamed tool arguments
+
+`PartialArguments` reads top-level fields from incomplete JSON without requiring the whole object to close. Append chunks, use `has`, `complete`, `text`, or `stringLength` for the required fields, and call `settle(finalText)` when authoritative completed arguments arrive. Readers decode JSON escapes across chunk boundaries. `fromText` and `fromObject` create sealed views; appending to a sealed view throws. `refresh()` reports changes to previously observed answers.
+
 ### Publish, compare, or retain keyed values
 
 `deepFreeze(value)` freezes an object graph in place and returns the same value. It walks enumerable string-keyed children and deliberately leaves live `AbortSignal` objects mutable. `deepEqualJson(a, b)` compares JSON-compatible arrays and records structurally; callers must validate hostile or unconstrained values before comparison.
@@ -62,6 +66,7 @@ The JSON validator uses an explicit work stack and tracks only the active ancest
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | JSON value type, validation and snapshot traversal, structural equality, deep freezing, weak-key/strong-value associations, and exhaustive-union failure |
+| [`src/partial-json.ts`](src/partial-json.ts) | Incremental top-level field scanning and decoded reads for streamed tool arguments |
 | — | No runtime invariant companion is published because these value operations have no shared runtime state; unit tests cover their algebra. |
 
 </details>

@@ -4,6 +4,7 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRegistry from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import type { CordisDynamicPluginId } from '../src/types.ts'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -145,7 +146,7 @@ let callCounter = 0
 
 /** Execute a registered tool through the real registry pipeline. */
 export function call(ctx: Context, name: string, args: unknown): Promise<ToolExecutionResult> {
-  return ctx.tools.execute({
+  return executeToolFixture(ctx, {
     signal: new AbortController().signal,
     callId: ToolCallId(`call-${++callCounter}`),
     name,

@@ -1,5 +1,7 @@
 /** Duplicate-install-safe JSON and immutable-value helpers. @module @deepseek-ai/dsh-util-values */
 
+export { PartialArguments, type LengthReadOptions } from './partial-json.ts'
+
 /** A value that round-trips through JSON without loss. */
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 

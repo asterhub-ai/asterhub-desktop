@@ -25,7 +25,7 @@ Use `dsh-agent-tool-presentation` in an [agent preset](../../preset/agent-preset
 <a id="use-this-package"></a>
 ## Use this package
 
-Add this row to an agent preset to fix how every agent joined to that preset sees its tools. `native` presents each visible tool schema as a function definition; `ptc` presents only the `run_code` transport plus a generated SDK and the rule that only `run_code` may be called directly; `both` presents both forms. Agents that declare nothing get the deployment-wide `mode` on the [`dsh-tools`](../tools/README.md) row.
+Add this row to an agent preset to fix how every agent joined to that preset sees its tools. `native` presents each visible tool schema as a function definition; `ptc` presents only the `run_code` transport plus a generated SDK and the rule that only `run_code` may be called directly; `both` presents both forms. Agents that declare nothing get the deployment default executor on the [`dsh-tools`](../tools/README.md) row.
 
 ### Add the row to a preset
 
@@ -43,7 +43,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### What PTC mode requires
 
-Selecting `ptc` or `both` needs a composed PTC runtime (`ctx.ptcRuntime`) whose language has a registered SDK renderer — the TypeScript runtime ships via [`dsh-ptc-runtime-node`](../../ptc-runtime/ptc-runtime-node/README.md), and both the TypeScript and Python SDK renderers are built into `dsh-tools`. A preset that selects a PTC mode against a deployment composing no such runtime refuses to mount, naming this row, so the failure lands where the operator can act instead of at the session's first request.
+Selecting `ptc` or `both` needs a composed PTC runtime (`ctx.ptcRuntime`) whose language has a registered SDK renderer — the TypeScript runtime ships via [`dsh-ptc-runtime-node`](../../ptc-runtime/ptc-runtime-node/README.md), and both the TypeScript and Python SDK renderers are provided by `@deepseek-ai/dsh-tool-executor-ptc`. A preset that selects a PTC mode against a deployment composing no such runtime refuses to mount, naming this row, so the failure lands where the operator can act instead of at the session's first request.
 
 ### One presentation per agent
 
@@ -57,22 +57,20 @@ One agent declares one presentation. A second declaration in the same compositio
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-This section explains how the package realizes the behavior above; the observable contract is covered in [Use this package](#use-this-package).
-
 ### Design concept
 
-The tool registry cannot move into a preset: its consumers are all host-plane — the agent loop reads its scheduler, the API proxy reads its presenters, and every tool plugin registers into it — and a service only moves down when all of its consumers move with it. What a preset can own is the presentation of that registry. `ctx.tools.presentAs()` declares it for the mounting scope, which is the preset's standing mount, so the declaration covers every agent joined to that preset and a PTC mode preset runs beside native ones in one process. One row per composition, not one per session.
+The tool registry cannot move into a preset: its consumers are all host-plane — the agent loop reads its scheduler, the API proxy reads its presenters, and every tool plugin registers into it — and a service only moves down when all of its consumers move with it. What a preset can own is the presentation of that registry. Calling `ctx.tools.setExecutor()` binds a scoped executor (`NativeToolExecutor`, `PtcExecutor`, or `BothToolExecutor`) for the mounting scope, which is the preset's standing mount, so the declaration covers every agent joined to that preset and a PTC mode preset runs beside native ones in one process. One row per composition, not one per session.
 
 ### Source map
 
 | File | Role |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Plugin entry: `mode` config, `apply` wiring `ctx.tools.presentAs` for the mounting scope |
+| [`src/index.ts`](src/index.ts) | Plugin entry: `mode` config, `apply` wiring scoped executors via `ctx.tools.setExecutor` |
 | — | No runtime invariant companion is published; this package makes exactly one scoped call into `ctx.tools` and owns no event or snapshot of its own; the relation it establishes — which presentation one agent's assembly uses — is the tool registry's to hold, and `dsh-tools` observes it there. |
 
 ### Behavior notes
 
-`native` applies immediately. A PTC mode instead waits for `ctx.ptcRuntime`, a host-plane service: a preset selecting PTC mode against a deployment composing no runtime holds this row pending, and `dsh-agent-preset-registry` refuses the mount naming this id. `presentAs` is itself the effect, so the declaration unwinds with this row without a second wrapper owning it.
+`native` applies immediately. A PTC mode instead waits for `ctx.ptcRuntime`, a host-plane service: a preset selecting PTC mode against a deployment composing no runtime holds this row pending, and `dsh-agent-preset-registry` refuses the mount naming this id. `setExecutor` is itself the effect, so the declaration unwinds with this row without a second wrapper owning it.
 
 </details>
 
@@ -83,7 +81,7 @@ The tool registry cannot move into a preset: its consumers are all host-plane �
 
 The package-level contract is enough for most consumers; read these when you need the surrounding domain.
 
-- [tools package](../tools/README.md) — the tool presentation modes and `presentAs` API.
+- [tools package](../tools/README.md) — the scoped tool registry and executor API.
 - [agent-presets package](../../preset/agent-preset-registry/README.md) — how presets compose agents and their standing mounts.
 - [Node ptc-runtime package](../../ptc-runtime/ptc-runtime-node/README.md) — the TypeScript runtime a PTC mode needs.
 - [PTC mode executor-collapse note](../../../.agents/notes/implemented/bug-fix/2026-08-07-ptc-executor-collapse.md) — why the announced and callable surfaces stay the same.
@@ -94,7 +92,7 @@ The package-level contract is enough for most consumers; read these when you nee
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through the tool presentation it selects in `dsh-tools` — the row only chooses between the two projections `dsh-tools` owns and registers no prompt, schema, or result of its own.
+Indirectly, through the executor it selects in `dsh-tools` — the row selects the executor for the scope while the tool registry and executor implementations own prompts, schemas, and batch execution.
 
 #### KV Cache effect
 

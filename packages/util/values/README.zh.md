@@ -37,6 +37,10 @@ if (!isJsonValue(input)) throw new TypeError('expected lossless JSON')
 const snapshot = snapshotJsonValue(input) as JsonValue
 ```
 
+### 读取流式工具参数
+
+`PartialArguments` 无需等待整个 JSON 对象闭合即可读取其顶层字段。追加文本片段后，用 `has`、`complete`、`text` 或 `stringLength` 读取所需字段；收到权威的完整参数文本后调用 `settle(finalText)`。读取器会解码跨片段的 JSON 转义。`fromText` 和 `fromObject` 创建已封闭视图，对其追加文本会抛错。`refresh()` 报告先前已观察答案的变化。
+
 ### 发布、比较或保留键控值
 
 `deepFreeze(value)` 原地冻结对象图并返回同一个值。它遍历可枚举字符串键的子项，并刻意让活跃 `AbortSignal` 对象保持可变。`deepEqualJson(a, b)` 按结构比较 JSON 兼容数组与记录；调用方必须先校验恶意或不受约束的值，再进行比较。
@@ -62,6 +66,7 @@ JSON 校验器使用显式工作栈，并只跟踪当前祖先链，因此深层
 | 文件 | 职责 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | JSON 值类型、校验与快照遍历、结构相等、深度冻结、弱键/强值关联和穷尽联合类型失败 |
+| [`src/partial-json.ts`](src/partial-json.ts) | 流式工具参数的增量顶层字段扫描与解码读取 |
 | — | 不发布运行时不变量伴生入口；这些值操作没有共享运行时状态，其代数行为由单元测试覆盖。 |
 
 </details>

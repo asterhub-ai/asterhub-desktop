@@ -11,8 +11,10 @@ export type StorageErrorCode =
   | 'duplicate-mount'
   | 'version-mismatch'
   | 'malformed-medium'
+  | 'unknown-state'
   | 'exclusive-open'
   | 'closed'
+
 /**
  * Error thrown by the hub and by backend implementations. The `code` is the
  * stable contract consumers may switch on; `message` is diagnostic prose.

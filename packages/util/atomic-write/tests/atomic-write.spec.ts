@@ -213,6 +213,32 @@ describe('writeFileAtomic', () => {
 })
 
 describe('withFileLock', () => {
+  it('rejects an already cancelled acquisition without creating a lock or running work', async () => {
+    const target = join(await scratch(), 'cancelled')
+    const controller = new AbortController()
+    const reason = new Error('caller cancelled')
+    controller.abort(reason)
+    let ran = false
+    await expect(withFileLock(target, async () => { ran = true }, { signal: controller.signal }))
+      .rejects.toBe(reason)
+    expect(ran).toBe(false)
+    expect(await readdir(dirname(target))).toEqual([])
+  })
+
+  it('cancels a contender without removing the live holder lock or running its work', async () => {
+    const target = join(await scratch(), 'contended')
+    const held = record(process.pid)
+    await writeFile(`${target}.lock`, held)
+    const controller = new AbortController()
+    let ran = false
+    const waiting = withFileLock(target, async () => { ran = true }, { signal: controller.signal })
+    const rejection = expect(waiting).rejects.toMatchObject({ name: 'AbortError' })
+    controller.abort()
+    await rejection
+    expect(ran).toBe(false)
+    expect(await readFile(`${target}.lock`, 'utf8')).toBe(held)
+  })
+
   it('retries EPERM only when the lock path currently exists', async () => {
     const dir = await scratch()
     const target = join(dir, 'document')

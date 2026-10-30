@@ -40,9 +40,6 @@ export const remoteDefaultResponses: RemoteTable = {
     // ui-settings-account bonus notice read and acknowledgement at signing in.
     'account/getUnnotifiedBonuses': ok(null),
     'account/ackBonusNotified': ok(true),
-    // account-sub2api status check and registration requirements at apply and on connection/reset.
-    'accountSub2api/getStatus': ok({ loggedIn: false, keyBound: false }),
-    'accountSub2api/authSettings': ok({ registrationEnabled: true, emailVerifyEnabled: false, invitationCodeEnabled: false }),
   },
   // Stream endpoints the roster opens later than boot; declared so a spec that forgets the script gets a stream miss.
   streams: [
@@ -56,12 +53,7 @@ export const remoteDefaultResponses: RemoteTable = {
     'account/watch': openStream([{ status: 'signed-out', attempt: null, links: { usageUrl: 'https://platform.deepseek.com/usage', topUpUrl: 'https://platform.deepseek.com/top_up' } }]),
     // api-workspace-controller client `apply`: the follow stream's opening baseline, then open.
     'workspace/follow': openStream([{ type: 'baseline', value: { items: [], archivedSessionIds: [], pinnedSessionIds: [] } }]),
-    // client-ui-voice-input `observeReadiness` at apply.
-    'speech/follow': openStream([{
-      providers: [],
-      selection: { providerId: 'none' as never, language: 'en' },
-      maxAudioBytes: 10485760,
-      maxDurationSeconds: 120,
-    }]),
+    // api-remote-access client `mountAccess`: the owner's access snapshot, then open.
+    'remoteAccess/follow': openStream([{ type: 'baseline', owner: true }]),
   },
 }
