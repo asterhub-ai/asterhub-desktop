@@ -2,8 +2,8 @@
 
 import { deepStrictEqual } from 'node:assert'
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { relative, resolve } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import {
   decodeSeqRanges,
   SessionLogOffset,
@@ -15,11 +15,10 @@ import { SessionFormatEventCollector, type SessionFormatArtifactDecoder, type Se
 import { releasedV0SessionFormatCodec, releasedV1SessionFormatCodec } from '@deepseek-ai/dsh-session-format-v0-to-v1'
 import { releasedV2SessionFormatCodec } from '@deepseek-ai/dsh-session-format-v1-to-v2'
 import { releasedV3SessionFormatCodec } from '@deepseek-ai/dsh-session-format-v2-to-v3'
-import { releasedV4SessionFormatCodec } from '@deepseek-ai/dsh-session-format-v3-to-v4'
 
 const historicalCodecs: readonly SessionFormatCodec[] = [
   releasedV0SessionFormatCodec, releasedV1SessionFormatCodec, releasedV2SessionFormatCodec,
-  releasedV3SessionFormatCodec, releasedV4SessionFormatCodec,
+  releasedV3SessionFormatCodec,
 ]
 
 /** Physical persistence artifacts validated by the WebWorker runtime fixture spec. */
@@ -269,33 +268,14 @@ export function canonicalSessionFixture(content: string, label = '<session-fixtu
  * @param root - repository root.
  * @returns Stable repository-relative paths.
  */
-function walkJsonlFiles(dir: string, root: string): string[] {
-  const entries = readdirSync(dir, { withFileTypes: true })
-  const results: string[] = []
-  for (const entry of entries) {
-    if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'dist' || entry.name === 'lib' || entry.name === '.local-workspace') continue
-    const full = resolve(dir, entry.name)
-    if (entry.isDirectory()) {
-      results.push(...walkJsonlFiles(full, root))
-    } else if (entry.isFile() && entry.name.endsWith('.jsonl')) {
-      results.push(relative(root, full).replace(/\\/g, '/'))
-    }
-  }
-  return results
-}
-
 function discoverJsonlFiles(root: string): string[] {
-  try {
-    return execFileSync(
-      'git',
-      ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '*.jsonl'],
-      { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
-    ).split('\0')
-      .filter(path => path.length > 0 && existsSync(resolve(root, path)))
-      .sort()
-  } catch {
-    return walkJsonlFiles(root, root).sort()
-  }
+  return execFileSync(
+    'git',
+    ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '*.jsonl'],
+    { cwd: root, encoding: 'utf8' },
+  ).split('\0')
+    .filter(path => path.length > 0 && existsSync(resolve(root, path)))
+    .sort()
 }
 
 /**

@@ -157,15 +157,10 @@ describe('publishableImage', () => {
     const outside = mkdtempSync(join(tmpdir(), 'dsh-doc-site-outside-'))
     roots.push(outside)
     writeFileSync(join(outside, 'secret.png'), 'not really a png\n')
-    const linkedDirectory = join(root, 'packages/linked')
-    symlinkSync(outside, linkedDirectory, 'junction')
+    symlinkSync(join(outside, 'secret.png'), join(root, 'packages/linked.png'))
 
-    try {
-      expect(publishableImage(join(linkedDirectory, 'secret.png'), realpathSync(root))).toBeUndefined()
-      expect(publishableImage(join(outside, 'secret.png'), realpathSync(root))).toBeUndefined()
-    } finally {
-      unlinkSync(linkedDirectory)
-    }
+    expect(publishableImage(join(root, 'packages/linked.png'), realpathSync(root))).toBeUndefined()
+    expect(publishableImage(join(outside, 'secret.png'), realpathSync(root))).toBeUndefined()
   })
 
   it('refuses a directory', () => {
@@ -366,7 +361,7 @@ describe('docsPages locale routes', () => {
       expect(projected).toContain('layout: false')
       expect(projected).toContain('http-equiv: refresh')
       expect(projected).toContain('content: 0; url=./guide/quickstart')
-      expect(projected).not.toContain('# AsterHub')
+      expect(projected).not.toContain('# DeepSeek Harness')
     }
   })
 
@@ -455,7 +450,7 @@ describe('docsPages locale routes', () => {
     const translated = rootPages.filter(page => page.contentLocale === 'zh-CN')
     const fallbacks = rootPages.filter(page => page.contentLocale === 'en-US')
 
-    expect(translated).toHaveLength(48)
+    expect(translated).toHaveLength(47)
     expect(translated.every(page => page.source.endsWith('.zh.md'))).toBe(true)
     expect(fallbacks).toEqual([])
   })
@@ -783,7 +778,7 @@ describe('raw Markdown projection of the published manifest', () => {
     for (const route of ['index.md', 'en/index.md']) {
       const home = new TextDecoder().decode(readFileSync(join(mirror, route)))
       expect(home.startsWith('---'), route).toBe(false)
-      expect(home, route).toContain('# AsterHub')
+      expect(home, route).toContain('# DeepSeek Harness')
     }
   })
 
@@ -820,7 +815,7 @@ function relativeTargets(markdown: string): string[] {
 }
 
 describe('llmsTxt', () => {
-  const site = { base: '/x/', title: 'AsterHub', description: '插件化 SDK' }
+  const site = { base: '/x/', title: 'DeepSeek Harness', description: '插件化 SDK' }
 
   it('lists every sidebar page as a base-prefixed raw-Markdown link', () => {
     const text = llmsTxt(site)
@@ -838,7 +833,7 @@ describe('llmsTxt', () => {
 
   it('carries the site identity and the raw-Markdown convention', () => {
     const text = llmsTxt(site)
-    expect(text.startsWith('# AsterHub\n')).toBe(true)
+    expect(text.startsWith('# DeepSeek Harness\n')).toBe(true)
     expect(text).toContain('> 插件化 SDK')
     expect(text).toMatch(/`\.md`/)
   })

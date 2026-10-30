@@ -2,7 +2,7 @@
 
 import { globSync, readFileSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, resolve } from 'node:path'
+import { dirname, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Rolldown, type UserConfigExport } from 'tsdown'
 import ts from 'typescript'
@@ -62,6 +62,16 @@ function readManifest(path: string): Manifest {
   return JSON.parse(readFileSync(path, 'utf8')) as Manifest
 }
 
+function toPosix(path: string): string {
+  return path.split(sep).join('/')
+}
+
+function toPosixInput(input: Rolldown.InputOption): Rolldown.InputOption {
+  if (typeof input === 'string') return toPosix(input)
+  if (Array.isArray(input)) return input.map(toPosix)
+  return Object.fromEntries(Object.entries(input).map(([name, path]) => [name, toPosix(path)]))
+}
+
 /**
  * Source aliases shared with the repository's source-plane TypeScript programs.
  * @param root - Repository root containing tsconfig.base.json.
@@ -97,13 +107,15 @@ async function collectClientBundles(
     if (client === undefined) throw new Error(`browser notices: ${manifest.name} has no browser build config`)
     if (typeof client.inputOptions === 'function') throw new Error(`browser notices: ${manifest.name} needs resolved input options`)
     const bundle = await Rolldown.rolldown({
-      ...client.inputOptions,
-      cwd: dir,
-      input: client.entry as Rolldown.InputOption,
+      // rolldown's native binding rejects the Windows backslash spellings these
+      // inputs carry (InvalidArg: missing field code); the resolver accepts the
+      // POSIX spelling on every platform, so normalize at the one call site.
+      cwd: toPosix(dir),
+      input: toPosixInput(client.entry as Rolldown.InputOption),
       platform: 'browser',
       transform: client.define === undefined ? {} : { define: client.define },
       plugins: [recorder(seen, workspaceNames), client.plugins ?? []] as NonNullable<Rolldown.InputOptions['plugins']>,
-      tsconfig: resolve(root, 'tsconfig.base.client.json'),
+      tsconfig: toPosix(resolve(root, 'tsconfig.base.client.json')),
     })
     try {
       await bundle.generate({ format: 'cjs', sourcemap: false })
@@ -167,14 +179,25 @@ async function collectShell(
  */
 export async function browserBundledExternals(root: string): Promise<Set<string>> {
   // Vite resolves HTML through native realpath, including Windows 8.3 alias expansion.
-  root = realpathSync.native(root)
-  const manifests = new Map<string, Manifest>()
+  // Every path flowing into the rolldown binding below is derived from these roots;
+  // keeping them POSIX-spelled avoids the binding's Windows backslash rejection.
+  root = toPosix(realpathSync.native(root))
+  // node:fs globSync emits platform separators, whose sort order differs from
+  // the POSIX spelling between Windows and CI; normalize first and sort the
+  // normalized keys so the bundle sequence — and the rolldown binding state it
+  // exercises — is the same order on every platform.
+  const manifestEntries: [string, Manifest][] = []
   for (const glob of ['packages/*/*/package.json', 'vendor/*/package.json']) {
-    for (const path of globSync(glob, { cwd: root }).sort()) {
-      const absolute = resolve(root, path)
-      manifests.set(absolute, readManifest(absolute))
+    // Absolute POSIX-spelled patterns: the {cwd}-relative form makes node:fs
+    // globSync emit platform-separator paths, and the rolldown binding below
+    // rejects builds whose inputs derive from those mixed spellings.
+    for (const found of globSync(`${root}/${glob}`)) {
+      const absolute = toPosix(found)
+      manifestEntries.push([absolute, readManifest(absolute)])
     }
   }
+  manifestEntries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  const manifests = new Map<string, Manifest>(manifestEntries)
   const names = new Set([...manifests.values()].map(manifest => manifest.name))
   const seen = new Set<string>()
   await collectClientBundles(root, manifests, names, seen)

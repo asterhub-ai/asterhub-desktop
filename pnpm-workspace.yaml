@@ -22,6 +22,11 @@ overrides:
   '@deepseek-ai/schemastery': 'link:vendor/schemastery'
   # Markdown extensions augment this module; every parser must share its identity.
   'micromark-util-types': '2.0.3'
+  # vite 8.2.2's ~1.2.4 range re-resolved past the 1.2.7 the upstream lock pins;
+  # 1.2.15's binding rejects collectShell's plugin payloads (InvalidArg: missing
+  # field code). Pin the stream until the upstream lock moves.
+  'rolldown@~1.2.4': '1.2.7'
+  'vite@^8.0.0': '8.0.16'
 
 peerDependencyRules:
   allowedVersions:
