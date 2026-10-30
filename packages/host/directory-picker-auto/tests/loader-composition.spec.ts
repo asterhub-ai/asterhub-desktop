@@ -70,7 +70,7 @@ async function probeBindableAddress(candidates: string[], description: string): 
       continue
     }
     const { promise, resolve } = Promise.withResolvers<undefined>()
-    server.close(() => { resolve() })
+    server.close(() => { resolve(undefined) })
     await promise
     return address
   }

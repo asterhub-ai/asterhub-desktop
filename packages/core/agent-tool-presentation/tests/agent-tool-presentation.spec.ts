@@ -180,7 +180,7 @@ describe('the tool-presentation row', () => {
         maxObservedConcurrency = Math.max(maxObservedConcurrency, active)
         trace.push(`native:${args.step}:start`)
         if (args.step === '1') {
-          call1Started.resolve()
+          call1Started.resolve(undefined)
           await gate1.promise
         }
         trace.push(`native:${args.step}:end`)
@@ -194,7 +194,7 @@ describe('the tool-presentation row', () => {
       active++
       maxObservedConcurrency = Math.max(maxObservedConcurrency, active)
       trace.push('ptc:ptc-2:start')
-      call2Started.resolve()
+      call2Started.resolve(undefined)
       await gate2.promise
       trace.push('ptc:ptc-2:end')
       active--
@@ -232,7 +232,7 @@ describe('the tool-presentation row', () => {
       expect(trace).toEqual(['native:1:start'])
 
       // Release call 1, then wait for call 2 to start and block on gate2:
-      gate1.resolve()
+      gate1.resolve(undefined)
       await Promise.race([
         call2Started.promise,
         batchPromise.then(
@@ -251,7 +251,7 @@ describe('the tool-presentation row', () => {
       expect(trace).toEqual(['native:1:start', 'native:1:end', 'ptc:ptc-2:start'])
 
       // Release call 2 and await entire batch:
-      gate2.resolve()
+      gate2.resolve(undefined)
       const batchResult = await batchPromise
 
       // Concurrency limit was strictly observed throughout:
@@ -279,8 +279,8 @@ describe('the tool-presentation row', () => {
       expect(batchResult.results[2]?.result).toMatchObject({ isError: false, value: 'native-done:3' })
     } finally {
       // Always release all gates so the batch can settle even if assertions fail.
-      gate1.resolve()
-      gate2.resolve()
+      gate1.resolve(undefined)
+      gate2.resolve(undefined)
       await batchPromise
     }
   })
