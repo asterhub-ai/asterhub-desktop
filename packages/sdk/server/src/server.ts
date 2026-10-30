@@ -390,6 +390,11 @@ export class HarnessSdkJsonRpcServer {
     }
   }
 
+  /**
+   * Resolves live SDK ownership; root lookup failures other than SubagentError/UNAUTHORIZED propagate.
+   * @param agent - Agent whose requests need routing.
+   * @returns Whether this server owns the Agent or its live subagent tree root.
+   */
   private ownsAgent(agent: Agent): boolean {
     const agents = this.ctx.agents
     if (agents.get(agent.id) !== agent) return false
