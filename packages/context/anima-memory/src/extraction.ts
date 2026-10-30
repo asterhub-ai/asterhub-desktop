@@ -5,12 +5,17 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionSeq as Seq } from '@deepseek-ai/dsh-session'
 import { deadline } from '@deepseek-ai/dsh-timeout'
 import type { Policy } from './config.ts'
-import type {} from './projection.ts'
+import { turnStateOf } from './projection.ts'
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
     /** Context and auxiliary messages produced from Anima's local graph. */
     anima: { kind: 'anima' } & ContextFormed
+  }
+
+  interface AuxiliaryPurposeMap {
+    /** Auxiliary extraction, review, and reflection requests. */
+    'anima-memory': true
   }
 }
 
@@ -51,7 +56,7 @@ export function modelRoute(ctx: Context, operation: ModelOperation): { provider:
   const { modelProvider, model } = operation.policy
   if ((modelProvider.trim() === '') !== (model.trim() === '')) throw new Error('Anima provider and model must be configured together')
   const route = modelProvider !== '' ? { provider: modelProvider, model }
-    : operation.route ?? ctx.sessionProjections.stateOf(operation.agent.session, 'animaTurn')?.route
+    : operation.route ?? turnStateOf(ctx, operation.agent.session).route
   if (route === undefined || route === null) throw new Error('Select an Anima model or start a conversation with a model first')
   return route
 }

@@ -1,6 +1,7 @@
 import { realpathSync } from 'node:fs'
 import { type CaptureSessionFacts, type CanonicalContentPart, type JsonValue, type SourceEventFacts } from '@deepseek-ai/anima-capture'
 import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-tool-executor-ptc/types'
 import { canonicalize } from 'json-canonicalize'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { z } from 'zod'

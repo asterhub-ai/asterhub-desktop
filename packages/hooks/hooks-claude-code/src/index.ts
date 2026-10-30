@@ -11,8 +11,8 @@
 import { readFileSync } from 'node:fs'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import type { Agent, PreStepDecision, TurnBoundaryProjection } from '@deepseek-ai/dsh-agent'
-import type {} from '@deepseek-ai/dsh-session-projection'
+import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-working-directory'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 declare module '@deepseek-ai/dsh-llm' {
@@ -43,8 +43,7 @@ import type { SubagentRunId } from '@deepseek-ai/dsh-subagent'
 import { parseClaudeCodeConfig, type ClaudeCodeHookConfig } from './config.ts'
 
 export const name = 'hooks-claude-code'
-// `shell` runs hooks and `sessionProjections` supplies turn numbers; the rest
-export const inject = ['shell', 'sessionProjections', 'sessionCwd']
+export const inject = ['shell', 'agents', 'workingDirectory']
 
 /** Plugin config: where the CC hook config lives + substitution roots. */
 export interface Config {
@@ -315,8 +314,7 @@ const SUBAGENT_TYPE = 'general-purpose'
 /** The last open turn number in the agent's log, or 0 without an agent. */
 function lastTurn(ctx: Context, agent: Agent | undefined): number {
   if (!agent) return 0
-  const boundary = ctx.sessionProjections.stateOf(agent.session, 'turnBoundary') as TurnBoundaryProjection
-  return boundary.lastTurn
+  return ctx.agents.turnBoundaryOf(agent.session).lastTurn
 }
 
 /** Flatten content blocks to the text a hook payload carries (the common case). */
@@ -325,12 +323,7 @@ function blocksToText(content: ContentBlock[]): string {
 }
 
 function requireExecutionCwd(agent: Agent): string {
-  const service = agent.ctx.get('sessionCwd', false)
-  const cwd = service !== undefined
-    ? service.resolve(agent.session.header)
-    : (agent.options.cwd ?? agent.session.header.cwd)
-  if (cwd === undefined) throw new Error(`Session ${agent.session.header.id} has no current execution directory`)
-  return cwd
+  return agent.ctx.workingDirectory.get(agent.session)
 }
 
 function base(agent: Agent | undefined, event: string, cwd: string): Record<string, unknown> {

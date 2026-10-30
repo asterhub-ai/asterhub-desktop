@@ -551,6 +551,14 @@ export interface ToolHistory {
   }[]
 }
 
+/** Auxiliary request classifications; plugin owners declaration-merge their own keys. */
+export interface AuxiliaryPurposeMap {
+  /** Conversation compaction requests. */
+  compaction: true
+  /** Session-title generation requests. */
+  'session-title': true
+}
+
 /** A single model request, fully assembled. */
 export interface GenerateOptions {
   /** Registered provider route selecting the adapter instance. */
@@ -593,5 +601,5 @@ export interface GenerateOptions {
    * map the purpose to model-hidden transport metadata. Ordinary conversation
    * requests leave it unset.
    */
-  purpose?: 'compaction' | 'session-title'
+  purpose?: keyof AuxiliaryPurposeMap
 }

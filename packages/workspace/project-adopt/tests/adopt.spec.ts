@@ -6,6 +6,7 @@ import Storage from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { SESSION_FORMAT_VERSION, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session/types'
+import { MessageId } from '@deepseek-ai/dsh-llm'
 import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
 import { MemoryMediaPool, MemoryStorageBackend } from '../../../storage/storage-domain/tests/helpers/memory-backend.ts'
 import ProjectSessionPersistence from '../../project-storage/src/persistence.ts'
@@ -39,7 +40,7 @@ function turnEvents(startSeq: number): SessionEvent[] {
     { type: 'step/start', seq: SessionSeq(startSeq + 1), time: 1002, data: { turn: 1, step: 1 } },
     {
       type: 'user/message', seq: SessionSeq(startSeq + 2), time: 1003, surfaceOp: 'append',
-      data: { id: 'adopt-original-user-message', role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'portable history' }] },
+      data: { id: MessageId('adopt-original-user-message'), role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'portable history' }] },
     },
     { type: 'step/end', seq: SessionSeq(startSeq + 3), time: 1004, data: { turn: 1, step: 1 } },
     { type: 'turn/end', seq: SessionSeq(startSeq + 4), time: 1005, data: { turn: 1, reason: { kind: 'completed' } } },

@@ -8,11 +8,14 @@ import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import * as PtcToolExecutor from '@deepseek-ai/dsh-tool-executor-ptc'
 import { PtcRuntime, type PtcRunRequest, type PtcRunSpec } from '@deepseek-ai/dsh-ptc-runtime'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import * as ToolSkill from '../../tool-skill/src/index.ts'
 import * as SkillOffice from '../src/index.ts'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
+import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 
 const contexts: Context[] = []
 afterEach(async () => { for (const ctx of contexts.splice(0)) await ctx.fiber.dispose() })
@@ -29,11 +32,13 @@ class SkillProgram extends PtcRuntime {
 async function setup(mode: 'native' | 'ptc', names: string[]) {
   const ctx = new Context()
   contexts.push(ctx)
+  provideWorkingDirectoryFixture(ctx)
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(SessionStore)
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(SystemPrompt, { personaPrefix: '', personaSuffix: '' })
-  await ctx.plugin(ToolRuntime, { mode })
+  await ctx.plugin(ToolRuntime)
+  await ctx.plugin(mode === 'ptc' ? PtcToolExecutor : NativeToolExecutor)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(SkillRegistry)

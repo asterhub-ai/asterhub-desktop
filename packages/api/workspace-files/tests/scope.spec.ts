@@ -1,7 +1,6 @@
 import { resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SESSION_FORMAT_VERSION, SessionId, type SessionHeader } from '@deepseek-ai/dsh-session'
-import SessionCwd from '@deepseek-ai/dsh-session/cwd'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import { describe, expect, it, vi } from 'vitest'
 import WorkspaceFiles from '../src/index.ts'
@@ -25,7 +24,7 @@ function header(id: SessionId, cwd?: string): SessionHeader {
 }
 
 describe('Workspace Files Session scope lookup', () => {
-  it('uses live or stored headers without an Agent and leaves with its plugin', async () => {
+  it('uses live or stored workingDirectory projections and falls back to headers without an Agent', async () => {
     const liveId = SessionId('live-subagent')
     const coldId = SessionId('cold-subagent')
     const fallbackId = SessionId('cold-without-cwd')
@@ -39,13 +38,36 @@ describe('Workspace Files Session scope lookup', () => {
       if (id === fallbackId) return { header: header(fallbackId) }
       return undefined
     })
+    const observeSession = vi.fn(async (id: SessionId) => {
+      if (id === coldId) {
+        return {
+          header: header(coldId, oldAbsentRoot),
+          cursor: 1,
+          events: [],
+          projections: { asOfSeq: 1, values: { workingDirectory: movedRoot } },
+          dispose: () => {},
+        }
+      }
+      if (id === fallbackId) {
+        return {
+          header: header(fallbackId),
+          cursor: 0,
+          events: [],
+          projections: { asOfSeq: 0, values: {} },
+          dispose: () => {},
+        }
+      }
+      throw new Error(`session not found: ${id}`)
+    })
     const ctx = new Context()
-    const cwd = await ctx.plugin(SessionCwd)
-    const disposeCwd = ctx.sessionCwd.registerResolver(session =>
-      session.id === liveId || session.id === coldId ? movedRoot : session.cwd)
     ctx.provide('fs', {} as never)
     ctx.provide('sandboxPolicy', { workspaceRoot: fallbackRoot } as never)
     ctx.provide('sessionPersistence', { stat } as never)
+    ctx.provide('sessionQuery', { observeSession } as never)
+    ctx.provide('workingDirectory', {
+      get: (session: { id: SessionId }) => (session.id === liveId ? movedRoot : undefined),
+      defaultDirectory: fallbackRoot,
+    } as never)
     const sessions = await ctx.plugin(SessionStore)
     const typert = await ctx.plugin(TypertRegistry)
     const workspaceFiles = await ctx.plugin(WorkspaceFiles, CAPS)
@@ -57,6 +79,7 @@ describe('Workspace Files Session scope lookup', () => {
       expect(lookup).toMatchObject({
         parameter: 'workspaceFileScope',
         wire: 'workspaceFileScopeId',
+        resource: 'session',
         hostTypeSymbol: '@deepseek-ai/dsh-api-workspace-files#WorkspaceFileScope',
         wireTypeSymbol: '@deepseek-ai/dsh-session/types#SessionId',
       })
@@ -65,17 +88,16 @@ describe('Workspace Files Session scope lookup', () => {
       await expect(lookup.resolve(liveId)).resolves.toEqual({ sessionId: liveId, workspaceRoot: movedRoot })
       expect(stat).not.toHaveBeenCalled()
       await expect(lookup.resolve(coldId)).resolves.toEqual({ sessionId: coldId, workspaceRoot: movedRoot })
-      await expect(lookup.resolve(missingId)).resolves.toBeUndefined()
       await expect(lookup.resolve(fallbackId)).resolves.toEqual({ sessionId: fallbackId, workspaceRoot: fallbackRoot })
-      expect(stat.mock.calls.map(([id]) => id)).toEqual([coldId, fallbackId, missingId])
-
+      await expect(lookup.resolve(missingId)).resolves.toBeUndefined()
+      expect(observeSession).toHaveBeenCalledWith(coldId)
+      expect(observeSession).toHaveBeenCalledWith(fallbackId)
+      expect(observeSession).toHaveBeenCalledWith(missingId)
       await workspaceFiles.dispose()
       expect(ctx.typert.lookups.get('workspaceFileScope')).toBeUndefined()
     } finally {
       await workspaceFiles.dispose()
       await sessions.dispose()
-      disposeCwd()
-      await cwd.dispose()
       await typert.dispose()
     }
   })

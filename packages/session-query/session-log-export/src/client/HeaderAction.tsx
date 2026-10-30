@@ -81,7 +81,7 @@ export function SessionLogDownloadHeaderAction(props: SessionLogDownloadHeaderPr
             aria-haspopup="menu"
             aria-expanded={open}
             aria-busy={busy || copying}
-            onClick={() => { setOpen(value => !value) }}
+            onClick={() => { setOpen((value: boolean) => !value) }}
           >
             <IconEllipsisOutlineRegular />
           </Button>

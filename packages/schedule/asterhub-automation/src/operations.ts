@@ -2,7 +2,7 @@
 import { randomUUID, createHash } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { LlmModelInfo } from '@deepseek-ai/dsh-llm'
-import { scheduleDomain } from '@deepseek-ai/dsh-schedule/storage'
+import { scheduleDomain, parseAtInput } from '@deepseek-ai/dsh-schedule'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   AutomationTask,
@@ -31,7 +31,6 @@ import type { AutomationStore } from './store.ts'
 import '@deepseek-ai/dsh-workspace'
 import { normalizeTiming, previewTiming, nextOccurrence } from './timing.ts'
 import { reserveAutomationRun } from './runtime.ts'
-import { parseAtInput } from '@deepseek-ai/dsh-schedule/timing'
 import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
 
 /** Error thrown for operation failures. */

@@ -673,7 +673,7 @@ function attachController(
 ) {
   const invocation: RemoteInvocation = {
     request: { namespace: 'terminal', method: 'attach', args: {} }, service: 'terminalController', signal,
-    peer: { id: 'test-peer' as PeerId, ctx: agent.ctx, dispose: async () => {} },
+    peer: { id: 'test-peer' as PeerId, ctx: agent.ctx, principal: { kind: 'owner' }, signal, interactions: 'answer', dispose: async () => {} },
     uplink: <In>() => input as AsyncIterable<In>,
     uplinkWindow,
   }

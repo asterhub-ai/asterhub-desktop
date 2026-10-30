@@ -11,6 +11,7 @@ import WorkspaceFiles, { type WorkspaceFileScope } from '@deepseek-ai/dsh-api-wo
 import OfficeToPdf from '@deepseek-ai/dsh-office-to-pdf'
 import * as DocumentPreview from '@deepseek-ai/dsh-client-ui-sidebar-documentpreview'
 import type { IndexInjection } from '@deepseek-ai/dsh-host-webserver'
+import type { PeerScope } from '@deepseek-ai/dsh-typert-protocol'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SandboxPolicyService from '@deepseek-ai/dsh-sandbox-policy'
@@ -92,7 +93,7 @@ it('loads the shipped Office rows with separately patched settings and authorize
   const entries = new Map([...ctx.loader.entries()].map(entry => [entry.options.id, entry]))
   for (const row of configured) await entries.get(row.id)!.fiber!.await()
   const injections: IndexInjection[] = []
-  ctx.emit('webserver/index-inject', injections)
+  ctx.emit('webserver/index-inject', injections, { principal: { kind: 'owner' } } as PeerScope)
   expect(injections).toEqual([
     { kind: 'global', name: '__DSH_DOCUMENT_PREVIEW_CONFIG__', value: clientConfig },
   ])

@@ -2,7 +2,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { z } from 'zod'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import type {} from '@deepseek-ai/dsh-session-projection'
+import type { Session } from '@deepseek-ai/dsh-session'
+import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
 
 const entrySchema = z.object({ seq: z.number(), role: z.enum(['user', 'assistant']), text: z.string() })
 /** Runtime turn evidence is derived from the Session log, including after resume. */
@@ -13,12 +14,7 @@ export const turnStateSchema = z.object({
 /** Bounded replayable input to local capture and model extraction. */
 export type TurnState = z.infer<typeof turnStateSchema>
 
-declare module '@deepseek-ai/dsh-session-projection/types' {
-  interface SessionProjectionStateMap {
-    /** Current turn's explicit human and assistant evidence for Anima. */
-    animaTurn: TurnState
-  }
-}
+const handles = new WeakMap<object, ProjectionHandle<TurnState>>()
 
 /**
  * Return textual content only; attachments and tool calls remain in their original Session log.
@@ -30,13 +26,17 @@ export function messageText(content: readonly ContentBlock[]): string {
 }
 
 /**
- * Register the turn evidence projection, including its HMR disposer.
+ * Register the turn evidence projection and retain its ready handle on the registry instance.
  * @param ctx - Projection registry owner.
  * @param maxBytes - Current complete serialized evidence state limit.
+ * @returns ready handle promise whose registration is bound to the context fiber.
  */
-export function registerTurnProjection(ctx: Context, maxBytes: () => number): void {
-  ctx.effect(() => ctx.sessionProjections.register({
-    key: 'animaTurn', stateSchema: turnStateSchema, stateVersion: 1,
+export async function registerTurnProjection(ctx: Context, maxBytes: () => number): Promise<ProjectionHandle<TurnState>> {
+  const registry = ctx.sessionProjections
+  const handle = await registry.register({
+    key: 'animaTurn',
+    stateSchema: turnStateSchema,
+    stateVersion: 1,
     init: () => ({ turn: 0, entries: [], truncated: false, route: null }),
     apply(state, event) {
       if (event.type === 'turn/start') return { ...state, turn: event.data.turn, entries: [], truncated: false }
@@ -55,5 +55,27 @@ export function registerTurnProjection(ctx: Context, maxBytes: () => number): vo
       const next = { ...state, entries: [...state.entries, entry] }
       return Buffer.byteLength(JSON.stringify(next), 'utf8') > maxBytes() ? { ...state, truncated: true } : next
     },
-  }), 'Anima turn evidence')
+  })
+  handles.set(registry, handle)
+  ctx.effect(() => () => {
+    if (handles.get(registry) === handle) {
+      handles.delete(registry)
+    }
+  }, 'Anima turn projection lifecycle')
+  return handle
+}
+
+/**
+ * Read current turn evidence for one session using the registered projection handle.
+ * @param ctx - Host plugin context owning sessionProjections.
+ * @param session - Session whose turn state is read.
+ * @returns the current turn state.
+ * @throws when the projection is not registered on the supplied context.
+ */
+export function turnStateOf(ctx: Context, session: Session): TurnState {
+  const handle = handles.get(ctx.sessionProjections)
+  if (handle === undefined) {
+    throw new Error('Anima turn projection is not registered on this Context')
+  }
+  return handle.stateOf(session)
 }

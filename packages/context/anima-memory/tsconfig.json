@@ -23,10 +23,25 @@
       "path": "../../core/session"
     },
     {
+      "path": "../../core/tool-executor-ptc"
+    },
+    {
       "path": "../../core/tools"
     },
     {
       "path": "../../llm/llm"
+    },
+    {
+      "path": "../../session/session-persistence"
+    },
+    {
+      "path": "../../session/session-projection"
+    },
+    {
+      "path": "../../session/working-directory"
+    },
+    {
+      "path": "../../util/atomic-write"
     },
     {
       "path": "../../util/brand"
@@ -35,19 +50,10 @@
       "path": "../../util/timeout"
     },
     {
-      "path": "../../session/session-projection"
-    },
-    {
       "path": "../../../vendor/anima-capture"
     },
     {
       "path": "../../../vendor/anima-memory"
-    },
-    {
-      "path": "../../util/atomic-write"
-    },
-    {
-      "path": "../../session/session-persistence"
     }
   ],
   "extends": "../../../tsconfig.base.json"

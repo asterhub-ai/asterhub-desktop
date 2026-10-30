@@ -1,4 +1,4 @@
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync, chmodSync, existsSync, readFileSync } from 'node:fs'
@@ -6,11 +6,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
-import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
-import { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
+import { executeToolFixture, defineContentToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
-import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
+import { provideWorkingDirectoryFixture, mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { LocalBashExecutor } from '@deepseek-ai/dsh-bash-local'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import { scopeTarget } from '@deepseek-ai/dsh-scope'
@@ -52,8 +51,8 @@ type HarnessOpts = { pluginRoot?: string; projectDir?: string; stderrSummaryMaxC
 async function harness(configPath: string, adapter: MockAdapter, opts: HarnessOpts = {}): Promise<Context> {
   const ctx = new Context()
   contexts.push(ctx)
+  provideWorkingDirectoryFixture(ctx)
   await mountAgentLoopTestDependencies(ctx)
-  if (opts.sessionRoot !== undefined) await ctx.plugin(JsonlSessionPersistence, { root: opts.sessionRoot })
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(LocalSubprocessRuntime)
   await ctx.plugin(LocalBashExecutor, { timeoutMs: 10_000 })
@@ -126,7 +125,7 @@ export function defineCoverageCases(group: CoverageGroup): void {
       const ctx = await harness(path, adapter)
       ctx.logger.warn = warn as never
       let sawArgs: unknown
-      ctx.tools.register(defineContentToolFixture({ name: 'echo', description: 'e', parameters: { command: { type: 'string' } }, async execute(args) { sawArgs = args; return [{ type: 'text', text: 'ok' }] } }))
+      ctx.tools.register(defineContentToolFixture({ name: 'echo', description: 'e', parameters: { command: { type: 'string' } }, async execute(args: Record<string, unknown>) { sawArgs = args; return [{ type: 'text', text: 'ok' }] } }))
       const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
       agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
       await waitForIdle(ctx, agent)
@@ -160,8 +159,7 @@ export function defineCoverageCases(group: CoverageGroup): void {
       const ctx = await harness(path, new MockAdapter([]))
       let ran = false
       ctx.tools.register(defineContentToolFixture({ name: 'echo', description: 'e', parameters: {}, async execute() { ran = true; return [{ type: 'text', text: 'x' }] } }))
-      const { ToolCallId } = await import('@deepseek-ai/dsh-llm')
-      const result = await ctx.tools.execute({ signal: testToolSignal, callId: ToolCallId('c1'), name: 'echo', arguments: {} })
+      const result = await executeToolFixture(ctx, { signal: testToolSignal, callId: ToolCallId('c1'), name: 'echo', arguments: {} })
       expect(ran).toBe(false)
       expect(result.isError).toBe(true)
       expect(JSON.parse(readFileSync(payloadPath, 'utf8'))).toMatchObject({ cwd: process.cwd() })
@@ -249,7 +247,7 @@ export function defineCoverageCases(group: CoverageGroup): void {
       const injected: string[] = []
       const child = {
         id: SessionId('child-x'),
-        inject: (input: { content: Array<{ type: string; text?: string }> }) => {
+        inject: (input: { content: readonly { type: string; text?: string }[] }) => {
           injected.push(input.content.map(block => block.text ?? '').join(''))
         },
         session: { id: SessionId('child-x'), header: { id: 'child-x' } },
@@ -679,6 +677,7 @@ export function defineCoverageCases(group: CoverageGroup): void {
       hooks(serverDir, { PreToolUse: [{ hooks: [{ type: 'command', command: 'cat > payload; pwd > where' }] }] })
       const adapter = new MockAdapter([toolCallResponse('c1', 'echo', {}), textResponse('done')])
       const ctx = new Context()
+      provideWorkingDirectoryFixture(ctx)
       await mountAgentLoopTestDependencies(ctx)
       await ctx.plugin(AgentLoop, { agents: [] })
       await ctx.plugin(LocalSubprocessRuntime)
@@ -688,8 +687,7 @@ export function defineCoverageCases(group: CoverageGroup): void {
       ctx.tools.register(defineContentToolFixture({ name: 'echo', description: 'e', parameters: {}, async execute() { return [{ type: 'text', text: 'ok' }] } }))
 
       const handle = await ctx.agents.create({ sessionId: SessionId('s1'), meta: { cwd: historicalDir }, agentOptions: { provider: 'mock', model: 'mock' } })
-      ctx.sessionCwd.registerResolver(() => currentDir)
-      handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+      await ctx.workingDirectory.set(handle.agent, currentDir)
       await waitForIdle(ctx, handle.agent)
 
       expect(existsSync(marker)).toBe(true)
@@ -745,9 +743,12 @@ export function defineCoverageCases(group: CoverageGroup): void {
       hooks(serverDir, { PreToolUse: [{ hooks: [{ type: 'command', command: `touch "${marker}"` }] }] })
       const ctx = await harness(serverDir, new MockAdapter([toolCallResponse('c1', 'echo', {}), textResponse('done')]))
       const handle = await ctx.agents.create({ sessionId: SessionId('missing-root'), meta: { cwd: historicalDir }, agentOptions: { provider: 'mock', model: 'mock' } })
-      const unbind = ctx.sessionCwd.registerResolver(() => state === 'missing' ? undefined : '/current')
-      if (state === 'disposed') unbind()
-      ctx.tools.register(defineContentToolFixture({ name: 'echo', description: 'e', parameters: {}, async execute() { return [{ type: 'text', text: 'ok' }] } }))
+      if (state === 'missing') {
+        vi.spyOn(ctx.workingDirectory, 'get').mockImplementation(() => undefined as never)
+      } else {
+        const spy = vi.spyOn(ctx.workingDirectory, 'get').mockImplementation(() => '/current')
+        spy.mockRestore()
+      }
       handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
       await waitForIdle(ctx, handle.agent)
       expect(existsSync(marker)).toBe(false)

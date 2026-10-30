@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { AutomationRun, AutomationRunId, AutomationTask, AutomationAccountIdentity } from './types.ts'
 import type { AutomationRuntimeHost } from './runtime-contract.ts'
 import { executeRun, recoverRun, isTerminalState } from './execution.ts'

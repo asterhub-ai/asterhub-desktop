@@ -11,6 +11,7 @@ import z from '@deepseek-ai/schemastery'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import * as workspaceDependencies from '../src/index.ts'
 import { installPrimaryRuntime, parsePrimaryRuntime, readPrimaryRuntime, resolvePrimaryRuntime, workspaceDependencyPaths, type PrimaryRuntimeManifest } from '../src/index.ts'
@@ -206,7 +207,7 @@ it('loads the real tool through Cordis, exposes payload paths in place, and unre
     for (const entry of ctx.loader.entries()) await entry.fiber?.await()
     const environment = { ...process.env }
     const request = { signal: new AbortController().signal, name: 'load_workspace_dependencies', arguments: {} }
-    const results = await Promise.all(['first', 'second'].map(id => ctx.tools.execute({ ...request, callId: ToolCallId(id) })))
+    const results = await Promise.all(['first', 'second'].map(id => executeToolFixture(ctx, { ...request, callId: ToolCallId(id) })))
     for (const result of results) {
       expect(result.isError).toBe(false)
       expect(result.content).toEqual([{ type: 'text', text: JSON.stringify(workspaceDependencyPaths(source, manifest), undefined, 2) }])
@@ -255,7 +256,7 @@ async function tool(config: workspaceDependencies.Config) {
     await ctx.plugin(ToolRuntime)
     const fiber = ctx.plugin(workspaceDependencies, config)
     await fiber
-    const execute = () => ctx.tools.execute({
+    const execute = () => executeToolFixture(ctx, {
       signal: new AbortController().signal, name: 'load_workspace_dependencies',
       arguments: {}, callId: ToolCallId('dependencies'),
     })

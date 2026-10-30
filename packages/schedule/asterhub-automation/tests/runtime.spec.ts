@@ -2,6 +2,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import { brandString } from '@deepseek-ai/dsh-brand'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AutomationRuntime, reserveAutomationRun, recoverRun } from '../src/runtime.ts'
@@ -80,6 +81,7 @@ describe('Host backlog admission', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now + 5.5 * 3600_000)
     const ctx = new Context()
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(AgentRegistry)
     ctx.provide('accountSub2api', {
       assertAutomationIdentity(identity: { accountId: string; epoch: number }) {
@@ -112,6 +114,7 @@ describe('Host backlog admission', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now + 7200_000)
     const ctx = new Context()
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(AgentRegistry)
     let identities = 0
     const host: AutomationRuntimeHost = {

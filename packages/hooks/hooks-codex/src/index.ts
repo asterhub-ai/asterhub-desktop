@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
-import type {} from '@deepseek-ai/dsh-session-projection'
+import type {} from '@deepseek-ai/dsh-working-directory'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 declare module '@deepseek-ai/dsh-llm' {
@@ -44,7 +44,7 @@ import { parseCodexConfig, type CodexHookConfig } from './config.ts'
 /* jscpd:ignore-end */
 
 export const name = 'hooks-codex'
-export const inject = ['shell', 'sessionProjections', 'sessionCwd']
+export const inject = ['shell', 'agents', 'workingDirectory']
 
 /** Plugin config: where the Codex hooks.json lives + the model name for payloads. */
 export interface Config {
@@ -284,8 +284,7 @@ export function apply(ctx: Context, config: Config): void {
 /* jscpd:ignore-start */
 function lastTurn(ctx: Context, agent: Agent | undefined): number {
   if (!agent) return 0
-  /* v8 ignore next -- agent-present hook points run inside AgentLoop, which owns this projection. */
-  return ctx.sessionProjections.stateOf(agent.session, 'turnBoundary')?.lastTurn ?? 0
+  return ctx.agents.turnBoundaryOf(agent.session).lastTurn
 }
 
 function blocksToText(content: ContentBlock[]): string {
@@ -294,12 +293,7 @@ function blocksToText(content: ContentBlock[]): string {
 /* jscpd:ignore-end */
 
 function requireExecutionCwd(agent: Agent): string {
-  const service = agent.ctx.get('sessionCwd', false)
-  const cwd = service !== undefined
-    ? service.resolve(agent.session.header)
-    : (agent.options.cwd ?? agent.session.header.cwd)
-  if (cwd === undefined) throw new Error(`Session ${agent.session.header.id} has no current execution directory`)
-  return cwd
+  return agent.ctx.workingDirectory.get(agent.session)
 }
 
 /** Base fields on every Codex payload (no turn_id). */

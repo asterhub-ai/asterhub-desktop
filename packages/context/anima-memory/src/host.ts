@@ -8,10 +8,13 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
+import type {} from '@deepseek-ai/dsh-tool-executor-ptc/types'
+import type {} from '@deepseek-ai/dsh-working-directory'
 import { CaptureCore, Neo4jStore, projectIdentity, uuidV5FromParts, type AppendResult, type CaptureSession } from '@deepseek-ai/anima-capture'
 import {
   MemoryCore, Neo4jMemoryStore, Neo4jPersonalityStore, registerProjectOwnership,
   listProjectOwnership, buildManualReflectionSystemPrompt, type ProjectMemorySearchResult, type ProjectOwnershipScope,
+  type ExecutionReviewModelAdapter, type ReflectionModelAdapter,
 } from '@deepseek-ai/anima-memory'
 import { bootstrapNeo4jInstance } from '@deepseek-ai/anima-memory/bootstrap'
 import { EXECUTION_REVIEW_SYSTEM_PROMPT, REVIEW_MANUAL_PROMPT_CONTRACT } from '@deepseek-ai/anima-memory/openai-review-adapter'
@@ -21,7 +24,7 @@ import {
 import { type Config, policyOf, type Policy } from './config.ts'
 import { createCaptureFacts, mapSessionEvents } from './session-capture.ts'
 import { invokeModel, modelRoute, type ModelOperation } from './extraction.ts'
-import type { TurnState } from './projection.ts'
+import { type TurnState, turnStateOf } from './projection.ts'
 import { ensureNeo4j } from './neo4j-runtime.ts'
 
 /** One Session's canonical capture identities and sequential import cursor. */
@@ -82,7 +85,7 @@ export class AnimaHost {
   }
 
   /** Execute one upstream review input through the exact admitted model route. */
-  private review(input: Parameters<import('@deepseek-ai/anima-memory').ExecutionReviewModelAdapter['review']>[0]): Promise<unknown> {
+  private review(input: Parameters<ExecutionReviewModelAdapter['review']>[0]): Promise<unknown> {
     return invokeModel(this.ctx, this.currentOperation(), 'review', EXECUTION_REVIEW_SYSTEM_PROMPT, input)
   }
 
@@ -112,7 +115,7 @@ export class AnimaHost {
       }
       const reflection = {
         get model_ref() { return modelIdentity() },
-        reflect: async (input: Parameters<import('@deepseek-ai/anima-memory').ReflectionModelAdapter['reflect']>[0]) => {
+        reflect: async (input: Parameters<ReflectionModelAdapter['reflect']>[0]) => {
           const operation = this.currentOperation()
           if (input.reflection_kind === 'manual') return invokeModel(this.ctx, operation, 'reflection', buildManualReflectionSystemPrompt(), input)
           const encoded = encodeAutomaticReflectionModelInput(input)
@@ -154,14 +157,15 @@ export class AnimaHost {
   }
 
   /**
-   * Resolve the capture working directory through the Session cwd service so continued
-   * imported sessions capture into their adopted project. Unowned Sessions retain their
-   * historical cwd; resolver failures remain visible to the capture caller.
+   * Resolve the capture working directory through the required Session workingDirectory service
+   * so continued imported sessions capture into their adopted project. Unowned Sessions
+   * without a directory retain their personal project classification.
    * @param session - Session being bound for capture.
-   * @returns The effective execution directory, or the header cwd when no project owns it.
+   * @returns The effective execution directory, or undefined for personal sessions.
    */
   private resolveCaptureCwd(session: Session): string | undefined {
-    return this.ctx.sessionCwd.resolve(session.header) ?? session.header.cwd
+    if (session.header.cwd === undefined) return undefined
+    return this.ctx.workingDirectory.get(session)
   }
 
   private async binding(session: Session): Promise<Binding> {
@@ -310,7 +314,7 @@ export class AnimaHost {
     if (!policy.enabled) return Promise.reject(new Error('Anima is disabled in Settings'))
     const operation: ModelOperation = { agent, policy,
       signal: AbortSignal.any([signal, this.abort.signal, this.sessionSignal(agent.session)]),
-      route: this.ctx.sessionProjections.stateOf(agent.session, 'animaTurn')?.route ?? null }
+      route: turnStateOf(this.ctx, agent.session).route ?? null }
     const pending = this.operation.run(operation, async () => {
       operation.signal.throwIfAborted()
       const cores = await awaitWithSignal(this.cores(), operation.signal)

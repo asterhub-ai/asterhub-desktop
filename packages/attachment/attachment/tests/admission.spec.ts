@@ -22,14 +22,15 @@ const SCOPE = { sessionId: 'session-1' as AttachmentScope['sessionId'] }
 /** Delegation double: records the exact saveImages batch and answers ordered refs. */
 function storeOf() {
   const mocks = {
-    saveImages: vi.fn((inputs: readonly SaveImageAttachment[]) => Promise.resolve(inputs.map((input, index): ImageAttachmentRef => ({
-      attachmentId: `att-${index + 1}` as ImageAttachmentRef['attachmentId'],
-      mediaType: input.mediaType,
-      bytes: input.data.byteLength,
-      width: 1,
-      height: 1,
-      ...input.name === undefined ? {} : { name: input.name },
-    })))),
+    saveImages: vi.fn((inputs: readonly SaveImageAttachment[], _scope?: AttachmentScope) =>
+      Promise.resolve(inputs.map((input, index): ImageAttachmentRef => ({
+        attachmentId: `att-${index + 1}` as ImageAttachmentRef['attachmentId'],
+        mediaType: input.mediaType,
+        bytes: input.data.byteLength,
+        width: 1,
+        height: 1,
+        ...input.name === undefined ? {} : { name: input.name },
+      })))),
   }
   const store = Object.setPrototypeOf(mocks, AttachmentStore.prototype) as AttachmentStore
   return { store, mocks }
@@ -90,7 +91,7 @@ describe('admitEncodedFile', () => {
   /** Delegation double: records the exact saveFile input and answers a fixed ref. */
   function fileStoreOf() {
     const store = {
-      saveFile: vi.fn((input: { data: Uint8Array; name?: string }) => Promise.resolve({
+      saveFile: vi.fn((input: { data: Uint8Array; name?: string }, _scope?: AttachmentScope) => Promise.resolve({
         attachmentId: 'file-1' as never,
         name: input.name ?? 'file',
         bytes: input.data.byteLength,

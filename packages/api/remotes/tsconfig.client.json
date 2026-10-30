@@ -24,6 +24,9 @@
       "path": "../../client/file-upload/tsconfig.client.json"
     },
     {
+      "path": "../../client/product-analytics/tsconfig.client.json"
+    },
+    {
       "path": "../../credentials/credentials"
     },
     {
@@ -100,6 +103,15 @@
     },
     {
       "path": "../../document/office-to-pdf"
+    },
+    {
+      "path": "../../boot/plugin-market"
+    },
+    {
+      "path": "../account-controller"
+    },
+    {
+      "path": "../../credentials/deepseek-account"
     },
     {
       "path": "../../account/account-sub2api"

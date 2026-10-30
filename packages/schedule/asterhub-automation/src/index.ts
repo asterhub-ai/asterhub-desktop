@@ -39,7 +39,6 @@ import type {
 } from './types.ts'
 import type { AutomationRuntimeHost } from './runtime-contract.ts'
 
-import { WorkspaceActiveSessionError } from '@deepseek-ai/dsh-workspace'
 export type * from './types.ts'
 export { automationDomain } from './schema.ts'
 export { AutomationOperations, AutomationOperationError } from './operations.ts'
@@ -269,25 +268,13 @@ export class AutomationService extends TypertRemoteService implements Automation
       }, ...activities]
     })
 
-    // Admit waterfall: when stopActivity is true, stop and await every
-    // automation run on this session before the archive write proceeds.
-    // When false, refuse if any run is still active (defense in depth — the
-    // activity waterfall already checked, but a run may have started since).
-    ctx.on('workspace/session-archive/admit', async (request, next) => {
-      if (request.stopActivity) {
-        const runs = this.runtime?.activeRunsForSession(request.sessionId) ?? []
-        for (const runId of runs) {
-          await this.runtime?.stopRun(runId)
-        }
-      } else {
-        const runs = this.runtime?.activeRunsForSession(request.sessionId) ?? []
-        if (runs.length > 0) {
-          throw new WorkspaceActiveSessionError(request.sessionId, [{ kind: 'automation-run', items: runs.map(id => ({ id, label: 'Scheduled task run' })) }])
-        }
+    // Stop running automation runs when the workspace archives the session with stopActivity.
+    ctx.on('workspace/session-stop', async ({ sessionId }) => {
+      const runs = this.runtime?.activeRunsForSession(sessionId) ?? []
+      for (const runId of runs) {
+        await this.runtime?.stopRun(runId)
       }
-      await next()
     })
-
     // Register cleanup: stop runtime, drain FIFO, close store.
     ctx.effect(() => async () => {
       this.stopping = true

@@ -7,12 +7,13 @@ import type {} from '@deepseek-ai/dsh-permission-presets'
 import type {} from '@deepseek-ai/dsh-session-title'
 import type {} from '@deepseek-ai/dsh-user-questions'
 import type {} from '@deepseek-ai/dsh-session-projection'
+import type {} from '@deepseek-ai/dsh-session-persistence'
 import type {} from '@deepseek-ai/dsh-jobs'
 import type {} from '@deepseek-ai/dsh-workspace'
+import type {} from '@deepseek-ai/dsh-working-directory'
 import { createUserMessage, boundContextSummary, type ContextFormed, type UserMessage } from '@deepseek-ai/dsh-llm'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm/brand'
 import type { TurnEndReason } from '@deepseek-ai/dsh-session'
-import type { SessionExecutionInputOwner } from '@deepseek-ai/dsh-api-session-controller'
 import { stat } from 'node:fs/promises'
 import type { AutomationRun, AutomationRunId, AutomationRunState, AutomationTask, AutomationAccountIdentity } from './types.ts'
 import type { AutomationRuntimeHost } from './runtime-contract.ts'
@@ -30,6 +31,42 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     /** Inherited execution marker; scheduler mutation tools cannot act from this world. */
     asterhubAutomationRun: { readonly runId: AutomationRunId; readonly taskId: string; readonly accountId: string }
+  }
+}
+
+/** Handle that serializes admission checks and safely blocks or releases completion. */
+interface ExecutionAdmissionLock {
+  closeIf(check: () => boolean): Promise<boolean>
+  release(): void
+}
+
+function createExecutionAdmissionLock(ready: Promise<void>): ExecutionAdmissionLock {
+  let isClosed = false
+  let isReleased = false
+  let isReady = false
+  let chain: Promise<void> = Promise.resolve()
+  const readyGate = Promise.withResolvers<void>()
+  void ready.then(() => { isReady = true; readyGate.resolve() }, () => { isReady = true; readyGate.resolve() })
+
+  return {
+    async closeIf(check: () => boolean): Promise<boolean> {
+      if (isReleased) return false
+      const step = chain.then(() => {
+        if (isClosed || isReleased) return false
+        const passed = check()
+        if (!passed) return false
+        isClosed = true
+        return true
+      })
+      chain = step.then(() => undefined, () => undefined)
+      return step
+    },
+    release(): void {
+      if (isReleased) return
+      isReleased = true
+      isClosed = true
+      if (!isReady) { isReady = true; readyGate.resolve() }
+    },
   }
 }
 
@@ -121,7 +158,7 @@ export async function executeRun(host: AutomationRuntimeHost,
   const bound = task.originSessionId !== undefined
   let run = initial
   let handle: AgentHandle | undefined
-  let inputOwner: SessionExecutionInputOwner | undefined
+  let inputOwner: ExecutionAdmissionLock | undefined
   const publicationReady = Promise.withResolvers<void>()
   const family = new Set<Agent>()
   const interactions = new Set<string>()
@@ -159,14 +196,14 @@ export async function executeRun(host: AutomationRuntimeHost,
   const checkEnding = (): void => {
     const agent = handle?.agent
     if (closed || completed || finishing || agent === undefined || !observation.admitted || observation.ending === null) return
-    const questions = ctx.sessionProjections.stateOf(agent.session, 'userQuestions')?.questions.active ?? []
+    const questions = ctx.userQuestions.questionsOf(agent.session).active
     if (approvals.size > 0 || questions.length > 0) { publishState('waiting-approval'); return }
     finishing = true
     void Promise.resolve().then(async () => {
       await agent.whenIdle()
       if (closed || completed || inputOwner === undefined) return
       const didClose = await inputOwner.closeIf(() => {
-        const pending = ctx.sessionProjections.stateOf(agent.session, 'userQuestions')?.questions.active ?? []
+        const pending = ctx.userQuestions.questionsOf(agent.session).active
         if (hasOwnedWork() || approvals.size > 0 || pending.length > 0 || observation.ending === null) return false
         closed = true
         return true
@@ -234,8 +271,12 @@ export async function executeRun(host: AutomationRuntimeHost,
     const setup = async (agentCtx: Context, agent: Agent): Promise<void> => {
       installGuards(agentCtx, agent)
       await ctx.agentPresets.mount(agentCtx, preset.id)
+      const workingDirectory = ctx.get('workingDirectory')
+      if (workingDirectory !== undefined) {
+        await workingDirectory.set(agent, path, signal)
+      }
     }
-    inputOwner = ctx.sessionController.registerExecutionInputOwner(initial.sessionId, publicationReady.promise)
+    inputOwner = createExecutionAdmissionLock(publicationReady.promise)
     handle = await (bound
       ? ctx.agents.resume({
         resumeSessionId: initial.sessionId, signal, agentOptions, setup,
@@ -286,8 +327,7 @@ export async function executeRun(host: AutomationRuntimeHost,
         observation.ending = event.data.reason; observation.terminalTurn = event.data.turn
         if (!observation.admitted) result.reject(new Error('automation: initial input was not admitted'))
       }
-      for (const question of ctx.sessionProjections.stateOf(agent.session,
-        'userQuestions')?.questions.active ?? []) interactions.add(question.callId)
+      for (const question of ctx.userQuestions.questionsOf(agent.session).active) interactions.add(question.callId)
       checkEnding()
     }))
     disposers.push(agent.ctx.on('agent/status', () => { checkEnding() }))
@@ -324,7 +364,6 @@ export async function executeRun(host: AutomationRuntimeHost,
     handle?.agent.cancel({ kind: 'hook', reason: 'scheduled execution stopped' })
     if (inputOwner !== undefined) await inputOwner.closeIf(() => true)
     if (handle !== undefined) {
-      ctx.userQuestions.cancelPending(handle.agent)
       await handle.agent.whenIdle()
       try {
         const flushed = await ctx.sessions.flush(handle.agent.session)

@@ -224,7 +224,7 @@ describe('Session file uploads', () => {
     expect(saveFileStream).toHaveBeenCalledWith(expect.objectContaining({
       signal: abort.signal,
       name: 'huge.bin',
-    }), { sessionId: SESSION })
+    }))
     expect(receipt.file).toMatchObject({ name: 'huge.bin', bytes: 5 })
     await controller.prompt(promptRequest([{ type: 'file', receiptId: receipt.receiptId }]), USER_SOURCE)
     expect((followup.mock.calls[0]?.[0] as UserMessage).content).toEqual([
@@ -238,7 +238,7 @@ describe('Session file uploads', () => {
     const receipt = await uploads.uploadImageStream({
       sessionId: SESSION, data: chunks([1, 2], [3, 4]), mediaType: 'image/png', name: 'shot.png',
     })
-    expect(saveImages).toHaveBeenCalledWith([{ data: Uint8Array.of(1, 2, 3, 4), mediaType: 'image/png', name: 'shot.png' }], { sessionId: SESSION })
+    expect(saveImages).toHaveBeenCalledWith([{ data: Uint8Array.of(1, 2, 3, 4), mediaType: 'image/png', name: 'shot.png' }])
     expect(receipt.image).toEqual(STAGED_IMAGE)
     expect(uploads.resolve(agent, receipt.receiptId)).toEqual({ type: 'image', attachment: STAGED_IMAGE, encodedBytes: 4 })
     const commandHandler = vi.fn((_invocation: unknown) => ({ kind: 'success' as const }))
@@ -347,7 +347,7 @@ describe('Session file uploads', () => {
     const stream = (async function* (): AsyncIterable<Uint8Array> {})()
     await expect(uploads.uploadStream({ sessionId: SESSION, data: stream }))
       .resolves.toMatchObject({ file: { name: 'file', bytes: 0 } })
-    expect(saveFileStream).toHaveBeenLastCalledWith({ data: stream }, { sessionId: SESSION })
+    expect(saveFileStream).toHaveBeenLastCalledWith({ data: stream })
     saveFileStream.mockRejectedValueOnce('disk offline')
     await expect(uploads.uploadStream({
       sessionId: SESSION,

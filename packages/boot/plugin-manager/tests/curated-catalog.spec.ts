@@ -1,5 +1,6 @@
 import { generateKeyPairSync, sign } from 'node:crypto'
 import { expect, it } from 'vitest'
+import type { BundleInfo } from '../src/types.ts'
 import { isExactCuratedInstallation, resolveCuratedInstallRequest, verifyCuratedCatalogEnvelope } from '../src/index.ts'
 
 const catalogUrl = 'https://asterhub.xapi.fans/api/v1/catalog.json'
@@ -101,8 +102,8 @@ it('requires a matching root importer resolution and integrity for curated insta
     importers: { '.': { dependencies: { [entry.package]: { specifier: entry.artifactUrl, version: '1.2.3(peer@4.0.0)' } } } },
     packages: { [`${entry.package}@${entry.artifactUrl}(peer@4.0.0)`]: { resolution: { integrity: entry.integrity, tarball: entry.artifactUrl } } },
   }
-  const exactBundle = [{
-    name: entry.package, version: entry.version, enabled: true, installed: true, optional: false, removable: true, rows: [], overrides: [],
+  const exactBundle: BundleInfo[] = [{
+    name: entry.package, version: entry.version, enabled: true, installed: true, optional: false, removable: true, official: true, availability: 'installation', updatable: false, rows: [], overrides: [],
   }]
   expect(isExactCuratedInstallation(entry, exactBundle, lockfile)).toBe(true)
   expect(isExactCuratedInstallation(entry, [{ ...exactBundle[0]!, version: '1.2.2' }], lockfile)).toBe(false)
@@ -140,8 +141,8 @@ it('requires the direct importer and tarball resolution to match a curated artif
     version: '1.2.3', artifactUrl: 'https://asterhub.xapi.fans/releases/office-tools-1.2.3.tgz',
     integrity: 'sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
   }
-  const bundle = [{
-    name: entry.package, version: entry.version, enabled: true, installed: true, optional: false, removable: true, rows: [], overrides: [],
+  const bundle: BundleInfo[] = [{
+    name: entry.package, version: entry.version, enabled: true, installed: true, optional: false, removable: true, official: true, availability: 'installation', updatable: false, rows: [], overrides: [],
   }]
   const lockfile = {
     importers: { '.': { dependencies: { [entry.package]: { specifier: entry.artifactUrl, version: entry.version } } } },
@@ -169,8 +170,8 @@ it('matches real pnpm tarball URL resolutions with and without peer dependencies
     artifactUrl: 'https://asterhub.xapi.fans/releases/asterhub-genoffice-cli-0.11.0-asterhub.1.tgz',
     integrity: 'sha512-DOz1DcrljF09y98G/7RaOzhQpWAhnjXJLXJUE67FhMv2+uP50LPGv7FyXUv9XScJ0r8yx/3qtmIT1bBRM27gEQ==',
   }
-  const bundle = [{
-    name: entry.package, version: entry.version, enabled: true, installed: true, optional: false, removable: true, rows: [], overrides: [],
+  const bundle: BundleInfo[] = [{
+    name: entry.package, version: entry.version, enabled: true, installed: true, optional: false, removable: true, official: true, availability: 'installation', updatable: false, rows: [], overrides: [],
   }]
   // Real pnpm lockfile when tarball is installed with hoisted peer dependencies:
   // direct.version is the artifactUrl followed by peer dependencies, while packages key is the bare artifact URL.
@@ -244,9 +245,9 @@ it('matches real pnpm tarball URL resolutions with and without peer dependencies
     artifactUrl: 'https://asterhub.xapi.fans/releases/future-plugin-1.0.0-beta.1.tgz',
     integrity: 'sha512-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=',
   }
-  const futureBundle = [{
+  const futureBundle: BundleInfo[] = [{
     name: futureEntry.package, version: futureEntry.version, enabled: true, installed: true,
-    optional: false, removable: true, rows: [], overrides: [],
+    optional: false, removable: true, official: true, availability: 'installation', updatable: false, rows: [], overrides: [],
   }]
   const futureLock = {
     importers: {

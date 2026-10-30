@@ -9,10 +9,9 @@ import Include from '@deepseek-ai/cordis-plugin-include'
 import { agentEvents, type Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
-import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
+import { mountAgentLoopTestDependencies, createInboxStub, unsupportedModel, provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 import * as animaPlugin from '../src/index.ts'
 import * as persistencePlugin from '@deepseek-ai/dsh-session-persistence-jsonl'
-import { createInboxStub } from '@deepseek-ai/dsh-agent-loop-testkit'
 
 let context: Context | undefined
 let root: string | undefined
@@ -26,7 +25,7 @@ afterEach(async () => {
 
 function testAgent(ctx: Context, session: Session): Agent {
   return {
-    id: session.id, options: {}, session, inbox: createInboxStub(), status: 'running', ctx,
+    id: session.id, options: {}, session, inbox: createInboxStub(), status: 'running', ctx, model: unsupportedModel(),
     send: () => {}, followup: () => {}, steer: () => {}, inject: () => { throw new Error('unexpected injection') },
     cancel() {}, runMaintenance: task => task(new AbortController().signal), whenIdle: () => Promise.resolve(),
   }
@@ -35,6 +34,7 @@ function testAgent(ctx: Context, session: Session): Agent {
 async function loadAnima(config: Record<string, unknown>): Promise<Context> {
   root = await mkdtemp(join(tmpdir(), 'anima-personality-'))
   const ctx = context = new Context()
+  provideWorkingDirectoryFixture(ctx)
   await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(persistencePlugin, { root: join(root, 'sessions') })
   await ctx.plugin(Loader)
@@ -71,9 +71,11 @@ describe('Anima personality Loader composition', () => {
     })
     const session = ctx.sessions.create(SessionId('personality-loader'))
     const agent = testAgent(ctx, session)
+    await ctx.agents.register(agent)
 
     async function prepare(turn: number, step: number, base: { kind: 'enter' | 'reject'; messages: ReturnType<typeof createUserMessage>[] }) {
       const decision = await agentEvents(ctx, agent).waterfall('agent/pre-step', {
+        modelSelection: { provider: 'mock', model: 'mock' },
         messages: base.messages, turn, step, signal: new AbortController().signal,
       }, () => Promise.resolve(base))
       if (decision.kind === 'enter') {

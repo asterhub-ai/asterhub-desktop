@@ -3,7 +3,7 @@ import {
   ScheduleId, ScheduleInputError, parseAtInput, parseDailyInput, parseWeeklyInput, parseCronInput,
   createDailyScheduleRecord, createWeeklyScheduleRecord, createCronScheduleRecord,
   resolveEveryOccurrence, resolveDailyOccurrence, resolveWeeklyOccurrence, resolveCronOccurrence,
-} from '@deepseek-ai/dsh-schedule/timing'
+} from '@deepseek-ai/dsh-schedule'
 import type { AutomationTiming, AutomationTimingInput } from './types.ts'
 
 /** Protocol minimum for interval scheduling. */
@@ -51,7 +51,7 @@ export function normalizeTiming(input: AutomationTimingInput, now: number): Auto
       case 'weekly': return { kind: 'weekly', ...parseWeeklyInput({ time: input.time, time_zone: input.timeZone, weekdays: [...input.weekdays] }) }
       case 'cron': return { kind: 'cron', ...parseCronInput({ expression: input.expression, time_zone: input.timeZone }) }
     }
-  } catch (error) {
+  } catch (error: unknown) {
     if (error instanceof ScheduleInputError) throw new TimingInputError(error.code, error.message)
     throw error
   }
@@ -102,7 +102,7 @@ export function nextOccurrence(timing: AutomationTiming, now: number): string | 
       case 'weekly': return createWeeklyScheduleRecord(id, label, { time: timing.time, time_zone: timing.timeZone, weekdays: [...timing.weekdays] }, now, label).scheduledAt
       case 'cron': return createCronScheduleRecord(id, label, { expression: timing.expression, time_zone: timing.timeZone }, now, label).scheduledAt
     }
-  } catch (error) {
+  } catch (error: unknown) {
     if (error instanceof ScheduleInputError && error.code === 'time_out_of_range') return null
     throw error
   }

@@ -1,5 +1,7 @@
 /** Provider-specific JSON and contribution types for DeepSeek request extensions. */
 
+import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
+
 /** Lossless JSON value accepted by the DeepSeek request body. */
 export type DeepSeekLlmApiJson =
   | null
@@ -22,7 +24,7 @@ export interface DeepSeekLlmApiExtensionRequest {
   /** Session identity carried by the model request, when present. */
   readonly sessionId?: string
   /** Auxiliary request classification, when present. */
-  readonly purpose?: 'compaction' | 'session-title'
+  readonly purpose?: NonNullable<GenerateOptions['purpose']>
   /** Cancellation for request preparation; providers must stop promptly after abort. */
   readonly signal: AbortSignal
 }

@@ -9,7 +9,7 @@ import AgentRegistry, { agentEvents, type Agent } from '@deepseek-ai/dsh-agent'
 import { defineContentToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
-import { unsupportedInbox, mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
+import { unsupportedInbox, unsupportedModel, mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import * as timeContext from '@deepseek-ai/dsh-time-context'
 import type { Config } from '@deepseek-ai/dsh-time-context'
 
@@ -50,6 +50,7 @@ function sessionAgent(session: Session, id = 'agent'): Agent {
     id: SessionId(id),
     options: {},
     session,
+    model: unsupportedModel(),
     inbox: unsupportedInbox(),
     status: 'running',
     ctx: new Context(),
@@ -98,7 +99,7 @@ async function fire(
   })
   const decision = await agentEvents(ctx, agent).waterfall(
     'agent/pre-step',
-    { messages: [proposed], turn, step, signal },
+    { modelSelection: { provider: 'mock', model: 'mock' }, messages: [proposed], turn, step, signal },
     () => Promise.resolve({ kind: 'enter' as const, messages: [proposed] }),
   )
   if (decision.kind === 'enter') {
@@ -146,7 +147,7 @@ class ScriptedAdapter extends LlmAdapter {
 
 async function loopHarness(adapter: ScriptedAdapter, config: Config = {}): Promise<Context> {
   const ctx = new Context()
-  await mountAgentLoopTestDependencies(ctx, { systemPrompt: { harnessIdentity: 'Time-context fixture identity.' } })
+  await mountAgentLoopTestDependencies(ctx, { systemPrompt: { personaPrefix: 'Time-context fixture identity.' } })
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(timeContext, config)
   ctx.llm.registerAdapter(['mock'], adapter)
@@ -429,7 +430,9 @@ describe('time-context projection fold edges', () => {
       content: [{ type: 'text', text: 'reading' }],
       source: { kind: 'time-context' },
     }), { surfaceOp: 'append' })
-    expect(typeof ctx.sessionProjections.stateOf(session, 'timeContext')?.lastTurnInjectionTime).toBe('number')
+    expect(ctx.sessionProjections.stateOf(session, 'timeContext')).toMatchObject({
+      lastTurnInjectionTime: expect.any(Number),
+    })
     session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
     session.append('turn/start', { turn: 2 })
     expect(ctx.sessionProjections.stateOf(session, 'timeContext')).toMatchObject({

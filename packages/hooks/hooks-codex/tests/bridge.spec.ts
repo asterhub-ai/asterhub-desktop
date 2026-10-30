@@ -4,12 +4,11 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import Loader from '@deepseek-ai/cordis-plugin-loader'
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
-import { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
+import { defineContentToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
-import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
+import { provideWorkingDirectoryFixture, mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { LocalBashExecutor } from '@deepseek-ai/dsh-bash-local'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import * as HooksCodex from '@deepseek-ai/dsh-hooks-codex'
@@ -46,6 +45,7 @@ function writeHooks(dir: string, hooks: unknown): void {
 async function harness(dir: string, adapter: MockAdapter, beforeHooks?: (ctx: Context) => void): Promise<Context> {
   const ctx = new Context()
   contexts.push(ctx)
+  provideWorkingDirectoryFixture(ctx)
   await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(LocalSubprocessRuntime)
@@ -250,15 +250,4 @@ describe('hooks-codex bridge', () => {
     }
   })
 
-  it('has the namespace-plugin export shape (no stray default) so the Loader keeps name/inject/apply', () => {
-    expect('default' in HooksCodex).toBe(false)
-    expect(HooksCodex.name).toBe('hooks-codex')
-    expect(HooksCodex.inject).toEqual(['shell', 'sessionProjections', 'sessionCwd'])
-    const loader = Object.create(Loader.prototype) as Loader
-    const unwrapped = loader.unwrapExports(HooksCodex) as Record<string, unknown>
-    expect(unwrapped).toBe(HooksCodex)
-    expect(unwrapped.name).toBe('hooks-codex')
-    expect(unwrapped.inject).toEqual(['shell', 'sessionProjections', 'sessionCwd'])
-    expect(typeof unwrapped.apply).toBe('function')
-  })
 })

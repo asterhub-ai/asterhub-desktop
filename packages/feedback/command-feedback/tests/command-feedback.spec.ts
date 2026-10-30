@@ -5,10 +5,11 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentStatus } from '@deepseek-ai/dsh-agent'
 import CommandRuntime from '@deepseek-ai/dsh-commands'
 import SessionStore, { foldSurface, Session, SessionId } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import * as commandFeedback from '@deepseek-ai/dsh-command-feedback'
 import type { FeedbackRecord } from '@deepseek-ai/dsh-command-feedback/types'
 import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
-import { unsupportedInbox } from '@deepseek-ai/dsh-agent-loop-testkit'
+import { unsupportedInbox, unsupportedModel } from '@deepseek-ai/dsh-agent-loop-testkit'
 
 const { USER_ID, getOrCreateAnonymousUserId } = vi.hoisted(() => {
   const USER_ID = '01234567-89ab-4cde-8f01-23456789abcd'
@@ -36,6 +37,7 @@ function stubAgent(ctx: Context, id: string): { agent: Agent; session: Session }
     id: session.id,
     options: {},
     session,
+    model: unsupportedModel(),
     inbox: unsupportedInbox(),
     ctx: new Context(),
     get status() { return status },
@@ -52,6 +54,7 @@ function stubAgent(ctx: Context, id: string): { agent: Agent; session: Session }
 
 async function harness(): Promise<Harness> {
   const ctx = new Context()
+  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(CommandRuntime)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(SessionStore)

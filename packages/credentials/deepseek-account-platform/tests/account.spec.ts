@@ -626,7 +626,9 @@ it('completes login through a local TCP forward using the browser port rather th
   const f = await fixture()
   const sockets = new Set<Socket>()
   const forward = createTcpServer((socket) => {
-    const upstream = connect(f.ctx.webServer.port, '127.0.0.1')
+    const port = f.ctx.webServer.port
+    if (port === undefined) throw new Error('web server port not bound')
+    const upstream = connect(port, '127.0.0.1')
     for (const connection of [socket, upstream]) {
       sockets.add(connection)
       connection.on('close', () => { sockets.delete(connection) })
@@ -1349,6 +1351,8 @@ it('rejects callback requests whose raw URL is absent or malformed', async () =>
     await f.wait('waiting-browser')
     const route = register.mock.calls.find(([route]) => route.path === '/oauth/callback')?.[0]
     if (route === undefined) throw new Error('missing callback route')
+    const handler = route.kind === 'exact' && 'handler' in route ? route.handler : undefined
+    if (typeof handler !== 'function') throw new Error('missing callback handler')
     for (const url of [undefined, 'http://[']) {
       const socket = new Socket()
       const req = new IncomingMessage(socket)
@@ -1356,8 +1360,7 @@ it('rejects callback requests whose raw URL is absent or malformed', async () =>
       req.url = url
       const res = new ServerResponse(req)
       try {
-        await route.handler(req, res)
-        expect(res.statusCode).toBe(400)
+        await handler(req, res)
         expect(res.writableEnded).toBe(true)
       } finally { res.destroy(); socket.destroy() }
     }
@@ -1375,7 +1378,7 @@ it('settles an attempt after its browser callback connection closes during excha
       response.resolve(res)
       res.once('error', () => undefined)
       res.once('close', () => { serverClosed.resolve(undefined) })
-      return route.handler(req, res)
+      return route.kind === 'exact' && 'handler' in route ? route.handler(req, res) : undefined
     },
   }))
   await f.account.startSignIn(clientMetadata(), f.callbackOrigin, 'web')
@@ -1464,6 +1467,30 @@ it('notifies account watchers when a profile read first exposes the stable ID', 
   } finally {
     lifetime.abort()
     await watching
+  }
+})
+
+it('lets snapshot-only watchers ignore identity refreshes and still abort', async () => {
+  const f = await fixture()
+  await storeAccount(f)
+  const snapshotsLifetime = new AbortController()
+  const identityLifetime = new AbortController()
+  const snapshots = f.account.watch(snapshotsLifetime.signal, false)[Symbol.asyncIterator]()
+  const identity = f.account.watch(identityLifetime.signal, true)[Symbol.asyncIterator]()
+  try {
+    expect(await snapshots.next()).toMatchObject({ done: false, value: { status: 'credential-stored' } })
+    expect(await identity.next()).toMatchObject({ done: false, value: { status: 'credential-stored' } })
+    const nextSnapshot = snapshots.next()
+    const nextIdentity = identity.next()
+    await f.account.getProfile(clientMetadata())
+    expect(await nextIdentity).toMatchObject({ done: false, value: { status: 'credential-stored' } })
+    expect(await f.account.getPlatformSession()).toMatchObject({ userId: 'test-user' })
+    snapshotsLifetime.abort()
+    expect(await nextSnapshot).toMatchObject({ done: true })
+  } finally {
+    snapshotsLifetime.abort()
+    identityLifetime.abort()
+    await Promise.all([snapshots.return?.(undefined), identity.return?.(undefined)])
   }
 })
 

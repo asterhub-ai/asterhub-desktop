@@ -203,17 +203,48 @@ export class WorkspaceFiles extends TypertRemoteService {
       scope.typert.lookups.register('workspaceFileScope', {
         parameter: 'workspaceFileScope',
         wire: 'workspaceFileScopeId',
+        resource: 'session',
         hostTypeSymbol: '@deepseek-ai/dsh-api-workspace-files#WorkspaceFileScope',
         wireTypeSymbol: '@deepseek-ai/dsh-session/types#SessionId',
         resolve: async (sessionId) => {
-          const live = scope.sessions.get(sessionId)?.header
-          const stored = live === undefined
+          const liveSession = scope.sessions?.get(sessionId)
+          if (liveSession !== undefined) {
+            const workingDir = scope.get('workingDirectory', false)
+            const currentCwd = workingDir ? workingDir.get(liveSession) : liveSession.header.cwd
+            const fallback = scope.get('sandboxPolicy', false)?.workspaceRoot ?? workingDir?.defaultDirectory
+            const workspaceRoot = currentCwd ?? fallback
+            if (workspaceRoot === undefined) throw new Error(`Session ${sessionId} has no current execution directory`)
+            return { sessionId, workspaceRoot }
+          }
+          const sessionQuery = scope.get('sessionQuery', false)
+          if (sessionQuery !== undefined) {
+            try {
+              const observation = await sessionQuery.observeSession(sessionId)
+              try {
+                const projectedCwd = observation.projections?.values['workingDirectory']
+                const currentCwd = (typeof projectedCwd === 'string' && projectedCwd.length > 0 ? projectedCwd : undefined)
+                  ?? observation.header.cwd
+                const workingDir = scope.get('workingDirectory', false)
+                const fallback = scope.get('sandboxPolicy', false)?.workspaceRoot ?? workingDir?.defaultDirectory
+                const workspaceRoot = currentCwd ?? fallback
+                if (workspaceRoot !== undefined) {
+                  return { sessionId, workspaceRoot }
+                }
+              } finally {
+                observation.dispose()
+              }
+            } catch {
+              // Cold session not found in query; fall through
+            }
+          }
+          const stored = scope.get('sessionPersistence', false)
             ? await scope.get('sessionPersistence')?.stat(sessionId)
             : undefined
-          const header = live ?? stored?.header
+          const header = stored?.header
           if (header === undefined) return undefined
-          const sessionCwd = scope.get('sessionCwd', false)
-          const workspaceRoot = sessionCwd ? sessionCwd.resolve(header) : header.cwd
+          const workingDir = scope.get('workingDirectory', false)
+          const fallback = scope.get('sandboxPolicy', false)?.workspaceRoot ?? workingDir?.defaultDirectory
+          const workspaceRoot = header.cwd ?? fallback
           if (workspaceRoot === undefined) throw new Error(`Session ${sessionId} has no current execution directory`)
           return { sessionId, workspaceRoot }
         },

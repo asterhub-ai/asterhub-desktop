@@ -10,7 +10,8 @@
 
 import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { createServer } from 'node:http'
+import { networkInterfaces, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
@@ -24,7 +25,6 @@ import NativeDirectoryPicker from '@deepseek-ai/dsh-host-directory-picker-native
 import {
   createLaunchEnvironmentSnapshot, DSH_LAUNCH_ENVIRONMENT_KEY, type LaunchEnvironmentSnapshot,
 } from '@deepseek-ai/dsh-launch-environment'
-import { probeNonLoopbackIpv4 } from '../../../../scripts/test-non-loopback-address.ts'
 import * as DirectoryPickerAuto from '../src/index.ts'
 
 const renameControl = vi.hoisted(() => ({
@@ -55,6 +55,36 @@ const NATIVE = '@deepseek-ai/dsh-host-directory-picker-native'
 const BROWSE = '@deepseek-ai/dsh-host-directory-picker-browse'
 const NATIVE_SURFACE = '@deepseek-ai/dsh-client-ui-directory-picker-native'
 const BROWSE_SURFACE = '@deepseek-ai/dsh-client-ui-directory-picker-browse'
+
+async function probeBindableAddress(candidates: string[], description: string): Promise<string | undefined> {
+  const refused: string[] = []
+  for (const address of candidates) {
+    const server = createServer()
+    try {
+      const { promise, resolve, reject } = Promise.withResolvers<undefined>()
+      server.once('error', reject)
+      server.listen({ host: address, port: 0 }, resolve)
+      await promise
+    } catch (error) {
+      refused.push(`${address}: ${error instanceof Error ? error.message : String(error)}`)
+      continue
+    }
+    const { promise, resolve } = Promise.withResolvers<undefined>()
+    server.close(() => { resolve() })
+    await promise
+    return address
+  }
+  console.info(`${description} coverage skipped: no bindable ${description} address`)
+  return undefined
+}
+
+async function probeNonLoopbackIpv4(): Promise<string | undefined> {
+  const candidates: string[] = []
+  for (const entry of Object.values(networkInterfaces()).flat()) {
+    if (entry !== undefined && entry.family === 'IPv4' && !entry.internal) candidates.push(entry.address)
+  }
+  return probeBindableAddress(candidates, 'non-loopback IPv4')
+}
 
 /**
  * This machine's first non-internal IPv4 address that really accepts a listen.

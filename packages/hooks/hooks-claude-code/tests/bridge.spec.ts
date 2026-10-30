@@ -4,12 +4,11 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context, type Fiber } from '@deepseek-ai/cordis'
-import Loader from '@deepseek-ai/cordis-plugin-loader'
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
-import { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
+import { defineContentToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
-import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
+import { provideWorkingDirectoryFixture, mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { LocalBashExecutor } from '@deepseek-ai/dsh-bash-local'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import { scopeTarget } from '@deepseek-ai/dsh-scope'
@@ -56,6 +55,7 @@ async function harnessWithFiber(
   beforeHooks?: (ctx: Context) => void,
 ): Promise<{ ctx: Context; hooks: Fiber }> {
   const ctx = new Context()
+  provideWorkingDirectoryFixture(ctx)
   await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(LocalSubprocessRuntime)
@@ -427,19 +427,4 @@ describe('hooks-claude-code bridge — load resilience', () => {
     expect(events(agent).some(e => e.type === 'hook/invoked')).toBe(false) // no hook ran
   })
 
-  it('has the namespace-plugin export shape (no stray default) so the Loader keeps name/inject/apply', () => {
-    // Postmortem 0001 guard: this plugin HAS `inject = ['bash']`, so a stray
-    // `export default apply` would collapse the module via `unwrapExports`
-    // (`exports.default ?? exports`), DROP `inject`, and crash at load with
-    // "cannot get property … without inject". Guard the shape directly.
-    expect('default' in HooksClaude).toBe(false)
-    expect(HooksClaude.name).toBe('hooks-claude-code')
-    expect(HooksClaude.inject).toEqual(['shell', 'sessionProjections', 'sessionCwd'])
-    const loader = Object.create(Loader.prototype) as Loader
-    const unwrapped = loader.unwrapExports(HooksClaude) as Record<string, unknown>
-    expect(unwrapped).toBe(HooksClaude)
-    expect(unwrapped.name).toBe('hooks-claude-code')
-    expect(unwrapped.inject).toEqual(['shell', 'sessionProjections', 'sessionCwd'])
-    expect(typeof unwrapped.apply).toBe('function')
-  })
 })

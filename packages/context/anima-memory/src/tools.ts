@@ -7,6 +7,7 @@ import { memoryOperationConfirmation } from '@deepseek-ai/anima-memory/memory-op
 import { type Config, policyOf } from './config.ts'
 import { AnimaHost, evidenceSpan, operationDecision } from './host.ts'
 import { recallContext } from './recall.ts'
+import { turnStateOf } from './projection.ts'
 
 /**
  * Register project-scoped native Anima tools and their HMR cleanup.
@@ -76,8 +77,7 @@ export function registerTools(ctx: Context, host: AnimaHost, config: Config): vo
       }
       const quote = args.action === 'revise' ? args.statement : memoryOperationConfirmation(args)
       if (quote === undefined || quote.length === 0) throw new Error('Anima operation requires exact human confirmation')
-      const state = ctx.sessionProjections.stateOf(agent.session, 'animaTurn')
-      if (state === undefined) throw new Error('Anima turn evidence is unavailable')
+      const state = turnStateOf(ctx, agent.session)
       return host.run(agent, exec.signal, async ({ memory, installationUid, authorizeToolWrite }) => {
         const binding = await host.sync(agent, agent.session.seq, exec.signal)
         const operationUid = binding.toolEvents.get(exec.callId)
