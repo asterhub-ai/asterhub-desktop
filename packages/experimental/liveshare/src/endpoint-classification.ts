@@ -139,6 +139,8 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'workspaceFiles/readBytes': 'owner-only', // owner Workspace file access
   'workspaceFiles/stat': 'owner-only', // owner Workspace file access
   'pluginManager/cancelInstall': 'owner-only', // owner plugin management
+  'pluginManager/curatedCatalog': 'owner-only', // owner plugin management
+  'pluginManager/installCuratedBundle': 'owner-only', // owner plugin management
   'pluginManager/inspect': 'owner-only', // owner plugin management
   'pluginManager/installBundle': 'owner-only', // owner plugin management
   'pluginManager/listBundles': 'owner-only', // owner plugin management
@@ -236,6 +238,17 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'liveshareShares/testPublish': 'owner-only',
   'liveshareShares/testRelay': 'owner-only',
   'liveshareShares/updatePermissions': 'owner-only',
+  'accountSub2api/getStatus': 'owner-only', // account credentials never cross to a viewer
+  'accountSub2api/authSettings': 'owner-only', // account credentials never cross to a viewer
+  'accountSub2api/sendVerifyCode': 'owner-only', // account credentials never cross to a viewer
+  'accountSub2api/register': 'owner-only', // account credentials never cross to a viewer
+  'accountSub2api/login': 'owner-only', // account credentials never cross to a viewer
+  'accountSub2api/logout': 'owner-only', // account credentials never cross to a viewer
+  'accountSub2api/quota': 'owner-only', // account credentials never cross to a viewer
+  'accountSub2api/usage': 'owner-only', // account credentials never cross to a viewer
+  'accountSub2api/paymentMethods': 'owner-only', // account credentials never cross to a viewer
+  'accountSub2api/topUp': 'owner-only', // account credentials never cross to a viewer
+  'accountSub2api/redeem': 'owner-only', // account credentials never cross to a viewer
 } as const satisfies Readonly<Record<string, ViewerEndpointClass>>
 
 /**

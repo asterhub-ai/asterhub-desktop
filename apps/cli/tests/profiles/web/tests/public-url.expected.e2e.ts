@@ -1,16 +1,52 @@
 /** Built Web-profile acceptance for concrete bind addresses, the advertised public root, and browser authentication. */
 
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { request as httpRequest, type IncomingMessage } from 'node:http'
+import { createServer, request as httpRequest, type IncomingMessage } from 'node:http'
 import { request as httpsRequest } from 'node:https'
-import { tmpdir } from 'node:os'
+import { networkInterfaces, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { Readable } from 'node:stream'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
-import { probeNonLoopbackIpv4, probeZonedLoopback } from '../../../../../../scripts/test-non-loopback-address.ts'
+async function probeBindableAddress(candidates: string[], description: string): Promise<string | undefined> {
+  const refused: string[] = []
+  for (const address of candidates) {
+    const server = createServer()
+    try {
+      const { promise, resolve, reject } = Promise.withResolvers<undefined>()
+      server.once('error', reject)
+      server.listen({ host: address, port: 0 }, resolve)
+      await promise
+    } catch (error) {
+      refused.push(`${address}: ${error instanceof Error ? error.message : String(error)}`)
+      continue
+    }
+    const { promise, resolve } = Promise.withResolvers<undefined>()
+    server.close(() => { resolve() })
+    await promise
+    return address
+  }
+  console.info(`${description} coverage skipped: no bindable ${description} address`)
+  return undefined
+}
+async function probeNonLoopbackIpv4(): Promise<string | undefined> {
+  const candidates: string[] = []
+  for (const entry of Object.values(networkInterfaces()).flat()) {
+    if (entry !== undefined && entry.family === 'IPv4' && !entry.internal) candidates.push(entry.address)
+  }
+  return probeBindableAddress(candidates, 'non-loopback IPv4')
+}
+async function probeZonedLoopback(): Promise<string | undefined> {
+  const candidates: string[] = []
+  for (const entry of Object.values(networkInterfaces()).flat()) {
+    if (entry !== undefined && entry.family === 'IPv6' && entry.address === '::1') {
+      candidates.push(`::1%${entry.scopeid}`)
+    }
+  }
+  return probeBindableAddress(candidates, 'zoned IPv6 loopback')
+}
 import { startPrefixProxy } from '../../../../../../apps/web/tests/prefix-proxy.ts'
 import { PROCESS_SHUTDOWN_TIMEOUT_MS } from '../../../../src/process-shutdown.ts'
 import { materializeTlsFixture } from '../../../../../../packages/host/webserver/tests/tls-fixture.ts'

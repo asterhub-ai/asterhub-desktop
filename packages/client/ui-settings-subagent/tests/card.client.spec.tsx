@@ -54,8 +54,8 @@ function renderSubagent(
   const actions = {
     editLimit: vi.fn(),
     resetLimit: vi.fn(),
-    chooseDefaultModel: vi.fn(),
-    toggleDelegation: vi.fn(),
+    toggleEnabled: vi.fn(),
+    toggleModel: vi.fn(),
     retryCatalog: vi.fn(),
     save: vi.fn(),
     discard: vi.fn(),
@@ -76,57 +76,82 @@ function renderSubagentModelSelection(state: Partial<SubagentModelSelectionCardS
 }
 
 describe('Subagent model selection fields', () => {
-  it('offers catalog defaults independently from per-call selection and disables unavailable models', () => {
+  it('renders the default-off preference in its staged plugin card', () => {
+    const actions = renderSubagentModelSelection()
+
+    const control = screen.getByRole('switch', { name: en.subagentModelSelectionToggle })
+    expect(control.getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(control)
+
+    expect(actions.toggleEnabled).toHaveBeenCalledOnce()
+  })
+
+  it('groups available adapter candidates by provider', () => {
     const actions = renderSubagentModelSelection({
-      defaultModelKey: '',
-      delegateComplexTasks: true,
+      enabled: true,
       candidates: [
-        { key: 'account\0fast', provider: 'account', model: 'fast', providerName: 'Account', modelName: 'Fast', available: true, selected: false },
-        { key: 'account\0old', provider: 'account', model: 'old', providerName: 'Account', modelName: 'Old', available: false, selected: false },
+        {
+          key: 'alpha\0fast',
+          provider: 'alpha',
+          model: 'fast',
+          providerName: 'Alpha API',
+          modelName: 'Fast',
+          available: true,
+          selected: true,
+        },
+        {
+          key: 'alpha\0deep',
+          provider: 'alpha',
+          model: 'deep',
+          providerName: 'Alpha API',
+          modelName: 'Deep',
+          available: true,
+          selected: false,
+        },
       ],
-    })
-    expect(screen.getByRole('radio', { name: /Fast/ })).toHaveProperty('checked', false)
-    expect(screen.getByRole('radio', { name: /Old/ })).toHaveProperty('disabled', true)
-    fireEvent.click(screen.getByRole('radio', { name: /Fast/ }))
-    expect(actions.chooseDefaultModel).toHaveBeenCalledWith('account\0fast')
-    fireEvent.click(screen.getByRole('switch', { name: en.subagentDelegateComplex }))
-    expect(actions.toggleDelegation).toHaveBeenCalledOnce()
-  })
-
-  it('does not render a per-task model override control', () => {
-    renderSubagentModelSelection()
-    expect(screen.queryByRole('switch', { name: en.subagentDelegateComplex })).toBeTruthy()
-    expect(screen.getByRole('switch', { name: en.subagentDelegateComplex })).toBeTruthy()
-    expect(screen.queryByRole('checkbox')).toBeNull()
-  })
-
-  it('shows user-selected model names without exposing adapter route identifiers', () => {
-    renderSubagentModelSelection({
-      defaultModelKey: 'alpha\0fast',
-      candidates: [{
-        key: 'alpha\0fast', provider: 'alpha', model: 'gpt-6.1-sol', providerName: 'AsterHub',
-        modelName: 'gpt-6.1-sol', available: true, selected: false,
-      }],
       catalogStatus: 'ready',
     })
 
-    expect(screen.queryByRole('switch', { name: en.subagentDelegateComplex })).toBeTruthy()
-    expect(screen.getByRole('switch', { name: en.subagentDelegateComplex })).toBeTruthy()
-    expect(screen.queryByRole('checkbox')).toBeNull()
-    expect(screen.getByText('gpt-6.1-sol · AsterHub')).toBeTruthy()
-    expect(screen.queryByText(/sub2api/i)).toBeNull()
-    expect(screen.getByRole('radio', { name: /gpt-6.1-sol/ })).toHaveProperty('checked', true)
+    expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByText('Alpha API', { exact: true })).toBeTruthy()
+    fireEvent.click(screen.getByRole('checkbox', { name: /Fast/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Deep/ }))
+    expect(actions.toggleModel).toHaveBeenCalledWith('alpha\0fast')
+    expect(actions.toggleModel).toHaveBeenCalledWith('alpha\0deep')
   })
 
-  it('renders directory progress and failures for the selected default', () => {
-    renderSubagentModelSelection({ candidates: [], catalogStatus: 'loading' })
-    expect(screen.getByRole('button', { name: en.subagentDefaultLoadModels })).toHaveProperty('disabled', true)
-    expect(screen.getAllByText(en.subagentModelSelectionLoading)).toHaveLength(1)
+  it('renders directory progress, failures, unavailable routes, and validation', () => {
+    renderSubagentModelSelection({ enabled: true, catalogStatus: 'loading', invalid: true })
+    expect(screen.getByText(en.subagentModelSelectionLoading)).toBeTruthy()
+    expect(screen.getByText(en.subagentModelSelectionRequired)).toBeTruthy()
 
     cleanup()
-    const errorActions = renderSubagentModelSelection({ catalogStatus: 'error' })
-    fireEvent.click(screen.getByRole('button', { name: en.subagentDefaultLoadModels }))
+    const errorActions = renderSubagentModelSelection({ enabled: true, catalogStatus: 'error' })
+    fireEvent.click(screen.getByRole('button', { name: en.subagentModelSelectionRetry }))
     expect(errorActions.retryCatalog).toHaveBeenCalledOnce()
+
+    cleanup()
+    renderSubagentModelSelection({
+      enabled: true,
+      catalogStatus: 'ready',
+      catalogPartial: true,
+      candidates: [{
+        key: 'legacy\0old',
+        provider: 'legacy',
+        model: 'old',
+        providerName: 'legacy',
+        modelName: 'old',
+        available: false,
+        selected: true,
+      }],
+    })
+    expect(screen.getByText(en.subagentModelSelectionPartial)).toBeTruthy()
+    expect(screen.getByText(en.subagentModelSelectionUnavailable)).toBeTruthy()
+    expect(screen.getByText(en.subagentModelSelectionUnavailableGroup)).toBeTruthy()
+
+    cleanup()
+    renderSubagentModelSelection({ enabled: true, catalogStatus: 'ready' })
+    expect(screen.getByText(en.subagentModelSelectionEmpty)).toBeTruthy()
   })
 
   it('distinguishes a stale draft from a rejected save', () => {
@@ -136,13 +161,20 @@ describe('Subagent model selection fields', () => {
     expect(screen.queryByText(en.saveFailed)).toBeNull()
   })
 
-  it('renders its one-liner in the summary view and says so when unavailable', () => {
+  it('renders its one-liner in the summary view, says so when unavailable, and disables writes when read-only', () => {
     renderSubagentModelSelection({}, 'summary')
     expect(document.body.textContent).toBe(en.subagentDescription)
 
     cleanup()
     renderSubagentModelSelection({ available: false })
     expect(screen.getByRole('status').textContent).toBe(en.unavailable)
+
+    cleanup()
+    const actions = renderSubagentModelSelection({ writable: false })
+    const control = screen.getByRole('switch') as HTMLButtonElement
+    expect(control.disabled).toBe(true)
+    fireEvent.click(control)
+    expect(actions.toggleEnabled).not.toHaveBeenCalled()
   })
 })
 
@@ -228,12 +260,12 @@ describe('SubagentCard', () => {
       models.set({ ...models.getSnapshot(), saving: true })
     })
     expect(screen.getByLabelText(en.subagentMaxDepth)).toHaveProperty('disabled', true)
-    expect(screen.getByRole('switch', { name: en.subagentDelegateComplex })).toHaveProperty('disabled', true)
+    expect(screen.getByRole('switch')).toHaveProperty('disabled', true)
     expect(screen.getByRole('button', { name: en.saving })).toHaveProperty('disabled', true)
     act(() => { limits.set({ ...limits.getSnapshot(), saving: false, dirty: false }) })
-    expect(screen.getByRole('switch', { name: en.subagentDelegateComplex })).toHaveProperty('disabled', true)
+    expect(screen.getByRole('switch')).toHaveProperty('disabled', true)
     act(() => { models.set({ ...models.getSnapshot(), saving: false, dirty: false }) })
-    expect(screen.getByRole('switch', { name: en.subagentDelegateComplex })).toHaveProperty('disabled', false)
+    expect(screen.getByRole('switch')).toHaveProperty('disabled', false)
     expect(screen.getByRole('button', { name: en.save })).toHaveProperty('disabled', true)
   })
 
@@ -247,14 +279,14 @@ describe('SubagentCard', () => {
       limits.set({ ...limits.getSnapshot(), saving: false, dirty: false })
       models.set({ ...models.getSnapshot(), saving: false, failed: true })
     })
-    expect(screen.getByRole('radio', { name: en.subagentDefaultInherit })).toBeTruthy()
+    expect(screen.getByRole('switch')).toBeTruthy()
     expect(screen.getByText(en.saveFailed)).toBeTruthy()
     expect(screen.getByRole('button', { name: en.save })).toHaveProperty('disabled', false)
   })
 
   it('renders model-only deployments without limit controls', () => {
     renderSubagent({ available: false })
-    expect(screen.getByRole('radio', { name: en.subagentDefaultInherit })).toBeTruthy()
+    expect(screen.getByRole('switch')).toBeTruthy()
     expect(screen.queryByLabelText(en.subagentMaxDepth)).toBeNull()
   })
 })

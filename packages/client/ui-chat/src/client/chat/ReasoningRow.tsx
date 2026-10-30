@@ -41,13 +41,16 @@ function latestCompletedParagraphFirstLine(text: string): string {
  * @param props.running - whether this block is the streaming tail.
  * @param props.usePresentation - live display-policy selector for this reasoning row.
  * @param props.useDisclosure - independent open state with enclosing-Turn resets.
- * @param props.renderSlot - renderer for the reasoning body.
- * @param props.t - conversation locale seat for status and Markdown actions.
+ * @param props.renderSlot - framework renderer for the standard reasoning Body Slot.
+ * @param props.t - conversation locale seat for the disclosure and running status.
  * @returns the reasoning disclosure.
  */
-export const ReasoningRow = memo(function ReasoningRow({ text, running, usePresentation, useDisclosure, renderSlot, t }: {
+export const ReasoningRow = memo(function ReasoningRow({
+  text, running, textInteractionSource = false, usePresentation, useDisclosure, renderSlot, t,
+}: {
   text: string
   running: boolean
+  textInteractionSource?: boolean
   useDisclosure: UseDisclosure
   usePresentation: UsePresentation
   t: ChatViewSlotProps['t']
@@ -68,10 +71,10 @@ export const ReasoningRow = memo(function ReasoningRow({ text, running, usePrese
     </>
   ), [running, summary])
   const content = useMemo(() => expanded ? (
-    <div className={css.thinkBody}>
+    <div className={css.thinkBody} data-text-interaction-source={textInteractionSource && !running ? '' : undefined}>
       {renderSlot('conversation.chat.reasoning.body', { text, running })}
     </div>
-  ) : undefined, [expanded, renderSlot, running, text])
+  ) : undefined, [expanded, renderSlot, running, text, textInteractionSource])
 
   return (
     <div

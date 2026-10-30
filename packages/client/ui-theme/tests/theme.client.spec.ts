@@ -9,18 +9,6 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-theme/client'
 import { ThemeRuntime } from '@deepseek-ai/dsh-client-ui-theme/client'
 
-const contexts: Context[] = []
-
-async function disposeContext(ctx: Context): Promise<void> {
-  if (ctx.fiber.uid === null) return
-  await ctx.plugin({ name: 'theme-test-disposal-barrier', apply() {} })
-  await ctx.fiber.dispose()
-}
-
-afterEach(async () => {
-  for (const ctx of contexts.splice(0)) await disposeContext(ctx)
-})
-
 const make = (host = stubConfigForm<ThemeSettings>()): {
   ctx: Context
   theme: ThemeRuntime
@@ -28,7 +16,6 @@ const make = (host = stubConfigForm<ThemeSettings>()): {
   host: StubConfigForm<ThemeSettings>
 } => {
   const ctx = new Context()
-  contexts.push(ctx)
   const events: ThemeSnapshot[] = []
   ctx.on('theme/change', (snapshot) => { events.push(snapshot) })
   return { ctx, theme: new ThemeRuntime(ctx, host.scope), events, host }
@@ -319,7 +306,7 @@ describe('ThemeRuntime', () => {
   it('context dispose releases the scope subscription', async () => {
     const { ctx, host } = make()
     expect(host.listenerCount()).toBe(1)
-    await disposeContext(ctx)
+    await ctx.fiber.dispose()
     expect(host.listenerCount()).toBe(0)
   })
 
@@ -367,7 +354,7 @@ describe('ThemeRuntime', () => {
       const media = stubMedia(false)
       const { ctx } = make()
       expect(media.listenerCount()).toBe(1)
-      await disposeContext(ctx)
+      await ctx.fiber.dispose()
       expect(media.listenerCount()).toBe(0)
     })
   })

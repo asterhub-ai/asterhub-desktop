@@ -79,6 +79,7 @@ import { deliverSubagentPrompt } from './internal.ts'
 
 export type {} from './catalog.ts'
 export * from './out-of-process.ts'
+export { settleRun } from './run-settlement.ts'
 export { AssistantOutputFold, finalAssistantOutput } from './assistant-output.ts'
 export { SubagentRunId } from './types.ts'
 export type {
@@ -642,6 +643,8 @@ export class SubagentRuntime extends TypertRemoteService {
       { when: request.agentOptions !== undefined, cap: 'agentOptions' },
       { when: request.outputSchema !== undefined, cap: 'outputSchema' },
       { when: request.maxDepth !== undefined, cap: 'depthLimit' },
+      { when: request.persona !== undefined, cap: 'persona' },
+      { when: request.toolFilter !== undefined, cap: 'toolFilter' },
     ]
     for (const { when, cap } of needs) {
       if (when && !provider.capabilities[cap]) {

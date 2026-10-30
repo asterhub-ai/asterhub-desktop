@@ -6,13 +6,13 @@ import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controlle
 import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { allowAllAccess, bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { TranscriptViewRow, type TranscriptViewRowProps } from '../src/client/settings/TranscriptViewRow.tsx'
 import { PerformanceUsageRow } from '../src/client/settings/PerformanceUsageRow.tsx'
 import type { LinkOpening, PerformanceUsageMode, TranscriptViewMode } from '../src/chat-settings.ts'
 import { LinkOpeningRow } from '../src/client/settings/LinkOpeningRow.tsx'
 import { en, zh } from '../src/client/locale.ts'
-import type { CollapseTiming } from '../src/client/presentation-policy.ts'
+import type { CollapseTiming, FoldedReplies } from '../src/client/presentation-policy.ts'
 
 afterEach(cleanup)
 
@@ -38,8 +38,10 @@ const useResource = (() => ({ status: 'none' as const, value: undefined, failure
 function mount(mode: TranscriptViewMode = 'standard', dictionary: typeof en | typeof zh = en) {
   const source = createSnapshotStore<TranscriptViewMode>(mode)
   const collapseTiming = createSnapshotStore<CollapseTiming>('completion')
+  const foldedReplies = createSnapshotStore<FoldedReplies>('all')
   const setTranscriptView = vi.fn((next: TranscriptViewMode) => { source.set(next) })
   const setCollapseTiming = vi.fn((next: CollapseTiming) => { collapseTiming.set(next) })
+  const setFoldedReplies = vi.fn((next: FoldedReplies) => { foldedReplies.set(next) })
   const props: TranscriptViewRowProps = {
     usePanelInfo: selector => selector({ activePanelId: null }),
     useSessions: emptySessions(),
@@ -47,14 +49,17 @@ function mount(mode: TranscriptViewMode = 'standard', dictionary: typeof en | ty
     useWorkspaces: emptyWorkspaces(),
     useSessionRetainInfo: () => undefined,
     useResource,
+    ...allowAllAccess,
     useTranscriptView: bindSnapshotSelector(source),
     useCollapseTiming: bindSnapshotSelector(collapseTiming),
+    useFoldedReplies: bindSnapshotSelector(foldedReplies),
     setTranscriptView,
     setCollapseTiming,
+    setFoldedReplies,
     t: makeTranslate(dictionary),
   }
   render(<TranscriptViewRow {...props} />)
-  return { setTranscriptView, setCollapseTiming, collapseTiming, props }
+  return { setTranscriptView, setCollapseTiming, setFoldedReplies, collapseTiming, foldedReplies, props }
 }
 
 describe('TranscriptViewRow', () => {
@@ -66,15 +71,15 @@ describe('TranscriptViewRow', () => {
   })
 
   it.each([
-    [en, 'Work details', 'Collapse work details',
-      'Collapse work details when a task finishes, or keep them until you send the next message', 'On completion', 'On next message'],
-    [zh, '工作步骤展示', '过程收起时机', '任务完成后立即收起过程，或保留到下次发送消息时再收起', '完成时收起', '下次发送时收起'],
+    [en, 'Work details', 'When to Collapse Work Details',
+      'Choose when to automatically collapse work details', 'On completion', 'On next message'],
+    [zh, '工作步骤展示', '工作步骤收起时机', '选择何时自动收起工作步骤', '回答结束后', '下次有新消息时'],
   ] as const)('selects either collapse timing independently with localized labels (%s)', (dictionary, detailTitle, title, description, completion, nextInput) => {
     const b = mount('standard', dictionary)
     const titleElement = screen.getByText(title)
     expect(screen.getByText(detailTitle).compareDocumentPosition(titleElement) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
     expect(screen.getByText(description)).toBeDefined()
-    expect(screen.getAllByRole('button')).toHaveLength(2)
+    expect(screen.getAllByRole('button')).toHaveLength(3)
     const trigger = screen.getByRole('button', { name: completion })
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(trigger)
@@ -88,6 +93,36 @@ describe('TranscriptViewRow', () => {
     expect(b.setCollapseTiming).toHaveBeenLastCalledWith('completion')
     expect(screen.getByRole('button', { name: completion }).getAttribute('aria-expanded')).toBe('false')
     expect(b.setTranscriptView).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [en, 'Replies After Collapse', 'Choose which assistant replies stay visible when work details collapse', 'All replies', 'Final answer only'],
+    [zh, '收起后显示的回复', '工作步骤收起后，保留哪些助手回复', '全部回复', '仅最终回答'],
+  ] as const)('selects which replies stay visible below collapse timing (%s)', (dictionary, title, description, all, final) => {
+    const b = mount('standard', dictionary)
+    const timingTitle = dictionary === en ? 'When to Collapse Work Details' : '工作步骤收起时机'
+    expect(screen.getByText(timingTitle).compareDocumentPosition(screen.getByText(title)) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    expect(screen.getByText(description)).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: all }))
+    expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([all, final])
+    fireEvent.click(screen.getByRole('menuitem', { name: final }))
+    expect(b.setFoldedReplies).toHaveBeenLastCalledWith('final')
+    expect(b.foldedReplies.getSnapshot()).toBe('final')
+    fireEvent.click(screen.getByRole('button', { name: final }))
+    fireEvent.click(screen.getByRole('menuitem', { name: all }))
+    expect(b.setFoldedReplies).toHaveBeenLastCalledWith('all')
+    expect(b.setCollapseTiming).not.toHaveBeenCalled()
+    expect(b.setTranscriptView).not.toHaveBeenCalled()
+  })
+
+  it('omits the folded-reply choice while Verbose never folds a Turn', () => {
+    const b = mount('verbose')
+    expect(screen.queryByText('Replies After Collapse')).toBeNull()
+    expect(screen.getAllByRole('button')).toHaveLength(2)
+    fireEvent.click(screen.getByRole('button', { name: 'Verbose' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Standard' }))
+    expect(b.setTranscriptView).toHaveBeenLastCalledWith('standard')
+    expect(screen.getByText('Replies After Collapse')).toBeDefined()
   })
 
   it('follows timing changes and closes its menu without changing either preference', () => {

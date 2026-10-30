@@ -5,13 +5,15 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { TOOL_ABORTED_BEFORE_DISPATCH } from '@deepseek-ai/dsh-tools'
 import type { ToolExecutionResult, ToolExecutionToken } from '@deepseek-ai/dsh-tools'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { unsupportedInbox } from '@deepseek-ai/dsh-agent-loop-testkit'
+import { provideWorkingDirectoryFixture, unsupportedInbox, unsupportedModel } from '@deepseek-ai/dsh-agent-loop-testkit'
+import { executeToolFixture, executeModelToolFixture } from '@deepseek-ai/dsh-tool-testkit'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import { WorkflowRunId, WorkflowEngine } from '@deepseek-ai/dsh-workflow'
 import type {
   WorkflowAgentEndInfo, WorkflowAgentInfo, WorkflowResult, WorkflowRun,
   WorkflowRunId as WorkflowRunIdType, WorkflowStartRequest,
 } from '@deepseek-ai/dsh-workflow'
-import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId, type ContentBlock, type UserMessage } from '@deepseek-ai/dsh-llm'
 import type { JobId } from '@deepseek-ai/dsh-jobs'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
@@ -101,6 +103,7 @@ async function setup(config?: { toolName?: string; maxResultChars?: number }) {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeToolExecutor)
   await ctx.plugin(StubEngine)
   await ctx.plugin(toolWorkflow, config ?? {})
   const engine = ctx.workflowEngine as StubEngine
@@ -117,13 +120,12 @@ function execute(ctx: Context, args: unknown, extra?: {
   signal?: AbortSignal
   parent?: ToolExecutionToken
 }): Promise<ToolExecutionResult> {
-  return ctx.tools.execute({
-    signal: testToolSignal,
+  return executeToolFixture(ctx, {
+    signal: extra?.signal ?? testToolSignal,
     callId: ToolCallId('call-1'),
     name: 'workflow',
     arguments: args,
     ...extra?.agent ? { agent: extra.agent } : {},
-    ...extra?.signal ? { signal: extra.signal } : {},
     ...extra?.parent ? { parent: extra.parent } : {},
   })
 }
@@ -392,6 +394,7 @@ describe('dsh-tool-workflow', () => {
     const ctx = new Context()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
+    await ctx.plugin(NativeToolExecutor)
     await ctx.plugin(StubEngine)
     const fiber = await ctx.plugin(toolWorkflow, { toolName: 'orchestrate' })
     expect(ctx.tools.get('orchestrate')).toBeDefined()
@@ -447,6 +450,8 @@ describe('dsh-tool-workflow', () => {
       onTestFinished(async () => { await ctx.fiber.dispose() })
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
+      await ctx.plugin(SessionProjectionRegistry)
+      await ctx.plugin(NativeToolExecutor)
       await ctx.plugin(AgentRegistry)
       await ctx.plugin(LocalJobRegistry)
       await ctx.plugin(ToolTasks)
@@ -454,13 +459,16 @@ describe('dsh-tool-workflow', () => {
       await ctx.plugin(toolWorkflow, config ?? {})
       const engine = ctx.workflowEngine as StubEngine
       const session = Session.create(SessionId('caller'))
+      const injected: UserMessage[] = []
       const parent: Agent = {
         id: session.id, options: {}, session, inbox: unsupportedInbox(), status: 'idle', ctx,
-        send: () => {}, followup: () => {}, steer: () => {}, inject: () => {}, cancel: () => {},
+        model: unsupportedModel(),
+        send: () => {}, followup: (message) => { injected.push(message) },
+        steer: () => {}, inject: (message) => { injected.push(message) }, cancel: () => {},
         runMaintenance: task => task(new AbortController().signal), whenIdle: () => Promise.resolve(),
       }
       await ctx.agents.register(parent)
-      return { ctx, engine, parent, session }
+      return { ctx, engine, parent, session, injected }
     }
 
     /** The ring's retained text from offset 0, read as the owner. */
@@ -469,18 +477,21 @@ describe('dsh-tool-workflow', () => {
     }
 
     it('registers an owned job, mirrors progress into its ring, and settles with the rendered value', async () => {
-      const { ctx, engine, parent, session } = await setupBackground()
+      const { ctx, engine, parent, session, injected } = await setupBackground()
       const result = await execute(ctx, { script: SCRIPT, meta: META, run_in_background: true }, { agent: parent })
       expect(result.isError).toBe(false)
       if (result.isError) throw new Error('expected background acceptance')
-      expect(result.value).toEqual({ kind: 'background', jobId: 'workflow-1', runId: 'run-1' })
+      const { kind, jobId, runId: startedRunId } = result.value as { kind: string; jobId: JobId; runId: string }
+      expect(kind).toBe('background')
+      expect(String(jobId)).toMatch(/^workflow-/)
+      expect(startedRunId).toBe('run-1')
       expect((result.content[0] as { text: string }).text)
-        .toContain('workflow "audit" started in the background as job workflow-1')
+        .toContain(`as job ${String(jobId)}`)
       // The engine run carries no tool-step signal: the job owns cancellation.
       expect(engine.requests[0]!.signal).toBeUndefined()
 
       const jobs = ctx.jobs
-      const job = jobs.get('workflow-1' as never, parent.id)
+      const job = jobs.get(jobId, parent.id)
       expect(job).toMatchObject({ kind: 'workflow', label: 'audit', status: 'running', owner: parent.id })
       expect(job.output.total).toBe(0)
 
@@ -494,11 +505,11 @@ describe('dsh-tool-workflow', () => {
       // Narration is observer-only: every chunk rides the log channel, so the
       // model's job_output before settlement sees status only.
       expect(jobs.readAt(job.id, 0, parent.id).chunks.map(chunk => chunk.channel)).toEqual(['log', 'log', 'log', 'log'])
-      const early = await ctx.tools.execute({
+      const early = await executeModelToolFixture(ctx, {
         signal: testToolSignal,
         callId: ToolCallId('call-early-read'),
         name: 'job_output',
-        arguments: { job_id: 'workflow-1' },
+        arguments: { job_id: String(jobId) },
         agent: parent,
       })
       expect((early.content[0] as { text: string }).text).toBe('(no new output)\n[status: running, Scan]')
@@ -508,13 +519,20 @@ describe('dsh-tool-workflow', () => {
       const settled = jobs.get(job.id, parent.id)
       expect(settled.detail).toBe('4 agents')
       expect(settled.progress).toBeUndefined()
+      // The completion notice consumed the settlement read; the result rides the notice.
       const read = jobs.read(job.id, parent.id)
-      expect(read.result).toContain('workflow "audit" completed (4 agents)')
-      expect(read.result).toContain('"findings": 2')
+      expect(read.result).toBeUndefined()
+      const notice = injected.find(message => message.source?.kind === 'tool-jobs')
+      const noticeText = notice === undefined
+        ? ''
+        : notice.content.flatMap((block: ContentBlock) => block.type === 'text' ? [block.text] : []).join('')
+      expect(noticeText).toContain('workflow "audit" completed (4 agents)')
+      expect(noticeText).toContain('"findings": 2')
       expect(engine.disposed).toBe(1)
-      // The durable session record still brackets the background run.
+      // The durable session record brackets the background run; the notice rides the inbox.
       expect(session.snapshotEvents().map(event => event.type)).toEqual([
-        'tool-workflow/run-start', 'tool-workflow/agent-start', 'tool-workflow/agent-end', 'tool-workflow/run-end',
+        'tool-workflow/run-start', 'job/registered', 'tool-workflow/agent-start', 'tool-workflow/agent-end',
+        'tool-workflow/run-end', 'job/settled',
       ])
       // A straggling event after settlement finds no tracked run and is dropped.
       engine.phase(runId, 'Late')
@@ -549,15 +567,17 @@ describe('dsh-tool-workflow', () => {
       expect(engine.requests[0]).toMatchObject({ args: { files: ['a.ts'] } })
       engine.settleRun(WorkflowRunId('run-1'), { value: null, stopReason: 'error', error: 'script exploded', agentsStarted: 2 })
       const jobs = ctx.jobs
-      await vi.waitFor(() => { expect(jobs.get('workflow-1' as never, parent.id).status).toBe('failed') })
-      expect(jobs.get('workflow-1' as never, parent.id).detail).toBe('script exploded')
+      const jobId = (result.value as { jobId: string }).jobId as JobId
+      await vi.waitFor(() => { expect(jobs.get(jobId, parent.id).status).toBe('failed') })
+      expect(jobs.get(jobId, parent.id).detail).toBe('script exploded')
 
       // A failure without a message falls back to the unknown-error detail.
       const second = await execute(ctx, { script: SCRIPT, meta: META, run_in_background: true }, { agent: parent })
       if (second.isError) throw new Error('expected background acceptance')
       engine.settleRun(WorkflowRunId('run-2'), { value: null, stopReason: 'error', agentsStarted: 0 })
-      await vi.waitFor(() => { expect(jobs.get('workflow-2' as never, parent.id).status).toBe('failed') })
-      expect(jobs.get('workflow-2' as never, parent.id).detail).toBe('unknown error')
+      const secondId = (second.value as { jobId: string }).jobId as JobId
+      await vi.waitFor(() => { expect(jobs.get(secondId, parent.id).status).toBe('failed') })
+      expect(jobs.get(secondId, parent.id).detail).toBe('unknown error')
     })
 
     it('a nested transport call mirrors the ring but records no session events, and a dispose failure still settles', async () => {
@@ -572,10 +592,11 @@ describe('dsh-tool-workflow', () => {
       if (result.isError) throw new Error('expected background acceptance')
       engine.settleRun(WorkflowRunId('run-1'), { value: 'ok', stopReason: 'completed', agentsStarted: 1 })
       const jobs = ctx.jobs
-      await vi.waitFor(() => { expect(jobs.get('workflow-1' as never, parent.id).status).toBe('completed') })
-      expect(jobs.get('workflow-1' as never, parent.id).detail).toBe('1 agent')
+      const jobId = (result.value as { jobId: string }).jobId as JobId
+      await vi.waitFor(() => { expect(jobs.get(jobId, parent.id).status).toBe('completed') })
+      expect(jobs.get(jobId, parent.id).detail).toBe('1 agent')
       expect(warn.mock.calls.map(args => String(args[0])).join('\n')).toContain('dispose failed')
-      expect(session.snapshotEvents()).toEqual([])
+      expect(session.snapshotEvents().map(event => event.type)).toEqual(['job/registered', 'job/settled'])
     })
 
     it('a synchronous engine rejection registers no job', async () => {
@@ -618,11 +639,13 @@ describe('dsh-tool-workflow', () => {
       onTestFinished(async () => { await ctx.fiber.dispose() })
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
+      await ctx.plugin(NativeToolExecutor)
       await ctx.plugin(SessionProjectionRegistry)
+      provideWorkingDirectoryFixture(ctx)
       await ctx.plugin(SubagentRuntime)
       ctx.subagents.registerProvider({
         name: 'spawn',
-        capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+        capabilities: { agentOptions: true, agentPreset: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
         inheritsParentContext: false,
         start: () => Promise.reject(new Error('the parked-script fixture must not start a child')),
       })
@@ -650,14 +673,16 @@ describe('dsh-tool-workflow', () => {
       onTestFinished(async () => { await ctx.fiber.dispose() })
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
+      await ctx.plugin(NativeToolExecutor)
+      await ctx.plugin(SessionProjectionRegistry)
       await ctx.plugin(AgentRegistry)
       await ctx.plugin(LocalJobRegistry)
       await ctx.plugin(ToolTasks)
-      await ctx.plugin(SessionProjectionRegistry)
+      provideWorkingDirectoryFixture(ctx)
       await ctx.plugin(SubagentRuntime)
       ctx.subagents.registerProvider({
         name: 'spawn',
-        capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+        capabilities: { agentOptions: true, agentPreset: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
         inheritsParentContext: false,
         start: () => Promise.reject(new Error('the scriptonly fixture must not start a child')),
       })
@@ -665,9 +690,12 @@ describe('dsh-tool-workflow', () => {
       await ctx.plugin(PtcWorkflowEngine, {})
       await ctx.plugin(toolWorkflow, {})
       const session = Session.create(SessionId('caller'))
+      const injected: UserMessage[] = []
       const parent: Agent = {
         id: session.id, options: {}, session, inbox: unsupportedInbox(), status: 'idle', ctx,
-        send: () => {}, followup: () => {}, steer: () => {}, inject: () => {}, cancel: () => {},
+        model: unsupportedModel(),
+        send: () => {}, followup: (message) => { injected.push(message) },
+        steer: () => {}, inject: (message) => { injected.push(message) }, cancel: () => {},
         runMaintenance: task => task(new AbortController().signal), whenIdle: () => Promise.resolve(),
       }
       await ctx.agents.register(parent)
@@ -686,7 +714,10 @@ describe('dsh-tool-workflow', () => {
       expect(jobs.get(jobId, parent.id).detail).toBe('0 agents')
       const ring = jobs.readAt(jobId, 0, parent.id).chunks.map(chunk => chunk.text).join('')
       expect(ring).toContain('halfway')
-      expect(jobs.read(jobId, parent.id).result).toContain('"ok": true')
+      const notice = injected.find(message => message.source?.kind === 'tool-jobs')
+      expect(notice === undefined
+        ? ''
+        : notice.content.flatMap((block: ContentBlock) => block.type === 'text' ? [block.text] : []).join('')).toContain('"ok": true')
     }, 15_000)
   })
 })

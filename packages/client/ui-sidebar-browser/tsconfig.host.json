@@ -7,10 +7,14 @@
   },
   "files": [
     "src/index.ts",
-    "src/types.ts"
+    "src/types.ts",
+    "src/client/electron/types.ts"
   ],
   "references": [
     { "path": "../../../vendor/cordis" },
-    { "path": "../../util/brand" }
+    { "path": "../../util/brand" },
+    { "path": "../../core/session" },
+    { "path": "../ui-dockkit" },
+    { "path": "../ui-slots" }
   ]
 }

@@ -21,7 +21,7 @@ describe('TurnUsagePanel', () => {
       outputTokens: 5_800,
       reasoningTokens: 42,
       totalTokens: 15_800,
-      routes: [{ provider: 'sub2api', model: 'gpt-luna' }],
+      routes: [{ provider: 'deepseek', model: 'deepseek-chat' }],
     }
     const view = render(<TurnUsagePanel usage={usage} t={t} />)
 
@@ -41,32 +41,13 @@ describe('TurnUsagePanel', () => {
     expect(dialog.firstChild?.textContent).toBe('Turn usage15,800 tok')
     const details = dialog.querySelector('[data-turn-usage-details]') as HTMLElement
     expect(details).toBeTruthy()
-    expect(details.textContent).toContain('Provider / modelAsterHub/gpt-luna')
+    expect(details.textContent).toContain('Provider / modeldeepseek/deepseek-chat')
     expect(details.textContent).toContain('Cache hit49.4%')
     expect(details.textContent).toContain('Uncached input5,060 tok')
     expect(details.textContent).toContain('Cached input4,940 tok')
     expect(details.textContent).toContain('Cache write0 tok')
     expect(details.textContent).toContain('Output5,800 tok (42 tok reasoning)')
     expect(details.textContent).not.toContain('Total')
-  })
-
-  it('uses million and billion units in the details dialog for large counts', () => {
-    const usage: TurnTokenUsage = {
-      uncachedInputTokens: 1_234_000_000,
-      cacheReadTokens: 2_000_000_000,
-      cacheWriteTokens: 0,
-      outputTokens: 500_000_000,
-      reasoningTokens: 50_000_000,
-      totalTokens: 3_734_000_000,
-    }
-    const view = render(<TurnUsagePanel usage={usage} t={t} />)
-    fireEvent.click(view.getByRole('button'))
-    const dialog = view.getByRole('dialog')
-
-    expect(dialog.firstChild?.textContent).toBe('Turn usage3.7B tok')
-    expect(dialog.textContent).toContain('Uncached input1.2B tok')
-    expect(dialog.textContent).toContain('Cached input2B tok')
-    expect(dialog.textContent).toContain('Output500M tok (50M tok reasoning)')
   })
 
   it('omits unavailable optional facts instead of inventing values', () => {
@@ -96,8 +77,8 @@ describe('TurnUsagePanel', () => {
     }
     const view = render(<TurnUsagePanel usage={usage} t={t} />)
     const trigger = view.getByRole('button')
-    // The pill keeps its compact total; the dialog keeps small counts exact
-    // and abbreviates larger token amounts.
+    // The pill carries the compact total; cache-hit rate and exact token
+    // counts stay in the dialog.
     expect(trigger.textContent).toBe('Usage 1.1K tok')
 
     fireEvent.click(trigger)
@@ -112,6 +93,15 @@ describe('TurnUsagePanel', () => {
     fireEvent.pointerDown(view.getByRole('dialog'))
     expect(view.queryByRole('dialog')).toBeTruthy()
     fireEvent.pointerDown(document.body)
+    expect(view.queryByRole('dialog')).toBeNull()
+  })
+
+  it('closes on an outside click without pointerdown, as keyboard activation elsewhere fires', () => {
+    const view = render(<TurnUsagePanel usage={{ uncachedInputTokens: 1, outputTokens: 1, totalTokens: 2 }} t={t} />)
+    fireEvent.click(view.getByRole('button'))
+    fireEvent.click(view.getByRole('dialog'))
+    expect(view.queryByRole('dialog')).toBeTruthy()
+    fireEvent.click(document.body)
     expect(view.queryByRole('dialog')).toBeNull()
   })
 })

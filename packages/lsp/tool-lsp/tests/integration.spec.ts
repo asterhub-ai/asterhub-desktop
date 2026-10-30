@@ -6,6 +6,9 @@ import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import { executeModelToolFixture } from '@deepseek-ai/dsh-tool-testkit'
+import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import Lsp from '@deepseek-ai/dsh-lsp'
@@ -48,8 +51,10 @@ function serverScript(hang: boolean): string {
 
 async function mount(hang: boolean, timeoutMs?: number): Promise<Context> {
   const ctx = new Context()
+  provideWorkingDirectoryFixture(ctx)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeToolExecutor)
   await ctx.plugin(Lsp)
   await ctx.plugin(LocalFileSystem, { cwd: process.cwd() })
   await ctx.plugin(LocalSubprocessRuntime)
@@ -72,12 +77,12 @@ async function mount(hang: boolean, timeoutMs?: number): Promise<Context> {
 let seq = 0
 const testToolSignal = new AbortController().signal
 function call(ctx: Context, args: unknown) {
-  return ctx.tools.execute({
+  return executeModelToolFixture(ctx, {
     signal: testToolSignal,
     callId: `int-${++seq}` as never,
     name: 'lsp',
     arguments: args,
-    agent: { session: { header: { cwd: ws } } } as never,
+    agent: { ctx, session: { header: { cwd: ws } } } as never,
   })
 }
 

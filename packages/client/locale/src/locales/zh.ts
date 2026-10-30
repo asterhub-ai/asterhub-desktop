@@ -31,8 +31,8 @@ export const zh = {
   'collapse': '收起',
   'expand': '展开',
   'back': '返回',
-  'brand.localBuild': 'AsterHub 本地构建',
-  'workspace.defaultName': '我的工作区',
+  'brand.localBuild': 'DSH 本地构建',
+  'workspace.defaultName': '默认工作区',
   'unknown': '未知',
   'none': '无',
   'truncated': '已截断',
@@ -41,7 +41,6 @@ export const zh = {
   'markdown.truncatedCharacters': '… 已截断，共 {total} 字符',
   'number.thousand': '{value}K',
   'number.million': '{value}M',
-  'number.billion': '{value}B',
 } satisfies Record<string, string>
 
 /** The common vocabulary key union (zh is the key-set source of truth). */

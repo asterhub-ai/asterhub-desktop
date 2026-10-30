@@ -7,7 +7,8 @@
  *
  * @module @deepseek-ai/dsh-experimental-auto-review
  */
-
+import type {} from '@deepseek-ai/dsh-tool-executor-ptc/types'
+import type {} from '@deepseek-ai/dsh-working-directory'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-instructions'
@@ -123,7 +124,7 @@ interface ScopedPtcStart {
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'experimental-auto-review'
 /** Host services required to freeze authorization context from current session state. */
-export const inject = ['approval', 'llm', 'permissionPresets', 'sessionCwd', 'sessions', 'tools']
+export const inject = ['approval', 'llm', 'permissionPresets', 'sessions', 'tools', 'workingDirectory']
 
 /** Return JSON text for one immutable logged value. */
 function json(value: unknown): string {
@@ -371,7 +372,7 @@ function snapshotAutoReview(agent: Agent, exec: ToolExecution): ReviewSnapshot {
   if (header === undefined || header.config.provider.length === 0 || header.config.model.length === 0) {
     throw new Error('auto-review: no complete request-header route is available')
   }
-  const cwd = agent.ctx.sessionCwd.resolve(session.header)
+  const cwd = agent.ctx.workingDirectory.get(session)
   if (cwd === undefined || cwd.length === 0) {
     throw new Error('auto-review: the session has no working directory')
   }

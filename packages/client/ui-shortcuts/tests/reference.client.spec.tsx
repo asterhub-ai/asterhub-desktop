@@ -103,12 +103,12 @@ it.each(['macos', 'windows'] as const)('shows the reference, filters labels and 
   fireEvent.keyDown(search, { key: 'Escape' })
   expect(store.getSnapshot().query).toBe('')
   expect(document.activeElement).toBe(opener)
-  fireEvent.mouseEnter(opener)
+  fireEvent.pointerEnter(opener)
   expect(screen.getByRole('tooltip').getAttribute('aria-label')).toBe(`${en['global-hint']} ${platform === 'macos' ? '⌘ /' : 'Ctrl + /'}`)
   act(() => { catalog.set(catalog.getSnapshot().map(row => row.id === 'shortcuts.open'
     ? { ...row, binding: null, keys: [], aria: undefined } : row)) })
   expect(screen.queryByRole('tooltip')).toBeNull()
-  fireEvent.mouseLeave(opener); fireEvent.mouseEnter(opener)
+  fireEvent.pointerLeave(opener); fireEvent.pointerEnter(opener)
   expect(screen.queryByRole('tooltip')).toBeNull()
   act(() => { catalog.set([]) })
   expect(opener.hasAttribute('aria-keyshortcuts')).toBe(false)
@@ -147,7 +147,7 @@ it('saves individual edits and disables changes when configuration cannot be rea
   expect(screen.getByRole('alert').textContent).toContain('Check access permissions, then reload the page.')
   expect(screen.getByRole('alert').textContent).toContain(en['using-defaults'])
   act(() => { config.set({ ...config.getSnapshot(), error: 'future', usingDefaults: false }) })
-  expect(screen.getByRole('alert').textContent).toContain('Upgrade AsterHub and try again.')
+  expect(screen.getByRole('alert').textContent).toContain('Upgrade Harness and try again.')
   expect(screen.getByRole('alert').textContent).toContain(en['using-accepted'])
   expect(screen.getByRole('dialog').contains(screen.getByRole('alert'))).toBe(false)
   expect(screen.getByRole('button', { name: en['reset-all'] }).hasAttribute('disabled')).toBe(true)
@@ -258,7 +258,7 @@ it.each((['web', 'desktop'] as const).flatMap(runtime => (['invalid', 'future'] 
   const text = screen.getByRole('alert').textContent
   expect(text).toContain(runtime === 'web' ? 'dsh.keybindings.v1' : 'userData/keybindings.json')
   expect(text).toContain(error === 'future'
-    ? dictionary === en ? 'Upgrade AsterHub' : '升级 AsterHub'
+    ? dictionary === en ? 'Upgrade Harness' : '升级 Harness'
     : dictionary === en ? 'Back up and repair' : '先备份并修复')
   expect(text).toContain(dictionary['using-accepted'])
   const reset = screen.getByRole('button', { name: dictionary['reset-all'] })
@@ -293,9 +293,9 @@ it('keeps command labels free of tooltips while retaining binding edits', () => 
   const label = screen.getByText('Open settings', { selector: 'span' })
   expect(label.textContent).toBe('Open settings')
   expect(screen.queryByText('Unavailable')).toBeNull()
-  fireEvent.mouseEnter(label)
+  fireEvent.pointerEnter(label)
   expect(screen.queryByRole('tooltip')).toBeNull()
-  fireEvent.mouseLeave(label)
+  fireEvent.pointerLeave(label)
   fireEvent.focus(label)
   expect(screen.queryByRole('tooltip')).toBeNull()
   expect(label.hasAttribute('tabindex')).toBe(false)

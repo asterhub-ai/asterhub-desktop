@@ -21,9 +21,6 @@
       "path": "../ui-renderer"
     },
     {
-      "path": "../ui-primitives"
-    },
-    {
       "path": "../ui-slots"
     }
   ]

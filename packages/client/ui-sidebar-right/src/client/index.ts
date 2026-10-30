@@ -42,8 +42,9 @@ import { SidebarSessionViews } from './session-views.ts'
 import { createSidebarRightController, type SidebarRightController } from './service.ts'
 import { SidebarRightTabRegistry } from './tab-registry.ts'
 import { createSidebarRightStore } from './stores.ts'
-import { en, zh } from './locales.ts'
+import { en, ja, es, fr, de, ru, pt, zh } from './locales.ts'
 import { GUIDE_ID, guideDefinition } from './tabs/guide/definition.ts'
+import { createGuidePins } from './tabs/guide/guide-pins.ts'
 import { guideTabInfoFactory, tabInfoFactory } from './tab-info.ts'
 import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import { defaultSeed } from './contract/seed.ts'
@@ -64,6 +65,7 @@ export type {
 export type {
   SidebarRightTabInfo, SidebarRightTabInjected, UseSidebarRightTabInfo, SidebarRightTabActions,
   SidebarRightTabMenuOwnerProps, SidebarRightTabNavigation, SidebarRightTabPlacement, SidebarRightGuideEntryOwnerProps,
+  SidebarRightGuideActionEntry, SidebarRightGuideActionsOwnerProps,
 } from './contract/slots.ts'
 export type {
   SidebarRightNavigationParams, SidebarRightResourceParams, SidebarRightResourceParamsMap,
@@ -128,7 +130,6 @@ export function apply(ctx: ClientContext): void {
       openWithFocus: (sessionId, open) => { openWithPaneFocus(document, sessionId, open) },
       closeWithFocus: (sessionId, paneId, close) => { closeWithPaneFocus(document, sessionId, paneId, close) },
     },
-    (sessionId, signal) => views.retain(sessionId, signal),
   )
   // The Session on screen: the selected one while the Conversation fills the
   // main column. Both sources notify before React renders their change, so the
@@ -156,12 +157,11 @@ export function apply(ctx: ClientContext): void {
   // Unloading aborts every tab occurrence, which releases every pin.
   ctx.effect(() => () => {
     controller.tabDomain.dispose()
-    controller.dispose()
     void disposeService()
     void disposeRegistry()
   }, 'ui-sidebar-right: service faces')
 
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-sidebar-right: dictionaries')
+  ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-sidebar-right: dictionaries')
   ctx.effect(() => registerSidebarShortcuts(ctx.shortcuts, controller, t, () => {
     void ctx.shortcuts.closeWindow().catch((error: unknown) => { console.error('Window close failed', error) })
   }), 'ui-sidebar-right: shortcuts')
@@ -245,16 +245,25 @@ export function apply(ctx: ClientContext): void {
     }, ExpandButton))
     // Stage two for the guide: it declares the chain child it hosts and reads
     // the registry's entry boxes, which an ordinary type has no reason to do.
+    const guidePins = createGuidePins()
     const guideInjected: GuideInjected = {
       hooks: {
         shortcuts: ctx.shortcuts.catalog,
         guideEntries: { subscribe: listener => tabs.subscribe(listener), getSnapshot: () => tabs.guide() },
+        entryPins: guidePins.unpinned,
+        entryActions: {
+          getSnapshot: () => ctx.slots.entriesOfSlot('sidebar.right.tab.guide.actions').length > 0,
+          subscribe: listener => ctx.slots.subscribe('sidebar.right.tab.guide.actions', listener),
+        },
       },
+      setPinned: guidePins.setPinned,
     }
     const disposeGuide = ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
       name: 'sidebar.right.pane.tab',
       key: GUIDE_ID,
+      locale: NS,
       children: {
+        'sidebar.right.tab.guide.actions': { kind: 'list', scope: 'root' },
         'sidebar.right.tab.guide.entry': {
           kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: guideTabInfoFactory } },
         },

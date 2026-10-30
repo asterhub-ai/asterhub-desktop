@@ -1,44 +1,30 @@
+import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 /** The Node compatibility matrix runs this complete source-entry smoke. */
-import { spawnSync } from 'node:child_process'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import Sandbox from '@deepseek-ai/dsh-sandbox-local'
-import { SandboxUnavailableError, type SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
+import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import PtcWorkflowEngine from '../src/index.ts'
 import { fakeParent, mountPtcRuntime } from './setup.ts'
-/** Probe the sandbox independently so Node-runtime launch failures cannot skip enforcement tests. */
-const sandboxUsable = await (async () => {
-  const probe = new Context()
-  try {
-    await probe.plugin(Sandbox, {})
-    const confined = await probe.sandbox.confine([process.execPath, '-e', 'process.exit(0)'], { mode: 'read-only', workspaceRoot: process.cwd() })
-    const result = spawnSync(confined.argv[0]!, confined.argv.slice(1), { stdio: 'ignore', timeout: 5000 })
-    return result.status === 0
-  } catch (error: unknown) {
-    if (error instanceof SandboxUnavailableError) return false
-    throw error
-  } finally { await probe.fiber.dispose() }
-})()
 
-
-async function setup(mode: SandboxMode) {
+async function setup(mode: SandboxMode, executionMode: 'per-call' | 'persistent-in-memory' = 'per-call') {
   const ctx = new Context()
-  const files = await mountPtcRuntime(ctx, mode)
+  const files = await mountPtcRuntime(ctx, mode, executionMode)
+  provideWorkingDirectoryFixture(ctx)
   await ctx.plugin(SubagentRuntime)
   ctx.subagents.registerProvider({
     name: 'spawn',
-    capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true },
+    capabilities: { agentOptions: true, agentPreset: false, outputSchema: true, depthLimit: true },
     inheritsParentContext: false,
     start: () => Promise.reject(new Error('source runtime smoke must not start a child')),
   })
   await ctx.plugin(PtcWorkflowEngine, {})
-  return { ctx, parent: fakeParent(ctx), ...files }
+  return { ctx, parent: await fakeParent(ctx), ...files }
 }
 
-it.skipIf(!sandboxUsable)('runs the default workflow config through the source PTC runtime', async () => {
+it('runs the default workflow config through the source PTC runtime', async () => {
   const { ctx, parent } = await setup('read-only')
   const run = ctx.workflowEngine.start({
     script: 'return args.left * args.right',
@@ -52,8 +38,9 @@ it.skipIf(!sandboxUsable)('runs the default workflow config through the source P
   } finally { await run.dispose() }
 })
 
-it.skipIf(!sandboxUsable).each(['read-only', 'workspace-write'] as const)('enforces the Session file policy %s for direct Node writes', async (mode) => {
-  const { ctx, parent, root, cwd } = await setup(mode)
+it.each(['per-call', 'persistent-in-memory'] as const)('enforces workspace writes in %s workflows', async (executionMode) => {
+  const mode = 'workspace-write'
+  const { ctx, parent, root, cwd } = await setup(mode, executionMode)
   const outside = join(root, 'outside.txt')
   const inside = join(cwd, 'inside.txt')
   await writeFile(outside, 'unchanged')

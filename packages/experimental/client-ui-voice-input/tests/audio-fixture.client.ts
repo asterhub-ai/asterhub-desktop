@@ -8,7 +8,7 @@ import { Recording } from '../src/client/audio.ts'
  * @returns the recording, device controls, and resource observations.
  */
 export function captureFixture(options: { empty?: boolean; recorderError?: boolean; constructError?: boolean } = {}) {
-  const trackStop = vi.fn(), close = vi.fn(async () => {}), disposed = vi.fn()
+  const trackStop = vi.fn<() => void>(), close = vi.fn(async () => {}), disposed = vi.fn<() => void>()
   const decoding = vi.fn(async (_data: ArrayBuffer) => ({ duration: 2 }))
   const rendering = vi.fn(async () => ({ getChannelData: () => new Float32Array([0.5, -0.5]) }))
   let failRecorder: () => void
@@ -39,7 +39,7 @@ export function captureFixture(options: { empty?: boolean; recorderError?: boole
   vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [{ stop: trackStop }] }) } })
   vi.stubGlobal('MediaRecorder', Recorder)
   vi.stubGlobal('AudioContext', function Audio() { return { state: 'running', close, decodeAudioData: decoding,
-    createMediaStreamSource: () => ({ connect: vi.fn() }),
+    createMediaStreamSource: () => ({ connect: vi.fn<() => void>() }),
     createAnalyser: () => ({ fftSize: 256, getFloatTimeDomainData: (buffer: Float32Array) => { buffer.fill(0.25) } }),
   } })
   vi.stubGlobal('OfflineAudioContext', offline)

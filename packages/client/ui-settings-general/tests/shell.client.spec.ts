@@ -16,6 +16,7 @@ import type { DesktopUpdatePresentation } from '../src/types.ts'
 const SELF = '@deepseek-ai/dsh-client-ui-settings-general'
 const SIDEBAR = '@deepseek-ai/dsh-client-ui-sidebar'
 const it = createClientTest({ roster: webApp })
+const withoutSettingsAccess = createClientTest({ roster: webApp }, { access: action => action !== 'settings/describe' })
 /** The whole roster's first boot pays the cold module transform of every plugin package. */
 const COLD_BOOT_TIMEOUT_MS = 60_000
 
@@ -37,16 +38,16 @@ const CHILD_SPECS = {
 const CHILD_NAMES = Object.keys(CHILD_SPECS) as Array<keyof typeof CHILD_SPECS>
 
 /**
- * Section ids the web-app roster registers, in nav order: this package (general: 0),
- * ui-settings-account (account: 10, account-usage: 20), and ui-settings-plugins (plugins: 15).
+ * Section ids the web-app roster registers, in nav order: this package, then
+ * ui-settings-models, ui-settings-plugins, and ui-agent-preset. A plugin
+ * adding a section changes this list.
  */
-const PRODUCT_SECTIONS: readonly string[] = ['general', 'account', 'plugins', 'account-usage']
-/**
- * Onboarding steps the web-app roster registers, in coordinator order.
- * In AsterHub, the web-app roster mounts no initial onboarding steps because
- * ui-settings-models is replaced by ui-settings-account.
- */
-const PRODUCT_ONBOARDING: readonly { id: string; order: number }[] = []
+const PRODUCT_SECTIONS: readonly string[] = ['general', 'models', 'plugins', 'agent-presets']
+/** Onboarding steps the web-app roster registers, in coordinator order; both come from ui-settings-models. */
+const PRODUCT_ONBOARDING: readonly { id: string; order: number }[] = [
+  { id: 'welcome-notice', order: -100 },
+  { id: 'deepseek-official', order: 0 },
+]
 
 describe('ui-settings-general shell', () => {
   it('shares one carrier subscription between both update locations and releases it on unload', async ({ start }) => {
@@ -77,13 +78,18 @@ describe('ui-settings-general shell', () => {
   }, COLD_BOOT_TIMEOUT_MS)
 
   it('declares its services', () => {
-    expect(inject).toEqual(['slots', 'locale', 'connection', 'remote', 'remote.settings', 'configForms', 'shortcuts'])
+    expect(inject).toEqual(['slots', 'locale', 'connection', 'remote', 'remote.settings', 'configForms', 'shortcuts', 'modules', 'remoteAccess'])
   })
 
   it('occupies sidebar.settings, declared by ui-sidebar, and declares every child slot', async ({ start }) => {
     const c = await start()
     expect(c.ctx.slots.entries('sidebar.settings').map(entry => entry.component)).toEqual([SettingsRoot])
     for (const name of CHILD_NAMES) expect(c.ctx.slots.spec(name)).toEqual(CHILD_SPECS[name])
+  }, COLD_BOOT_TIMEOUT_MS)
+
+  withoutSettingsAccess('leaves sidebar.settings unoccupied while the current Peer may not read the settings description', async ({ start }) => {
+    const c = await start()
+    expect(c.ctx.slots.entries('sidebar.settings')).toEqual([])
   }, COLD_BOOT_TIMEOUT_MS)
 
   it('projects the section ledger: product sections in order, defaults for bare rows, stable snapshots', async ({ start }) => {
@@ -109,22 +115,19 @@ describe('ui-settings-general shell', () => {
     off()
   })
 
-  it('shows Account first in Desktop while signed in and removes it on sign-out', async ({ start }) => {
-    vi.stubGlobal('dshDesktop', {})
-    onTestFinished(() => { vi.unstubAllGlobals() })
+  it('shows Account first only while signed in and removes it on sign-out', async ({ start }) => {
     const c = await start()
     const { sections } = injectedOf(c).hooks
+    await c.mock.streams.opened('account/watch', 1)
     expect(sections.getSnapshot().map(row => row.id)).toEqual(PRODUCT_SECTIONS)
-    const disposeAccount = c.ctx.slots.register({
-      name: 'settings.section',
-      id: 'account-primary',
-      order: -10,
-      label: 'Account',
-    } as never, () => null)
-    expect(sections.getSnapshot().map(row => row.id)).toEqual(['account-primary', ...PRODUCT_SECTIONS])
-    expect(sections.getSnapshot().filter(row => row.id === 'account-primary')).toHaveLength(1)
-    disposeAccount()
-    expect(sections.getSnapshot().map(row => row.id)).toEqual(PRODUCT_SECTIONS)
+    c.mock.streams.push('account/watch', { status: 'credential-stored', attempt: null })
+    await vi.waitFor(() => {
+      expect(sections.getSnapshot().map(row => row.id)).toEqual(['account', ...PRODUCT_SECTIONS])
+    })
+    c.mock.streams.push('account/watch', { status: 'credential-stored', attempt: null })
+    await vi.waitFor(() => { expect(sections.getSnapshot().filter(row => row.id === 'account')).toHaveLength(1) })
+    c.mock.streams.push('account/watch', { status: 'signed-out', attempt: null })
+    await vi.waitFor(() => { expect(sections.getSnapshot().map(row => row.id)).toEqual(PRODUCT_SECTIONS) })
   })
 
   it('projects the roster Connection control without copying its state; reconnect opens a new $events generation', async ({ start }) => {

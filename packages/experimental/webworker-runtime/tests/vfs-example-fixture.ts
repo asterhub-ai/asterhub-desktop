@@ -374,9 +374,12 @@ function oneShotLog(seed: readonly SessionEvent[]): SessionEvent[] {
   log.add(userMessage('preview-review-user', 'Review whether the preview fixture is isolated from future WebFS data.'))
   log.add({
     type: 'subagent/descriptor',
-    data: snapshotSubagentDescriptor({
-      mode: 'one-shot', provider: 'fork', label: 'Review preview architecture',
-    }),
+    data: {
+      version: 3,
+      mode: 'one-shot',
+      provider: 'fork',
+      label: 'Review preview architecture',
+    },
   })
   log.add({ type: 'step/start', data: { turn, step: 1 } })
   log.add(assistantMessage('preview-review-assistant', turn, 1, [{

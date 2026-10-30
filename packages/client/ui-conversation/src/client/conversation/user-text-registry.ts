@@ -34,7 +34,8 @@ export class UserTextRegistry extends ConversationDefinitionRegistry<UserTextRul
     return input => document.evaluate(input, this.rules)
   }
 
-  /** Read the registry version for evaluator refresh decisions.
+  /**
+   * Read the observable rule revision.
    * @returns monotonic revision, stable until a successful registration or disposal.
    */
   getSnapshot(): number {

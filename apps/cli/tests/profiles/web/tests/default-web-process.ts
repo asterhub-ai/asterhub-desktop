@@ -10,7 +10,6 @@ import type { IncomingHttpHeaders } from 'node:http'
 import { resolveExampleLaunch } from '@deepseek-ai/dsh-loader-smoke'
 import ts from 'typescript'
 import { expect } from 'vitest'
-import type { TestContext } from 'vitest'
 import { PROCESS_SHUTDOWN_TIMEOUT_MS } from '../../../../src/process-shutdown.ts'
 import type { RuntimeRoster } from './runtime-roster.ts'
 
@@ -29,8 +28,14 @@ interface DefaultWeb {
  * @param inspect - assertions against the running process and its ephemeral loopback URL.
  * @param options - additional profile patches and test data prepared before startup.
  */
+export interface DefaultWebTestContext {
+  readonly onTestFinished: (fn: () => void | Promise<void>) => void
+  readonly task: { readonly timeout: number }
+  readonly signal: AbortSignal
+}
+
 export async function withDefaultWeb(
-  test: TestContext,
+  test: DefaultWebTestContext,
   inspect: (app: DefaultWeb) => Promise<void>,
   options: { patches?: readonly string[]; prepare?: (root: string) => Promise<void> } = {},
 ): Promise<void> {

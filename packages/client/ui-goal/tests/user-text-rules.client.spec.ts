@@ -1,9 +1,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import { UserTextRegistry } from '@deepseek-ai/dsh-client-ui-conversation/src/client/conversation/user-text-registry.ts'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import type {
-  UserTextFacts, UserTextNode, UserTextRule, UserTextTransformContext,
-} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { UserTextFacts, UserTextNode, UserTextRule } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { goalCommandReferenceRule } from '../src/client/user-text-rules.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
@@ -76,7 +74,7 @@ describe('goalCommandReferenceRule', () => {
       { start: 0, end: 5, name: 'goal' },
     ]
     const facts: Partial<UserTextFacts> = { commands }
-    const context: UserTextTransformContext = { read: key => facts[key] }
+    const context = { read: <K extends keyof UserTextFacts>(key: K) => facts[key] }
     expect(goalCommandReferenceRule.match(text, 0, context)?.start).toBe(0)
     expect(goalCommandReferenceRule.match(text, 5, context)?.start).toBe(6)
     expect(goalCommandReferenceRule.match(text, 11, context)?.start).toBe(12)
@@ -87,8 +85,7 @@ describe('goalCommandReferenceRule', () => {
     [' /goalx', 1, 6], [' /other x/goal', 9, 14], [' /goal', 1, 7], [' /goal', 20, 25],
   ] as const)('ignores a nonmatching confirmed range in %s', (text, start, end) => {
     const facts: Partial<UserTextFacts> = { commands: [{ start, end, name: 'goal' }] }
-    const context: UserTextTransformContext = { read: key => facts[key] }
-    expect(goalCommandReferenceRule.match(text, 0, context)).toBeUndefined()
+    expect(goalCommandReferenceRule.match(text, 0, { read: key => facts[key] })).toBeUndefined()
   })
 
   it('uses original UTF-16 offsets without creating boundaries at the search cursor', () => {
@@ -97,7 +94,6 @@ describe('goalCommandReferenceRule', () => {
     expect(evaluate({ text, facts: { commands: [{ start: 3, end: 8, name: 'goal' }] } })
       .filter(node => node.id === 'command')).toEqual([{ id: 'command', start: 3, end: 8, data: { name: 'goal' } }])
     const facts: Partial<UserTextFacts> = { commands: [{ start: 1, end: 6, name: 'goal' }] }
-    const context: UserTextTransformContext = { read: key => facts[key] }
-    expect(goalCommandReferenceRule.match('x/goal', 1, context)).toBeUndefined()
+    expect(goalCommandReferenceRule.match('x/goal', 1, { read: key => facts[key] })).toBeUndefined()
   })
 })

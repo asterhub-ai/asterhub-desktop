@@ -2,7 +2,7 @@
 import type { ComponentType } from 'react'
 import type { InputTriggerCandidate } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import {
-  IconCompactOutlineRegular, IconDownloadOutlineRegular, IconGoalOutlineRegular, IconPlanOutlineRegular,
+  IconCompactOutlineRegular, IconDownloadOutlineRegular, IconGoalOutlineRegular, IconPaperPlaneOutlineRegular, IconPlanOutlineRegular,
   PermissionIconFullAccessRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { IconProps } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -17,19 +17,8 @@ export type MenuSection = 'add' | 'commands'
 
 /** Row names per section, highest usage first; rows outside both lists close the Commands section in catalog order. */
 const SECTION_ROWS: Readonly<Record<MenuSection, readonly string[]>> = {
-  add: ['file', 'goal', 'plan'],
+  add: ['file', 'goal', 'plan', 'feedback'],
   commands: ['compact', 'permission', 'model', 'export'],
-}
-
-/** Host commands intentionally excluded from the user-facing picker. */
-const HIDDEN_ROWS = new Set(['feedback'])
-
-/** Remove commands intentionally omitted from every user-facing menu query.
- * @param rows - candidate rows from the session command catalog and client contributions.
- * @returns candidates that may appear in the menu.
- */
-export function visibleMenuRows(rows: readonly InputTriggerCandidate[]): InputTriggerCandidate[] {
-  return rows.filter(row => !HIDDEN_ROWS.has(row.name))
 }
 
 /** The dictionary keys and glyph of one built-in Host command's client face. */
@@ -52,6 +41,7 @@ function hostFace(name: BuiltinCommandName, icon: ComponentType<IconProps>): rea
 const HOST_FACES: ReadonlyMap<BuiltinCommandName, HostFace> = new Map([
   hostFace('goal', IconGoalOutlineRegular),
   hostFace('plan', IconPlanOutlineRegular),
+  hostFace('feedback', IconPaperPlaneOutlineRegular),
   hostFace('compact', IconCompactOutlineRegular),
   hostFace('permission', PermissionIconFullAccessRegular),
   hostFace('export', IconDownloadOutlineRegular),
@@ -83,15 +73,14 @@ export function builtinRowFace(
  */
 export function sectionRows(rows: readonly InputTriggerCandidate[], t: TranslateNS<'command'>): readonly InputTriggerCandidate[] {
   const listed = new Set([...SECTION_ROWS.add, ...SECTION_ROWS.commands])
-  const visibleRows = visibleMenuRows(rows)
-  const byName = new Map(visibleRows.map(row => [row.name, row]))
+  const byName = new Map(rows.map(row => [row.name, row]))
   const pick = (names: readonly string[]): InputTriggerCandidate[] =>
     names.flatMap((name) => {
       const row = byName.get(name)
       return row === undefined ? [] : [row]
     })
   const add = pick(SECTION_ROWS.add).map(row => ({ ...row, section: t('section.add') }))
-  const commands = [...pick(SECTION_ROWS.commands), ...visibleRows.filter(row => !listed.has(row.name))]
+  const commands = [...pick(SECTION_ROWS.commands), ...rows.filter(row => !listed.has(row.name))]
     .map(row => ({ ...row, section: t('section.commands') }))
   return [...add, ...commands]
 }

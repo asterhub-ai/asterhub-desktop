@@ -115,7 +115,7 @@ export class FileUploads extends TypertRemoteService {
     const file = await this.store(agent, async () => this.ctx.attachments.admitEncodedFile({
       data: request.data,
       ...(request.name === undefined ? {} : { name: request.name }),
-    }, { sessionId: agent.session.id }))
+    }))
     return { receiptId: this.stage(agent, { type: 'file', attachment: file }), file }
   }
 
@@ -135,7 +135,7 @@ export class FileUploads extends TypertRemoteService {
       data: request.data,
       ...(request.signal === undefined ? {} : { signal: request.signal }),
       ...(request.name === undefined ? {} : { name: request.name }),
-    }, { sessionId: request.sessionId }))
+    }))
     return { receiptId: this.stage(agent, { type: 'file', attachment: file }), file }
   }
 
@@ -177,7 +177,7 @@ export class FileUploads extends TypertRemoteService {
         data,
         mediaType,
         ...(request.name === undefined ? {} : { name: request.name }),
-      }], { sessionId: request.sessionId })
+      }])
       request.signal?.throwIfAborted()
       // saveImages returns one reference per input, in input order.
       return { type: 'image' as const, attachment: refs[0] as ImageAttachmentRef, encodedBytes: data.byteLength }

@@ -9,23 +9,23 @@
   en: 8423614617b7bbf1
   zh: c99647136c800173
 /deepseek-ai-dsh-client-web/summary:
-  en: 517d3634995456c3
-  zh: 05c18b29a63ad65e
+  en: 646bd0a246789400
+  zh: d875dc0d37f46338
 /deepseek-ai-dsh-client-web/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
 /deepseek-ai-dsh-client-web/use-this-package:
-  en: 1e0d613be544ef60
-  zh: 96fc83ca8205d6ff
+  en: 3105391bad2e9f06
+  zh: fe0c5af5db6c241c
 /deepseek-ai-dsh-client-web/use-this-package/what-boot-looks-like:
   en: f3b01aa878764e5c
   zh: f02eab65d441bfe0
 /deepseek-ai-dsh-client-web/use-this-package/the-boot-page:
-  en: 9a190a6575e97d05
-  zh: 4b1ed57ef1ea4bb2
+  en: 1757ef1631612ff5
+  zh: d2d3fd0313908c12
 /deepseek-ai-dsh-client-web/use-this-package/the-shared-module-table:
-  en: 8380cd70b861a3a8
-  zh: 5a331deb7ad8fca1
+  en: 33b256e108a7bd6a
+  zh: 3b2b1368721803b7
 /deepseek-ai-dsh-client-web/use-this-package/configuration:
   en: 942959cb40ee31a1
   zh: 9c86ac2cf6a13976
@@ -39,11 +39,11 @@
   en: fb3cab79c1505627
   zh: 875897afe593aeb3
 /deepseek-ai-dsh-client-web/understand-the-implementation/boot-page-mechanics:
-  en: 59924eefded62683
-  zh: 0eb06108db4d0591
+  en: 83f9195138da9a82
+  zh: 135d7da735fb870a
 /deepseek-ai-dsh-client-web/understand-the-implementation/source-map:
-  en: 439484134ae7c6c8
-  zh: 01b18a489b71bb1f
+  en: 1fe37d3730368e32
+  zh: 74c2d6980ce82e21
 /deepseek-ai-dsh-client-web/further-exploration:
   en: f2da70a33bba9086
   zh: a775f6fe309150ea
@@ -54,8 +54,8 @@
   en: ca75c51c89c2c9b0
   zh: de54f3467ef3b9be
 /deepseek-ai-dsh-client-web/known-limitations-and-deferred-work:
-  en: 4a8cd6afadc61306
+  en: f498ba05d4ea96d5
   zh: c3e57dd8ca9b5bda
 /deepseek-ai-dsh-client-web/known-limitations-and-deferred-work/dev-note:
-  en: ba52717cc202a16f
-  zh: 3c08f30322413856
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

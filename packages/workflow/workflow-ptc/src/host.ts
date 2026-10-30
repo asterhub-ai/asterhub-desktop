@@ -5,7 +5,8 @@ import type { PtcBindingFunction, PtcJsonValue, PtcRuntime } from '@deepseek-ai/
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type SubagentRuntime from '@deepseek-ai/dsh-subagent'
-import type { SubagentRun } from '@deepseek-ai/dsh-subagent'
+import type { SubagentActivation } from '@deepseek-ai/dsh-subagent'
+import { canSelectApplicationModel, type ApplicationModelRoute } from '@deepseek-ai/dsh-llm'
 import { assertObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import { assertNever, snapshotJsonValue } from '@deepseek-ai/dsh-util-values'
@@ -18,7 +19,7 @@ import type { ChildStartRequest, WorkerInit } from './types.ts'
 
 interface ChildRecord {
   readonly callId: number
-  readonly run: SubagentRun
+  readonly run: SubagentActivation
   disposal?: Promise<void>
 }
 
@@ -128,7 +129,7 @@ export class PtcWorkflowRun implements WorkflowRun {
     readonly id: WorkflowRunId,
     readonly meta: WorkflowMeta,
     private readonly parent: Agent,
-    private readonly fixedModelRoute: boolean,
+    private readonly applicationModelRoute: ApplicationModelRoute | undefined,
     private readonly init: WorkerInit,
     private readonly provider: string,
     private readonly policy: SandboxExecutionPolicy,
@@ -197,19 +198,25 @@ export class PtcWorkflowRun implements WorkflowRun {
 
   private async startChild(request: ChildStartRequest): Promise<PtcJsonValue> {
     this.requireActive()
-    if (this.fixedModelRoute && (request.provider !== undefined || request.model !== undefined)) {
+    if ((request.provider !== undefined || request.model !== undefined)
+      && !canSelectApplicationModel(this.applicationModelRoute, request.provider)) {
       throw new Error('workflow child model route is fixed by this application')
     }
     const callId = ++this.started
-    const run = await this.subagents.start(this.provider, {
-      prompt: [{ type: 'text', text: request.prompt }],
-      parent: this.parent,
+    const run = await this.subagents.startActivation({
+      provider: this.provider,
+      label: this.meta.name,
+      delivery: 'caller',
       signal: this.controller.signal,
-      ...request.schema === undefined ? {} : { outputSchema: request.schema },
-      ...request.provider === undefined && request.model === undefined ? {} : {
-        agentOptions: {
-          ...request.provider === undefined ? {} : { provider: request.provider },
-          ...request.model === undefined ? {} : { model: request.model },
+      request: {
+        prompt: [{ type: 'text', text: request.prompt }],
+        parent: this.parent,
+        ...request.schema === undefined ? {} : { outputSchema: request.schema },
+        ...request.provider === undefined && request.model === undefined ? {} : {
+          agentOptions: {
+            ...request.provider === undefined ? {} : { provider: request.provider },
+            ...request.model === undefined ? {} : { model: request.model },
+          },
         },
       },
     })
@@ -220,7 +227,7 @@ export class PtcWorkflowRun implements WorkflowRun {
       await this.disposeChild(record)
       throw new Error('workflow child started after cancellation')
     }
-    return { callId, childId: run.id }
+    return { callId, childId: run.childId }
   }
 
   private async childResult(record: ChildRecord): Promise<PtcJsonValue> {
@@ -278,7 +285,11 @@ export class PtcWorkflowRun implements WorkflowRun {
     let result: WorkflowResult
     try {
       const outcome = await this.runtime.run(this.runtime.resolve({
-        program: PROGRAM,
+        program: {
+          'function-body': PROGRAM,
+          repl: `await (async () => {\n${PROGRAM}\n})()`,
+          script: `(async () => {\n${PROGRAM}\n})()`,
+        }[this.runtime.programFormat],
         bindings: [{ global: 'workflowHost', functions: this.bindings() }],
         cwd: this.policy.workspaceRoot,
         sandboxPolicy: this.policy,

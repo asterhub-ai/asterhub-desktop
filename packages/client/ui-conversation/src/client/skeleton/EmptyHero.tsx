@@ -138,20 +138,22 @@ export function HeroShell({ t, renderSlot, children }: HeroShellProps) {
           {/* figma 34:10412: fish 34×25 leading the headline, gap 10. */}
           <span
             className={css.fishHitbox}
-            onMouseEnter={() => {
-              if (window.matchMedia('(hover: hover) and (prefers-reduced-motion: no-preference)').matches) {
+            onPointerEnter={(event) => {
+              if (event.pointerType !== 'touch'
+                && window.matchMedia('(hover: hover) and (prefers-reduced-motion: no-preference)').matches) {
                 setHovering(true)
               }
             }}
-            onMouseLeave={() => { setHovering(false) }}
+            onPointerLeave={() => { setHovering(false) }}
           >
             {renderSlot('conversation.hero.brand.mark', { size: 34, className: css.fish }, {
               fallback: <HeroFish hovering={hovering} />,
             })}
           </span>
           <span className={css.titleGroup}>
-            {/* Keep the complete welcome sentence addressable as one piece of copy. */}
+            {/* Own element: keeps the headline text addressable apart from the badge. */}
             <span>{t('hero.headline')}</span>
+            <span className={css.previewBadge}>{t('hero.preview')}</span>
           </span>
         </div>
         <div className={css.body}>

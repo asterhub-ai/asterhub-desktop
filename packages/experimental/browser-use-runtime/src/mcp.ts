@@ -11,6 +11,7 @@ import { SessionResources } from './index.ts'
 import type {} from '@deepseek-ai/dsh-browser-use'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-system-prompt'
+import type {} from '@deepseek-ai/dsh-working-directory'
 
 /** Browser launch settings shared by the MCP integrations. */
 export interface BrowserMcpLaunchConfig {
@@ -98,6 +99,8 @@ interface ClientState {
  * @param options - provider identity, attachment exclusivity, and executable configuration.
  */
 export function mountSessionMcp(ctx: Context, options: SessionMcpOptions): void {
+  const workingDirectory = ctx.get('workingDirectory')
+  if (workingDirectory === undefined) throw new Error(`${options.name}: browser MCP requires a working-directory provider`)
   let resources!: SessionResources<Scope>
   const clients = new Map<Agent, ClientState>()
   const toolPrefix = `mcp__${options.name}__`
@@ -141,7 +144,7 @@ export function mountSessionMcp(ctx: Context, options: SessionMcpOptions): void 
             }
             return next()
           })
-          const sessionCwd = agent.ctx.sessionCwd.resolve(agent.session.header)
+          const sessionCwd = await workingDirectory.ensure(agent, signal)
           if (sessionCwd === undefined || sessionCwd.length === 0) {
             throw new Error(`${options.name}: session has no current execution directory`)
           }

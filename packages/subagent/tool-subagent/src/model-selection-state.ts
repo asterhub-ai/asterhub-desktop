@@ -2,31 +2,22 @@
 
 import { z as zod } from 'zod'
 import type { Session } from '@deepseek-ai/dsh-session'
-import type SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { assertAllowedModelRoutes, type AllowedModelRoute } from './model-selection.ts'
 
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
     /**
-     * Records that this session's delegation tool exposes child provider,
-     * model, and reasoning-effort selection. Appended before the first model
-     * request; absence means the fixed-route definition. Log-only: it carries
+     * Records this Session’s authorized child provider/model routes. Appended
+     * before the first model request; absence restricts explicit selection
+     * to the current parent route. Log-only: it carries
      * no `surfaceOp` and never enters model history.
      */
     'subagent/model-selection-policy': {
       /** Exact routes this Session may select explicitly for a child. */
       allowedModels: AllowedModelRoute[]
     }
-  }
-}
-
-declare module '@deepseek-ai/dsh-session-projection/types' {
-  interface SessionProjectionStateMap {
-    /** Whether the first event marks a seeded or restored Session. */
-    subagentSessionStartsWithSeed: boolean
-    /** Exact routes authorized for child LLM selection, or null when disabled. */
-    subagentModelSelectionPolicy: AllowedModelRoute[] | null
   }
 }
 
@@ -44,7 +35,10 @@ export const subagentSessionStartProjectionDefinition = {
   apply: (seeded, event) => event.seq === 0 ? event.type === 'session/end-seed' : seeded,
 } satisfies ProjectionDefinition<'subagentSessionStartsWithSeed', boolean>
 
-/** Host-only projection of the durable model-selection policy. */
+/**
+ * Host-only projection of the durable model-selection policy.
+ * Each independently mounted consumer registers this shared definition; the registry reference-counts it.
+ */
 export const subagentModelSelectionProjectionDefinition = {
   key: 'subagentModelSelectionPolicy',
   stateVersion: 1,
@@ -62,30 +56,30 @@ export const subagentModelSelectionProjectionDefinition = {
 } satisfies ProjectionDefinition<'subagentModelSelectionPolicy', AllowedModelRoute[] | null>
 
 /**
- * Read the exact route list captured for a model-selectable definition.
- * @param projections - registry that owns the policy projection.
+ * Read the exact route list authorized for a Session.
+ * @param subagentModelSelectionProjectionHandle - registered policy state reader.
  * @param session - session whose durable decision is read.
- * @returns a detached route list, or undefined for the fixed-route definition.
+ * @returns a detached route list, or undefined to restrict selection to the parent route.
  */
 export function subagentModelSelectionPolicy(
-  projections: Pick<SessionProjectionRegistry, 'stateOf'>,
+  subagentModelSelectionProjectionHandle: Pick<ProjectionHandle<AllowedModelRoute[] | null>, 'stateOf'>,
   session: Session,
 ): AllowedModelRoute[] | undefined {
-  return projections.stateOf(session, 'subagentModelSelectionPolicy')?.map(route => ({ ...route }))
+  return subagentModelSelectionProjectionHandle.stateOf(session)?.map(route => ({ ...route }))
 }
 
 /**
  * Append the route policy once, before its definition can reach a model request.
- * @param projections - registry that owns the policy projection.
+ * @param subagentModelSelectionProjectionHandle - registered policy state reader.
  * @param session - session receiving the model-selectable definition.
  * @param allowedModels - exact routes the definition may select explicitly.
  */
 export function recordSubagentModelSelection(
-  projections: Pick<SessionProjectionRegistry, 'stateOf'>,
+  subagentModelSelectionProjectionHandle: Pick<ProjectionHandle<AllowedModelRoute[] | null>, 'stateOf'>,
   session: Session,
   allowedModels: readonly AllowedModelRoute[],
 ): void {
-  if (subagentModelSelectionPolicy(projections, session) !== undefined) return
+  if (subagentModelSelectionPolicy(subagentModelSelectionProjectionHandle, session) !== undefined) return
   session.append('subagent/model-selection-policy', {
     allowedModels: allowedModels.map(route => ({ ...route })),
   })

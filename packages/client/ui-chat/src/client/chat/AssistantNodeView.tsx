@@ -1,6 +1,5 @@
-import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { memo, useCallback, useMemo } from 'react'
-import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ChatNodeViewProps, PresentationInjected, TurnTailOwnerProps } from '../contract/slots.ts'
 import { AssistantMarkdown } from './AssistantMarkdown.tsx'
 
@@ -26,10 +25,13 @@ export const AssistantNodeView = memo(function AssistantNodeView({
     () => owner === undefined ? undefined : fileMentions(owner),
     [fileMentions, owner],
   )
+  const keepReplies = usePresentation(policy => policy.foldedReplies === 'all')
+  // A kept reply row stays visible while the folded Turn hides its inline reasoning.
   const reasoningHidden = turnProcess !== undefined
     && turnProcess.foldable
-    && turnProcess.spec.answerStep === data.step
-    && turnProcess.spec.inlineReasoning
+    && (keepReplies
+      ? groupPart !== 'reasoning'
+      : turnProcess.spec.answerStep === data.step && turnProcess.spec.inlineReasoning)
     && !turnProcess.open
   const revealProcess = useCallback(() => { turnProcess?.setOpen(true) }, [turnProcess])
   return (
@@ -38,12 +40,13 @@ export const AssistantNodeView = memo(function AssistantNodeView({
       groupPart={groupPart}
       useDisclosure={useDisclosure}
       streaming={data.status === 'running'}
+      textInteractionSource={data.status === 'settled' && data.finalNode?.messageId !== undefined}
       interrupted={data.status === 'interrupted'}
       loadImage={loadImage}
-      renderSlot={renderSlot}
       reasoningHidden={reasoningHidden}
       useGroupAction={useGroupAction}
       usePresentation={usePresentation}
+      renderSlot={renderSlot}
       revealProcess={revealProcess}
       mentions={mentions}
       t={t}

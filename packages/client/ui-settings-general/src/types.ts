@@ -11,6 +11,7 @@ export type DesktopUpdateFailureKind =
   | 'stop-failed'
   | 'tasks-changed'
   | 'tasks-unavailable'
+  | 'fullscreen-timeout'
 
 /** Public semantic preload fields consumed by the settings row. */
 export interface DesktopUpdatePresentation {
@@ -24,7 +25,6 @@ export interface DesktopUpdatePresentation {
 export interface DesktopUpdateBridge {
   status(): Promise<DesktopUpdatePresentation>
   open(): Promise<void>
-  check(): Promise<void>
   subscribe(listener: (state: DesktopUpdatePresentation) => void): () => void
 }
 

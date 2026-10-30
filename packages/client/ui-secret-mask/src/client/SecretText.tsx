@@ -2,13 +2,23 @@
 import { useState } from 'react'
 import type { UserTextNodeProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import { IconSearchOutlineRegular, IconShieldOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { NS } from './locales.ts'
 import { MASK } from './credential-masks.ts'
 import css from './SecretText.module.css'
 
+const EYE_CONTOUR = 'M1.5 8C2.9 5.25 5.25 3.5 8 3.5C10.75 3.5 13.1 5.25 14.5 8C13.1 10.75 10.75 12.5 8 12.5C5.25 12.5 2.9 10.75 1.5 8Z'
+const EYE_PATH = `${EYE_CONTOUR}M10 8C10 9.1 9.1 10 8 10C6.9 10 6 9.1 6 8C6 6.9 6.9 6 8 6C9.1 6 10 6.9 10 8Z`
+/** The struck-through glyph drops the pupil so it stays distinct at text size. */
+const EYE_OFF_PATH = `${EYE_CONTOUR}M2.5 2.5L13.5 13.5`
 const MASK_RUNS = new RegExp(`(\\${MASK}+)`, 'u')
 
+function EyeGlyph({ path }: { readonly path: string }) {
+  return (
+    <svg className={css.icon} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" aria-hidden="true">
+      <path d={path} />
+    </svg>
+  )
+}
 
 /**
  * Split the masked form into kept text and mask runs. Mask runs keep their
@@ -50,7 +60,7 @@ export function SecretText({ node, raw, interactive, t }: SecretTextProps) {
           aria-label={t(revealed ? 'secret.hide' : 'secret.reveal')}
           onClick={() => { setRevealedRaw(revealed ? undefined : raw) }}
         >
-          {revealed ? <IconShieldOutlineRegular size={14} /> : <IconSearchOutlineRegular size={14} />}
+          <EyeGlyph path={revealed ? EYE_OFF_PATH : EYE_PATH} />
         </button>
       )}
     </span>

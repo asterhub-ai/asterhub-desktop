@@ -22,7 +22,7 @@ it.each([
   expect(failure).toBeInstanceOf(StartupError)
   const diagnostic = formatFatalDiagnostic(failure)
   const report = renderCrashReport({ source: 'host', phase: 'startup', error: failure,
-    hostDiagnostic: diagnostic, rendererConsole: [], operationHistoryPlanned: true,
+    hostDiagnostic: diagnostic, rendererConsole: [],
     time: new Date('2026-10-19T00:00:00Z'),
     app: { name: 'qualification', version: 'test', platform: 'win32', arch: 'x64', electron: 'test', node: process.version, locale: 'zh-CN' },
   })

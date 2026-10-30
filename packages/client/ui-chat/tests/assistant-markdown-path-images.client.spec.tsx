@@ -3,7 +3,7 @@ import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AssistantMarkdown, localPathMediaUrl } from '../src/client/chat/AssistantMarkdown.tsx'
 import { useDetailedPresentation } from './presentation-fixture.client.ts'
-import { emptyMessageImagesSlot, unusedImageLoader } from './reasoning-component-fixture.tsx'
+import { unusedImageLoader } from './reasoning-component-fixture.tsx'
 import { useDisclosure } from '../src/client/chat/use-disclosure.ts'
 import { useSearchableHidden } from '../src/client/chat/searchable-hidden.ts'
 import type { ChatViewSlotProps } from '../src/client/contract/slots.ts'
@@ -59,7 +59,7 @@ describe('AssistantMarkdown local-path images', () => {
   it.each([BASE, 'dsh-app://app/'])('renders a local image in closing prose through %s', (base) => {
     vi.spyOn(document, 'baseURI', 'get').mockReturnValue(base)
     const { container } = render(
-      <AssistantMarkdown useDisclosure={useDisclosure} useGroupAction={useSearchableHidden} renderSlot={emptyMessageImagesSlot}
+      <AssistantMarkdown renderSlot={() => null} useDisclosure={useDisclosure} useGroupAction={useSearchableHidden}
         usePresentation={useDetailedPresentation}
         blocks={[textBlock('See ![diagram](/tmp/graph.png) for the layout.')]}
         streaming={false}
@@ -75,39 +75,9 @@ describe('AssistantMarkdown local-path images', () => {
     expect(url.searchParams.get('path')).toBe('/tmp/graph.png')
   })
 
-  it.each(['<thi', '<thinking>private work', '<analysis>private', '<reasoning>private</reasoning><thi'])('hides incomplete reasoning while streaming: %s', (suffix) => {
-    const { container } = render(
-      <AssistantMarkdown useDisclosure={useDisclosure} useGroupAction={useSearchableHidden} renderSlot={emptyMessageImagesSlot}
-        usePresentation={useDetailedPresentation}
-        blocks={[textBlock(`Visible answer ${suffix}`)]}
-        streaming={true}
-        loadImage={unusedImageLoader}
-        t={t}
-      />,
-    )
-    expect(container.textContent).toContain('Visible answer')
-    expect(container.textContent).not.toContain('private')
-    expect(container.textContent).not.toContain('<thi')
-  })
-
-  it('hides leaked reasoning delimiters from answer prose', () => {
-    const { container } = render(
-      <AssistantMarkdown useDisclosure={useDisclosure} useGroupAction={useSearchableHidden} renderSlot={emptyMessageImagesSlot}
-        usePresentation={useDetailedPresentation}
-        blocks={[textBlock('<thinking>private work</thinking>Visible answer <analysis>private</analysis>')]}
-        streaming={false}
-        loadImage={unusedImageLoader}
-        t={t}
-      />,
-    )
-    expect(container.textContent).not.toContain('<thinking>')
-    expect(container.textContent).not.toContain('private work')
-    expect(container.textContent).toContain('Visible answer')
-  })
-
   it('keeps non-absolute destinations inert', () => {
     const { container } = render(
-      <AssistantMarkdown useDisclosure={useDisclosure} useGroupAction={useSearchableHidden} renderSlot={emptyMessageImagesSlot}
+      <AssistantMarkdown renderSlot={() => null} useDisclosure={useDisclosure} useGroupAction={useSearchableHidden}
         usePresentation={useDetailedPresentation}
         blocks={[textBlock('See ![diagram](relative.png).')]}
         streaming={false}

@@ -62,6 +62,7 @@
     "@deepseek-ai/dsh-host-webserver": "workspace:*"
   },
   "devDependencies": {
+    "chrome-devtools-frontend": "1.0.1638082",
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/cordis-plugin-include": "workspace:~",
     "@deepseek-ai/cordis-plugin-loader": "workspace:~",

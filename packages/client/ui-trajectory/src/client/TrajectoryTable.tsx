@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import type { WatchToolResult } from './watch-tool-result.ts'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   CodeBlock,
@@ -388,6 +390,8 @@ function AssistantTimingPanel({
 
 /** Props for the trajectory ledger. */
 export interface TrajectoryTableProps {
+  /** Observe the selected result while the Result tab is open. */
+  watchToolResult?: WatchToolResult | undefined
   /** Wrapping control shared by all JSON inspectors. */
   stringWrapping?: JsonTreeProps['stringWrapping']
   /** Trajectory locale seat. */
@@ -558,7 +562,7 @@ function indexRequestBoundaries(
     const key = requestKey(record.turn, record.group)
     if (!requestGroups.has(key)) continue
     if (boundaries.has(key)) continue
-    if (record.cell.kind === 'user' || record.cell.kind === 'context') continue
+    if (record.cell.kind === 'user' || record.cell.kind === 'context' || record.cell.kind === 'system') continue
     boundaries.set(key, record.cell.index)
   }
   return boundaries
@@ -729,6 +733,7 @@ function collapseAssistantRecords(
 function stateOf(record: TableRecord): RecordState {
   if (record.cell.isError) return 'error'
   if (record.cell.kind === 'compacted' && record.cell.timeSeconds === null) return 'running'
+  if (record.cell.assistantMetrics?.completedTime === null) return 'running'
   if (
     (record.cell.kind === 'tool' || record.cell.kind === 'subtool')
     && record.cell.outputDetail === undefined
@@ -747,11 +752,6 @@ function requestErrorMessage(
   t: TrajectoryTranslate,
 ): string | undefined {
   if (request.errorCode === 'AUTH') return t('details.failure.auth')
-  if (request.errorCode === 'QUOTA' || request.errorCode === 'ACCOUNT_QUOTA') return t('details.failure.quota')
-  if (request.errorCode === 'RATE_LIMIT') return t('details.failure.rateLimit')
-  if (request.errorCode === 'TIMEOUT') return t('details.failure.timeout')
-  if (request.errorCode === 'TRANSPORT') return t('details.failure.network')
-  if (request.errorCode === 'SERVER') return t('details.failure.server')
   if (request.error === COMPACTION_INTERRUPTED_ERROR) return t('layout.compactionInterrupted')
   return request.error
 }
@@ -2014,15 +2014,7 @@ function ProgramOutput({ record, stringWrapping, onOpen, t }: {
     </div>
   )
   return onOpen === undefined
-    ? (
-      <section className={css.programPanel}>
-        <header className={css.overviewHeading}>
-          <span>{t('code.output')}</span>
-          {actions}
-        </header>
-        {body}
-      </section>
-    )
+    ? body
     : <OverviewSection label={t('code.output')} onOpen={onOpen} actions={actions}>{body}</OverviewSection>
 }
 
@@ -2087,6 +2079,7 @@ function OverviewSection({
  * @returns The ledger and an optional local record inspector.
  */
 export function TrajectoryTable({
+  watchToolResult,
   t,
   stringWrapping,
   renderSlot,
@@ -2149,6 +2142,18 @@ export function TrajectoryTable({
   const selected = selectedTemplate === undefined
     ? undefined
     : currentRecord(selectedTemplate)
+  const resultSeq = activeTab === 'output' ? selected?.cell.resultSeq : undefined
+  const [liveResult, setLiveResult] = useState<{ seq: number; owner: WatchToolResult; value: JsonValue | undefined }>()
+  useEffect(() => {
+    setLiveResult(undefined)
+    if (resultSeq === undefined || watchToolResult === undefined) return
+    let active = true
+    const dispose = watchToolResult(resultSeq, (value) => {
+      if (active) setLiveResult({ seq: resultSeq, owner: watchToolResult, value })
+    })
+    return () => { active = false; dispose() }
+  }, [resultSeq, watchToolResult])
+  const resultValue = liveResult?.seq === resultSeq && liveResult?.owner === watchToolResult ? liveResult?.value : undefined
   const selectedProgram = selected === undefined ? undefined : codeProgram(selected.cell)
   const thinkingExpanded = thinkingDisclosure?.recordId === selectedRecordId
     ? thinkingDisclosure.expanded
@@ -2278,7 +2283,7 @@ export function TrajectoryTable({
     ), [allRecords, selectedRequestInfo])
   const selectedRequestRecords = selectedRequestRecordTemplates.map(currentRecord)
   const selectedRequestAssistant = selectedRequestRecords.find(
-    record => record.cell.kind === 'message',
+    record => record.cell.kind === 'message' && record.cell.requestOnly !== true,
   )
   const selectedRequestAnchor = selectedRequestAssistant ?? selectedRequestRecords[0]
   const selectedRequestNumber = selectedRequestInfo?.number
@@ -3113,7 +3118,7 @@ export function TrajectoryTable({
             id="trajectory-detail-panel"
             className={activeTab === 'overview'
               ? `${css.detailBody} ${css.detailBodySummary}`
-              : selectedProgram !== undefined && (activeTab === 'input' || activeTab === 'output')
+              : selectedProgram !== undefined && activeTab === 'input'
                 ? `${css.detailBody} ${css.detailBodyProgram}`
                 : css.detailBody}
             role="tabpanel"
@@ -3171,15 +3176,19 @@ export function TrajectoryTable({
                   )}
                   {selectedRequestInfo.error !== undefined && (
                     <div>
-                      <dt>{t('details.error')}</dt>
-                      <dd className={css.error}>{requestErrorMessage(selectedRequestInfo, t)}</dd>
+                      <dt>{t(selectedRequestState !== 'error' && selectedRequestInfo.retry !== undefined
+                        ? 'details.lastAttemptError'
+                        : 'details.error')}</dt>
+                      <dd className={selectedRequestState === 'error' ? css.error : undefined}>
+                        {requestErrorMessage(selectedRequestInfo, t)}
+                      </dd>
                     </div>
                   )}
                   {selectedRequestInfo.retry !== undefined && (
                     <div>
                       <dt>{t('details.retry')}</dt>
                       <dd>
-                        {t('details.scheduled')} {selectedRequestInfo.maxRetries === undefined
+                        {selectedRequestInfo.maxRetries === undefined
                           ? selectedRequestInfo.retry
                           : t('request.retryProgress', {
                             retry: selectedRequestInfo.retry,
@@ -3520,9 +3529,30 @@ export function TrajectoryTable({
                   stringWrapping={stringWrapping} t={t} />
             )}
             {!promptSelected && selected !== undefined && activeTab === 'output' && (
-              selectedProgram === undefined
-                ? <RecordPayload record={selected} direction="output" renderSlot={renderSlot} loadImage={loadImage} stringWrapping={stringWrapping} t={t} />
-                : <ProgramOutput record={selected} stringWrapping={stringWrapping} t={t} />
+              selected.cell.kind === 'tool' || selected.cell.kind === 'subtool'
+                ? <div className={css.resultSections}>
+                  <section className={css.resultSection} aria-label={t('record.rawResult')}>
+                    <header className={css.overviewHeading}>
+                      <h3 className={css.resultTitle}>{t('record.rawResult')}</h3>
+                    </header>
+                    {resultValue === undefined
+                      ? <p className={css.noPayload}>{t(stateOf(selected) === 'running' ? 'code.running' : 'record.rawResultUnavailable')}</p>
+                      : resultValue !== null && typeof resultValue === 'object'
+                        ? <JsonTree data={resultValue} label={t('record.resultJson')}
+                          labels={jsonTreeLabels(t)} stringWrapping={stringWrapping}
+                          collapsedStringLines={12} className={css.jsonPayload} />
+                        : <pre className={css.programOutput}>{JSON.stringify(resultValue)}</pre>}
+                  </section>
+                  <section className={css.resultSection} aria-label={t('record.renderedResult')}>
+                    <header className={css.overviewHeading}>
+                      <h3 className={css.resultTitle}>{t('record.renderedResult')}</h3>
+                    </header>
+                    {selectedProgram === undefined
+                      ? <RecordPayload record={selected} direction="output" renderSlot={renderSlot} loadImage={loadImage} stringWrapping={stringWrapping} t={t} />
+                      : <ProgramOutput record={selected} stringWrapping={stringWrapping} t={t} />}
+                  </section>
+                </div>
+                : <RecordPayload record={selected} direction="output" renderSlot={renderSlot} loadImage={loadImage} stringWrapping={stringWrapping} t={t} />
             )}
             {!promptSelected && selected !== undefined && activeTab === 'schema' && (
               <RecordSchema record={selected} stringWrapping={stringWrapping} t={t} />

@@ -3,7 +3,7 @@
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
+import { allowAllAccess, bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { SettingsFieldState, SettingsFormShell } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
@@ -14,6 +14,14 @@ import { en, zh } from '../src/client/locales.ts'
 afterEach(cleanup)
 const settled: SettingsFormShell = { available: true, writable: true, dirty: false, invalid: false, saving: false, failed: false }
 const field = (text: string, overridden = false): SettingsFieldState => ({ text, overridden, invalid: false })
+
+// Global standard kit stubs: the section consumes none of these hooks.
+const unusedHook = (() => { throw new Error('unused by the anima settings section') }) as never
+const kit = {
+  useSessions: unusedHook, useSessionStatus: unusedHook, useSessionRetainInfo: () => undefined,
+  usePanelInfo: unusedHook, useResource: unusedHook, useWorkspaces: unusedHook,
+  ...allowAllAccess,
+}
 
 function renderSection(locale: typeof en = en, overrides: Partial<AnimaFormState> = {}) {
   const state: AnimaFormState = {
@@ -31,11 +39,8 @@ function renderSection(locale: typeof en = en, overrides: Partial<AnimaFormState
   const actions = { edit: vi.fn(), resetField: vi.fn(), save: vi.fn(), discard: vi.fn(), selectModel: vi.fn(), loadModels: vi.fn() }
   const messages: Readonly<Record<string, string>> = locale
   const t: PropsLocale<'settings.anima'>['t'] = key => messages[key] ?? key
-  function unusedHook(): never { throw new Error('The Anima settings section does not read global sources') }
   const props: AnimaSettingsSectionProps = {
-    ...actions, t, close: vi.fn(), useAnimaForm: bindSnapshotSelector(store),
-    usePanelInfo: unusedHook, useSessions: unusedHook, useSessionStatus: unusedHook,
-    useSessionRetainInfo: unusedHook, useWorkspaces: unusedHook, useResource: unusedHook,
+    ...kit, ...actions, t, close: vi.fn(), useAnimaForm: bindSnapshotSelector(store),
   }
   render(<AnimaSettingsSection {...props} />)
   return actions

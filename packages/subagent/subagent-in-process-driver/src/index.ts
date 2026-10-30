@@ -18,7 +18,6 @@ import { foldConsumedWork } from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionId, SessionLogOffset as SessionLogOffsetType, TurnEndReason } from '@deepseek-ai/dsh-session'
-import type {} from '@deepseek-ai/dsh-session/cwd'
 import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
 import {
   appendDelegatedPolicyOverrides,
@@ -105,7 +104,6 @@ function attachDescriptorAppend(childCtx: Context, descriptor: SubagentDescripto
 export async function startInProcessRun(
   request: ResolvedSubagentStartRequest,
   options: InProcessRunOptions,
-  sessionCwd: Context['sessionCwd'],
 ): Promise<SubagentRun> {
   assertSubagentMaxDepth(request.maxDepth)
   if (request.signal.aborted) throw prePublicationAbort()
@@ -115,10 +113,11 @@ export async function startInProcessRun(
   const childId = brandString<SessionId>(randomUUID())
   const seed = options.seed
   const activationBoundary = SessionLogOffset(seed?.length ?? 0)
-  const agentOptions = resolveChildAgentOptions(parent, request.agentOptions, childDepth, sessionCwd)
+  const agentOptions = resolveChildAgentOptions(parent, request.agentOptions, childDepth)
+  const resolvedCwd = request.cwd ?? parent.ctx.get('workingDirectory')?.get(parent.session)
   const childMeta = {
-    ...childSessionMeta(parent, childDepth, seed !== undefined, sessionCwd),
-    ...agentOptions.cwd === undefined ? {} : { cwd: agentOptions.cwd },
+    ...childSessionMeta(parent, childDepth, seed !== undefined, request.agentPreset),
+    ...resolvedCwd !== undefined ? { cwd: resolvedCwd } : {},
   }
 
   // Capture before the first await: a later parent switch belongs to the
@@ -126,17 +125,19 @@ export async function startInProcessRun(
   const inherited = captureDelegatedPolicyOverrides(parent)
 
   let structured: StructuredAttachment | undefined
-  const setup = (childCtx: Context, child: Agent): void => {
+  const setup = async (childCtx: Context, child: Agent): Promise<void> => {
     appendDelegatedPolicyOverrides(child.session, inherited)
-    Object.defineProperty(child.ctx, 'sessionCwd', { value: sessionCwd, configurable: true, writable: true })
-    applyChildComposition(childCtx, parent, {
-      persona: request.persona,
-      toolFilter: request.toolFilter,
+    await applyChildComposition(childCtx, parent, {
+      ...request.agentPreset !== undefined ? { agentPreset: request.agentPreset } : {},
+      ...request.persona !== undefined ? { persona: request.persona } : {},
+      ...request.toolFilter !== undefined ? { toolFilter: request.toolFilter } : {},
     })
     if (request.outputSchema !== undefined) {
       structured = attachStructuredRuntime(childCtx, request.outputSchema)
     }
-    attachDescriptorAppend(childCtx, request.descriptor)
+    if (request.descriptor !== undefined) {
+      attachDescriptorAppend(childCtx, request.descriptor)
+    }
   }
 
   const handle = await parent.ctx.agents.create({

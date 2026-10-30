@@ -8,14 +8,12 @@
     "src"
   ],
   "references": [
+    { "path": "../../runtime-diagnostics/invariants" },
     {
       "path": "../../../vendor/cordis"
     },
     {
       "path": "../ui-slots"
-    },
-    {
-      "path": "../../runtime-diagnostics/invariants"
     }
   ]
 }

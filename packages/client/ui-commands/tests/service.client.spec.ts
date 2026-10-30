@@ -390,10 +390,10 @@ describe('candidates', () => {
       command.register(fileContribution())
       const rows = await source.candidates(proj('s1'), req(''))
       expect(rows.map(row => row.name)).toEqual([
-        'file', 'goal', 'plan', 'compact', 'permission', 'model', 'export', 'deploy',
+        'file', 'goal', 'plan', 'feedback', 'compact', 'permission', 'model', 'export', 'deploy',
       ])
       expect(rows.map(row => row.section)).toEqual([
-        ...Array<string>(3).fill('command:section.add'),
+        ...Array<string>(4).fill('command:section.add'),
         ...Array<string>(5).fill('command:section.commands'),
       ])
       expect(rows[1]).toEqual({
@@ -405,9 +405,9 @@ describe('candidates', () => {
         section: 'command:section.add',
       })
       expect(rows[0]).toEqual({ name: 'file', label: 'command:label.file', icon: Glyph, section: 'command:section.add' })
-      expect(rows[5]).toMatchObject({ name: 'model', label: '模型', description: '选择本会话使用的模型', icon: Glyph })
+      expect(rows[6]).toMatchObject({ name: 'model', label: '模型', description: '选择本会话使用的模型', icon: Glyph })
       // A third-party command keeps its catalog text and gets no glyph.
-      expect(rows[7]).toEqual({ name: 'deploy', description: 'third-party command', section: 'command:section.commands' })
+      expect(rows[8]).toEqual({ name: 'deploy', description: 'third-party command', section: 'command:section.commands' })
     })
 
     it('a same-name override keeps its own presentation even when it copies the first-party description', async () => {
@@ -429,7 +429,7 @@ describe('candidates', () => {
       onTestFinished(() => fiber.dispose())
       await warm(proj('s1'))
       const rows = await source.candidates(proj('s1'), req(''))
-      for (const name of ['goal', 'plan'] as const) {
+      for (const name of ['goal', 'plan', 'feedback'] as const) {
         expect(rows.find(row => row.name === name)?.label).toBe(dictionary[`label.${name}`])
         const picked = menuPick(source, name, proj('s1'))
         expect(picked).toHaveProperty('claim.token', `/${dictionary[`token.${name}`]} `)
@@ -438,12 +438,6 @@ describe('candidates', () => {
           expect(await source.matchEnter!(proj('s1'), `/${spelling} text`, new AbortController().signal, { attachments: 0 }))
             .toHaveProperty('claim.token', `/${spelling} `)
         }
-      }
-      expect(rows.find(row => row.name === 'feedback')).toBeUndefined()
-      for (const spelling of [en['token.feedback'], zh['token.feedback']]) {
-        expect(source.matchSpace!(proj('s1'), `/${spelling}`)).toHaveProperty('claim.name', 'feedback')
-        expect(await source.matchEnter!(proj('s1'), `/${spelling} text`, new AbortController().signal, { attachments: 0 }))
-          .toHaveProperty('claim.token', `/${spelling} `)
       }
     })
 
@@ -735,6 +729,34 @@ describe('matchEnter (enter column)', () => {
       commands: () => Promise.reject(new Error('warmup boom')),
     })
     await expect(source.matchEnter!(proj('s1'), '/goal', signal(), { attachments: 0 })).rejects.toThrow('warmup boom')
+  })
+
+  it('matchClaim waits for a cold catalog and answers only the space column claim without acting', async () => {
+    let release!: (value: { commands: CommandDescriptor[] }) => void
+    const { command, source, mint, executeCalls } = await bench({
+      commands: () => new Promise((resolve) => { release = resolve }),
+    })
+    const run = vi.fn()
+    command.register({ name: 'file', label: () => 'file', available: () => true, ui: { kind: 'action', run } })
+    const consumes: ConsumeTokenRequest[] = []
+    mint('s1').ctx.on('slash/input-consume-token', (r) => { consumes.push(r); return true })
+    const wait = source.matchClaim!(proj('s1'), '/goal', signal())
+    await vi.waitFor(() => { expect(release).toBeTypeOf('function') })
+    release({ commands: S1_CMDS })
+    await expect(wait).resolves.toMatchObject({ name: 'goal', token: '/goal ' })
+    for (const token of ['/plan', '/file', '/xyz', 'goal']) {
+      await expect(source.matchClaim!(proj('s1'), token, signal())).resolves.toBeUndefined()
+    }
+    expect(run).not.toHaveBeenCalled()
+    expect(consumes).toEqual([])
+    expect(executeCalls).toEqual([])
+  })
+
+  it('matchClaim rejects when warmup fails', async () => {
+    const { source } = await bench({
+      commands: () => Promise.reject(new Error('warmup boom')),
+    })
+    await expect(source.matchClaim!(proj('s1'), '/goal', signal())).rejects.toThrow('warmup boom')
   })
 
   it('leadingInput claims args-tolerant (bare and with trailing text)', async () => {

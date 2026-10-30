@@ -33,7 +33,7 @@ import { formatFileMention } from '@deepseek-ai/dsh-file-reference/grammar'
 import type { FileReferenceCandidate } from '@deepseek-ai/dsh-file-reference/types'
 import type { SessionReferenceMentionCandidate } from '@deepseek-ai/dsh-session-reference/types'
 import { abbreviateHomePath, fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
-import { en, NS, zh, type ReferenceKey } from './locales.ts'
+import { en, ja, es, fr, de, ru, pt, NS, zh, type ReferenceKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-api-session-controller/client' {
   interface SessionReferenceSourceMap {
@@ -53,11 +53,11 @@ export const inject = [
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-reference: dictionaries')
+  ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-reference: dictionaries')
   const t = ctx.locale.bind(NS)
   const sessions = ctx.get('sessions') as ISessions
-  ctx.effect(() => ctx.uiConversation.userText.register(fileReferenceRule), 'ui-reference: file text rule')
-  ctx.effect(() => ctx.uiConversation.userText.register(folderReferenceRule), 'ui-reference: folder text rule')
+  ctx.uiConversation.userText.register(fileReferenceRule)
+  ctx.uiConversation.userText.register(folderReferenceRule)
   ctx.slots.inject('conversation.user.text.node', function* () {
     yield ctx.slots.register({
       name: 'conversation.user.text.node', key: 'file', priority: 100, locale: NS,

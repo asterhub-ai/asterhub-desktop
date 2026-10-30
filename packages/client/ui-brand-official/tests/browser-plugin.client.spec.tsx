@@ -40,10 +40,11 @@ describe('official browser-brand plugin', () => {
     expect(inject).toEqual(['slots'])
   })
 
-  it('fills every declared brand slot in each build profile', async () => {
+  it('leaves every slot empty outside the official build profile', async () => {
+    vi.stubEnv('DSH_CLIENT_BUILD_PROFILE', 'local')
     const subject = await bench()
     await subject.ctx.plugin({ inject: [...inject], apply }).await()
-    for (const hole of HOLES) expect(subject.slots.entries(hole)).toHaveLength(1)
+    for (const hole of HOLES) expect(subject.slots.entries(hole)).toHaveLength(0)
   })
 
   it('fills declarations before or after apply and removes every occupant on teardown', async () => {
@@ -70,23 +71,20 @@ describe('official browser-brand plugin', () => {
     for (const hole of HOLES) expect(after.slots.entries(hole)).toHaveLength(1)
   })
 
-  it('fills the conversation hero mark slot', async () => {
+  it('leaves the conversation hero on its declaring fallback even in official builds', async () => {
     vi.stubEnv('DSH_CLIENT_BUILD_PROFILE', 'official')
     const subject = await bench()
     await subject.ctx.plugin({ inject: [...inject], apply }).await()
-    expect(subject.slots.entries(HERO_HOLE)).toHaveLength(1)
+    expect(subject.slots.entries(HERO_HOLE)).toHaveLength(0)
   })
 
-  it('renders the wordmark and flower-hub mark independently at requested sizes', () => {
+  it('renders the official name independently from both requested mark sizes', () => {
     const name = render(<OfficialBrandName />)
-    expect(name.container.textContent).toBe('AsterHub')
+    expect(name.container.querySelector('svg')?.getAttribute('viewBox')).toBe('26 0 156 24')
     name.unmount()
 
     const mark = render(<OfficialBrandMark size={34} />)
-    const svg = mark.container.querySelector('svg')
-    expect(svg?.getAttribute('width')).toBe('34')
-    expect(svg?.querySelectorAll('path')).toHaveLength(4)
-    expect(svg?.querySelectorAll('circle')).toHaveLength(2)
+    expect(mark.container.querySelector('svg')?.getAttribute('width')).toBe('34')
     mark.rerender(<OfficialBrandMark size={24} />)
     expect(mark.container.querySelector('svg')?.getAttribute('width')).toBe('24')
   })

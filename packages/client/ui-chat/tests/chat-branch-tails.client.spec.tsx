@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import type {
   ChatConversationViewNode, ConversationNode,
@@ -17,11 +18,11 @@ import {
 } from '../src/client/chat/MessageItem.tsx'
 import { AssistantMarkdown } from '../src/client/chat/AssistantMarkdown.tsx'
 import { useDetailedPresentation } from './presentation-fixture.client.ts'
-import { emptyMessageImagesSlot, unusedImageLoader } from './reasoning-component-fixture.tsx'
+import { unusedImageLoader } from './reasoning-component-fixture.tsx'
 import { createUserContentFixture } from './user-content-component-fixture.tsx'
 import { useDisclosure } from '../src/client/chat/use-disclosure.ts'
-import { StatsPills } from '../src/client/chat/StatsPills.tsx'
 import { useSearchableHidden } from '../src/client/chat/searchable-hidden.ts'
+import { ActivityPill, UsagePill, type StatPillProps } from '../src/client/chat/StatsPills.tsx'
 import { zh } from '../src/client/locale.ts'
 import { chatSnapshotFixture } from './chat-snapshot-fixture.client.ts'
 
@@ -33,6 +34,11 @@ afterEach(() => {
 
 const t: ChatNodeViewProps['t'] = makeTranslate(zh, commonZh)
 const renderUserImages: Parameters<ReturnType<typeof createUserContentFixture>>[1] = () => null
+const userSlots: PropsRenderSlots<'conversation.chat.user.before'> = {
+  renderSlot: () => null,
+  renderSlotChain: (_key, _owner, opts) => opts?.fallback ?? null,
+  SessionProvider: ({ children }) => <>{children}</>,
+}
 let renderUserContent: ReturnType<typeof createUserContentFixture>
 beforeEach(() => { renderUserContent = createUserContentFixture() })
 const RETRY_ID = 'retry-fixture' as Extract<ConversationNode, { kind: 'model-retry' }>['retryId']
@@ -81,8 +87,9 @@ function MessageItem({ node, t: translate, referenceLabels, skillNames }: Messag
   }
   switch (node.kind) {
     case 'user':
+      return <UserMessageNodeView {...props as ChatNodeViewProps<'user'>} {...userSlots} />
     case 'steering':
-      return <UserMessageNodeView {...props as ChatNodeViewProps<'user' | 'steering'>} />
+      return <UserMessageNodeView {...props as ChatNodeViewProps<'steering'>} renderSlotChain={() => null} />
     case 'context':
       return <ContextMessageNodeView {...props as ChatNodeViewProps<'context'>} />
     case 'compaction':
@@ -907,7 +914,7 @@ describe('MessageItem arms', () => {
     expect(details?.dataset.active).toBe('true')
     expect(view.getByRole('status').textContent).toBe('正在重试模型请求（1/2） · 3s')
     expect(view.getByText('重试延迟：').parentElement?.textContent).toBe('重试延迟：2500毫秒')
-    expect(view.getByText('失败原因：').parentElement?.textContent).toBe(`失败原因：${zh['message.failure.network']}`)
+    expect(view.getByText('失败原因：').parentElement?.textContent).toBe('失败原因：连接被重置')
 
     act(() => { vi.advanceTimersByTime(1_100) })
     expect(view.getByRole('status').textContent).toBe('正在重试模型请求（1/2） · 2s')
@@ -1060,7 +1067,7 @@ describe('useCalendarDay boundary refresh', () => {
 describe('small branch tails', () => {
   it('AssistantMarkdown single-line reasoning summary skips the newline cut', () => {
     const view = render(
-      <AssistantMarkdown useDisclosure={useDisclosure} useGroupAction={useSearchableHidden} renderSlot={emptyMessageImagesSlot}
+      <AssistantMarkdown renderSlot={() => null} useDisclosure={useDisclosure} useGroupAction={useSearchableHidden}
         usePresentation={useDetailedPresentation}
         t={t}
         blocks={[{ kind: 'reasoning', text: 'one-liner' }]}
@@ -1071,7 +1078,7 @@ describe('small branch tails', () => {
     expect(view.getByText('one-liner')).toBeTruthy()
   })
 
-  it('StatsPills omits the cache-hit segment when no input accounting exists at all', () => {
+  it('composer stats omit the cache-hit segment when no input accounting exists at all', () => {
     // Cache hit is null only when all three prompt buckets are zero (pure
     // output accounting) — any billed input makes it a real 0%.
     const nodes = [{
@@ -1079,15 +1086,19 @@ describe('small branch tails', () => {
     }] as const
     const snap = chatSnapshotFixture({ nodes })
     const source = { getSnapshot: () => snap, subscribe: () => () => {} }
+    const pillProps: StatPillProps = {
+      usePerformanceUsage: selector => selector('detailed'),
+      t,
+      useChat: bindSnapshotSelector(source),
+      useProjection: (key: string) => key === 'tokenUsage'
+        ? { uncachedInputTokens: 0, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 }
+        : undefined,
+    }
     const view = render(
-      <StatsPills
-        usePerformanceUsage={selector => selector('detailed')}
-        t={t}
-        useChat={bindSnapshotSelector(source)}
-        useProjection={(key: string) => key === 'tokenUsage'
-          ? { uncachedInputTokens: 0, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 }
-          : undefined}
-      />,
+      <>
+        <ActivityPill {...pillProps} />
+        <UsagePill {...pillProps} />
+      </>,
     )
     // The untimed counts pill renders static, so the usage pill is the only button.
     const [usagePill] = [...view.getAllByRole('button')] as [HTMLElement]

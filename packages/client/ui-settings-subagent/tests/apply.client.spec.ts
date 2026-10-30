@@ -40,10 +40,7 @@ async function bench(served?: string[]) {
 function declareRoot(slots: SlotRegistry): () => void {
   return slots.register({
     name: 'root',
-    children: {
-      'plugins.item': { kind: 'list', scope: 'root' },
-      'settings.section': { kind: 'list', scope: 'root' },
-    },
+    children: { 'plugins.item': { kind: 'list', scope: 'root' } },
   } as never, () => null)
 }
 
@@ -64,12 +61,9 @@ describe('ui-settings-subagent apply', () => {
 
     await vi.waitFor(() => { expect(slots.entries('plugins.item')).toHaveLength(1) })
     const entry = slots.entries('plugins.item')[0]!
-    expect(entry.options).toMatchObject({ id: 'subagent', order: 30 })
+    expect(entry.options).toMatchObject({ id: 'subagent', order: 10 })
     expect(resolveSlotLabel(entry.options.label)).toBe('子智能体')
     expect(entry.locale).toBe(NS)
-    const settingsEntry = slots.entries('settings.section').find(candidate => candidate.options.id === 'subagent')
-    expect(settingsEntry).toBeDefined()
-    expect(resolveSlotLabel(settingsEntry?.options.label)).toBe('子智能体')
     const face = (entry.inject as () => Pick<SubagentCardFace, 'hooks'>)()
     expect(Object.keys(face.hooks).sort()).toEqual(['subagentLimitsCard', 'subagentModelSelectionCard'])
   })
@@ -119,6 +113,5 @@ describe('ui-settings-subagent apply', () => {
     await fiber.dispose()
 
     expect(slots.entries('plugins.item')).toHaveLength(0)
-    expect(slots.entries('settings.section').filter(entry => entry.options.id === 'subagent')).toHaveLength(0)
   })
 })

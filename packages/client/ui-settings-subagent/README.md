@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Open **Settings → Subagent** to set delegation limits, a default child model, and the complex-task delegation preference. The Official group on the Plugins page also opens the same form. The page groups the two Host namespaces, `subagent` and `subagent-model-selection`, under one save; it exists while the Host serves either and shows the sections it serves.
+Open **Plugins** in the sidebar and select **Subagent** in the Official group to set how deep and how wide delegation may go, and which models agents may choose for their subagents. The page groups the two Host namespaces, `subagent` and `subagent-model-selection`, under one save; it exists while the Host serves either and shows the sections it serves.
 
 ## Table of Contents
 
@@ -27,9 +27,7 @@ Open **Settings → Subagent** to set delegation limits, a default child model, 
 
 **Limits** holds **Maximum recursion depth** and **Subagent parallelism limit** side by side, stacking on narrow screens; the information button beside each label discloses its rule — a two-row depth example, and the count that capacity bounds — and a draft that is not a whole number in range blocks the save and says so under the field. Depth yields to a tool's own maximum; capacity counts every live subagent under one main agent across all levels, the main agent excluded.
 
-**Default subagent model** selects one current catalog route as the user-controlled model for subsequent delegations. The main-session model cannot override it. Clearing the default restores the existing tool defaults or parent inheritance. The executor validates the saved route and rejects unavailable routes rather than silently substituting another model. Model names show the account-facing provider label and model id, not the internal adapter route.
-
-**Delegate complex tasks** stages the main-session decomposition and review preference. Both settings are persistent global preferences.
+**Model selection** stages its permission switch and the exact adapter routes together. Enabling requires at least one selected route; disabling keeps the selected routes for later. Routes the Host stored but no adapter advertises stay listed under **Saved but currently unavailable** and remain removable; a provider that failed to load is reported without hiding the others, and a failed load offers **Retry**.
 
 One **Save** writes both sections through their own namespaces, each fenced by the revision its draft read. The writes are independent: a section the Host refuses keeps its draft with the failure reported while the other lands, and a model draft a newer Host revision superseded is reported as a conflict to discard rather than overwriting the newer routes. Leaving the page drops every draft.
 
@@ -41,7 +39,7 @@ One **Save** writes both sections through their own namespaces, each fenced by t
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The Host half is an empty `apply`, present only so the package holds a Loader row the client module system serves the browser half for. The browser half binds each namespace through `ctx.configForms.get`: `SubagentLimitsCardController` stages the limits over the shared `SettingsFormModel` of `ui-primitives`, with a field spec that admits safe whole numbers at or above each field's floor; `SubagentModelSelectionCardController` keeps its own draft because the default route and delegation preference save as one revision-fenced `mutate`, joins saved defaults with `remote.session.modelCatalog()`, and re-reads the catalogue on `llm/adapters-updated` and `settings/document-updated` while a connection reset drops its draft. `subagentCardFace` composes the two into the one face `SubagentCard` renders inside the shared `SettingsForm`, whose save validates both and writes the dirty ones. The page registers into `settings.section` and the Plugins page's `plugins.item` through `ctx.configForms.whileServed` over both namespaces.
+The Host half is an empty `apply`, present only so the package holds a Loader row the client module system serves the browser half for. The browser half binds each namespace through `ctx.configForms.get`: `SubagentLimitsCardController` stages the limits over the shared `SettingsFormModel` of `ui-primitives`, with a field spec that admits safe whole numbers at or above each field's floor; `SubagentModelSelectionCardController` keeps its own draft because its two fields save as one revision-fenced `mutate`, joins the stored routes with `remote.session.modelCatalog()`, and re-reads the catalogue on `llm/adapters-updated` and `settings/document-updated` while a connection reset drops its draft. `subagentCardFace` composes the two into the one face `SubagentCard` renders inside the shared `SettingsForm`, whose save validates both and writes the dirty ones. The page registers into the Plugins page's `plugins.item` slot through `ctx.configForms.whileServed` over both namespaces.
 
 </details>
 
@@ -71,7 +69,6 @@ None; this package neither assembles nor sends a provider request.
 <a id="known-limitations-and-deferred-work"></a>
 
 - **The catalogue re-reads on three signals only** — adapter changes, document commits, and reconnects; a provider that starts advertising without any of them shows up on the next of those or on **Retry**.
-- **Runtime invariant:** No companion is published. The page holds no owned relationship of its own: what it shows derives from the settings mirror and the model catalogue, and what it writes the Host validates.
 
 <a id="dev-note"></a>
 ### Dev Note

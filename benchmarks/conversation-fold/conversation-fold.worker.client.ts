@@ -184,6 +184,23 @@ function positiveInteger(value: string | undefined, label: string): number {
   return parsed
 }
 
+function parseToolCallArguments(block: unknown): Record<string, unknown> | undefined {
+  if (typeof block !== 'object' || block === null) return undefined
+  const raw = 'arguments' in block && typeof block.arguments === 'string'
+    ? block.arguments
+    : 'argsRaw' in block && typeof block.argsRaw === 'string'
+      ? block.argsRaw
+      : 'call' in block && typeof block.call === 'object' && block.call !== null && 'argsRaw' in block.call && typeof block.call.argsRaw === 'string'
+        ? block.call.argsRaw
+        : undefined
+  if (typeof raw !== 'string' || raw === '') return undefined
+  try {
+    return JSON.parse(raw) as Record<string, unknown>
+  } catch {
+    return undefined
+  }
+}
+
 function preparingTool(tool: 'write' | 'bash', characters: number, definitions: ConversationEventRegistry): PreparingToolWorkerReport {
   if (globalThis.gc === undefined) throw new Error('preparing benchmark requires --expose-gc')
   const chunkSize = 16
@@ -217,7 +234,7 @@ function preparingTool(tool: 'write' | 'bash', characters: number, definitions: 
   const snapshot = assembler.get('chat')
   const node = snapshot?.nodes.values().find((candidate): candidate is ChatNode<'tool-call'> => candidate.kind === 'tool-call')
   if (snapshot === undefined || node === undefined) throw new Error('preparing benchmark did not create its Tool node')
-  const args = node.data.root.args
+  const args = parseToolCallArguments(node.data.root)
   const source = snapshot.nodes.source(node.key)
   let rowReads = 0
   let progressKb: number | undefined
@@ -225,11 +242,11 @@ function preparingTool(tool: 'write' | 'bash', characters: number, definitions: 
   const readRow = (): void => {
     const current = source.getSnapshot()
     if (current?.kind !== 'tool-call') throw new Error('preparing benchmark lost its Tool node')
-    const currentArgs = (current as ChatNode<'tool-call'>).data.root.args
-    if (tool === 'write') {
-      const length = currentArgs.stringLength('content', { step: 1024 })
-      progressKb = length === undefined ? undefined : Math.ceil(length / 1024)
-      filePath = currentArgs.text('file_path')
+    const currentArgs = parseToolCallArguments((current as ChatNode<'tool-call'>).data.root)
+    if (tool === 'write' && currentArgs !== undefined) {
+      const content = typeof currentArgs.content === 'string' ? currentArgs.content : undefined
+      progressKb = content === undefined ? undefined : Math.ceil(content.length / 1024)
+      filePath = typeof currentArgs.file_path === 'string' ? currentArgs.file_path : undefined
     }
     rowReads++
   }
@@ -249,8 +266,12 @@ function preparingTool(tool: 'write' | 'bash', characters: number, definitions: 
   const retainedMb = (process.memoryUsage().heapUsed - before) / 1048576
   const groups = assembler.grouped('chat')
   const group = groups?.entries.find(reference => reference.kind === 'group')
+  const finalNode = source.getSnapshot()
+  const finalArgs = parseToolCallArguments(finalNode?.kind === 'tool-call' ? (finalNode as ChatNode<'tool-call'>).data.root : undefined) ?? args
+  const target = tool === 'write' ? finalArgs?.content : finalArgs?.command
+  const measuredCharacters = typeof target === 'string' ? target.length : undefined
   return {
-    tool, characters: args.stringLength(tool === 'write' ? 'content' : 'command'), fragments: chunks.length,
+    tool, characters: measuredCharacters, fragments: chunks.length,
     elapsedMs, retainedMb, maxRssMb: process.resourceUsage().maxRSS / 1024,
     rowReads, progressKb, filePath,
     detail: group === undefined ? undefined : groups?.groupSource(group.key).getSnapshot()?.data.summary.runningDetail,

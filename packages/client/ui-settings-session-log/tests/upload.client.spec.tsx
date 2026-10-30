@@ -14,7 +14,7 @@ afterEach(cleanup)
 
 function fixture(writable = true) {
   const formState = createSnapshotStore<ConfigFormSnapshot<UploadSettings>>({
-    status: 'ready', value: { enabled: true }, base: {}, user: {}, revision: 0, writable, mode: 'host',
+    status: 'ready', value: { enabled: true }, base: {}, user: {}, revision: 0, writable,
   })
   const set = vi.fn(async (_field: string, enabled: unknown) => {
     formState.update((state) => { state.value = { enabled: enabled === true } })
@@ -71,7 +71,7 @@ it('shows the Chinese label and cannot edit read-only settings', async () => {
   const { props, set } = fixture(false)
   const translated: Record<string, string> = zh
   const { container } = render(<UploadRow {...props} t={key => translated[key] ?? key} />)
-  expect(container.textContent).toBe(`${zh.title}${zh.description}`)
+  await expect(container.textContent + '\n').toMatchFileSnapshot('./expected/upload-row.zh.txt')
   expect(screen.getByRole('switch', { name: zh.title }).hasAttribute('disabled')).toBe(true)
   expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true')
   fireEvent.click(screen.getByRole('switch'))

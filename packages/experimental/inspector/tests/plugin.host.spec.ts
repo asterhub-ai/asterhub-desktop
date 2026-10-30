@@ -2,6 +2,8 @@ import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { Context } from '@deepseek-ai/cordis'
 import type { IndexInjection, WebServer } from '@deepseek-ai/dsh-host-webserver'
+import type { PeerId, PeerScope } from '@deepseek-ai/dsh-typert-protocol'
+import '@deepseek-ai/dsh-host-webserver'
 import WebSocket, { type RawData } from 'ws'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apply, Config, inject, name, startInspector } from '../src/index.ts'
@@ -10,6 +12,15 @@ import { isPlainObject } from '../src/shared/json.ts'
 interface CdpResponse {
   readonly id: number
   readonly result?: Record<string, unknown>
+}
+
+const testPeer: PeerScope = {
+  id: 'test-peer' as PeerId,
+  ctx: new Context(),
+  principal: { kind: 'owner' },
+  signal: new AbortController().signal,
+  interactions: 'none',
+  dispose: () => Promise.resolve(),
 }
 
 describe('experimental Inspector Host plugin', () => {
@@ -32,7 +43,7 @@ describe('experimental Inspector Host plugin', () => {
     await fiber.await()
 
     const rows: IndexInjection[] = []
-    context.emit('webserver/index-inject', rows)
+    context.emit('webserver/index-inject', rows, testPeer)
     const bootstrap = rows.find(row => row.kind === 'global' && row.name === '__DSH_INSPECTOR__')
     expect(bootstrap).toMatchObject({ kind: 'global', name: '__DSH_INSPECTOR__' })
     expect(log).toHaveBeenCalledWith(expect.stringMatching(/^dsh inspector: devtools:\/\//u))
@@ -74,7 +85,7 @@ describe('experimental Inspector Host plugin', () => {
     await fiber.dispose()
     expect(rows).toHaveLength(1)
     const afterDispose: IndexInjection[] = []
-    context.emit('webserver/index-inject', afterDispose)
+    context.emit('webserver/index-inject', afterDispose, testPeer)
     expect(afterDispose).toEqual([])
   })
 

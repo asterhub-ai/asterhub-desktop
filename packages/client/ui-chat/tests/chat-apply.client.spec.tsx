@@ -27,6 +27,7 @@ import type {
 import type { QuotaNoticeInjected } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { PerformanceUsageRowInjected } from '../src/client/settings/PerformanceUsageRow.tsx'
 import { CHAT_SETTINGS_NAMESPACE, type ChatSettings } from '../src/chat-settings.ts'
+import { ActivityPill, UsagePill } from '../src/client/chat/StatsPills.tsx'
 import { createFlowMotion, type InputFoldDriver } from '../src/client/chat/flow-motion.ts'
 import { CHAT_FLOW_INJECT, CHAT_NODE_INJECT } from '../src/client/apply.ts'
 import { UserContent } from '../src/client/chat/UserContent.tsx'
@@ -43,6 +44,7 @@ const SID = 'session-1' as SessionId
 
 async function bench() {
   const runtime = await SlotTestRuntime.create()
+  runtime.ctx.provide('fileDrag', { actions: { prepare: async () => ({ start: () => true, release: () => {} }), reportFailure: () => {} }, read: () => undefined } satisfies import('@deepseek-ai/cordis').Context['fileDrag'])
   const chatSettings = stubConfigForm<ChatSettings>()
   runtime.ctx.provide('configForms', {
     developerTools: { enabled: createSnapshotStore(true) },
@@ -50,6 +52,7 @@ async function bench() {
       ? chatSettings.scope
       : stubConfigForm().scope,
   } as never)
+  runtime.ctx.provide('connection', { state: createSnapshotStore('connected') } as never)
   runtime.ctx.provide('layout', { openRightbar: vi.fn(), closeRightbar: vi.fn() } as never)
   runtime.ctx.provide('sidebarRight', { openResource: vi.fn(), openTab: vi.fn() } as never)
   runtime.ctx.provide('sidebarRightTabs', {
@@ -135,13 +138,13 @@ describe('Chat apply wiring', () => {
     expect(b.runtime.slots.spec('conversation.chat.node'))
       .toMatchObject({ kind: 'keyed', scope: 'session' })
     expect(b.runtime.slots.entries('conversation.composer.dock').map(row => row.options.id))
-      .toEqual(['stats'])
+      .toEqual(['activity', 'usage'])
     expect(b.runtime.slots.entries('settings.general.item').map(row => row.options.id))
       .toEqual(['transcript-view', 'link-opening', 'composer-enter', 'performance-usage'])
     await b.runtime.dispose()
   })
 
-  it('owns node dispatch, the reasoning body Slot, and image Slots in their domain renderers', async () => {
+  it('owns node dispatch in the shared flow and image Slots in their domain renderers', async () => {
     const b = await bench()
     onTestFinished(() => b.runtime.dispose())
     b.runtime.renderRoot()
@@ -149,13 +152,12 @@ describe('Chat apply wiring', () => {
     const view = b.runtime.slots.entries('conversation.view')[0]
     const flow = b.runtime.slots.entries('conversation.chat.flow')[0]
     const assistant = b.runtime.slots.entries('conversation.chat.node').find(entry => entry.options.key === 'assistant-step')
+    const user = b.runtime.slots.entries('conversation.chat.node').find(entry => entry.options.key === 'user')
+    const steering = b.runtime.slots.entries('conversation.chat.node').find(entry => entry.options.key === 'steering')
     const userContent = b.runtime.factoryOf('conversation.chat.user.content')
     expect(userContent).toMatchObject({ scope: 'session', locale: 'chat', component: UserContent })
     expect(userContent.children?.['conversation.chat.user.images']).toMatchObject({ kind: 'single', scope: 'session' })
-    expect(assistant?.children?.['conversation.chat.reasoning.body']).toMatchObject({ kind: 'single', scope: 'session' })
     expect(assistant?.children?.['conversation.chat.message.images']).toMatchObject({ kind: 'single', scope: 'session' })
-    expect(b.runtime.slots.snapshot('factory:conversation.chat.reasoning.content')).toHaveLength(1)
-    expect(b.runtime.slots.entries('conversation.chat.reasoning.body')).toHaveLength(1)
     expect(userContent.store).toBeUndefined()
     expect(userContent.inject).toBeUndefined()
     expect(view?.children?.['conversation.chat.flow']).toBeDefined()
@@ -163,24 +165,41 @@ describe('Chat apply wiring', () => {
     expect(view?.children?.['conversation.chat.message.images']).toBeUndefined()
     expect(view?.children?.['conversation.chat.user.images']).toBeUndefined()
     expect(flow?.children?.['conversation.chat.node']).toBeDefined()
+    expect(flow?.children?.['conversation.chat.user.before']).toBeUndefined()
+    expect(user?.children?.['conversation.chat.user.before']).toMatchObject({ kind: 'chain', scope: 'session' })
+    expect(steering).toBeDefined()
+    expect(steering?.children?.['conversation.chat.user.before']).toBeUndefined()
+    expect(b.runtime.slots.spec('conversation.chat.user.before')).toMatchObject({ kind: 'chain', scope: 'session' })
     expect(flow?.children?.['conversation.chat.message.images']).toBeUndefined()
     expect(flow?.children?.['conversation.chat.user.images']).toBeUndefined()
     expect(userContent.children?.['conversation.chat.message.images']).toBeUndefined()
     expect(assistant?.children?.['conversation.chat.user.images']).toBeUndefined()
-    expect(b.runtime.slots.snapshot('factory:conversation.message.images.view')).toHaveLength(0)
     expect(flow?.store).toBeDefined()
     expect(flow?.store).toBe(view?.store)
     await b.chat.dispose()
     expect(b.runtime.slots.spec('conversation.chat.flow')).toBeUndefined()
     expect(b.runtime.slots.spec('conversation.chat.node')).toBeUndefined()
-    expect(b.runtime.slots.spec('conversation.chat.reasoning.body')).toBeUndefined()
-    expect(b.runtime.slots.snapshot('factory:conversation.chat.reasoning.content')).toHaveLength(0)
+    expect(b.runtime.slots.spec('conversation.chat.user.before')).toBeUndefined()
     expect(b.runtime.slots.spec('conversation.chat.message.images')).toBeUndefined()
     expect(b.runtime.slots.spec('conversation.chat.user.images')).toBeUndefined()
-    expect(b.runtime.slots.snapshot('factory:conversation.message.images.view')).toHaveLength(0)
     expect(() => b.runtime.factoryOf('conversation.chat.user.content')).toThrow('no definition')
   })
 
+  it('lets another registrant replace one composer stats pill by id', async () => {
+    const b = await bench()
+    onTestFinished(() => b.runtime.dispose())
+    function PluginActivity() { return null }
+    const dispose = b.runtime.ctx.slots.register({
+      name: 'conversation.composer.dock', id: 'activity', order: 0, priority: -1,
+    }, PluginActivity)
+    const winners = (): Record<string, unknown> => Object.fromEntries(
+      b.runtime.slots.entriesOfSlot('conversation.composer.dock')
+        .map((entry): [string, unknown] => [entry.options.id ?? '', entry.component]),
+    )
+    expect(winners()).toEqual({ activity: PluginActivity, usage: UsagePill })
+    dispose()
+    expect(winners()).toEqual({ activity: ActivityPill, usage: UsagePill })
+  })
 
   it.each([
     { desktop: false, initial: 'detailed', choice: 'standard' },
@@ -253,7 +272,7 @@ describe('Chat apply wiring', () => {
     b.chatSettings.publish({ value: { linkOpening: 'sidebar', transcriptView: 'compact', performanceUsage: 'compact' } })
     expect(face.hooks.performanceUsage.getSnapshot()).toBe('compact')
     for (const entry of [
-      b.runtime.slots.entries('conversation.composer.dock').find(entry => entry.options.id === 'stats')!,
+      ...b.runtime.slots.entries('conversation.composer.dock'),
       b.runtime.slots.entries('conversation.chat.node').find(entry => entry.options.key === 'turn-tail')!,
     ]) {
       const injected = (entry.inject as () => Pick<PerformanceUsageRowInjected, 'hooks'>)()

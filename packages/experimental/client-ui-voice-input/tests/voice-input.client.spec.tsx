@@ -21,8 +21,11 @@ const transcript: Transcript = { text: '检查 TypeScript 类型', audioSeconds:
 function fixture(recording?: Recording) {
   const capture = Object.assign(new Recording(() => {}), { start: vi.fn<Recording['start']>(async () => {}), stop: vi.fn(async () => new Uint8Array(48)),
     amplitude: () => 0, dispose: vi.fn(async () => {}) })
-  const inputActions = { notify: vi.fn(), captureInsertion: vi.fn(() => ({ start: 3, end: 3, draftRev: 1 })), insertText: vi.fn(() => true),
-    setDraft: vi.fn(), addAttachments: vi.fn(() => true), removeAttachment: vi.fn(), pruneAttachments: vi.fn(), submit: vi.fn() }
+  const inputActions = {
+    insertQuote: vi.fn(() => true), captureInsertion: vi.fn(() => ({ start: 3, end: 3, draftRev: 1 })), insertText: vi.fn(() => true),
+    setDraft: vi.fn(), persistDraft: vi.fn(), addAttachments: vi.fn(() => true),
+    removeAttachment: vi.fn(), pruneAttachments: vi.fn(), submit: vi.fn(),
+  }
   const readiness = createSnapshotStore<SpeechReadiness>({ connected: true, error: null, catalog: {
     providers: [{ id, name: 'SenseVoiceSmall', location: 'host-local', languages: ['auto', 'zh', 'en', 'ja'], preparation: { phase: 'ready' } }],
     selection: { providerId: id, language: 'auto' }, maxAudioBytes: 100, maxDurationSeconds: 120,
@@ -54,7 +57,6 @@ it('clicks to record, shows measured audio, and stops to insert without sending 
   stop()
   await waitFor(() => { expect(b.inputActions.insertText).toHaveBeenCalledWith(transcript.text, { start: 3, end: 3, draftRev: 1 }) })
   expect(b.inputActions.submit).not.toHaveBeenCalled()
-  expect(b.inputActions.notify).not.toHaveBeenCalled()
   expect(screen.queryByRole('dialog')).toBeNull()
   expect(b.props.onActiveChange).toHaveBeenLastCalledWith(false)
 })
@@ -83,7 +85,6 @@ it.each([false, true])('invalidates permission settlement after cancel (failure=
   else permission.resolve(undefined)
   await act(async () => {})
   expect(b.capture.dispose).toHaveBeenCalled()
-  expect(b.inputActions.notify).not.toHaveBeenCalled()
   expect(screen.queryByText('permission closed')).toBeNull()
 })
 
@@ -119,7 +120,6 @@ it.each(['transcription', 'conversion', 'failed conversion'])('discards late %s 
   else conversion.reject(new Error('cancelled'))
   await act(async () => {})
   expect(b.inputActions.insertText).not.toHaveBeenCalled()
-  expect(b.inputActions.notify).not.toHaveBeenCalled()
 })
 
 it('keeps empty-speech and service errors inside the toolbar with retry and dismissal', async () => {
@@ -127,7 +127,6 @@ it('keeps empty-speech and service errors inside the toolbar with retry and dism
   b.transcribe.mockResolvedValueOnce({ ok: true, value: { ...transcript, text: '' } })
   await start(); stop()
   expect((await screen.findByRole('status')).textContent).toBe(zh.empty)
-  expect(b.inputActions.notify).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: zh.retryRecording }))
   await screen.findByRole('button', { name: zh.stop })
   b.transcribe.mockResolvedValueOnce({ ok: false, error: new RemoteError('gateway/internal', 'offline', {}) })
@@ -141,7 +140,6 @@ it.each([new RecordingError('permission'), new Error('device lost'), 'device los
   const b = fixture(); b.capture.start.mockRejectedValueOnce(failure)
   fireEvent.click(screen.getByRole('button', { name: zh.start }))
   await screen.findByText(failure instanceof RecordingError ? zh.permission : '语音识别失败：device lost')
-  expect(b.inputActions.notify).not.toHaveBeenCalled()
 })
 
 it.each([new RecordingError('empty'), new Error('decode failed'), 'decode failed'])('handles conversion failure locally (%s)', async (failure) => {
@@ -222,7 +220,6 @@ it('ends the recording UI immediately on a device failure and clears automatic t
     expect(devices.disposed).not.toHaveBeenCalled()
     await act(async () => { await vi.advanceTimersByTimeAsync(120000) })
     expect(b.transcribe).not.toHaveBeenCalled()
-    expect(b.inputActions.notify).not.toHaveBeenCalled()
   } finally { closing.resolve(undefined); await devices.recording.dispose() }
 })
 
@@ -239,7 +236,6 @@ it.each(['cancel', 'session', 'unmount', 'finishing', 'finished'])('ignores inte
   try {
     act(() => { failed(new RecordingError('interrupted')) })
     expect(screen.queryByText(zh.interrupted)).toBeNull()
-    expect(b.inputActions.notify).not.toHaveBeenCalled()
   } finally { pending.resolve({ ok: true, value: transcript }); await act(async () => {}) }
 })
 

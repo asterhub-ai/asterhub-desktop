@@ -1,4 +1,11 @@
-/** Curated plugins Settings section and the tab extension point for feature-owned pages. */
+/**
+ * Built-in plugins settings section, browser half: the shell around the
+ * feature-owned tabs registered into `settings.plugins.tab` (the read-only
+ * inventory ships one). The configuration pages of the host-plane plugins
+ * live in their own companion packages, which register into the Plugins
+ * page; this section owns the Settings navigation entry and the tab chrome
+ * only.
+ */
 
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -11,7 +18,7 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import { PluginsSettingsSection } from './PluginsSettingsSection.tsx'
 import type { PluginsSettingsSectionInjected, PluginsSettingsTabEntry } from './PluginsSettingsSection.tsx'
-import { en, zh } from './locales.ts'
+import { en, ja, es, fr, de, ru, pt, zh } from './locales.ts'
 
 export type { PluginsSettingsSectionInjected, PluginsSettingsSectionProps } from './PluginsSettingsSection.tsx'
 
@@ -22,12 +29,12 @@ const NS = 'settings.plugins'
 export const inject = ['slots', 'locale']
 
 /**
- * Mount the curated plugins section.
+ * Mount the built-in plugins section.
  * @param ctx - the browser plugin context.
  */
 export function apply(ctx: ClientContext): void {
   const t = ctx.locale.bind(NS)
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-settings-plugins: section dictionaries')
+  ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-settings-plugins: section dictionaries')
 
   let tabsVersion = -1
   let tabsRevision = -1
@@ -64,7 +71,8 @@ export function apply(ctx: ClientContext): void {
     },
   })
 
-  // Feature pages share one Settings navigation entry and its tab chrome.
+  // This package owns the one Built-in plugins navigation entry and the tab
+  // chrome; feature plugins contribute pages without competing for Settings nav rows.
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'plugins',

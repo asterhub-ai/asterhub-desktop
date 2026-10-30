@@ -6,46 +6,46 @@
  */
 
 // Character classes of one ASCII code unit, as bits.
-/** Bit matching ASCII letters, digits, underscore, or hyphen. */
-export const KEY = 1 // [A-Za-z0-9_-]
-/** Bit matching ASCII letters or digits. */
-export const ALNUM = 2 // [A-Za-z0-9]
-/** Bit matching JavaScript word characters. */
-export const WORD = 4 // \w
-/** Bit matching ASCII letters, digits, or hyphen. */
-export const ALNUM_DASH = 8 // [A-Za-z0-9-]
-/** Bit matching uppercase ASCII letters or digits. */
-export const UPPER_ALNUM = 16 // [A-Z0-9]
-/** Bit matching uppercase ASCII letters, digits, or space. */
-export const LABEL = 32 // [A-Z0-9 ]
-/** Bit matching lowercase ASCII letters, digits, `+`, `.`, or `-`. */
-export const SCHEME = 64 // [a-z0-9+.-]
-/** Bit matching lowercase ASCII letters. */
-export const LOWER = 128 // [a-z]
-/** Bit matching address user-name characters. */
-export const USER = 256 // [^\s/:@?#]
-/** Bit matching address password characters. */
-export const PASSWORD = 512 // [^\s/@?#]
+/** `[A-Za-z0-9_-]` */
+export const KEY = 1
+/** `[A-Za-z0-9]` */
+export const ALNUM = 2
+/** `\w` */
+export const WORD = 4
+/** `[A-Za-z0-9-]` */
+export const ALNUM_DASH = 8
+/** `[A-Z0-9]` */
+export const UPPER_ALNUM = 16
+/** `[A-Z0-9 ]` */
+export const LABEL = 32
+/** `[a-z0-9+.-]` */
+export const SCHEME = 64
+/** `[a-z]` */
+export const LOWER = 128
+/** `[^\s/:@?#]` */
+export const USER = 256
+/** `[^\s/@?#]` */
+export const PASSWORD = 512
 
 // Literal kinds. Same-start candidates resolve by ascending kind, so a token used as an address password is masked completely.
-/** Literal identifies a private-key block header. */
+/** A private key block from its `-----BEGIN` line. */
 export const KEY_BLOCK = 0
-/** Literal identifies an address password delimiter. */
+/** The password of an address that carries credentials. */
 export const ADDRESS = 1
-/** Literal identifies a prefixed credential. */
+/** A provider key or token after its fixed prefix. */
 export const PREFIXED = 2
 
 // Shapes of a prefixed format's character run after its literal.
-/** Run has at least its minimum length. */
-export const RUN = 0 // the whole run, at least `min`
-/** Run has a bounded length and a word boundary after it. */
-export const BOUNDED = 1 // `min`..`max`, then `\b`
-/** Run has a digit among its first 256 characters. */
-export const SK = 2 // at least `min`, with a digit among the first 256
-/** Run has exactly its configured length. */
-export const GOOGLE = 3 // exactly `min`
-/** Run has three dot-separated JWT segments. */
-export const JWT = 4 // three runs joined by `.eyJ` and `.`
+/** The whole run, at least `min`. */
+export const RUN = 0
+/** `min` to `max`, then `\b`. */
+export const BOUNDED = 1
+/** At least `min`, with a digit among the first 256. */
+export const SK = 2
+/** Exactly `min`. */
+export const GOOGLE = 3
+/** Three runs joined by `.eyJ` and `.`. */
+export const JWT = 4
 
 /** One recognized format. */
 export interface CredentialFormat {

@@ -6,6 +6,7 @@
   "type": "module",
   "devDependencies": {
     "playwright": "^1.49.0",
+    "zod": "^4.4.3",
     "@xterm/headless": "^6.0.0",
     "@deepseek-ai/dsh-terminal": "workspace:*",
     "@deepseek-ai/dsh-subprocess": "workspace:*",

@@ -329,6 +329,11 @@ export interface ISidebarRight {
    */
   retainSessionView(sessionId: SessionId, signal: AbortSignal): Promise<() => void>
   /**
+   * Hide a tab: close its floating occurrence, or collapse its docked column.
+   * @param tabId - the tab to hide; missing tabs are unchanged.
+   */
+  hide(tabId: TabId): void
+  /**
    * The active tab of the active pane.
    * @returns the record, or `undefined` with no Session on screen.
    */
@@ -509,6 +514,14 @@ export class SidebarRightController implements ISidebarRight {
   async retainSessionView(sessionId: SessionId, signal: AbortSignal): Promise<() => void> {
     if (this.retainView === undefined) throw new Error('sidebarRight: Session view retention is not wired')
     return this.retainView(sessionId, signal)
+  }
+
+  /** Hide a tab: close its floating occurrence, or collapse its docked column. */
+  hide(tabId: TabId): void {
+    const layout = this.mountedSurface()?.layout
+    if (layout?.tabs[tabId] === undefined) return
+    if (findTabPane(layout, tabId).host === 'float') this.close(tabId)
+    else if (layout.expanded) this.toggleExpanded()
   }
 
   /** Reject pending adoption waits; the plugin is shutting down. */

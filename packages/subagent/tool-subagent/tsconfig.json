@@ -21,6 +21,9 @@
       "path": "../../core/agent"
     },
     {
+      "path": "../../preset/agent-preset-registry"
+    },
+    {
       "path": "../../core/session"
     },
     {
@@ -43,9 +46,6 @@
     },
     {
       "path": "../../jobs/jobs"
-    },
-    {
-      "path": "../../runtime-diagnostics/invariants"
     }
   ]
 }

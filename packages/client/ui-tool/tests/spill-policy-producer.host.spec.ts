@@ -10,7 +10,11 @@ import { SpillLocator, SpillStore, type SaveTextSpill, type SpillRef } from '@de
 import * as SpillPolicy from '@deepseek-ai/dsh-spill-policy'
 import { formatSpillNotice } from '@deepseek-ai/dsh-spill-policy/notice'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
+import ToolRuntime from '@deepseek-ai/dsh-tools'
+import { defineContentToolFixture, executeModelToolFixture } from '@deepseek-ai/dsh-tool-testkit'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import * as PtcToolExecutor from '@deepseek-ai/dsh-tool-executor-ptc'
+import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { describe, expect, it } from 'vitest'
 
 const spillReference = {
@@ -35,9 +39,11 @@ const shellArgs = { command: 'fixture-output', description: 'Return shell output
 
 async function executeShell(text: string, nested: boolean, name = 'bash', maxInlineTokens = 256) {
   const ctx = new Context()
+  provideWorkingDirectoryFixture(ctx)
   try {
     await ctx.plugin(SystemPrompt)
-    await ctx.plugin(ToolRuntime, { mode: 'both' })
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(nested ? PtcToolExecutor : NativeToolExecutor)
     await ctx.plugin(MemorySpillStore)
     await ctx.plugin(SpillPolicy, { maxInlineTokens })
     if (nested) {
@@ -69,9 +75,11 @@ async function executeShell(text: string, nested: boolean, name = 'bash', maxInl
     })))
     const session = Session.create(SessionId('spill-terminal'))
     // The tool pipeline reads only the owner session; no agent loop runs here.
-    const agent = { session } as Agent
+    // run_code registers its release effect on the calling agent's context.
+    const scopeFiber = ctx.plugin(() => {})
+    const agent = { id: SessionId('spill-terminal-agent'), session, ctx: scopeFiber.ctx } as Agent
     const callId = ToolCallId('shell-call')
-    const result = await ctx.tools.execute({
+    const result = await executeModelToolFixture(ctx, {
       callId,
       agent,
       signal: new AbortController().signal,

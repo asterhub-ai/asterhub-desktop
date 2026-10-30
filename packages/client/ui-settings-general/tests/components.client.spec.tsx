@@ -2,27 +2,37 @@
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { allowAllAccess, bindSnapshotSelector, RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
 import type { GeneralSectionComponentProps } from '../src/client/GeneralSection.tsx'
 import { GeneralSection } from '../src/client/GeneralSection.tsx'
 import { CloseLabel, HeaderContent, TriggerContent } from '../src/client/chrome.tsx'
 import type { TriggerContentProps } from '../src/client/chrome.tsx'
+import { SettingsDocumentAction } from '../src/client/SettingsDocumentAction.tsx'
 import { DeveloperToolsRow } from '../src/client/DeveloperToolsRow.tsx'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import { en, zh } from '../src/client/locales.ts'
-import { CurrentVersionRow } from '../src/client/CurrentVersionRow.tsx'
-import { DesktopUpdateBadge } from '../src/client/DesktopUpdateIndicator.tsx'
-import type { DesktopUpdateView } from '../src/types.ts'
+import { SettingsDescribeMirror } from '@deepseek-ai/dsh-client-ui-settings/src/client/settings-mirror.ts'
+import { SettingsDocumentStore } from '../src/client/settings-document-store.ts'
 
 // Every fixture carries the resource hook the resources plugin merges into GlobalStandardProps.
 const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined, reload: () => {} })) as GlobalStandardProps['useResource']
 const usePanelInfo: GlobalStandardProps['usePanelInfo'] = selector => selector({ activePanelId: null })
 
+/** Store over a real mirror derived from the same scripted context. */
+function derivedDocumentStore(remote: object) {
+  const ctx = { remote } as never
+  return new SettingsDocumentStore(ctx, new SettingsDescribeMirror(ctx))
+}
+import { en, zh } from '../src/client/locales.ts'
+import { CurrentVersionRow } from '../src/client/CurrentVersionRow.tsx'
+import { DesktopUpdateBadge } from '../src/client/DesktopUpdateIndicator.tsx'
+import { HostReleasePrompt, type HostReleasePromptProps } from '../src/client/HostReleasePrompt.tsx'
+import type { DesktopUpdateView } from '../src/types.ts'
+
 afterEach(() => { cleanup(); vi.unstubAllEnvs() })
 
 // The seat's key domain is settings ∪ common; the stub answers from the
 // package dictionary and falls back to the key like the real chain.
-const t: TriggerContentProps['t'] = makeTranslate(en)
+const t: TriggerContentProps['t'] = key => (en as Record<string, string>)[key] ?? key
 
 // Global standard kit stubs: none of these components consume the hooks.
 const unusedHook = (() => { throw new Error('unused by settings-general components') }) as never
@@ -32,6 +42,7 @@ const useSessionStatus: TriggerContentProps['useSessionStatus'] = selector => se
 const kit = {
   useSessions: unusedHook, useSessionStatus,
   usePanelInfo, useSessionRetainInfo: () => undefined, useResource, useWorkspaces: unusedHook,
+  ...allowAllAccess,
 }
 
 describe('Desktop collapsed update badge', () => {
@@ -120,6 +131,87 @@ describe('GeneralSection', () => {
   })
 })
 
+describe('SettingsDocumentAction', () => {
+  it('appears only for a file-backed provider and requests its Host-owned document', async () => {
+    const openDocument = vi.fn(() => Promise.resolve({
+      ok: true as const, value: { opened: true as const },
+    }))
+    const controller = derivedDocumentStore({
+      settings: {
+        describe: vi.fn(() => Promise.resolve({
+          ok: true as const,
+          value: { writable: true, hasDocument: true, namespaces: [] },
+        })),
+        openSettingsDocument: openDocument,
+      },
+    })
+    render(<SettingsDocumentAction
+      {...kit}
+      t={t}
+      controller={controller}
+      useSnapshot={bindSnapshotSelector(controller.store)}
+    />)
+    const action = await screen.findByRole('button', { name: 'Open configuration file' })
+    fireEvent.click(action)
+    await waitFor(() => { expect(openDocument).toHaveBeenCalledWith() })
+  })
+
+  it('stays absent without a document and follows a mirror refresh to available', async () => {
+    const describe = vi.fn()
+      .mockResolvedValueOnce({ ok: true as const, value: { writable: true, hasDocument: false, namespaces: [] } })
+      .mockResolvedValueOnce({ ok: true as const, value: { writable: true, hasDocument: true, namespaces: [] } })
+    const ctx = { remote: { settings: { describe, openSettingsDocument: vi.fn() } } } as never
+    const mirror = new SettingsDescribeMirror(ctx)
+    const controller = new SettingsDocumentStore(ctx, mirror)
+    const first = render(<SettingsDocumentAction
+      {...kit}
+      t={t}
+      controller={controller}
+      useSnapshot={bindSnapshotSelector(controller.store)}
+    />)
+    await waitFor(() => { expect(controller.store.getSnapshot().status).toBe('unavailable') })
+    expect(screen.queryByRole('button', { name: 'Open configuration file' })).toBeNull()
+    first.unmount()
+    render(<SettingsDocumentAction
+      {...kit}
+      t={t}
+      controller={controller}
+      useSnapshot={bindSnapshotSelector(controller.store)}
+    />)
+    // A remount alone re-reads nothing; availability moves with the mirror's
+    // own refresh (a document commit or reconnect in production).
+    await waitFor(() => { expect(controller.store.getSnapshot().status).toBe('unavailable') })
+    expect(describe).toHaveBeenCalledTimes(1)
+    await mirror.load()
+    expect(await screen.findByRole('button', { name: 'Open configuration file' })).toBeTruthy()
+    expect(describe).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the action available and reports a native-open failure', async () => {
+    const controller = derivedDocumentStore({
+      settings: {
+        describe: vi.fn(() => Promise.resolve({
+          ok: true as const,
+          value: { writable: true, hasDocument: true, namespaces: [] },
+        })),
+        openSettingsDocument: vi.fn(() => Promise.resolve({
+          ok: false as const,
+          error: new RemoteError('gateway/internal', 'xdg-open missing', {}),
+        })),
+      },
+    })
+    render(<SettingsDocumentAction
+      {...kit}
+      t={t}
+      controller={controller}
+      useSnapshot={bindSnapshotSelector(controller.store)}
+    />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Open configuration file' }))
+    expect((await screen.findByRole('alert')).textContent).toBe('Could not open configuration file')
+    expect(screen.getByRole('button', { name: 'Open configuration file' })).toBeTruthy()
+  })
+})
+
 it('reports a failed developer-tool write and allows retry', async () => {
   const state = createSnapshotStore(false)
   const setEnabled = vi.fn().mockRejectedValueOnce(new Error('offline')).mockImplementation(async (enabled: boolean) => { state.set(enabled) })
@@ -155,47 +247,66 @@ describe('current version', () => {
     const view = render(<CurrentVersionRow {...kit} t={t} />)
     expect(view.container.textContent).toBe('')
   })
+})
 
-  it('shows localized Check for updates button when Desktop callback exists and invokes it exactly once on click', () => {
-    vi.stubEnv('DSH_CLIENT_VERSION', '1.2.3-rc.4')
-    const checkUpdates = vi.fn().mockResolvedValue(undefined)
-    render(<CurrentVersionRow {...kit} t={t} checkUpdates={checkUpdates} />)
-    expect(screen.getByText('Current version: 1.2.3-rc.4')).toBeTruthy()
-    const button = screen.getByRole('button', { name: 'Check for updates' })
-    expect(button).toBeTruthy()
-    fireEvent.click(button)
-    expect(checkUpdates).toHaveBeenCalledTimes(1)
-    fireEvent.click(button)
-    expect(checkUpdates).toHaveBeenCalledTimes(2)
-  })
-
-  it('shows localized Check for updates button in Chinese when Desktop callback exists', () => {
-    vi.stubEnv('DSH_CLIENT_VERSION', '1.2.3-rc.4')
-    const checkUpdates = vi.fn().mockResolvedValue(undefined)
-    const translate: TriggerContentProps['t'] = (key, params) => {
-      let text = (zh as Record<string, string>)[key] ?? key
-      for (const [name, value] of Object.entries(params ?? {})) text = text.replace(`{${name}}`, String(value))
-      return text
+describe('Host release change confirmation', () => {
+  type Release = { version: string; commit?: string }
+  type Change = { page: Release | undefined; previous: Release | undefined; host: Release | undefined } | undefined
+  function prompt(change: Change, dictionary: Record<string, string> = en) {
+    const dismissRelease = vi.fn()
+    const reloadPage = vi.fn()
+    const props: HostReleasePromptProps = {
+      ...kit,
+      t: key => dictionary[key] ?? key,
+      useReleaseChange: select => select(change),
+      dismissRelease,
+      reloadPage,
     }
-    render(<CurrentVersionRow {...kit} t={translate} checkUpdates={checkUpdates} />)
-    expect(screen.getByText('当前版本：1.2.3-rc.4')).toBeTruthy()
-    const button = screen.getByRole('button', { name: '检查更新' })
-    expect(button).toBeTruthy()
-    fireEvent.click(button)
-    expect(checkUpdates).toHaveBeenCalledTimes(1)
+    return { dismissRelease, reloadPage, view: render(<HostReleasePrompt {...props} />) }
+  }
+
+  it('stays hidden while no release change is announced', () => {
+    prompt(undefined)
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('has no update button without the optional Desktop callback and still displays the compile-time version', () => {
-    vi.stubEnv('DSH_CLIENT_VERSION', '1.2.3-rc.4')
-    render(<CurrentVersionRow {...kit} t={t} />)
-    expect(screen.getByText('Current version: 1.2.3-rc.4')).toBeTruthy()
-    expect(screen.queryByRole('button')).toBeNull()
+  it('shows the service and page transitions and either reloads or keeps the page', () => {
+    const { dismissRelease, reloadPage } = prompt({
+      page: { version: '0.2.1' }, previous: { version: '0.2.2' }, host: { version: '0.2.3', commit: 'abc1234' },
+    })
+    const dialog = screen.getByRole('dialog', { name: 'Service version changed' })
+    // Changed versions show only the versions.
+    expect(dialog.textContent).toContain('Service0.2.20.2.3Page0.2.10.2.3')
+    expect(dialog.textContent).toContain(en['hostRelease.description'])
+    // The dialog opens without a user gesture; initial focus keeps the page.
+    expect(document.activeElement?.textContent).toBe('Not now')
+    fireEvent.click(screen.getByRole('button', { name: 'Reload to load the new version' }))
+    expect(reloadPage).toHaveBeenCalledOnce()
+    expect(dismissRelease).not.toHaveBeenCalled()
+    const keep = screen.getAllByRole('button', { name: 'Not now' })
+    // The footer action and the dialog's close control both keep the page.
+    expect(keep).toHaveLength(2)
+    for (const button of keep) fireEvent.click(button)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(dismissRelease).toHaveBeenCalledTimes(3)
   })
 
-  it('prefers the installed Desktop version over the shared framework build version', () => {
-    vi.stubEnv('DSH_CLIENT_VERSION', '0.2.0-rc.3')
-    const desktopProps = { ...kit, installedVersion: '0.21.0' }
-    render(<CurrentVersionRow {...desktopProps} t={t} />)
-    expect(screen.getByText('Current version: 0.21.0')).toBeTruthy()
+  it('shows commits for a transition within one version and labels what the Host did not publish', () => {
+    prompt({
+      page: { version: '0.2.0' },
+      previous: { version: '0.2.1', commit: 'aaaaaaa' },
+      host: { version: '0.2.1', commit: 'bbbbbbb' },
+    })
+    expect(screen.getByRole('dialog').textContent).toContain('Serviceaaaaaaabbbbbbb' + 'Page0.2.00.2.1')
+    cleanup()
+    prompt({ page: { version: '0.2.1' }, previous: { version: '0.2.1' }, host: { version: '0.2.1', commit: 'bbbbbbb' } }, zh)
+    expect(screen.getByRole('dialog', { name: '服务版本变化' }).textContent)
+      .toContain('服务未解析bbbbbbb页面未解析bbbbbbb')
+    cleanup()
+    prompt({ page: undefined, previous: undefined, host: { version: '0.2.1' } })
+    expect(screen.getByRole('dialog').textContent).toContain('ServiceUnknown0.2.1PageUnknown0.2.1')
+    cleanup()
+    prompt({ page: { version: '0.2.1' }, previous: { version: '0.2.1' }, host: undefined })
+    expect(screen.getByRole('dialog').textContent).toContain('Service0.2.1UnknownPage0.2.1Unknown')
   })
 })

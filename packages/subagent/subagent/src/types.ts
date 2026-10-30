@@ -13,7 +13,8 @@ import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { ContentBlock, MessageId } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
-import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
+import type { ObjectJsonSchema, ToolRestriction } from '@deepseek-ai/dsh-tools'
+import type { SubagentDescriptorData } from './descriptor.ts'
 
 /** Identifies one accepted subagent run across its lifecycle event pair. */
 export type SubagentRunId = Branded<'SubagentRunId'>
@@ -126,6 +127,8 @@ export interface SubagentCapabilities {
   readonly agentPreset: boolean
   readonly outputSchema: boolean
   readonly depthLimit: boolean
+  readonly persona?: boolean
+  readonly toolFilter?: boolean
 }
 
 /**
@@ -180,6 +183,12 @@ export interface SubagentStartRequest {
    * start otherwise.
    */
   readonly maxDepth?: number
+  /** Per-child persona that shadows deployment:persona-prefix. */
+  readonly persona?: string
+  /** Per-child global-tool restriction. */
+  readonly toolFilter?: ToolRestriction
+  /** Pre-resolved or one-shot descriptor data. */
+  readonly descriptor?: SubagentDescriptorData
 }
 
 /** Provider-facing request with an absolute directory selected before startup. */
@@ -287,6 +296,8 @@ export interface SubagentResult {
 export interface SubagentRun {
   /** Provider-minted id, unique across all parents, providers, and local Sessions in this runtime. */
   readonly id: SessionId
+  /** Live in-process agent when provided by an in-process driver. */
+  readonly localAgent?: Agent
   /**
    * Resolves with the child's terminal {@link SubagentResult} when the run
    * settles. Does NOT reject on a child-level failure — a model/transport

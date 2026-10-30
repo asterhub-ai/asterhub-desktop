@@ -34,19 +34,60 @@ import type { Browser, Page } from 'playwright'
 import { expect, it } from 'vitest'
 import { OPTIONAL_BUNDLES } from '@deepseek-ai/dsh-official-bundles'
 import {
-  packPreviewFixture, packRepositoryImage, previewFixtures, WRAPPER_CONTRACT,
+  composeProfile, configTrees, DEFAULT_ROOT, indexWorkspacePackages,
+  packPreviewFixture, packVfsImage, previewFixtures, WRAPPER_CONTRACT,
 } from '@deepseek-ai/dsh-experimental-webworker-packer'
 import {
-  IMAGE_FILE_NAME, IMAGE_MANIFEST_PATH, parseImageManifest, parseTar, PREVIEW_FIXTURE_MANIFEST_FILE,
-  PREVIEW_FIXTURE_MANIFEST_VERSION, type ImageManifest, type PreviewFixtureManifest,
+  IMAGE_FILE_NAME, IMAGE_MANIFEST_PATH, parseTar, PREVIEW_FIXTURE_MANIFEST_FILE,
+  PREVIEW_FIXTURE_MANIFEST_VERSION, type PreviewFixtureManifest,
 } from '@deepseek-ai/dsh-experimental-webworker-runtime'
 import {
   VFS_EXAMPLE_SESSION_IDS,
-  VFS_EXAMPLE_REASONING,
-  VFS_EXAMPLE_SPACING_TITLE,
-  VFS_EXAMPLE_WRAPPED_COMMAND,
   buildVfsExampleFiles,
 } from '../../../packages/experimental/webworker-runtime/tests/vfs-example-fixture.ts'
+
+interface ImageLazyFile {
+  readonly path: string
+  readonly size: number
+}
+interface ImageLazyArchive {
+  readonly archive: string
+  readonly files: readonly ImageLazyFile[]
+}
+interface ImageManifest {
+  readonly root: string
+  readonly profile: string
+  readonly lowered?: string
+  readonly lazy?: readonly ImageLazyArchive[]
+}
+function parseImageManifest(bytes: Uint8Array, path: string): ImageManifest {
+  const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes))
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw new Error(`webworker host: ${path} does not hold an object`)
+  }
+  const manifest = parsed as ImageManifest
+  if (typeof manifest.root !== 'string' || typeof manifest.profile !== 'string') {
+    throw new Error(`webworker host: ${path} lacks a valid root or profile`)
+  }
+  return manifest
+}
+function packRepositoryImage(repoRoot: string, profile: string) {
+  return packVfsImage({
+    config: composeProfile(repoRoot, profile),
+    profile,
+    root: DEFAULT_ROOT,
+    workspaces: indexWorkspacePackages(repoRoot),
+    resolveFrom: repoRoot,
+    configTrees: configTrees(repoRoot),
+  })
+}
+
+const VFS_EXAMPLE_SPACING_TITLE = 'Turn spacing sample'
+const VFS_EXAMPLE_REASONING = [
+  'I will inspect the deterministic workspace and collect each preview surface.',
+  'Check the Chat presentation\n\nI will inspect the wrapped command, its first-line status, and the parent-path file link.',
+] as const
+const VFS_EXAMPLE_WRAPPED_COMMAND = `printf 'preview command fixture\\n' # ${'wrapped-argument-'.repeat(28)}\nprintf 'wrap complete\\n'\n`
 import { captureStableAria, compareOrRefreshGolden, webSnapshotMode } from './scaffold.ts'
 import { expandOwningTurnProcess, newEnglishPage, REPO_ROOT, saveFailureShot } from './support.ts'
 
@@ -173,11 +214,11 @@ function requireVfsAssets(): PreviewAssets {
     }
     image = packed.image
     writeAsset(`preview/${IMAGE_FILE_NAME}`, packed.image)
-    for (const archive of packed.lazyArchives) writeAsset(`preview/${archive.name}`, archive.image)
+    for (const archive of (packed as { lazyArchives?: Array<{ name: string; image: Uint8Array }> }).lazyArchives ?? []) writeAsset(`preview/${archive.name}`, archive.image)
   }
   const manifestEntry = parseTar(gunzipSync(image)).find(entry => entry.name === IMAGE_MANIFEST_PATH)
   if (manifestEntry === undefined) throw new Error('preview boot: the base image carries no manifest')
-  const manifest = parseImageManifest(JSON.parse(new TextDecoder().decode(manifestEntry.bytes)), IMAGE_MANIFEST_PATH)
+  const manifest = parseImageManifest(manifestEntry.bytes, IMAGE_MANIFEST_PATH)
   const currentCache = buildVfsExampleFiles().get('home/storages/session_projcache.json')
   if (currentCache === undefined) throw new Error('preview boot: generated example has no projection cache')
   const cacheDirectory = join(directory, 'current-projection-cache')
@@ -577,7 +618,8 @@ async function bootPreview(site: Site, manifest: ImageManifest, browser: Browser
  * @param manifest - Manifest naming the chunk's archive.
  */
 async function requestLazyChunk(page: Page, site: Site, manifest: ImageManifest): Promise<void> {
-  const archive = manifest.lazy.find(entry => entry.files.some(file => file.path === TERMINAL_CHUNK))?.archive
+  const archive = manifest.lazy?.find((entry: ImageLazyArchive) =>
+    entry.files.some((file: ImageLazyFile) => file.path === TERMINAL_CHUNK))?.archive
   if (archive === undefined) throw new Error(`preview boot: the image registers no lazy archive for ${TERMINAL_CHUNK}`)
   const fetched = (): number => site.served.filter(path => path === `preview/${archive}`).length
   expect(fetched()).toBe(0)

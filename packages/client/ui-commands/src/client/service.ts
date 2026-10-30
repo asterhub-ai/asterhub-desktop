@@ -32,7 +32,7 @@ import type { CommandContribution, CommandDecoration, CommandUiContract } from '
 import type { CommandDescriptor } from './directory.ts'
 import { CommandDirectory } from './directory.ts'
 import { PopupSelectController } from './popup.ts'
-import { builtinRowFace, sectionRows, visibleMenuRows } from './presentation.ts'
+import { builtinRowFace, sectionRows } from './presentation.ts'
 import { claimToken } from './resolution.ts'
 import type { TokenSegment } from './popup.ts'
 
@@ -118,6 +118,7 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
       candidates: (session, req) => this.candidates(session, req),
       onPick: pick => this.dispatch(pick),
       matchSpace: (session, token) => this.matchSpace(session, token),
+      matchClaim: (session, token, signal) => this.matchClaim(session, token, signal),
       matchEnter: (session, line, signal, envelope) => this.matchEnter(session, line, signal, envelope),
       warm: (session) => { this.directory.warm(session.sessionId) },
     }), 'command: slash source')
@@ -244,7 +245,7 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
         ...(contribution.icon === undefined ? {} : { icon: contribution.icon }),
       })
     }
-    const visible = visibleMenuRows(rows.filter(c => req.position === 'leading' || c.hint === undefined))
+    const visible = rows.filter(c => req.position === 'leading' || c.hint === undefined)
     return req.query === '' ? sectionRows(visible, this.t) : rankByName(visible, req.query)
   }
 
@@ -276,11 +277,27 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
 
   /** Decision table, space column: hot-key sync check; only host leadingInput claims. */
   private matchSpace(session: ClientSessionContext, token: string): PickOutcome {
+    const claim = this.claimOf(session, token)
+    return claim === undefined ? undefined : { claim }
+  }
+
+  /**
+   * Restore column: the space column's answer once the session's catalog is
+   * ready (a warmup failure rejects). It only resolves; nothing is invoked or
+   * executed.
+   */
+  private async matchClaim(session: ClientSessionContext, token: string, signal: AbortSignal): Promise<CommandClaim | undefined> {
+    await this.directory.ensureReady(session.sessionId, signal)
+    return this.claimOf(session, token)
+  }
+
+  /** The host leadingInput claim a token names in the hot catalog; popup and action kinds never claim. */
+  private claimOf(session: ClientSessionContext, token: string): CommandClaim | undefined {
     if (!token.startsWith('/')) return undefined
-    if (this.live.contributions.has(token.slice(1))) return undefined // popup and action kinds never claim on space
+    if (this.live.contributions.has(token.slice(1))) return undefined
     const desc = this.directory.resolve(session.sessionId, token.slice(1))
     if (desc === undefined || desc.input === undefined) return undefined
-    return { claim: this.leadingClaim(desc, session, token.slice(1)) }
+    return this.leadingClaim(desc, session, token.slice(1))
   }
 
   /**

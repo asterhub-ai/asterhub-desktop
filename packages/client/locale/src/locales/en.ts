@@ -33,8 +33,8 @@ export const en = {
   'collapse': 'Collapse',
   'expand': 'Expand',
   'back': 'Back',
-  'brand.localBuild': 'AsterHub Local Build',
-  'workspace.defaultName': 'My workspace',
+  'brand.localBuild': 'DSH Local Build',
+  'workspace.defaultName': 'Default workspace',
   'unknown': 'Unknown',
   'none': 'None',
   'truncated': 'Truncated',
@@ -43,5 +43,4 @@ export const en = {
   'markdown.truncatedCharacters': '… truncated at {total} characters',
   'number.thousand': '{value}K',
   'number.million': '{value}M',
-  'number.billion': '{value}B',
 } satisfies Record<CommonKey, string>

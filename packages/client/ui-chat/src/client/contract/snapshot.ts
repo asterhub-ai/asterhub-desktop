@@ -9,7 +9,7 @@ export type {
   AssistantBlock, AssistantMessageNode, AssistantProviderMetadataView, AssistantRequestConfig,
   AssistantTiming, CommandNode, CompactionSummaryNode, ContextMessageNode, ConversationNode,
   ModelRetryNode, PartialAssistant, PreparingToolCall, RunningToolCall, StartedToolCall, SteeringMessageNode, TodoItem,
-  ToolCallBlock, ToolResultNode, TurnErrorNode, TurnMaxTokensNode, UnknownSurfaceNode,
+  ToolArgs, ToolCallBlock, ToolResultNode, TurnErrorNode, TurnMaxTokensNode, UnknownSurfaceNode,
   UserMessageNode,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 
@@ -92,12 +92,13 @@ export interface ChatTurnProcessPresentation {
   readonly turnStarted: boolean
   readonly turnClosed: boolean
   readonly hasExternalProcess: boolean
+  /** Like `hasExternalProcess`, but a reply from another Step counts only through its reasoning. */
+  readonly hasNonReplyProcess: boolean
   /** A visible input after process output prevents one disclosure from hiding its surrounding groups. */
   readonly hasInterleavedInput: boolean
-  readonly compactAnswer: boolean
 }
 
-/** Compatibility projection backing StatsPills and the legacy top-level snapshot fields. */
+/** Compatibility projection backing the composer stats pills (StatsPills.tsx) and the legacy top-level snapshot fields. */
 export interface LegacyConversationSlice {
   readonly nodes: readonly ConversationNode[]
   readonly turnTimings: ReadonlyMap<number, { readonly startTime: number; readonly endTime?: number }>

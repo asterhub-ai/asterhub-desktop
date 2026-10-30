@@ -11,7 +11,6 @@ import {
   fixtureContext,
   normalizeSessionSnapshot,
   normalizeSessionSnapshots,
-  REPLAY_CREDENTIAL_ENV,
   type NormalizeContext,
 } from '@deepseek-ai/dsh-session-snapshot'
 import { LOADER_SMOKE_TEST_TIMEOUT_MS, runLoaderSmoke } from '@deepseek-ai/dsh-loader-smoke'
@@ -27,6 +26,7 @@ const replayOverride = join(fixtureDir, 'replay.override.json')
 const childReplay = join(fixtureDir, 'child.replay.v3.jsonl')
 const parentExpected = join(fixtureDir, 'parent.expected.jsonl')
 const childExpected = join(fixtureDir, 'child.expected.jsonl')
+const REPLAY_CREDENTIAL_ENV: Readonly<Record<string, string>> = { DEEPSEEK_API_KEY: 'snapshot-replay-key' }
 const configPath = fileURLToPath(new URL('../subagent-inheritance-snapshot.patch.yml', import.meta.url))
 const binScript = fileURLToPath(new URL('../../../../../../packages/test-support/loader-smoke/tests/fixtures/headless-driver.ts', import.meta.url))
 const tsconfigPath = fileURLToPath(new URL('../../../../../../tsconfig.json', import.meta.url))

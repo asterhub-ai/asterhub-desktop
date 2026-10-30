@@ -3,32 +3,38 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/client/ui-settings-account/README.md
 /:
-  en: e0e8cd3b627cb838
-  zh: 39058c84e72427c4
+  en: 13d891a226092817
+  zh: 90bf6ff56dd3c096
 /deepseek-ai-dsh-client-ui-settings-account:
-  en: f4c9934dbb7d3bc8
-  zh: 0fd8e51031bbe4a3
+  en: 9ff7ac2d70f70b59
+  zh: ded522c4cfd6e040
 /deepseek-ai-dsh-client-ui-settings-account/summary:
-  en: d3cbeb68ceac9639
-  zh: 2c5cea896d15392c
+  en: 54da65ea807d7af1
+  zh: 359f85d16724d71d
 /deepseek-ai-dsh-client-ui-settings-account/table-of-contents:
-  en: d32a3f9a2f3d30d7
-  zh: 6c2f224ff1b1411a
+  en: c26f81e8adf0128b
+  zh: e11ab371f51f66bc
 /deepseek-ai-dsh-client-ui-settings-account/use-this-package:
-  en: 9a9ae4d2641d5fe1
-  zh: 9bbe3c4989bbbe60
-/deepseek-ai-dsh-client-ui-settings-account/use-this-package/account-surfaces:
-  en: 736e49097854ac91
-  zh: 8668d11e001d32c7
-/deepseek-ai-dsh-client-ui-settings-account/use-this-package/desktop-menu:
-  en: d3a96d984e952d14
-  zh: bbf5415f71b802f6
+  en: 2e63a8b01d800894
+  zh: 42db1f28e2ddb2a3
+/deepseek-ai-dsh-client-ui-settings-account/use-this-package/desktop-onboarding:
+  en: 7ae4e68f9491b068
+  zh: f7478269bf8d28b3
+/deepseek-ai-dsh-client-ui-settings-account/understand-the-implementation:
+  en: 186b2046cfb5ef76
+  zh: 57b042a618fb612e
 /deepseek-ai-dsh-client-ui-settings-account/further-exploration:
-  en: fa4c8e9d3d67d2f4
-  zh: 4f17adf1491bb9f6
+  en: f5ca95916ef486dc
+  zh: 1e238d8299e0d838
+/deepseek-ai-dsh-client-ui-settings-account/model-experience:
+  en: ee1df7ca3467ee3f
+  zh: 84904a5148da3862
+/deepseek-ai-dsh-client-ui-settings-account/model-experience/kv-cache-effect:
+  en: ca3015e252db0114
+  zh: ebca9253cf15e8e9
 /deepseek-ai-dsh-client-ui-settings-account/known-limitations-and-deferred-work:
-  en: 1e1ccdf8f22bfe5d
-  zh: 2f4edee6f63b9369
+  en: 7afbd3f7afc20bd8
+  zh: f54c57e3d6738c7c
 /deepseek-ai-dsh-client-ui-settings-account/known-limitations-and-deferred-work/dev-note:
-  en: 0d6237166dc51e2d
-  zh: b0e58212d4815999
+  en: ebc93259d9f494e2
+  zh: dcc679e43cdbd594

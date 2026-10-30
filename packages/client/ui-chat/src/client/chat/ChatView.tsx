@@ -15,8 +15,9 @@ import type { ChatFlowHookContext, ChatViewSlotProps, OpenFileOptions } from '..
 import type { ChatSnapshot } from '../contract/snapshot.ts'
 import { TurnNavigator } from './TurnNavigator.tsx'
 import { mergeTurnRailItems } from './turn-rail-items.ts'
+import { useTextInteraction } from './text-interaction.ts'
 import { useChatScroll } from './use-chat-scroll.ts'
-import { fileMediaUrl, resolveWorkspacePath } from '@deepseek-ai/dsh-util-workspace-path'
+import { fileMediaUrl, resolveWorkspacePath, sessionFileAddress } from '@deepseek-ai/dsh-util-workspace-path'
 import css from './ChatView.module.css'
 
 /** Host/OS refusal text for the file-open dialog; empty throws keep a locale fallback. */
@@ -40,10 +41,10 @@ function observedInputs(
     const node = nodes.get(key)
     if (node === undefined || !isAtOrOutside(node, 'input')) continue
     if (node.location.kind === 'turn' || node.location.kind === 'step') lastInputTurn = node.location.turn.turn
-    const source = (node.data as { readonly source?: unknown }).source as
-      | { readonly kind?: unknown; readonly rpcId?: unknown }
-      | undefined
-    if (source?.kind === 'user' && typeof source.rpcId === 'string') observed.add(source.rpcId)
+    const data: unknown = node.data
+    const source = typeof data === 'object' && data !== null && 'source' in data ? data.source : undefined
+    if (typeof source === 'object' && source !== null && 'kind' in source && source.kind === 'user'
+      && 'rpcId' in source && typeof source.rpcId === 'string') observed.add(source.rpcId)
   }
   return { rpcIds: observed, lastInputTurn }
 }
@@ -60,15 +61,15 @@ const MOTION_TAIL_MS = 800
 export function ChatView({
   useSession, useChat, useConversation, useSessions, renderSlot,
   sessionId, openFile, openExternalLink, loadOlder, loadThrough, loadImage, inspectCall, chatScroll, forkAt, fileMentions,
-  usePresentation, useProjection, t,
+  usePresentation, useProjection, useInteractionIds, dispatchInteraction, t, fileDrag,
 }: ChatViewSlotProps) {
   const order = useChat(s => s.order)
   const groupedEntries = useConversation(snapshot => snapshot.views.grouped('chat')?.entries)
   const entries = useMemo<readonly RenderEntry[]>(() => groupedEntries
     ?? order.map(key => ({ kind: 'node', key: key as NodeKey })), [groupedEntries, order])
   const nodeStore = useChat(s => s.nodes)
-  const transcriptView = usePresentation(policy => policy.mode)
   const deferCompletedTurns = usePresentation(policy => policy.collapseTiming === 'next-input')
+  const transcriptView = usePresentation(policy => policy.mode)
   // The rail's items are accumulated in the Chat snapshot, so this selector is
   // both the data and its change signal: the array identity moves only when a
   // Turn enters, leaves, or changes its preview.
@@ -84,12 +85,14 @@ export function ChatView({
   // Workspace root off the session list row: path summaries display relative to it.
   const cwd = useSessions(s => s.byId[sessionId]?.cwd)
   const fileImages = useMemo(() => ({
+    fileDrag,
     resolve: (path: string) => fileMediaUrl(document.baseURI, resolveWorkspacePath(cwd, path)),
+    resourceAddress: (path: string) => sessionFileAddress(sessionId, resolveWorkspacePath(cwd, path)),
     labels: {
       open: t('image.open'), loading: t('image.loading'), failed: t('image.failed'),
       dialog: t('image.dialog'), close: t('image.close'),
     },
-  }), [cwd, t])
+  }), [cwd, t, fileDrag, sessionId])
   const running = useSession(s => s.running)
   // Fold transitions run while a Turn is live, while an input is pending, and briefly after settling.
   const [motionTail, setMotionTail] = useState(false)
@@ -185,12 +188,17 @@ export function ChatView({
     ? latestSteering.source.rpcId : latestSteering?.id ?? null
   const scroll = useChatScroll({
     ready: openState === 'open',
-    order, firstSeq, lastKey, running, loadingOlder, hasMore, chatScroll, loadOlder, loadThrough, deferCompletedTurns, transcriptView,
+    order, firstSeq, lastKey, running, loadingOlder, hasMore, chatScroll, loadOlder, loadThrough, deferCompletedTurns,
     lastIsUser: lastKey !== null && nodeStore.get(lastKey)?.kind === 'user',
     steeringId,
     submissionId: visibleSubmissions.at(-1)?.requestId ?? null,
+    submissionSteers: visibleSubmissions.at(-1)?.placement === 'steering',
     loadedTurns: turnNavigationItems,
+    transcriptView,
   })
+  const interactionSurfaceRef = useRef<HTMLDivElement>(null)
+  const interactionIds = useInteractionIds(ids => ids)
+  const textInteraction = useTextInteraction(scroll.columnRef, interactionSurfaceRef, dispatchInteraction, interactionIds)
   const flowContext = useMemo<ChatFlowHookContext>(() => ({ motion: scroll.motion }), [scroll.motion])
 
   return (
@@ -228,11 +236,18 @@ export function ChatView({
                 cwd, openFile: requestOpenFile, inspectCall, forkAt, loadImage, fileMentions,
               }, { hookContext: flowContext })}
             </MarkdownDelegateProvider>
+            <div ref={interactionSurfaceRef} className={css.textInteraction} data-text-interaction-surface=""
+              aria-hidden={textInteraction.active === null}>
+              {textInteraction.active !== null && renderSlot('conversation.chat.text-interaction', {
+                trigger: textInteraction.active.trigger, readText: textInteraction.readText,
+                dismiss: textInteraction.dismiss, clearSelection: textInteraction.clearSelection,
+              }, { entryKey: textInteraction.active.id })}
+            </div>
             {/* No pending placeholders: questions (ui-user-questions) and approvals
                 (ApprovalPanel) both take over the composer, so a flow card would
                 double-render the same wait. */}
           </div>
-          {/* Room added when rows above the reader close, given back only as content grows (use-chat-viewport). */}
+          {/* Fold room is reclaimed by viewport scroll, content-growth, and display-mode policies. */}
           <div className={css.turnSpacer} data-chat-turn-spacer aria-hidden="true" />
         </div>
       </div>

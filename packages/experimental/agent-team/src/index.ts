@@ -69,10 +69,10 @@ export class TeamService extends Service {
 
   private readonly activity: TeamActivity
   private readonly lifecycle: TeamRuntimeLifecycle
-  private readonly journal: TeamJournal
-  private readonly roster: TeamRoster
-  private readonly mailbox: TeamMailbox
-  private readonly tasks: TeamTaskBoard
+  private journal!: TeamJournal
+  private roster!: TeamRoster
+  private mailbox!: TeamMailbox
+  private tasks!: TeamTaskBoard
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'agentTeams')
@@ -92,7 +92,12 @@ export class TeamService extends Service {
 
     this.activity = new TeamActivity()
     this.lifecycle = new TeamRuntimeLifecycle(this.config.disposalTimeoutMs)
-    this.journal = new TeamJournal(ctx, (root) => { this.activity.notify(TeamId(root.id)) })
+  }
+
+  protected async [Service.init](): Promise<void> {
+    const ctx = this.ctx
+    const teamProjectionHandle = await ctx.root.sessionProjections.register(teamProjectionDefinition)
+    this.journal = new TeamJournal(ctx, teamProjectionHandle, (root) => { this.activity.notify(TeamId(root.id)) })
     this.roster = new TeamRoster(ctx, this.journal, this.lifecycle, this.config.maxMembers)
     this.mailbox = new TeamMailbox(
       ctx,
@@ -110,16 +115,7 @@ export class TeamService extends Service {
       const membership = this.roster.tryMembership(agent)
       if (membership !== undefined) this.activity.notify(membership.id)
     })
-    ctx.effect(() => {
-      const disposeProjection = ctx.root.sessionProjections.register(teamProjectionDefinition)
-      return async () => {
-        try {
-          await this.disposeRuntime()
-        } finally {
-          disposeProjection()
-        }
-      }
-    }, 'agentTeams.runtimeLifecycle()')
+    ctx.effect(() => () => this.disposeRuntime(), 'agentTeams.runtimeLifecycle()')
     for (const agent of ctx.agents.list()) this.scheduleRecovery(agent)
   }
 

@@ -26,7 +26,7 @@ declare module '@deepseek-ai/cordis' {
 }
 
 import type {
-  AskUserQuestionAnswer, AskUserQuestionRequestEvent, PendingUserQuestion,
+  AskUserQuestionAnswer, AskUserQuestionRequestEvent, PendingUserQuestion, UserQuestionProjectionView,
 } from './types.ts'
 
 export type {
@@ -151,6 +151,22 @@ export class UserQuestionService extends TypertRemoteService {
 
   private continued(agent: Agent): readonly PendingUserQuestion[] {
     return this.userQuestionProjectionHandle?.stateOf(agent.session).questions.active.filter(question => question.state === 'continued') ?? []
+  }
+
+  /**
+   * Read the live question projection for one Session through the awaited owner handle.
+   *
+   * Fails loud when the projection handle has not been registered yet, so consumers
+   * never silently observe an empty question set from a missing registration.
+   * @param session - Session whose question projection is read.
+   * @returns The current question projection view.
+   * @throws {UserQuestionError} when the projection handle is not registered.
+   */
+  questionsOf(session: Session): UserQuestionProjectionView {
+    if (this.userQuestionProjectionHandle === undefined) {
+      throw new UserQuestionError('user question projection is not registered', 'PROJECTION_UNREGISTERED')
+    }
+    return this.userQuestionProjectionHandle.stateOf(session).questions
   }
 
   /**

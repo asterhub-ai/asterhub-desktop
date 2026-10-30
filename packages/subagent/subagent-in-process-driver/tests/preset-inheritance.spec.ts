@@ -18,20 +18,11 @@ import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import AgentPresets from '@deepseek-ai/dsh-agent-preset-registry'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { snapshotSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
+import { mountWorkingDirectoryFixture } from '../../subagent/tests/working-directory-fixture.ts'
 import { MockAdapter, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
-import { startInProcessRun as startInProcessRunWithCwd } from '../src/index.ts'
+import { startInProcessRun } from '../src/index.ts'
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures')
-import type {} from '@deepseek-ai/dsh-session/cwd'
-let sessionCwdForTest: Context['sessionCwd'] | undefined
-function startInProcessRun(
-  request: Parameters<typeof startInProcessRunWithCwd>[0],
-  options: Parameters<typeof startInProcessRunWithCwd>[1],
-) {
-  if (sessionCwdForTest === undefined) throw new Error('test SessionCwd is not mounted')
-  return startInProcessRunWithCwd(request, options, sessionCwdForTest)
-}
 
 const contexts: Context[] = []
 
@@ -47,6 +38,7 @@ async function setupPresetHost(): Promise<{ ctx: Context; adapter: MockAdapter; 
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   await mountAgentLoopTestDependencies(ctx)
+  await mountWorkingDirectoryFixture(ctx)
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(AgentPresets, { default: 'coding' })
   for (const [id, tool] of [['coding', 'preset_only'], ['reviewing', 'reviewing_only']] as const) {
@@ -59,7 +51,6 @@ async function setupPresetHost(): Promise<{ ctx: Context; adapter: MockAdapter; 
     agentOptions: { provider: 'mock', model: 'mock' },
     setup: async (agentCtx: Context) => void await ctx.agentPresets.mount(agentCtx, 'coding'),
   })
-  sessionCwdForTest = ctx.sessionCwd
   return { ctx, adapter, parent: handle.agent }
 }
 
@@ -70,11 +61,7 @@ function spawnRequest(parent: Agent) {
     prompt: [{ type: 'text' as const, text: 'child task' }],
     parent,
     signal: new AbortController().signal,
-    descriptor: snapshotSubagentDescriptor({
-      mode: 'one-shot' as const,
-      provider: 'spawn',
-      label: 'child task',
-    }),
+    cwd: parent.ctx.get('workingDirectory')!.get(parent.session),
   }
 }
 

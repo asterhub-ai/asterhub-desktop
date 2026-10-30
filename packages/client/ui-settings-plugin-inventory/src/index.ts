@@ -1,4 +1,4 @@
-/** Host Loader entry for the curated catalogue browser implementation exported from `./client`. */
+/** Host loader entry for the inventory-tab browser implementation exported from `./client`. */
 
-/** Host entry has no behavior; catalogue access belongs to Plugin Manager. */
+/** Host plugin body — no host-side behavior for the plugin inventory tab. */
 export function apply(): void {}

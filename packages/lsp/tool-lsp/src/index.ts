@@ -44,7 +44,7 @@ export { sessionCwd } from './session-cwd.ts'
 export const name = 'tool-lsp'
 
 /** Services required by this plugin. */
-export const inject = ['tools', 'lsp', 'systemPrompt']
+export const inject = ['tools', 'lsp', 'systemPrompt', 'workingDirectory']
 
 /** Default tool-call timeout budget (ms), covering the queued open/query/close lifecycle. */
 export const DEFAULT_LSP_TOOL_TIMEOUT_MS = 60_000

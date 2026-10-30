@@ -17,7 +17,6 @@ import {
 import { apply as applyChat, inject as injectChat } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { QuotaNoticeInjected } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { CHAT_SETTINGS_NAMESPACE, type ChatSettings } from '../src/chat-settings.ts'
-import { en } from '../src/client/locale.ts'
 
 usePinnedBrowserLanguages('en')
 
@@ -47,12 +46,14 @@ const quotaEntry = (seq: number, code: string): SessionLiveEventEntry => ({
  */
 async function bench() {
   const runtime = await SlotTestRuntime.create()
+  runtime.ctx.provide('fileDrag', { actions: { prepare: async () => ({ start: () => true, release: () => {} }), reportFailure: () => {} }, read: () => undefined } satisfies import('@deepseek-ai/cordis').Context['fileDrag'])
   disposers.push(() => runtime.dispose())
   const chatSettings = stubConfigForm<ChatSettings>()
   runtime.ctx.provide('configForms', {
     developerTools: { enabled: createSnapshotStore(true) },
     get: (namespace: string) => namespace === CHAT_SETTINGS_NAMESPACE ? chatSettings.scope : stubConfigForm().scope,
   } as never)
+  runtime.ctx.provide('connection', { state: createSnapshotStore('connected') } as never)
   runtime.ctx.provide('layout', { openRightbar: () => {}, closeRightbar: () => {} } as never)
   runtime.ctx.provide('sidebarRight', { openResource: () => {}, openTab: () => {} } as never)
   runtime.ctx.provide('sidebarRightTabs', {
@@ -150,11 +151,11 @@ describe('frame-wide quota notices', () => {
     await b.runtime.sessions.appendEvent(SID, quotaEntry(0, 'ACCOUNT_QUOTA'))
     // Wait for the committed notice rather than assuming the store write has
     // already reached React.
-    expect((await screen.findByRole('alert')).textContent).toBe(en['message.failure.quota'])
+    expect((await screen.findByRole('alert')).textContent).toBe('Request quota exhausted.')
     // Switching away releases the binding and stops new notices, but the live
     // notice is host state, so it stays on screen.
     reference.release()
-    expect(screen.getByRole('alert').textContent).toBe(en['message.failure.quota'])
+    expect(screen.getByRole('alert').textContent).toBe('Request quota exhausted.')
     act(() => { noticeFace(b.runtime).dismissNotice() })
     expect(screen.queryByRole('alert')).toBeNull()
   })

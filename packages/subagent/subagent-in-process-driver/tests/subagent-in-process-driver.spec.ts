@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import { ToolCallId, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import { describe, expect, it } from 'vitest'
@@ -6,14 +7,11 @@ import { type Agent, type AgentOptions } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
-import InvariantRegistry from '@deepseek-ai/dsh-invariants'
-import * as SessionInvariant from '@deepseek-ai/dsh-session/invariant'
-import * as AgentInvariant from '@deepseek-ai/dsh-agent/invariant'
-import * as AgentLoopInvariant from '@deepseek-ai/dsh-agent-loop/invariant'
-import SubagentRuntime, { snapshotSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
-import { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
+import SubagentRuntime from '@deepseek-ai/dsh-subagent'
+import { defineContentToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import { maxTokensResponse, MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
-import { startInProcessRun as startInProcessRunWithCwd } from '../src/index.ts'
+import { startInProcessRun } from '../src/index.ts'
+import { mountWorkingDirectoryFixture } from '../../subagent/tests/working-directory-fixture.ts'
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
@@ -22,33 +20,16 @@ declare module '@deepseek-ai/dsh-llm' {
 }
 
 type Script = ConstructorParameters<typeof MockAdapter>[0]
-import type {} from '@deepseek-ai/dsh-session/cwd'
-let sessionCwdForTest: Context['sessionCwd'] | undefined
-function startInProcessRun(
-  request: Parameters<typeof startInProcessRunWithCwd>[0],
-  options: Parameters<typeof startInProcessRunWithCwd>[1],
-) {
-  if (sessionCwdForTest === undefined) throw new Error('test SessionCwd is not mounted')
-  return startInProcessRunWithCwd(request, options, sessionCwdForTest)
-}
-
-async function mountInvariants(ctx: Context): Promise<void> {
-  await ctx.plugin(InvariantRegistry)
-  await ctx.plugin(SessionInvariant)
-  await ctx.plugin(AgentInvariant)
-  await ctx.plugin(AgentLoopInvariant)
-}
 
 async function setup(script: Script, parentOptions: Partial<AgentOptions> = {}) {
   const ctx = new Context()
   await mountAgentLoopTestDependencies(ctx)
-  await mountInvariants(ctx)
+  await mountWorkingDirectoryFixture(ctx)
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(SubagentRuntime)
   const adapter = new MockAdapter(script)
   ctx.llm.registerAdapter(['mock'], adapter)
   const parent = await ctx.agentLoop.create(SessionId('parent'), { provider: 'mock', model: 'mock', ...parentOptions })
-  sessionCwdForTest = ctx.sessionCwd
   return { ctx, parent, adapter }
 }
 
@@ -58,11 +39,7 @@ function request(parent: Agent, signal = new AbortController().signal) {
     prompt: [{ type: 'text' as const, text: 'child task' }],
     parent,
     signal,
-    descriptor: snapshotSubagentDescriptor({
-      mode: 'one-shot',
-      provider: 'test',
-      label: 'child task',
-    }),
+    cwd: parent.ctx.get('workingDirectory')!.get(parent.session),
   }
 }
 
@@ -103,20 +80,19 @@ describe('startInProcessRun', () => {
     const { ctx } = await setup([textResponse('moved child')])
     const parent = await ctx.agentLoop.create(
       SessionId('moved-parent'),
-      { provider: 'mock', model: 'mock', cwd: '/historical/project' },
+      { provider: 'mock', model: 'mock' },
       { cwd: '/historical/project' },
     )
-    const dispose = ctx.sessionCwd.registerResolver(() => '/moved/project')
+    await ctx.workingDirectory.set(parent, '/moved/project')
     try {
       const run = await startInProcessRun(request(parent), {})
       const child = ctx.agents.get(run.id)!
-      expect(child.options.cwd).toBe('/moved/project')
-      expect(child.session.header.cwd).toBe('/moved/project')
+      expect(ctx.workingDirectory.get(child.session)).toBe(resolve('/moved/project'))
+      expect(child.session.header.cwd).toBe(resolve('/moved/project'))
       expect(parent.session.header.cwd).toBe('/historical/project')
       await expect(run.result).resolves.toMatchObject({ stopReason: 'completed' })
       await run.dispose()
     } finally {
-      dispose()
       await ctx.fiber.dispose()
     }
   })
@@ -177,7 +153,7 @@ describe('startInProcessRun', () => {
       },
     } as unknown as Agent
 
-    const run = await startInProcessRun(request(parentWithFailedDisposal), {})
+    const run = await startInProcessRun({ ...request(parent), parent: parentWithFailedDisposal }, {})
     expect(ctx.agents.get(run.id)).toBeDefined()
     await expect(run.result).rejects.toBe(runError)
     await expect(run.dispose()).rejects.toBe(disposalError)
@@ -351,11 +327,11 @@ describe('startInProcessRun', () => {
       .rejects.toMatchObject({ name: 'SubagentDepthError' })
     for (const value of [Number.NaN, 1.5, -1, -0, Number.MAX_SAFE_INTEGER + 1]) {
       const malformed = { options: { subagentDepth: value }, session: { header: {} } } as unknown as Agent
-      await expect(startInProcessRun(request(malformed), {}))
+      await expect(startInProcessRun({ ...request(parent), parent: malformed }, {}))
         .rejects.toThrow('agent subagentDepth must be a non-negative safe integer')
     }
     const maxParent = { options: { subagentDepth: Number.MAX_SAFE_INTEGER }, session: { header: {} } } as unknown as Agent
-    await expect(startInProcessRun(request(maxParent), {})).rejects.toBeInstanceOf(RangeError)
+    await expect(startInProcessRun({ ...request(parent), parent: maxParent }, {})).rejects.toBeInstanceOf(RangeError)
   })
 
   it('rejects an already-aborted request without publishing a child', async () => {
@@ -444,7 +420,7 @@ describe('startInProcessRun', () => {
         },
       },
     } as unknown as Agent
-    const run = await startInProcessRun(request(parentWithAbortAtHandoff, controller.signal), {})
+    const run = await startInProcessRun({ ...request(parent, controller.signal), parent: parentWithAbortAtHandoff }, {})
     expect(ctx.agents.get(run.id)).toBeDefined()
     await expect(run.result).resolves.toEqual({ output: [], stopReason: 'aborted' })
     await run.dispose()

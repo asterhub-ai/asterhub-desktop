@@ -4,6 +4,9 @@ import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import { executeModelToolFixture } from '@deepseek-ai/dsh-tool-testkit'
+import { provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 import Lsp, { LspProviderId, type LspProvider, type LspProviderQuery, type LspQueryResult } from '@deepseek-ai/dsh-lsp'
 import * as ToolLsp from '@deepseek-ai/dsh-tool-lsp'
 import { DEFAULT_LSP_TOOL_TIMEOUT_MS, LSP_PROMPT_TEXT } from '@deepseek-ai/dsh-tool-lsp'
@@ -32,8 +35,10 @@ async function mount(
   config: ToolLsp.Config = {},
 ): Promise<{ ctx: Context }> {
   const ctx = new Context()
+  provideWorkingDirectoryFixture(ctx)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeToolExecutor)
   await ctx.plugin(Lsp)
   if (provider) (ctx.lsp as Lsp).registerProvider(provider)
   await ctx.plugin(ToolLsp, config)
@@ -48,12 +53,12 @@ const resolvedWorkspaceUri = pathToFileURL(resolvedWorkspaceRoot).href
 const workspaceAlias = resolve('/virtual/workspace-alias')
 /** `cwd: null` means "no agent" (tests LSP_WORKSPACE_REQUIRED); a string is the session cwd. */
 function call(ctx: Context, args: unknown, cwd: string | null = workspaceRoot) {
-  return ctx.tools.execute({
+  return executeModelToolFixture(ctx, {
     signal: testToolSignal,
     callId: `c-${++seq}` as never,
     name: 'lsp',
     arguments: args,
-    ...cwd !== null ? { agent: { session: { header: { cwd } } } as never } : {},
+    ...cwd !== null ? { agent: { ctx, session: { header: { cwd } } } as never } : {},
   })
 }
 

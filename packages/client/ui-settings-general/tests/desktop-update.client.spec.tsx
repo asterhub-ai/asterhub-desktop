@@ -24,11 +24,9 @@ function fixture() {
   const status = Promise.withResolvers<DesktopUpdatePresentation>()
   const unsubscribe = vi.fn()
   const open = vi.fn(async () => {})
-  const check = vi.fn(async () => {})
   const bridge: DesktopUpdateBridge = {
     status: () => status.promise,
     open,
-    check,
     subscribe: (next) => { listener = next; return unsubscribe },
   }
   const source = new DesktopUpdateSource(bridge)
@@ -178,4 +176,25 @@ it.each([
     fireEvent.focus(screen.getByRole('button', { name: label }))
     expect((await screen.findByRole('tooltip')).textContent).toBe(label)
   } finally { f.view.unmount(); f.status.resolve({ phase: 'idle' }) }
+})
+
+it('localizes fullscreen timeout guidance and preserves the retry action', async () => {
+  const f = fixture()
+  const copy: string[] = []
+  try {
+    await f.emit({ phase: 'error', failure: 'fullscreen-timeout', version: available.version })
+    for (const dictionary of [zh, en]) {
+      f.view.rerender(<f.Indicator dictionary={dictionary} />)
+      fireEvent.focus(screen.getByRole('button'))
+      copy.push((await screen.findByRole('tooltip')).textContent ?? '')
+    }
+    expect(copy).toMatchInlineSnapshot(`
+      [
+        "无法退出全屏，请退出全屏后重试更新",
+        "Could not exit fullscreen. Exit fullscreen, then retry the update.",
+      ]
+    `)
+    fireEvent.click(screen.getByRole('button'))
+    expect(f.open).toHaveBeenCalledOnce()
+  } finally { f.view.unmount(); f.status.resolve(available) }
 })

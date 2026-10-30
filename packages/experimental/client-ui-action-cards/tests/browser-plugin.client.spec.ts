@@ -21,7 +21,10 @@ it('binds actions to the displayed session, serves registered bodies and removes
   const slots = ctx.slots
   slots.register({ name: 'root', children: {
     'conversation.chat.turnTail': { kind: 'list', scope: 'session' },
-    'tool.call.toolview': { kind: 'keyed', scope: 'session' },
+    'tool.call.toolview': {
+      kind: 'keyed', scope: 'session',
+      inject: { hooks: { toolCallArgumentsPartial: () => () => '' } },
+    },
   } }, (_props: { renderSlot?: unknown }) => null)
   const act = vi.fn().mockResolvedValue({ ok: true, value: { status: 'accepted' } })
   const unmount = vi.fn(async () => {})
