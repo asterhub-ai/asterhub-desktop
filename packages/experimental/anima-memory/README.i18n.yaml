@@ -1,13 +1,13 @@
 # Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
-#   pnpm run verify-translation-pairing --write packages/context/anima-memory/README.md
+#   pnpm run verify-translation-pairing --write packages/experimental/anima-memory/README.md
 /:
   en: ba9ccf8a887f2361
   zh: d2f1b604c60a8395
 /deepseek-ai-dsh-anima-memory:
-  en: 3e18fdd99d6c4c32
-  zh: 6821c1cadcaf408a
+  en: 56ff062aa0a7c9b7
+  zh: 40dda730f8352ea2
 /deepseek-ai-dsh-anima-memory/summary:
   en: 770724d28d443d05
   zh: 70971fde9141141c
@@ -24,11 +24,11 @@
   en: 0c046fe278456e78
   zh: a63988e578f2059e
 /deepseek-ai-dsh-anima-memory/understand-the-implementation:
-  en: dfb4e023b3e08f65
-  zh: c76482aacd786175
+  en: e002ad24b6401019
+  zh: 1eadb3fb9ca0d59b
 /deepseek-ai-dsh-anima-memory/further-exploration:
-  en: 1469cbc4efa365b0
-  zh: 058854a14164c155
+  en: 14f98a1f7da7cfe5
+  zh: 83a1b07d702bccdd
 /deepseek-ai-dsh-anima-memory/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90

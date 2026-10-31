@@ -8,7 +8,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/asterhub-ai/asterhub-desktop.git",
-    "directory": "packages/context/anima-memory"
+    "directory": "packages/experimental/anima-memory"
   },
   "type": "module",
   "scripts": {

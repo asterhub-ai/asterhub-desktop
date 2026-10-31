@@ -2,7 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { BlockAssembler, createUserMessage, type UserMessage, type ContextFormed, type FinishReason } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { SessionSeq as Seq } from '@deepseek-ai/dsh-session'
+import { appendPluginRecord, type SessionSeq as Seq } from '@deepseek-ai/dsh-session'
 import { deadline } from '@deepseek-ai/dsh-timeout'
 import type { Policy } from './config.ts'
 import { turnStateOf } from './projection.ts'
@@ -19,18 +19,28 @@ declare module '@deepseek-ai/dsh-llm' {
   }
 }
 
+/** Exact auxiliary request, logged before model dispatch. */
+interface ExtractionRequestRecord {
+  route: { provider: string; model: string }
+  operation: 'extraction' | 'review' | 'reflection'
+  system: string
+  messages: UserMessage[]
+  maxTokens: number
+}
+
+/** Exact auxiliary result, including failure, logged before graph materialization. */
+interface ExtractionResultRecord {
+  requestSeq: Seq
+  text: string
+  error: string | null
+}
+
 declare module '@deepseek-ai/dsh-session/types' {
-  interface SessionEventMap {
+  interface PluginRecordMap {
     /** Exact auxiliary request, logged before model dispatch. */
-    'anima/extraction-request': {
-      route: { provider: string; model: string }
-      operation: 'extraction' | 'review' | 'reflection'
-      system: string
-      messages: UserMessage[]
-      maxTokens: number
-    }
+    'plugin:anima-memory/extraction-request': ExtractionRequestRecord
     /** Exact auxiliary result, including failure, logged before graph materialization. */
-    'anima/extraction-result': { requestSeq: Seq; text: string; error: string | null }
+    'plugin:anima-memory/extraction-result': ExtractionResultRecord
   }
 }
 
@@ -92,7 +102,8 @@ export async function invokeModel(ctx: Context, operation: ModelOperation, kind:
   const serialized = JSON.stringify(input)
   const messages = [createUserMessage({ source: { kind: 'anima' }, content: [{ type: 'text', text: serialized }] })]
   if (Buffer.byteLength(system + JSON.stringify(messages), 'utf8') > policy.maxInputBytes) throw new Error('Anima model input exceeds maxInputBytes')
-  const request = agent.session.append('anima/extraction-request', { route, operation: kind, system, messages, maxTokens: policy.maxOutputTokens })
+  const requestSeq = appendPluginRecord(agent.session, 'plugin:anima-memory/extraction-request',
+    { route, operation: kind, system, messages, maxTokens: policy.maxOutputTokens })
   let text = ''
   try {
     using timeout = deadline(signal, policy.timeoutMs, 'ANIMA_TIMEOUT')
@@ -109,10 +120,10 @@ export async function invokeModel(ctx: Context, operation: ModelOperation, kind:
     if (blocks.some(block => block.type !== 'text' && block.type !== 'reasoning')) throw new Error('Anima model output must contain JSON text')
     text = blocks.filter(block => block.type === 'text').map(block => block.text).join('')
     const result = parseModelOutput(text, assembler.finish)
-    agent.session.append('anima/extraction-result', { requestSeq: request.seq, text, error: null })
+    appendPluginRecord(agent.session, 'plugin:anima-memory/extraction-result', { requestSeq, text, error: null })
     return result
   } catch (error) {
-    agent.session.append('anima/extraction-result', { requestSeq: request.seq, text, error: String(error) })
+    appendPluginRecord(agent.session, 'plugin:anima-memory/extraction-result', { requestSeq, text, error: String(error) })
     throw error
   }
 }

@@ -745,7 +745,7 @@ importers:
     devDependencies:
       '@deepseek-ai/dsh-anima-memory':
         specifier: workspace:*
-        version: link:../../packages/context/anima-memory
+        version: link:../../packages/experimental/anima-memory
       '@deepseek-ai/dsh-app-boot':
         specifier: workspace:*
         version: link:../../packages/boot/app-boot
@@ -2542,7 +2542,7 @@ importers:
         version: link:../../core/agent-tool-presentation
       '@deepseek-ai/dsh-anima-memory':
         specifier: workspace:*
-        version: link:../../context/anima-memory
+        version: link:../../experimental/anima-memory
       '@deepseek-ai/dsh-attachment-local':
         specifier: workspace:*
         version: link:../../attachment/attachment-local
@@ -7600,91 +7600,6 @@ importers:
         specifier: workspace:*
         version: link:../../session/working-directory
 
-  packages/context/anima-memory:
-    dependencies:
-      '@deepseek-ai/anima-capture':
-        specifier: workspace:~
-        version: link:../../../vendor/anima-capture
-      '@deepseek-ai/anima-memory':
-        specifier: workspace:~
-        version: link:../../../vendor/anima-memory
-      '@deepseek-ai/schemastery':
-        specifier: link:../../../vendor/schemastery
-        version: link:../../../vendor/schemastery
-      extract-zip:
-        specifier: ^2.0.1
-        version: 2.0.1(supports-color@9.4.0)
-      json-canonicalize:
-        specifier: 3.0.1
-        version: 3.0.1
-      neo4j-driver:
-        specifier: 6.2.0
-        version: 6.2.0
-      tar:
-        specifier: ^7.5.7
-        version: 7.5.22
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: workspace:~
-        version: link:../../../vendor/cordis
-      '@deepseek-ai/cordis-plugin-include':
-        specifier: workspace:~
-        version: link:../../../vendor/include
-      '@deepseek-ai/cordis-plugin-loader':
-        specifier: workspace:~
-        version: link:../../../vendor/loader
-      '@deepseek-ai/dsh-agent':
-        specifier: workspace:*
-        version: link:../../core/agent
-      '@deepseek-ai/dsh-agent-loop':
-        specifier: workspace:*
-        version: link:../../core/agent-loop
-      '@deepseek-ai/dsh-agent-loop-testkit':
-        specifier: workspace:*
-        version: link:../../test-support/agent-loop-testkit
-      '@deepseek-ai/dsh-atomic-write':
-        specifier: workspace:*
-        version: link:../../util/atomic-write
-      '@deepseek-ai/dsh-brand':
-        specifier: workspace:*
-        version: link:../../util/brand
-      '@deepseek-ai/dsh-http-proxy':
-        specifier: workspace:*
-        version: link:../../util/http-proxy
-      '@deepseek-ai/dsh-llm':
-        specifier: workspace:*
-        version: link:../../llm/llm
-      '@deepseek-ai/dsh-session':
-        specifier: workspace:*
-        version: link:../../core/session
-      '@deepseek-ai/dsh-session-persistence':
-        specifier: workspace:*
-        version: link:../../session/session-persistence
-      '@deepseek-ai/dsh-session-persistence-jsonl':
-        specifier: workspace:*
-        version: link:../../session/session-persistence-jsonl
-      '@deepseek-ai/dsh-session-projection':
-        specifier: workspace:*
-        version: link:../../session/session-projection
-      '@deepseek-ai/dsh-timeout':
-        specifier: workspace:*
-        version: link:../../util/timeout
-      '@deepseek-ai/dsh-tool-executor-ptc':
-        specifier: workspace:*
-        version: link:../../core/tool-executor-ptc
-      '@deepseek-ai/dsh-tools':
-        specifier: workspace:*
-        version: link:../../core/tools
-      '@deepseek-ai/dsh-working-directory':
-        specifier: workspace:*
-        version: link:../../session/working-directory
-      yaml:
-        specifier: ^2.8.1
-        version: 2.9.0
-
   packages/context/file-reference:
     devDependencies:
       '@deepseek-ai/cordis':
@@ -8620,6 +8535,91 @@ importers:
       js-yaml:
         specifier: ^4.2.0
         version: 4.3.1
+
+  packages/experimental/anima-memory:
+    dependencies:
+      '@deepseek-ai/anima-capture':
+        specifier: workspace:~
+        version: link:../../../vendor/anima-capture
+      '@deepseek-ai/anima-memory':
+        specifier: workspace:~
+        version: link:../../../vendor/anima-memory
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+      extract-zip:
+        specifier: ^2.0.1
+        version: 2.0.1(supports-color@9.4.0)
+      json-canonicalize:
+        specifier: 3.0.1
+        version: 3.0.1
+      neo4j-driver:
+        specifier: 6.2.0
+        version: 6.2.0
+      tar:
+        specifier: ^7.5.7
+        version: 7.5.22
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/cordis-plugin-include':
+        specifier: workspace:~
+        version: link:../../../vendor/include
+      '@deepseek-ai/cordis-plugin-loader':
+        specifier: workspace:~
+        version: link:../../../vendor/loader
+      '@deepseek-ai/dsh-agent':
+        specifier: workspace:*
+        version: link:../../core/agent
+      '@deepseek-ai/dsh-agent-loop':
+        specifier: workspace:*
+        version: link:../../core/agent-loop
+      '@deepseek-ai/dsh-agent-loop-testkit':
+        specifier: workspace:*
+        version: link:../../test-support/agent-loop-testkit
+      '@deepseek-ai/dsh-atomic-write':
+        specifier: workspace:*
+        version: link:../../util/atomic-write
+      '@deepseek-ai/dsh-brand':
+        specifier: workspace:*
+        version: link:../../util/brand
+      '@deepseek-ai/dsh-http-proxy':
+        specifier: workspace:*
+        version: link:../../util/http-proxy
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:*
+        version: link:../../llm/llm
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:*
+        version: link:../../core/session
+      '@deepseek-ai/dsh-session-persistence':
+        specifier: workspace:*
+        version: link:../../session/session-persistence
+      '@deepseek-ai/dsh-session-persistence-jsonl':
+        specifier: workspace:*
+        version: link:../../session/session-persistence-jsonl
+      '@deepseek-ai/dsh-session-projection':
+        specifier: workspace:*
+        version: link:../../session/session-projection
+      '@deepseek-ai/dsh-timeout':
+        specifier: workspace:*
+        version: link:../../util/timeout
+      '@deepseek-ai/dsh-tool-executor-ptc':
+        specifier: workspace:*
+        version: link:../../core/tool-executor-ptc
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:*
+        version: link:../../core/tools
+      '@deepseek-ai/dsh-working-directory':
+        specifier: workspace:*
+        version: link:../../session/working-directory
+      yaml:
+        specifier: ^2.8.1
+        version: 2.9.1
 
   packages/experimental/api-speech-to-text:
     dependencies:
@@ -14677,22 +14677,6 @@ importers:
       '@deepseek-ai/cordis':
         specifier: workspace:~
         version: link:../../../vendor/cordis
-
-  packages/session/session-format-v4-to-v5:
-    dependencies:
-      '@deepseek-ai/dsh-session-format':
-        specifier: workspace:*
-        version: link:../session-format
-      '@deepseek-ai/dsh-session-format-v3-to-v4':
-        specifier: workspace:*
-        version: link:../session-format-v3-to-v4
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: workspace:~
-        version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-session':
-        specifier: workspace:*
-        version: link:../../core/session
 
   packages/session/session-log-deepseek:
     dependencies:

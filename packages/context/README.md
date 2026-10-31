@@ -1,5 +1,5 @@
 ---
-description: "The context group map: workspace guidance, references, local Neo4j memory tools, and other request-context plugins for users and maintainers."
+description: "The context group map: workspace guidance, references, and other request-context plugins for users and maintainers."
 kind: "package-group"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The context group provides model-visible workspace guidance, file and session references, and request-time facts such as the current time or tmux location. Most packages add context without defining tools; `anima-memory` also captures Session events into a local Neo4j graph and provides project-memory and reflection tools. `agent-instructions` is the only package mounted by `dsh-base`; the web-app bundle mounts `anima-memory`, and the other packages are opt-in. This page maps the group; each package README owns the per-package contract.
+The context group provides model-visible workspace guidance, file and session references, and request-time facts such as the current time or tmux location. Most packages add context without defining tools. `agent-instructions` is the only package mounted by `dsh-base`, and the other packages are opt-in. This page maps the group; each package README owns the per-package contract.
 
 ## Table of Contents
 
@@ -25,7 +25,6 @@ The context group provides model-visible workspace guidance, file and session re
 | Package | Role | ctx key |
 |---|---|---|
 | [`agent-instructions/`](agent-instructions/README.md) | Loads `AGENTS.md`/`CLAUDE.md` workspace instructions into context and refreshes them after file edits | — |
-| [`anima-memory/`](anima-memory/README.md) | Project-scoped local Neo4j memory, Session-event capture, automatic review and reflection, and four native tools | — |
 | [`session-reference/`](session-reference/README.md) | References other sessions: mention one and its bounded read-only snapshot becomes context | `ctx.sessionReferenceResolver` |
 | [`file-reference/`](file-reference/README.md) | `@file` mention discovery and the shared mention grammar for host-backed UIs | `ctx.fileReferences` |
 | [`file-reference-local/`](file-reference-local/README.md) | Local-workspace completion provider for `@file` mentions | — |
