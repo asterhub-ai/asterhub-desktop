@@ -36,12 +36,12 @@ async function measure(capacityBytes: number, mode: string): Promise<TerminalIoR
   const timedBytes = mode === 'filtered' ? 513 * chunkBytes : mode === 'steady' ? MIB : 5 * MIB
   const output = new Readable({ read() {} })
   const ended = Promise.withResolvers<SubprocessOutcome>()
-  const writeReady = Promise.withResolvers<void>()
+  const writeReady = Promise.withResolvers<undefined>()
   const terminal: SubprocessTerminalHandle = {
     pid: 1,
     output,
     done: ended.promise,
-    async write() { writeReady.resolve() },
+    async write() { writeReady.resolve(undefined) },
     async resize() {},
     async inspectActivity() { return { state: 'unknown', revision: 0 } },
     async inspectForeground() { return { processGroupId: 1, inputWaiting: false } },

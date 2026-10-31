@@ -19,11 +19,11 @@ async function docker(...args: string[]): Promise<string> {
 async function sshdReady(container: string): Promise<void> {
   const logs = spawn('docker', ['logs', '--follow', container], { stdio: ['ignore', 'pipe', 'pipe'] })
   let text = ''
-  const ready = Promise.withResolvers<void>()
+  const ready = Promise.withResolvers<undefined>()
   const closed = new Promise<void>((resolve) => { logs.once('close', () => { resolve(); ready.reject(new Error(`sshd exited before readiness: ${text}`)) }) })
   const read = (chunk: Buffer): void => {
     text = (text + chunk.toString()).slice(-8192)
-    if (text.includes('Server listening on')) ready.resolve()
+    if (text.includes('Server listening on')) ready.resolve(undefined)
   }
   logs.stdout.on('data', read); logs.stderr.on('data', read)
   logs.once('error', (error) => { ready.reject(error) })
