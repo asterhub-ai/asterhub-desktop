@@ -114,6 +114,12 @@
 
     # Configuration-surface reads and writes over Typert Remote. Each method
     # reports an actionable error when its settings-domain provider is absent.
+    - id: ui-settings-account
+      name: '@deepseek-ai/dsh-client-ui-settings-account'
+
+    - id: account-controller
+      name: '@deepseek-ai/dsh-api-account-controller'
+
     - id: settings-controller
       name: '@deepseek-ai/dsh-api-settings-controller'
 
@@ -266,6 +272,8 @@
     - id: ui-settings-general
       name: '@deepseek-ai/dsh-client-ui-settings-general'
 
+    - id: ui-settings-models
+      name: '@deepseek-ai/dsh-client-ui-settings-models'
 
     # Plugin management: the sidebar Plugins page installs, enables, disables,
     # and removes the profile's bundles through the `pluginManager` Remote.
@@ -293,6 +301,8 @@
     - id: ui-attachment
       name: '@deepseek-ai/dsh-client-ui-attachment'
 
+    - id: ui-file-drag
+      name: '@deepseek-ai/dsh-client-ui-file-drag'
 
     # Tool call tree, generic fallback, and keyed business Tool views.
     - id: ui-tool
@@ -363,6 +373,11 @@
 
     - id: ui-permission
       name: '@deepseek-ai/dsh-client-ui-permission-presets'
+
+    # The agent-preset row in General settings: the default preset for
+    # sessions created later. Absent a roster it renders nothing.
+    - id: ui-agent-preset
+      name: '@deepseek-ai/dsh-client-ui-agent-preset'
 
     - id: ui-settings-session-log
       name: '@deepseek-ai/dsh-client-ui-settings-session-log'

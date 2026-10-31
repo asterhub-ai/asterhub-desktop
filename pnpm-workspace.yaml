@@ -26,7 +26,6 @@ overrides:
   # 1.2.15's binding rejects collectShell's plugin payloads (InvalidArg: missing
   # field code). Pin the stream until the upstream lock moves.
   'rolldown@~1.2.4': '1.2.7'
-  'vite@^8.0.0': '8.0.16'
 
 peerDependencyRules:
   allowedVersions:
@@ -116,6 +115,10 @@ patchedDependencies:
   '@fortune-sheet/core@1.0.4': patches/@fortune-sheet__core@1.0.4.patch
   '@fortune-sheet/react@1.0.4': patches/@fortune-sheet__react@1.0.4.patch
   '@yao-pkg/pkg@6.21.0': patches/@yao-pkg__pkg@6.21.0.patch
+  app-builder-lib@26.17.0: patches/app-builder-lib@26.17.0.patch
   exceljs@4.4.0: patches/exceljs@4.4.0.patch
+  lexical@0.49.0: patches/lexical@0.49.0.patch
+  mdast-util-gfm-autolink-literal@2.0.1: patches/mdast-util-gfm-autolink-literal@2.0.1.patch
+  micromark-extension-gfm-autolink-literal@2.1.0: patches/micromark-extension-gfm-autolink-literal@2.1.0.patch
   node-addon-native-custom-loader@0.1.9: patches/node-addon-native-custom-loader@0.1.9.patch
   node-pty@1.2.0-beta.15: patches/node-pty@1.2.0-beta.15.patch
