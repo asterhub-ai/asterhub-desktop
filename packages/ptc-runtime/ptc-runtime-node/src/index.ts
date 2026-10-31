@@ -79,7 +79,7 @@ export class NodePtcRuntime extends PtcRuntime {
   async run(spec: PtcRunSpec): Promise<PtcRunResult> {
     if (this.disposed) throw new Error('ptc-runtime-node: run after disposal')
     const controller = new AbortController()
-    const completion = Promise.withResolvers<void>()
+    const completion = Promise.withResolvers<undefined>()
     const unregister = spec.sandboxPolicy === undefined ? undefined : this.processes.register(spec.sandboxPolicy, async () => {
       controller.abort(new Error('sandbox mode changed'))
       await completion.promise
@@ -96,7 +96,7 @@ export class NodePtcRuntime extends PtcRuntime {
     } finally {
       unregister?.()
       this.live.delete(live)
-      completion.resolve()
+      completion.resolve(undefined)
     }
   }
 }

@@ -191,7 +191,7 @@ export class ModelsSettingsStore {
   /** Latest load wins; an older response never overwrites a newer one. */
   private generation = 0
   /** Callers follow the current refresh's outcome, including callers whose read was superseded. */
-  private readonly pendingLoads = new Set<PromiseWithResolvers<void>>()
+  private readonly pendingLoads = new Set<PromiseWithResolvers<undefined>>()
 
   /**
    * @param ctx - the page plugin's context, whose `remote.llm` and
@@ -216,11 +216,11 @@ export class ModelsSettingsStore {
    * @throws the current read's unexpected rejection; superseded rejections are ignored.
    */
   load(): Promise<void> {
-    const pending = Promise.withResolvers<void>()
+    const pending = Promise.withResolvers<undefined>()
     this.pendingLoads.add(pending)
     const generation = ++this.generation
     void this.read(generation).then(
-      () => { this.settleLoads(generation, (load) => { load.resolve() }) },
+      () => { this.settleLoads(generation, (load) => { load.resolve(undefined) }) },
       (error: unknown) => { this.settleLoads(generation, (load) => { load.reject(error) }) },
     )
     return pending.promise
@@ -312,7 +312,7 @@ export class ModelsSettingsStore {
   }
 
   /** Settle callers only while this read still owns the current refresh. */
-  private settleLoads(generation: number, settle: (load: PromiseWithResolvers<void>) => void): void {
+  private settleLoads(generation: number, settle: (load: PromiseWithResolvers<undefined>) => void): void {
     if (generation !== this.generation) return
     const pending = [...this.pendingLoads]
     this.pendingLoads.clear()

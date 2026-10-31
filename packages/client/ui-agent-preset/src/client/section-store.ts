@@ -100,7 +100,7 @@ export class AgentPresetSectionController {
 
   private async save(write: () => Promise<string | undefined>, sync?: (id: string) => Promise<string | undefined>): Promise<void> {
     if (this.store.getSnapshot().saving) return
-    const completion = Promise.withResolvers<void>()
+    const completion = Promise.withResolvers<undefined>()
     this.pendingSave = completion.promise
     this.set({ saving: true, error: null })
     try {
@@ -116,7 +116,7 @@ export class AgentPresetSectionController {
     finally {
       this.pendingSave = undefined
       this.set({ saving: false })
-      completion.resolve()
+      completion.resolve(undefined)
     }
   }
 }

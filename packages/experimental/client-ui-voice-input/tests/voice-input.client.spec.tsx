@@ -47,8 +47,8 @@ function stop(): void { fireEvent.click(screen.getByRole('button', { name: zh.st
 
 it('clicks to record, shows measured audio, and stops to insert without sending or a popup', async () => {
   const b = fixture()
-  fireEvent.mouseEnter(screen.getByRole('button', { name: zh.start }).parentElement!)
-  expect(screen.getByRole('tooltip').textContent).toBe('听写')
+  fireEvent.pointerEnter(screen.getByRole('button', { name: zh.start }).parentElement!)
+  expect((await screen.findByRole('tooltip')).textContent).toBe('听写')
   fireEvent.mouseDown(screen.getByRole('button', { name: zh.start }))
   await start()
   expect(b.props.onActiveChange).toHaveBeenLastCalledWith(true)
@@ -298,7 +298,7 @@ it('offers installation on click without a preparation tooltip', () => {
   const mic = screen.getByRole<HTMLButtonElement>('button', { name: zh['setupPrompt.trigger'] })
   expect(mic.disabled).toBe(false)
   expect(mic.getAttribute('aria-haspopup')).toBe('dialog')
-  fireEvent.mouseEnter(mic.parentElement!)
+  fireEvent.pointerEnter(mic.parentElement!)
   expect(screen.queryByRole('tooltip')).toBeNull()
   fireEvent.click(mic)
   expect(screen.getByRole('dialog').textContent).toContain(zh['setupPrompt.body'])

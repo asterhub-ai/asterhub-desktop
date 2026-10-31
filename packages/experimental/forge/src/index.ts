@@ -338,7 +338,7 @@ export class ForgeService extends Service {
   ): Promise<T> {
     const operation = AbortSignal.any([signal, this.lifetime.signal, registration.lifetime.signal])
     operation.throwIfAborted()
-    const completion = Promise.withResolvers<void>()
+    const completion = Promise.withResolvers<undefined>()
     registration.pending.add(completion.promise)
     this.pending.add(completion.promise)
     try {
@@ -348,7 +348,7 @@ export class ForgeService extends Service {
     } finally {
       registration.pending.delete(completion.promise)
       this.pending.delete(completion.promise)
-      completion.resolve()
+      completion.resolve(undefined)
     }
   }
 

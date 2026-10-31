@@ -53,7 +53,7 @@ async function answerApproval(
     ...(request.displayReason === undefined ? {} : { displayReason: request.displayReason }),
     ...(request.signal === undefined ? {} : { signal: request.signal }),
   })
-  const completed = Promise.withResolvers<void>()
+  const completed = Promise.withResolvers<undefined>()
   const remove = registerPendingInteraction(pending, async () => {
     pending.delegate()
     await completed.promise
@@ -67,7 +67,7 @@ async function answerApproval(
     }
   } finally {
     remove()
-    completed.resolve()
+    completed.resolve(undefined)
   }
 }
 /* jscpd:ignore-end */

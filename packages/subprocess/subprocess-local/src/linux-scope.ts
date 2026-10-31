@@ -289,7 +289,7 @@ class SystemdScopeOwner implements BoundProcessOwner {
   private killFailure: Error | undefined
   private directKillSettlement: Promise<void> | undefined
   private wakeGeneration = 0
-  private wakeWaiter: { generation: number; resolve: () => void } | undefined
+  private wakeWaiter: { generation: number; resolve: (value: undefined) => void } | undefined
 
   constructor(
     private readonly unit: string,
@@ -494,13 +494,13 @@ class SystemdScopeOwner implements BoundProcessOwner {
 
   private wakeObservation(): void {
     this.wakeGeneration += 1
-    this.wakeWaiter?.resolve()
+    this.wakeWaiter?.resolve(undefined)
     this.wakeWaiter = undefined
   }
 
   private async waitForPoll(delayMs: number, generation: number): Promise<void> {
     if (generation !== this.wakeGeneration) return
-    const wake = Promise.withResolvers<void>()
+    const wake = Promise.withResolvers<undefined>()
     const waiter = { generation, resolve: wake.resolve }
     const sleepController = new AbortController()
     this.wakeWaiter = waiter

@@ -83,7 +83,7 @@ export type ActivationResource =
     /** Latest live failure not superseded by a later committed turn ending. */
     failureAt: SessionLogOffset | undefined
     /** Renewed when local settlement must recheck input or owned children. */
-    poke: PromiseWithResolvers<void>
+    poke: PromiseWithResolvers<undefined>
     /**
      * Whether this child's settlement notice omits its closing text: true while
      * the child's last logged tool call was a message to its direct parent and

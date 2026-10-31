@@ -242,7 +242,7 @@ export class AutomationRuntime {
   private launch(task: AutomationTask, run: AutomationRun, identity: AutomationAccountIdentity): void {
     if (this.active.has(run.id)) return
     const abort = new AbortController()
-    const finished = Promise.withResolvers<void>()
+    const finished = Promise.withResolvers<undefined>()
     this.active.set(run.id, { abort, done: finished.promise })
     const timeout = setTimeout(() =>{  abort.abort(new Error('automation timeout')) }, this.host.limits.runTimeoutMs)
     void (async () => {
@@ -267,7 +267,7 @@ export class AutomationRuntime {
               runs: current.runs.map(value => value.id === run.id ? blocked : value),
               updatedAt: new Date().toISOString() })
           })
-          settled = true; finished.resolve(); return
+          settled = true; finished.resolve(undefined); return
         }
         const terminal = await executeRun(this.host, task, run.id, identity, abort.signal)
         await this.host.transact(async () => {
@@ -284,7 +284,7 @@ export class AutomationRuntime {
             updatedAt: new Date().toISOString() })
         })
         settled = true
-        finished.resolve()
+        finished.resolve(undefined)
       } catch (error) {
         // A failed teardown or terminal write retains the durable claim for recovery.
         this.host.ctx.logger.error(`automation: execution ${run.id} did not settle; its ownership remains blocked`)

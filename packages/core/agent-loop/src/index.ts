@@ -54,7 +54,7 @@ function throwCollectedFailures(failures: readonly unknown[], message: string): 
 class FactoryOwnership {
   private accepting = true
   private readonly teardown = new AbortController()
-  private readonly inactive = Promise.withResolvers<void>()
+  private readonly inactive = Promise.withResolvers<undefined>()
   private readonly liveAgents = new Set<() => Promise<void>>()
   private startupTasks = new Set<Promise<void>>()
 
@@ -95,7 +95,7 @@ class FactoryOwnership {
   async dispose(): Promise<void> {
     this.accepting = false
     this.teardown.abort(new Error('agent loop is not active'))
-    this.inactive.resolve()
+    this.inactive.resolve(undefined)
     const settlements = await Promise.allSettled([
       ...[...this.liveAgents].map(dispose => dispose()),
       ...this.startupTasks,
@@ -437,10 +437,10 @@ export class AgentLoop extends Service implements AgentFactory {
     // occupant is a collision the create/resume below will surface itself.
     if (ownerCtx.agents.get(sessionId) === undefined && ownerCtx.sessions.get(sessionId) === undefined) return
 
-    const released = Promise.withResolvers<void>()
+    const released = Promise.withResolvers<undefined>()
     const checkReleased = (): void => {
       if (ownerCtx.agents.get(sessionId) === undefined && ownerCtx.sessions.get(sessionId) === undefined) {
-        released.resolve()
+        released.resolve(undefined)
       }
     }
     const disposeAgentListener = ownerCtx.on('agent/disposed', () => { checkReleased() })
@@ -489,9 +489,9 @@ export class AgentLoop extends Service implements AgentFactory {
     let detachSession: (() => void) | undefined
     let detachAgent: (() => void) | undefined
     let disposing: Promise<void> | undefined
-    let publication: ReturnType<typeof Promise.withResolvers<void>> | undefined
+    let publication: ReturnType<typeof Promise.withResolvers<undefined>> | undefined
     let ready = false
-    const machineReady = Promise.withResolvers<void>()
+    const machineReady = Promise.withResolvers<undefined>()
     // Reverse teardown, memoized so every racing owner awaits one quiescence:
     // stop the machine, unwind the scope, drain and close the session's write
     // path, leave the registries, release bookkeeping.
@@ -574,7 +574,7 @@ export class AgentLoop extends Service implements AgentFactory {
           () => inboxProjectionHandle.stateOf(session),
           lastTurn,
         )
-        machineReady.resolve()
+        machineReady.resolve(undefined)
         // Adopt the scope on its original fiber so it cannot unload before teardown.
         // A loop already unloading during minting owns the provisional scope itself.
         if (!INACTIVE_STATES.has(loopCtx.fiber.state)) {
@@ -593,7 +593,7 @@ export class AgentLoop extends Service implements AgentFactory {
         }
       }, `agentLoop.lifecycle(${id})`)
     } catch (error: unknown) {
-      machineReady.resolve()
+      machineReady.resolve(undefined)
       untrack()
       callerSignal?.removeEventListener('abort', onCallerAbort)
       this.ownership.signal.removeEventListener('abort', onFactoryTeardown)
@@ -618,7 +618,7 @@ export class AgentLoop extends Service implements AgentFactory {
       assertLive()
 
       return await agent.runMaintenance(async () => {
-        publication = Promise.withResolvers<void>()
+        publication = Promise.withResolvers<undefined>()
         try {
           assertLive()
           await this.appendUnstoredSuffix(stored, session)
@@ -642,7 +642,7 @@ export class AgentLoop extends Service implements AgentFactory {
           agent.cancel({ kind: 'disposed' }, { keepInbox: true })
           throw error
         } finally {
-          publication.resolve()
+          publication.resolve(undefined)
           publication = undefined
         }
       })

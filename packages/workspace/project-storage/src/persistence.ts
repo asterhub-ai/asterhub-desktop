@@ -149,7 +149,7 @@ export class ProjectSessionPersistence extends SessionPersistence {
 
   private async backend(projectRoot: string): Promise<Backend> {
     const previous = this.backendTail
-    const { promise, resolve } = Promise.withResolvers<void>()
+    const { promise, resolve } = Promise.withResolvers<undefined>()
     this.backendTail = promise
     await previous
     try {
@@ -178,7 +178,7 @@ export class ProjectSessionPersistence extends SessionPersistence {
       this.backends.set(projectRoot, backend)
       return backend
     } finally {
-      resolve()
+      resolve(undefined)
     }
   }
 }

@@ -135,9 +135,9 @@ export class Recording {
    */
   dispose(): Promise<void> {
     if (!this.disposal) {
-      const closing = Promise.withResolvers<void>()
+      const closing = Promise.withResolvers<undefined>()
       this.disposal = closing.promise
-      void this.release().then(closing.resolve, closing.reject)
+      void this.release().then(() => closing.resolve(undefined), closing.reject)
     }
     return this.disposal
   }

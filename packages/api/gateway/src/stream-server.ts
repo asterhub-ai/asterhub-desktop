@@ -118,9 +118,9 @@ export class RemoteStreamMuxServer {
     clearInterval(this.heartbeatTimer)
     this.heartbeatTimer = undefined
     for (const socket of this.server.clients) socket.terminate()
-    const closed = Promise.withResolvers<void>()
+    const closed = Promise.withResolvers<undefined>()
     this.server.close((error) => {
-      if (error === undefined) closed.resolve()
+      if (error === undefined) closed.resolve(undefined)
       else closed.reject(error)
     })
     await closed.promise

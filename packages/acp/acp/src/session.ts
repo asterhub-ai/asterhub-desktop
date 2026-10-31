@@ -54,10 +54,10 @@ interface InflightPrompt {
   messageQueued: boolean
   turn: number | undefined
   endReason: TurnEndReason | undefined
-  admissionDone: Promise<void>
-  finishAdmission: () => void
+  admissionDone: Promise<undefined>
+  finishAdmission: (value: undefined) => void
   admissionController: AbortController
-  cancellationDone: PromiseWithResolvers<void>
+  cancellationDone: PromiseWithResolvers<undefined>
   cancelStartedIdle: boolean
   settlementStarted: boolean
   outputError: Error | undefined
@@ -224,7 +224,7 @@ export class AcpSession {
     this.assertActive()
     if (this.inflight !== undefined) throw invalidParams('a prompt is already in flight for this session')
     const completion = Promise.withResolvers<StopReason>()
-    const admission = Promise.withResolvers<void>()
+    const admission = Promise.withResolvers<undefined>()
     const admissionController = new AbortController()
     const inflight: InflightPrompt = {
       resolve: completion.resolve,
@@ -236,7 +236,7 @@ export class AcpSession {
       admissionDone: admission.promise,
       finishAdmission: admission.resolve,
       admissionController,
-      cancellationDone: Promise.withResolvers<void>(),
+      cancellationDone: Promise.withResolvers<undefined>(),
       cancelStartedIdle: false,
       settlementStarted: false,
       outputError: undefined,
@@ -280,7 +280,7 @@ export class AcpSession {
       } catch (error: unknown) {
         admissionFailure = error
       } finally {
-        inflight.finishAdmission()
+        inflight.finishAdmission(undefined)
       }
 
       if (inflight.admissionController.signal.aborted) {
@@ -398,7 +398,7 @@ export class AcpSession {
     if (inflight === undefined || !inflight.messageQueued || !inflight.admissionController.signal.aborted) return
     // Maintenance remains publicly idle; its next running transition belongs
     // to work released after the maintenance task finished.
-    if (status === 'idle' || inflight.cancelStartedIdle) inflight.cancellationDone.resolve(this.outputTail)
+    if (status === 'idle' || inflight.cancelStartedIdle) inflight.cancellationDone.resolve(this.outputTail.then(() => undefined))
   }
 
   /** Await every update queued before this call. */
@@ -464,14 +464,14 @@ export class AcpSession {
     inflight.admissionController.abort(new Error(detail))
     this.settleAfterQuiescence(inflight)
     if (!inflight.messageQueued) {
-      inflight.cancellationDone.resolve()
+      inflight.cancellationDone.resolve(undefined)
       return
     }
     this.agent.cancel({ kind: 'user' })
     if (firstCancellation) {
       const done = inflight.cancellationDone
       // Plugin disposal can detach status observers before this activity retires.
-      void this.agent.whenIdle().then(() => { done.resolve(this.outputTail) }, done.reject)
+      void this.agent.whenIdle().then(() => { done.resolve(this.outputTail.then(() => undefined)) }, done.reject)
     }
   }
 

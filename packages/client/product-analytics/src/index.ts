@@ -73,15 +73,15 @@ export default class ProductAnalytics extends TypertRemoteService {
    */
   @Remote({ mode: 'stream' })
   async *watchPolicy(signal: AbortSignal): AsyncIterable<boolean> {
-    let update = Promise.withResolvers<void>()
-    const changed = (): void => { update.resolve() }
+    let update = Promise.withResolvers<undefined>()
+    const changed = (): void => { update.resolve(undefined) }
     this.listeners.add(changed)
     signal.addEventListener('abort', changed, { once: true })
     try {
       while (this.active && !signal.aborted) {
         yield this.enabled()
         await update.promise
-        update = Promise.withResolvers<void>()
+        update = Promise.withResolvers<undefined>()
       }
     } finally {
       this.listeners.delete(changed)

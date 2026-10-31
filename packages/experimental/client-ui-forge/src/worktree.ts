@@ -168,7 +168,7 @@ interface RestorationHold {
   /** Whether the check found the worktree gone. */
   waiting: boolean
   /** The wait for the work that restores or leaves the worktree, with its outcome. */
-  next: PromiseWithResolvers<{ readonly work: HeldWork; readonly done: PromiseWithResolvers<void> }> | undefined
+  next: PromiseWithResolvers<{ readonly work: HeldWork; readonly done: PromiseWithResolvers<undefined> }> | undefined
 }
 
 type Hold = CreationHold | RestorationHold
@@ -321,7 +321,7 @@ export class WorktreeCreations {
   within(session: Session, work: HeldWork): Promise<void> | undefined {
     const hold = this.holds.get(session)
     if (hold?.kind !== 'restoration' || hold.next === undefined) return undefined
-    const done = Promise.withResolvers<void>()
+    const done = Promise.withResolvers<undefined>()
     hold.next.resolve({ work, done })
     return done.promise
   }
@@ -539,7 +539,7 @@ export class WorktreeCreations {
         signal.throwIfAborted()
         continue
       }
-      done.resolve()
+      done.resolve(undefined)
       return
     }
   }

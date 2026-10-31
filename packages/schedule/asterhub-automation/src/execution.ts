@@ -45,8 +45,8 @@ function createExecutionAdmissionLock(ready: Promise<void>): ExecutionAdmissionL
   let isReleased = false
   let isReady = false
   let chain: Promise<void> = Promise.resolve()
-  const readyGate = Promise.withResolvers<void>()
-  void ready.then(() => { isReady = true; readyGate.resolve() }, () => { isReady = true; readyGate.resolve() })
+  const readyGate = Promise.withResolvers<undefined>()
+  void ready.then(() => { isReady = true; readyGate.resolve(undefined) }, () => { isReady = true; readyGate.resolve(undefined) })
 
   return {
     async closeIf(check: () => boolean): Promise<boolean> {
@@ -65,7 +65,7 @@ function createExecutionAdmissionLock(ready: Promise<void>): ExecutionAdmissionL
       if (isReleased) return
       isReleased = true
       isClosed = true
-      if (!isReady) { isReady = true; readyGate.resolve() }
+      if (!isReady) { isReady = true; readyGate.resolve(undefined) }
     },
   }
 }
@@ -159,7 +159,7 @@ export async function executeRun(host: AutomationRuntimeHost,
   let run = initial
   let handle: AgentHandle | undefined
   let inputOwner: ExecutionAdmissionLock | undefined
-  const publicationReady = Promise.withResolvers<void>()
+  const publicationReady = Promise.withResolvers<undefined>()
   const family = new Set<Agent>()
   const interactions = new Set<string>()
   let closed = false
@@ -170,7 +170,7 @@ export async function executeRun(host: AutomationRuntimeHost,
   let humanIntervened = false
   const approvals = new Set<string>()
   const disposers: (() => void)[] = []
-  const result = Promise.withResolvers<void>()
+  const result = Promise.withResolvers<undefined>()
   void result.promise.catch(() => undefined)
   let queuedWrites = Promise.resolve()
   let writeFailure: unknown
@@ -208,7 +208,7 @@ export async function executeRun(host: AutomationRuntimeHost,
         closed = true
         return true
       })
-      if (didClose) { completed = true; result.resolve() }
+      if (didClose) { completed = true; result.resolve(undefined) }
     }).catch((error: unknown) =>{  result.reject(error) }).finally(() => { finishing = false })
   }
 
@@ -339,7 +339,7 @@ export async function executeRun(host: AutomationRuntimeHost,
     ctx.accountSub2api.assertAutomationIdentity(identity)
     signal.throwIfAborted()
     agent.followup(message)
-    publicationReady.resolve()
+    publicationReady.resolve(undefined)
     if (!(await ctx.sessions.flush(agent.session))) throw new Error('automation input persistence unavailable')
     await result.promise
     await queuedWrites
@@ -408,7 +408,7 @@ export async function executeRun(host: AutomationRuntimeHost,
       family.clear()
     }
     inputOwner?.release()
-    publicationReady.resolve()
+    publicationReady.resolve(undefined)
   }
   return run
 }

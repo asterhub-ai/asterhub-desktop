@@ -76,10 +76,10 @@ export async function watchConfig(
   watcher.on('add', onChange)
   watcher.on('change', onChange)
   watcher.on('unlink', onChange)
-  const ready = Promise.withResolvers<void>()
+  const ready = Promise.withResolvers<undefined>()
   let pending = true
   let disposed = false
-  watcher.once('ready', () => { pending = false; ready.resolve() })
+  watcher.once('ready', () => { pending = false; ready.resolve(undefined) })
   const onError = (error: unknown): void => {
     // A watcher error after disposal is not actionable: this registration's
     // path is gone and no refresh will run.

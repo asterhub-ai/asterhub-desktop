@@ -34,7 +34,7 @@ interface ActiveOperation {
   client: NativeClient
   identity: CuaApplicationGrant
   controller: AbortController
-  done: PromiseWithResolvers<void>
+  done: PromiseWithResolvers<undefined>
 }
 
 /** Owns application consent and cancels operations when saved access is removed. */
@@ -265,7 +265,7 @@ export class ApplicationAccess {
 
   private async withOperation<T>(agent: Agent, client: NativeClient, identity: CuaApplicationGrant, signal: AbortSignal,
     dispatch: (signal: AbortSignal) => Promise<T>): Promise<T> {
-    const operation = { agent, client, identity, controller: new AbortController(), done: Promise.withResolvers<void>() }
+    const operation = { agent, client, identity, controller: new AbortController(), done: Promise.withResolvers<undefined>() }
     this.active.add(operation)
     const lifetime = AbortSignal.any([signal, this.lifetime.signal, operation.controller.signal])
     try {
@@ -278,7 +278,7 @@ export class ApplicationAccess {
       throw error
     } finally {
       this.active.delete(operation)
-      operation.done.resolve()
+      operation.done.resolve(undefined)
     }
   }
 

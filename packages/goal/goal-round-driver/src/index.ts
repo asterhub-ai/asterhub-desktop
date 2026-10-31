@@ -77,7 +77,7 @@ function renderThrown(value: unknown): string {
 export function apply(ctx: Context): void {
   const states = new Map<Agent, DriverState>()
   // Releases drivers still joining subagents when the plugin unloads.
-  const unloading = Promise.withResolvers<void>()
+  const unloading = Promise.withResolvers<undefined>()
 
   /** Create state for an exact currently live agent. */
   function stateFor(agent: Agent): DriverState {
@@ -454,7 +454,7 @@ export function apply(ctx: Context): void {
     // Yielded after listener registration, so this close runs first and the
     // composite effect removes listeners only after its promise settles.
     yield async () => {
-      unloading.resolve()
+      unloading.resolve(undefined)
       const waits: Promise<void>[] = []
       for (const state of states.values()) {
         state.stopping = true

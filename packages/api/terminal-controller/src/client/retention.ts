@@ -8,7 +8,7 @@ import type { TerminalRemote } from './model.ts'
 /** A stream acknowledgement gates output attachment for each physical connection. */
 export class TerminalWindowHold {
   private readonly stream: RemoteStream<TerminalRetentionFrame>
-  private readonly waiters = new Set<{ resolve: () => void; reject: (error: unknown) => void }>()
+  private readonly waiters = new Set<{ resolve: (value: undefined) => void; reject: (error: unknown) => void }>()
   private generation: AbortSignal | undefined
   private failure: Error | undefined
 
@@ -39,7 +39,7 @@ export class TerminalWindowHold {
     signal.throwIfAborted()
     if (this.failure !== undefined) throw this.failure
     if (this.generation !== undefined && !this.generation.aborted) return
-    const waiting = Promise.withResolvers<void>()
+    const waiting = Promise.withResolvers<undefined>()
     const abort = (): void => { waiting.reject(signal.reason) }
     this.waiters.add(waiting)
     signal.addEventListener('abort', abort, { once: true })
@@ -61,7 +61,7 @@ export class TerminalWindowHold {
       for await (const item of this.stream) {
         item.accept()
         this.generation = item.signal
-        for (const waiter of this.waiters) waiter.resolve()
+        for (const waiter of this.waiters) waiter.resolve(undefined)
         this.waiters.clear()
       }
     } catch (error) { this.reject(error) }

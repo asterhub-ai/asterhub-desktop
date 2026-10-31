@@ -3,7 +3,7 @@
 /** One live foreground wait, counted by the Host only while no answer UI holds it. */
 export class TimedQuestionWait {
   private readonly controller = new AbortController()
-  private readonly completion = Promise.withResolvers<void>()
+  private readonly completion = Promise.withResolvers<undefined>()
   private readonly claims = new Set<() => void>()
   private timer: ReturnType<typeof setTimeout> | undefined
 
@@ -48,12 +48,12 @@ export class TimedQuestionWait {
       this.close(this.timeout)
       return
     }
-    const ended = Promise.withResolvers<void>()
+    const ended = Promise.withResolvers<undefined>()
     const release = (): void => {
       if (!this.claims.delete(release)) return
       signal.removeEventListener('abort', release)
       this.signal.removeEventListener('abort', release)
-      ended.resolve()
+      ended.resolve(undefined)
       this.schedule()
     }
     this.claims.add(release)
@@ -78,6 +78,6 @@ export class TimedQuestionWait {
     this.timer = undefined
     this.parent?.removeEventListener('abort', this.parentAborted)
     this.controller.abort(reason)
-    this.completion.resolve()
+    this.completion.resolve(undefined)
   }
 }

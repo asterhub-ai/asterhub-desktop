@@ -109,7 +109,7 @@ type MaterializeInputs = MaterializeBase & (
  */
 interface Materialization {
   readonly lineage: readonly Agent[]
-  readonly settled: Promise<void>
+  readonly settled: Promise<undefined>
   readonly controller: AbortController
 }
 
@@ -748,7 +748,7 @@ export class SubagentManager {
     const lineage = this.liveLineage(inputs.parent)
     const pool = this.resident.get(inputs.parent.id)?.pool ?? this.rootPool(inputs.parent)
     const releaseSlot = pool.reserve(this.maxActiveSubagents())
-    const settled = Promise.withResolvers<void>()
+    const settled = Promise.withResolvers<undefined>()
     const controller = new AbortController()
     const materialization: Materialization = {
       lineage,
@@ -764,7 +764,7 @@ export class SubagentManager {
       throw error
     }).finally(() => {
       this.materializations.delete(materialization)
-      settled.resolve()
+      settled.resolve(undefined)
     })
   }
 
@@ -780,9 +780,9 @@ export class SubagentManager {
   /** Close admission synchronously and share one release, including startup rollback. */
   private close(activation: Activation, release: () => Promise<void>): Promise<void> {
     if (activation.closing !== undefined) return activation.closing
-    const completion = Promise.withResolvers<void>()
+    const completion = Promise.withResolvers<undefined>()
     activation.closing = completion.promise
-    void release().then(completion.resolve, completion.reject)
+    void release().then(() => completion.resolve(undefined), completion.reject)
     return completion.promise
   }
 
@@ -933,7 +933,7 @@ export class SubagentManager {
         outputStart: handle.agent.session.seq,
         structured,
         failureAt: undefined,
-        poke: Promise.withResolvers<void>(),
+        poke: Promise.withResolvers<undefined>(),
         omitClosingText: false,
       }
     }
@@ -1041,8 +1041,8 @@ export class SubagentManager {
   /** Let a settlement watcher re-check residency after relevant state changes. */
   private wake(activation: Activation): void {
     if (activation.kind === 'external') return
-    activation.poke.resolve()
-    activation.poke = Promise.withResolvers<void>()
+    activation.poke.resolve(undefined)
+    activation.poke = Promise.withResolvers<undefined>()
   }
 
   /** Follow one Activation to natural settlement. */
@@ -1105,7 +1105,7 @@ export class SubagentManager {
   /** Check pending input and owned children before closing admission. */
   private settlementState(
     activation: LocalActivation,
-    observation: PromiseWithResolvers<void>,
+    observation: PromiseWithResolvers<undefined>,
   ): SettlementState {
     if (activation.closing !== undefined) return 'closed'
     if (activation.poke !== observation) return 'retry'

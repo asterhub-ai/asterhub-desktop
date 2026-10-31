@@ -101,7 +101,7 @@ export class HarnessSdkJsonRpcServer {
   private approvalRequests = false
   private readonly lifetime = new AbortController()
   private readonly userQuestions: SdkUserQuestionBridge
-  private readonly initialization = Promise.withResolvers<void>()
+  private readonly initialization = Promise.withResolvers<undefined>()
   /** Restored by a reminder and available for the client's first resume. */
   private readonly scheduledSessions = new Map<string, Promise<SessionRecord>>()
 
@@ -241,7 +241,7 @@ export class HarnessSdkJsonRpcServer {
     this.approvalRequests = params.approvalRequests === true
     this.userQuestions.enabled = params.capabilities?.userQuestions === true
     this.initialized = true
-    this.initialization.resolve()
+    this.initialization.resolve(undefined)
     return { serverInfo: { name: 'deepseek-harness-sdk-runtime', version: '0.0.1' } }
   }
 
@@ -382,7 +382,7 @@ export class HarnessSdkJsonRpcServer {
     this.shuttingDown = true
     this.lifetime.abort(new Error('SDK server is shutting down'))
     this.userQuestions.close()
-    this.initialization.resolve()
+    this.initialization.resolve(undefined)
     const pendingCreations = [...this.sessionCreations.values()]
     await Promise.allSettled(pendingCreations)
     this.sessionCreations.clear()

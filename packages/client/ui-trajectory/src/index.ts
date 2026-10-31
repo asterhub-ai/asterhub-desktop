@@ -107,18 +107,18 @@ export default class SessionToolResults extends TypertRemoteService {
     const lifetime = AbortSignal.any([signal, this.lifetime.signal])
     if (lifetime.aborted) return
     const state = this.forRequest(request)
-    let update = Promise.withResolvers<void>()
+    let update = Promise.withResolvers<undefined>()
     const changed = (seq?: number): void => {
-      if (seq === undefined || seq === request.seq) update.resolve()
+      if (seq === undefined || seq === request.seq) update.resolve(undefined)
     }
     state.listeners.add(changed)
-    using _cancellation = addAbortListener(lifetime, () => { update.resolve() })
+    using _cancellation = addAbortListener(lifetime, () => { update.resolve(undefined) })
     try {
       while (!lifetime.aborted) {
         const value = state.values.get(request.seq)
         yield value === undefined ? { available: false } : { available: true, value }
         await update.promise
-        update = Promise.withResolvers<void>()
+        update = Promise.withResolvers<undefined>()
       }
     } finally {
       state.listeners.delete(changed)

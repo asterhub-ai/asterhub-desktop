@@ -44,13 +44,13 @@ export class TerminalRetention {
     signal.throwIfAborted()
     if (this.closing || this.disposed) throw new RemoteError('terminal/unavailable', 'Terminal is closing or unavailable', {})
     const holder = {}
-    const ended = Promise.withResolvers<void>()
+    const ended = Promise.withResolvers<undefined>()
     const combined = AbortSignal.any([signal, this.lifetime.signal])
     const release = (): void => {
       if (!this.holders.delete(holder)) return
       combined.removeEventListener('abort', release)
       this.invalidate()
-      ended.resolve()
+      ended.resolve(undefined)
       this.schedule(0)
     }
     this.holders.add(holder)

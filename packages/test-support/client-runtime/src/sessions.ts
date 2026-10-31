@@ -195,14 +195,14 @@ interface SessionGeneration {
   readonly session: FixtureSession
   readonly fiber: { dispose(): Promise<void> }
   readonly lifetime: AbortController
-  readonly opening: Promise<void>
+  readonly opening: Promise<undefined>
   retention: SessionRetainInfo
   live: boolean
 }
 
 interface OpeningControl {
-  readonly promise: Promise<void>
-  readonly resolve: () => void
+  readonly promise: Promise<undefined>
+  readonly resolve: (value: undefined) => void
   readonly reject: (error: unknown) => void
 }
 
@@ -221,7 +221,7 @@ const EMPTY_RETAIN_INFO: SessionRetainInfo = Object.freeze({
 // TestSessions implements SessionReference against its fixture-owned
 // SessionGeneration without importing the production service's private record.
 /* jscpd:ignore-start -- The fixture intentionally mirrors production SessionReference settlement and release semantics. */
-async function waitForOpen(opening: Promise<void>, signal?: AbortSignal): Promise<void> {
+async function waitForOpen(opening: Promise<undefined>, signal?: AbortSignal): Promise<void> {
   /* v8 ignore next -- TestSessionReference always supplies its release-composed signal. */
   if (signal === undefined) return opening
   const aborted = Promise.withResolvers<never>()
@@ -255,7 +255,7 @@ class TestSessionReference implements SessionReference {
     return this.generation.binding
   }
 
-  attachOpening(opening: Promise<void>, signal?: AbortSignal): void {
+  attachOpening(opening: Promise<undefined>, signal?: AbortSignal): void {
     const waitSignal = signal === undefined
       ? this.released.signal
       : AbortSignal.any([this.released.signal, signal])
@@ -763,7 +763,7 @@ export class TestSessions implements ISessions {
     const window = fixture.session.eventSource.getSnapshot()
     session.eventSource.replace(window.entries, window.hasMore)
     for (const [key, value] of fixture.projections) session.projections.set(key, value)
-    const opening = Promise.withResolvers<void>()
+    const opening = Promise.withResolvers<undefined>()
     void opening.promise.catch(() => {})
     const lifetime = new AbortController()
     const generation: SessionGeneration = {
@@ -797,7 +797,7 @@ export class TestSessions implements ISessions {
     opening: OpeningControl,
   ): void {
     try {
-      Promise.resolve(initialOpen?.(signal)).then(opening.resolve, opening.reject)
+      Promise.resolve(initialOpen?.(signal)).then(() => opening.resolve(undefined), opening.reject)
     } catch (error: unknown) {
       opening.reject(error)
     }

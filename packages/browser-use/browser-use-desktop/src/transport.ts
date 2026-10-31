@@ -34,7 +34,7 @@ interface PendingRequest {
   readonly signal: AbortSignal
   readonly resolve: (result: DesktopBrowserResult) => void
   readonly reject: (error: Error) => void
-  readonly remote: PromiseWithResolvers<void>
+  readonly remote: PromiseWithResolvers<undefined>
   readonly onAbort: () => void
   sent: boolean
   localSettled: boolean
@@ -65,7 +65,7 @@ export function createDesktopBrowserTransport(port: DesktopBrowserTransportPort)
 
   const settleRemote = (requestId: number, request: PendingRequest): void => {
     if (pending.get(requestId) === request) pending.delete(requestId)
-    request.remote.resolve()
+    request.remote.resolve(undefined)
   }
 
   const markDisconnected = (error: Error): void => {
@@ -131,7 +131,7 @@ export function createDesktopBrowserTransport(port: DesktopBrowserTransportPort)
 
       const requestId = nextRequestId++
       const { promise, resolve, reject } = Promise.withResolvers<DesktopBrowserResult>()
-      const remote = Promise.withResolvers<void>()
+      const remote = Promise.withResolvers<undefined>()
       const request: PendingRequest = {
         caller, operation, signal, resolve, reject, remote, sent: false, localSettled: false, cancelRequested: false,
         onAbort: () => {

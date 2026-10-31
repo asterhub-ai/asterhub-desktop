@@ -62,11 +62,8 @@ async function mountRegistry(): Promise<Context> {
 }
 
 function sleep(ms: number): Promise<void> {
-  // Annotated binding (not withResolvers<void>()): the tests lint layer runs
-  // no-invalid-void-type with default options, which rejects the explicit
-  // type argument in call position but accepts the inferred form.
-  const gate: PromiseWithResolvers<void> = Promise.withResolvers()
-  setTimeout(gate.resolve, ms)
+  const gate = Promise.withResolvers<undefined>()
+  setTimeout(() => gate.resolve(undefined), ms)
   return gate.promise
 }
 

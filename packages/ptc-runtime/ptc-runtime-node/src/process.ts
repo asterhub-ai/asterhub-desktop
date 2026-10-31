@@ -41,7 +41,7 @@ export async function runNodeMain(
   if (!Number.isSafeInteger(maxMessageBytes) || maxMessageBytes <= 0) throw new Error('invalid control message limit')
   clearProgramEnvironment(processState)
   const context = new AsyncLocalStorage<Evaluation>()
-  const closed = Promise.withResolvers<void>()
+  const closed = Promise.withResolvers<undefined>()
   const errors = new Map<string, { name: string; memberNameProperty: string; constructor: BindingErrorConstructor }>()
   const errorLookup = { get: (name: string) => errors.get(name)?.constructor }
   const unsettled = new Promise<never>(() => {})
@@ -125,7 +125,7 @@ export async function runNodeMain(
   }, ['ready', 'log', 'outputLimit'], (_error, kind) => {
     if (current?.active || kind === 'protocol') processState.exitCode = 1
     if (current) current.active = false
-    closed.resolve()
+    closed.resolve(undefined)
   })
   try {
     await connection.ready()

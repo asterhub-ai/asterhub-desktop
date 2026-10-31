@@ -233,7 +233,7 @@ async function answerQuestion(
       }
     }, 'ui-user-questions: foreground claim')
     : undefined
-  const completed = Promise.withResolvers<void>()
+  const completed = Promise.withResolvers<undefined>()
   const finishRequest = card.trackRequest(completed.promise)
   try {
     const iterator = claim?.[Symbol.asyncIterator]()
@@ -274,7 +274,7 @@ async function answerQuestion(
     }
     // A blocking request without a call id is not in the projection; its card ends with its waterfall.
     if (callId === undefined) card.remove()
-    completed.resolve()
+    completed.resolve(undefined)
     finishRequest()
   }
 }
