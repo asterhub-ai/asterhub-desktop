@@ -13,7 +13,7 @@ Desktop analytics batches partial records every 30 seconds, with 15-second expor
 
 ## Summary
 
-The shipped Web and Desktop profiles layer in AsterHub's [local Anima memory](../../context/anima-memory/README.md), account, voice input, and project-local session storage. The product layer also registers four presets: `standard` (default), `ptc`, `minimal`, and `cordis`. These product services are not part of this generic browser-surface bundle.
+The shipped Web and Desktop profiles layer in AsterHub's [local Anima memory](../../experimental/anima-memory/README.md), account, voice input, and project-local session storage. The product layer also registers four presets: `standard` (default), `ptc`, `minimal`, and `cordis`. These product services are not part of this generic browser-surface bundle.
 
 The Host mounts the subagent model-selection settings provider required by the shipped presets. Model selection remains disabled until enabled with an allowed route list.
 

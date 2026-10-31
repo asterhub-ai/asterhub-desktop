@@ -216,11 +216,10 @@
   ],
   "references": [
     { "path": "./packages/skill/asterhub-skills" },
-    { "path": "./packages/session/session-format-v4-to-v5" },
     { "path": "./vendor/anima-protocol" },
     { "path": "./vendor/anima-capture" },
     { "path": "./vendor/anima-memory" },
-    { "path": "./packages/context/anima-memory" },
+    { "path": "./packages/experimental/anima-memory" },
     { "path": "./packages/client/product-analytics/tsconfig.host.json" },
     { "path": "./packages/telemetry/otel" },
     { "path": "./packages/experimental/speech-to-text" },

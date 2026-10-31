@@ -13,7 +13,7 @@ kind: "package-bundle"
 
 ## 概述
 
-随发行版交付的 Web 与 Desktop profile 会通过 AsterHub product-Web 层添加[本地 Anima 记忆](../../context/anima-memory/README.zh.md)、账户、语音输入与项目本地会话存储。该产品层还会注册四种 preset：`standard`（默认）、`ptc`、`minimal` 和 `cordis`。这些产品服务不属于此通用浏览器表层组合包。
+随发行版交付的 Web 与 Desktop profile 会通过 AsterHub product-Web 层添加[本地 Anima 记忆](../../experimental/anima-memory/README.zh.md)、账户、语音输入与项目本地会话存储。该产品层还会注册四种 preset：`standard`（默认）、`ptc`、`minimal` 和 `cordis`。这些产品服务不属于此通用浏览器表层组合包。
 
 Host 挂载内置 preset 所需的子 Agent 模型选择设置 provider。模型选择保持禁用，直到启用并配置允许的路由列表。
 
