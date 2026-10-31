@@ -10,8 +10,6 @@
 
 仅追加的事件类型。可通过声明合并扩展：插件通过 declaration merging 声明额外的事件类型。例如[压缩（compaction） seam](compaction.zh.md) 添加了 `compaction/start` / `compaction/summary` / `compaction/end`，`@deepseek-ai/dsh-hook-protocol` 为钩子桥接添加了仅记录日志的 `hook/invoked` / `hook/result` 记录。与 `compaction/*` 一样，这些都不是 `SurfaceEventType`（没有 `surfaceOp`）。生成的[持久化日志事件目录](../persistence-catalog.zh.md)列举了所有成员（核心与合并扩展的），包含其 payload、surface 标记与声明位置。
 
-内置 Anima 插件通过声明合并添加 `anima/extraction-request` 和 `anima/extraction-result`。这些记录保留辅助模型请求与响应，不会增加对话消息。
-
 ```ts type-equiv
 /** A user-role specialization of the shared message representation. */
 interface UserMessage extends MessageBase {

@@ -10,8 +10,6 @@ Source: [`packages/core/session/src/types.ts`](../../packages/core/session/src/t
 
 The append-only event types. Merge-extensible: a plugin declares extra event types via declaration merging — e.g. the [compaction seam](compaction.md) adds `compaction/start` / `compaction/summary` / `compaction/end`, and `@deepseek-ai/dsh-hook-protocol` adds log-only `hook/invoked` / `hook/result` records for a hook bridge. Like `compaction/*`, these are NOT `SurfaceEventType`s (no `surfaceOp`). The generated [persistence log event catalog](../persistence-catalog.md) enumerates every member — core and merged — with its payload, surface badge, and declaration site.
 
-The built-in Anima plugin adds `anima/extraction-request` and `anima/extraction-result` through declaration merging. These records retain auxiliary model exchanges without adding conversation messages.
-
 ```ts type-equiv
 /** A user-role specialization of the shared message representation. */
 interface UserMessage extends MessageBase {
