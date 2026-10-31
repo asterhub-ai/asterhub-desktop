@@ -121,7 +121,13 @@ function cwdSpellings(ctx: NormalizeContext): string[] {
   const macAliases = spellings
     .filter(spelling => spelling.startsWith('/') && !spelling.startsWith('/private/'))
     .map(spelling => `/private${spelling}`)
-  return [...new Set([...spellings, ...macAliases])]
+  // The runtime-context working-directory message embeds the cwd through a JSON
+  // stringify step, so on Windows every separator reaches the session log as a
+  // doubled backslash. Cover that spelling or the token never matches there.
+  const doubledAliases = spellings
+    .filter(spelling => spelling.includes('\\'))
+    .map(spelling => spelling.replaceAll('\\', '\\\\'))
+  return [...new Set([...spellings, ...macAliases, ...doubledAliases])]
     .sort((left, right) => right.length - left.length)
 }
 

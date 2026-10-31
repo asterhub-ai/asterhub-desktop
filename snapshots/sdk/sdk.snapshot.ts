@@ -327,6 +327,10 @@ function contextOf(logs: readonly { content: string; header: Record<string, unkn
   return {
     sessionIds: logs.flatMap(log => typeof log.header.id === 'string' ? [log.header.id] : []),
     cwd,
+    // The working-directory runtime-context section quotes the cwd through
+    // JSON.stringify, so Windows logs carry doubled backslashes; other sites
+    // embed the forward-slash spelling.
+    cwdAliases: [cwd.split('\\').join('/'), cwd.replaceAll('\\', '\\\\')],
   }
 }
 

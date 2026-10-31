@@ -107,6 +107,8 @@ function bindsOsAssignedPort(argument: ts.Expression | undefined): boolean {
   if (argument === undefined) return false
   if (ts.isNumericLiteral(argument)) return Number(argument.text) === 0
   if (!ts.isObjectLiteralExpression(argument)) return false
+  if (argument.properties.some(property => !ts.isSpreadAssignment(property) && propertyName(property.name) === 'path')
+    && argument.properties.every(property => !ts.isSpreadAssignment(property) && propertyName(property.name) !== 'port')) return true
   let portIsZero: boolean | undefined
   for (const property of argument.properties) {
     if (ts.isSpreadAssignment(property)) {
@@ -177,9 +179,14 @@ function headerOf(log: string): JsonObject {
 
 function contextOf(logs: readonly string[]): NormalizeContext {
   const headers = logs.map(headerOf)
+  const cwd = typeof headers[0]?.cwd === 'string' ? headers[0].cwd : '\0missing-cwd\0'
   return {
     sessionIds: headers.flatMap(header => typeof header.id === 'string' ? [header.id] : []),
-    cwd: typeof headers[0]?.cwd === 'string' ? headers[0].cwd : '\0missing-cwd\0',
+    cwd,
+    // The working-directory runtime-context section quotes the cwd through
+    // JSON.stringify, so Windows logs carry doubled backslashes; other sites
+    // embed the forward-slash spelling.
+    cwdAliases: [cwd.split(sep).join('/'), cwd.replaceAll('\\', '\\\\')],
   }
 }
 
