@@ -8,6 +8,7 @@ import { runtimeArchivePath } from '../../desktop-host/src/office-engine.ts'
 import { desktopNodeEnvironment } from '../src/node-environment.ts'
 import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 import { scrubWindowsSigningEnvironment } from './windows-sign.mjs'
+import { smokeDesktopRuntime } from './smoke-runtime.ts'
 import { verifyRuntimeArchive } from './verify-runtime-archive.ts'
 
 /**
@@ -30,14 +31,18 @@ export async function smokePreparedRuntime(
     const { stdout } = await promisify(execFile)(node, [
       '--expose-internals', resolve(import.meta.dirname, '../tests/fixtures/runtime-payload-smoke.mjs'), root, resourcesRuntime,
     ], { timeout: 120_000, windowsHide: true,
-      env: desktopNodeEnvironment(node, join(resourcesRuntime, 'bin'), environment) })
+      env: desktopNodeEnvironment(node, join(resourcesRuntime, 'bin'), environment) }).catch((error: unknown) => {
+      if (error instanceof Error) {
+        if ('stdout' in error && typeof error.stdout === 'string') process.stdout.write(error.stdout)
+        if ('stderr' in error && typeof error.stderr === 'string') process.stderr.write(error.stderr)
+        if ('killed' in error && 'signal' in error) {
+          process.stderr.write(`runtime payload: killed=${String(error.killed)}, signal=${String(error.signal)}\n`)
+        }
+      }
+      throw error
+    })
     process.stdout.write(stdout)
-    const smoke = await promisify(execFile)(node, [
-      '--import', 'tsx/esm', resolve(import.meta.dirname, 'smoke-runtime-entry.ts'),
-      root, node, resourcesRuntime, descriptor.release.version, descriptor.platform, descriptor.arch,
-    ], { cwd: resolve(import.meta.dirname, '../../..'), windowsHide: true,
-      env: desktopNodeEnvironment(node, undefined, environment) })
-    process.stdout.write(smoke.stdout)
+    await smokeDesktopRuntime(root, node, descriptor, environment, resourcesRuntime)
   } finally {
     await rm(cache, { recursive: true, force: true })
   }

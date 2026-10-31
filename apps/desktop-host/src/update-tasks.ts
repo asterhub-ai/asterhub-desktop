@@ -32,17 +32,17 @@ export function installDesktopUpdateTaskControl(ctx: Context): (action: 'inspect
   let lockGeneration = 0
   let stopped = false
   ctx.effect(() => () => { stopped = true })
-  const pendingRequests = new Set<Promise<void>>()
+  const pendingRequests = new Set<Promise<undefined>>()
   ctx.on('connection/request', async (_request, response, next) => {
     if (locked) {
       response.writeHead(503)
       response.end()
       return
     }
-    const finished = Promise.withResolvers<void>()
+    const finished = Promise.withResolvers<undefined>()
     pendingRequests.add(finished.promise)
     try { await next() }
-    finally { pendingRequests.delete(finished.promise); finished.resolve() }
+    finally { pendingRequests.delete(finished.promise); finished.resolve(undefined) }
   })
   return async (action) => {
     if (stopped) throw new Error('desktop update: Host is stopping')

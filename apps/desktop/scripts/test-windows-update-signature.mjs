@@ -2,11 +2,10 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdir, mkdtemp, realpath, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
-import { resolveDesktopBuildRoot } from './desktop-build-paths.mjs'
+import { fileURLToPath } from 'node:url'
 import { resolveWindowsUpdatePublisher } from './windows-sign.mjs'
 
 assert.equal(process.platform, 'win32', 'Authenticode qualification requires Windows')
@@ -22,10 +21,9 @@ const publisherName = resolveWindowsUpdatePublisher(certificateFile)
 const signed = await realpath(signedFile)
 const unsigned = await realpath(unsignedFile)
 assert.notEqual(signed, unsigned, 'Signed and unsigned controls must be distinct files')
-const qualification = join(resolveDesktopBuildRoot(process.env), 'qualification')
+const qualification = fileURLToPath(new URL('../.desktop-build/qualification/', import.meta.url))
 await mkdir(qualification, { recursive: true })
-const reportRoot = await mkdtemp(join(qualification, 'windows-update-signature-'))
-const root = await mkdtemp(join(tmpdir(), 'dsh-update-signature-'))
+const root = await mkdtemp(join(qualification, 'windows-update-signature-'))
 const report = { publisherName, installerExecuted: false, cases: [], passed: false }
 
 async function digest(file) {
@@ -77,7 +75,6 @@ try {
   report.passed = true
 }
 finally {
-  await writeFile(join(reportRoot, 'result.json'), `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' })
-  console.log(`WINDOWS_UPDATE_SIGNATURE_RESULT ${join(reportRoot, 'result.json')}`)
-  await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  await writeFile(join(root, 'result.json'), `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' })
+  console.log(`WINDOWS_UPDATE_SIGNATURE_RESULT ${join(root, 'result.json')}`)
 }

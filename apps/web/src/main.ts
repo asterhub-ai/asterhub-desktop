@@ -19,7 +19,7 @@ try {
   if (el === null) throw new Error('web app: missing #root')
   const entry = new AppWebEntry(el)
   if (desktop !== undefined) {
-    const gate = (globalThis as { __DSH_BOOT_READY__?: PromiseWithResolvers<void> }).__DSH_BOOT_READY__
+    const gate = (globalThis as { __DSH_BOOT_READY__?: PromiseWithResolvers<undefined> }).__DSH_BOOT_READY__
     if (gate === undefined) throw new Error('desktop web: boot readiness is missing')
     void desktop.ready().then(async ({ injections, streamBaseUrl }) => {
       const transport = globalThis as { __DSH_TRANSPORT__?: { ownsHost: boolean; streamBaseUrl: string } }
@@ -31,7 +31,7 @@ try {
         script.onerror = () => { reject(new Error(`desktop web: failed to load ${src}`)) }
         document.head.append(script)
       }))
-      gate.resolve()
+      gate.resolve(undefined)
     }).catch((error: unknown) => { gate.reject(error) })
   }
   void entry.run(desktop === undefined ? undefined : reportFailure)

@@ -1,55 +1,10 @@
-/** Resolve build-owned Desktop paths without sharing mutable state across release targets. */
+/** Resolve target-owned Desktop outputs and shared package caches. */
 
-import { isAbsolute, join, relative, resolve, sep, win32 } from 'node:path'
+import { isAbsolute, join, resolve } from 'node:path'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
-const REPOSITORY_ROOT = resolve(APP_ROOT, '..', '..')
-
-/** Resolve the Desktop build root inside the repository.
- * @param {NodeJS.ProcessEnv} env - Environment that may override the root.
- * @param {string} repositoryRoot - Repository root used to check containment.
- * @returns {string} Absolute Desktop build root.
- */
-export function resolveDesktopBuildRoot(env = process.env, repositoryRoot = REPOSITORY_ROOT) {
-  const defaultRoot = join(APP_ROOT, '.desktop-build')
-  const configuredRoot = env.DSH_DESKTOP_BUILD_ROOT
-  const root = resolve(configuredRoot ?? defaultRoot)
-  if (configuredRoot === '') throw new Error('desktop build paths: DSH_DESKTOP_BUILD_ROOT must not be empty')
-  if (configuredRoot !== undefined && !isAbsolute(configuredRoot)) {
-    throw new Error('desktop build paths: DSH_DESKTOP_BUILD_ROOT must be absolute')
-  }
-  const pathApi = isAbsolute(repositoryRoot) && /^[A-Za-z]:[\\/]/u.test(repositoryRoot) ? win32 : undefined
-  const canonicalRepositoryRoot = pathApi?.resolve(repositoryRoot) ?? resolve(repositoryRoot)
-  const canonicalRoot = pathApi?.resolve(root) ?? root
-  const suffix = pathApi?.relative(canonicalRepositoryRoot, canonicalRoot) ?? relative(canonicalRepositoryRoot, canonicalRoot)
-  const separator = pathApi?.sep ?? sep
-  if (suffix === '..' || suffix.startsWith(`..${separator}`) || (pathApi?.isAbsolute(suffix) ?? isAbsolute(suffix))) {
-    throw new Error('desktop build paths: DSH_DESKTOP_BUILD_ROOT must stay inside the repository')
-  }
-  return root
-}
-
-export const DESKTOP_BUILD_ROOT = resolveDesktopBuildRoot()
+const BUILD_ROOT = join(APP_ROOT, '.desktop-build')
 const SUPPORTED_TARGETS = new Set(['mac-arm64', 'mac-x64', 'win-x64'])
-const COMPACT_TARGET_DIRECTORIES = {
-  'mac-arm64': 'ma64',
-  'mac-x64': 'mx64',
-  'win-x64': 'w64',
-}
-
-/**
- * Resolve the target-directory layout selected by a packaging environment.
- * @param {NodeJS.ProcessEnv} [env] - Environment that may select a compact layout.
- * @returns {'standard' | 'compact'} Validated build-directory layout.
- */
-export function resolveDesktopBuildLayout(env = process.env) {
-  const layout = env.DSH_DESKTOP_BUILD_LAYOUT ?? 'standard'
-  if (layout !== 'standard' && layout !== 'compact') {
-    throw new Error('desktop build paths: DSH_DESKTOP_BUILD_LAYOUT must be standard or compact')
-  }
-  return layout
-}
-
 
 /**
  * Resolve the fixed build target selected by a packaging environment.
@@ -83,23 +38,22 @@ function assertSupportedTarget(target) {
 /**
  * Return the mutable preparation and artifact directories owned by one release target.
  * @param {'mac-arm64' | 'mac-x64' | 'win-x64'} target - Supported Desktop target name.
- * @param {'standard' | 'compact'} [layout] - Directory layout; defaults to the validated packaging environment.
- * @returns {{ root: string, artifacts: string, unsignedArtifacts: string, runtime: string, animaRuntime: string, packageSet: string, dsh: string, dshPnpm: string, electron: string, packedDsh: string, packedVendor: string, packedLandlock: string, downloads: string }} Target paths plus the shared immutable download cache.
+ * @param {NodeJS.ProcessEnv} environment - Packaging environment with an optional absolute cache directory.
+ * @returns {{ root: string, artifacts: string, unsignedArtifacts: string, unnotarizedArtifacts: string, runtime: string, animaRuntime: string, packageSet: string, dsh: string, dshPnpm: string, electron: string, packedDsh: string, packedVendor: string, packedLandlock: string, downloads: string, pnpmStore: string }} Target paths plus shared download and package caches.
  */
-export function desktopTargetBuildPaths(
-  target,
-  layout = resolveDesktopBuildLayout(process.env),
-  buildRoot = resolveDesktopBuildRoot(process.env),
-) {
+export function desktopTargetBuildPaths(target, environment = process.env) {
   assertSupportedTarget(target)
-  const root = layout === 'compact'
-    ? join(buildRoot, COMPACT_TARGET_DIRECTORIES[target])
-    : join(buildRoot, 'targets', target)
+  const cacheRoot = environment.DSH_DESKTOP_PACKAGE_CACHE_DIR ?? BUILD_ROOT
+  if (!cacheRoot.trim() || !isAbsolute(cacheRoot) || cacheRoot.includes('\0')) {
+    throw new Error('desktop package: DSH_DESKTOP_PACKAGE_CACHE_DIR must be a nonempty absolute directory')
+  }
+  const root = join(BUILD_ROOT, 'targets', target)
   const packed = join(root, 'packed')
   return {
     root,
-    artifacts: join(root, layout === 'compact' ? 'a' : 'artifacts'),
-    unsignedArtifacts: join(root, layout === 'compact' ? 'u' : 'unsigned-artifacts'),
+    artifacts: join(root, 'artifacts'),
+    unsignedArtifacts: join(root, 'unsigned-artifacts'),
+    unnotarizedArtifacts: join(root, 'unnotarized-artifacts'),
     runtime: join(root, 'runtime'),
     animaRuntime: join(root, 'anima-runtime'),
     packageSet: join(root, 'package-set'),
@@ -109,7 +63,8 @@ export function desktopTargetBuildPaths(
     packedDsh: join(packed, 'dsh'),
     packedVendor: join(packed, 'vendor'),
     packedLandlock: join(packed, 'landlock'),
-    downloads: join(buildRoot, 'downloads'),
+    downloads: join(cacheRoot, 'downloads'),
+    pnpmStore: join(cacheRoot, 'pnpm-store'),
   }
 }
 
@@ -121,10 +76,12 @@ export function desktopTargetBuildPaths(
  */
 export function desktopTargetPlatform(target) {
   assertSupportedTarget(target)
-  return {
-    platform: /** @type {'darwin' | 'win32'} */ (target === 'win-x64' ? 'win32' : 'darwin'),
-    arch: /** @type {'arm64' | 'x64'} */ (target === 'mac-arm64' ? 'arm64' : 'x64'),
-  }
+  const targets = /** @type {const} */ ({
+    'mac-arm64': { platform: 'darwin', arch: 'arm64' },
+    'mac-x64': { platform: 'darwin', arch: 'x64' },
+    'win-x64': { platform: 'win32', arch: 'x64' },
+  })
+  return targets[target]
 }
 
 /**
@@ -139,11 +96,7 @@ export function resolveDesktopTargetBuildPaths(
   hostPlatform = process.platform,
   hostArch = process.arch,
 ) {
-  return desktopTargetBuildPaths(
-    resolveDesktopBuildTarget(env, hostPlatform, hostArch),
-    resolveDesktopBuildLayout(env),
-    resolveDesktopBuildRoot(env),
-  )
+  return desktopTargetBuildPaths(resolveDesktopBuildTarget(env, hostPlatform, hostArch), env)
 }
 
 /**
@@ -161,4 +114,16 @@ export function developmentRuntimeDirectory(
   hostArch = process.arch,
 ) {
   return join(resolveDesktopTargetBuildPaths(env, hostPlatform, hostArch).runtime, 'primary-runtime')
+}
+
+/**
+ * Select the output directory and filename suffix for one packaging mode.
+ * @param {{ artifacts: string, unsignedArtifacts: string, unnotarizedArtifacts: string }} paths Target artifact directories.
+ * @param {{ unsigned: boolean, skipNotarization: boolean }} mode Validated packaging mode.
+ * @returns {{ directory: string, suffix: string }} Matching artifact destination and filename marker.
+ */
+export function desktopArtifactOutput(paths, mode) {
+  if (mode.unsigned) return { directory: paths.unsignedArtifacts, suffix: '-unsigned' }
+  if (mode.skipNotarization) return { directory: paths.unnotarizedArtifacts, suffix: '-unnotarized' }
+  return { directory: paths.artifacts, suffix: '' }
 }

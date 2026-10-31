@@ -34,6 +34,25 @@ const clientVersionDefine = { 'process.env.DSH_CLIENT_VERSION': JSON.stringify(c
 
 export default defineConfig([
   {
+    entry: ['lib/types/operation-report-worker.js'],
+    plugins: [packagedImportsPlugin({ packages: new Set(['zod', '@deepseek-ai/dsh-plugin-manager']), nodeBuiltins: true })],
+    outDir: 'lib', format: ['esm'], platform: 'node', target: 'es2024',
+    fixedExtension: false, dts: false, clean: false, codeSplitting: false,
+  },
+  {
+    entry: ['lib/types/command-manager-entry.js'],
+    plugins: [packagedImportsPlugin({ packages: new Set(), nodeBuiltins: true })],
+    outDir: 'lib',
+    format: ['esm'],
+    platform: 'node',
+    target: 'es2024',
+    fixedExtension: false,
+    dts: false,
+    clean: false,
+    codeSplitting: false,
+    deps: { alwaysBundle: ['@deepseek-ai/dsh-atomic-write'] },
+  },
+  {
     entry: ['lib/types/main.js'],
     plugins: [packagedImportsPlugin(mainProcessImports)],
     define: clientVersionDefine,

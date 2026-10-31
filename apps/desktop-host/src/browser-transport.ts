@@ -9,10 +9,10 @@ export function createDesktopHostBrowserTransport(): DesktopBrowserTransport {
       if (!process.connected || process.send === undefined) {
         return Promise.reject(new Error('Desktop Browser Host is unavailable'))
       }
-      const { promise, resolve, reject } = Promise.withResolvers<void>()
+      const { promise, resolve, reject } = Promise.withResolvers<undefined>()
       process.send(message, (error) => {
         if (error !== null) reject(error)
-        else resolve()
+        else resolve(undefined)
       })
       return promise
     },

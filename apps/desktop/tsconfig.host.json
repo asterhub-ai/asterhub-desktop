@@ -12,6 +12,9 @@
       "path": "../../packages/boot/app-boot"
     },
     {
+      "path": "../../packages/util/official-bundles"
+    },
+    {
       "path": "../../packages/util/home-paths"
     },
     {
@@ -34,6 +37,9 @@
     },
     {
       "path": "../../packages/boot/plugin-manager"
+    },
+    {
+      "path": "../../packages/util/file-drag"
     },
     {
       "path": "../../packages/browser-use/browser-use-desktop"

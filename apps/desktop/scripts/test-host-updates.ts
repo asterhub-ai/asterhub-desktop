@@ -1,7 +1,6 @@
 /** Run built Desktop Host task protection in a private development profile without Electron or installation. */
 import { spawn } from 'node:child_process'
-import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createDevelopmentProjectMetadata } from '../src/project-manager.ts'
@@ -9,7 +8,9 @@ import { removeOwnedDirectory } from '../src/owned-directory.ts'
 import { DESKTOP_HOST_PROTOCOL_VERSION } from '../src/host-protocol.ts'
 
 const repo = resolve(import.meta.dirname, '../../..')
-const root = await mkdtemp(join(tmpdir(), 'dsh-host-updates-'))
+const evidenceRoot = join(repo, 'apps/desktop/.desktop-build/qualification')
+await mkdir(evidenceRoot, { recursive: true })
+const root = await mkdtemp(join(evidenceRoot, 'host-updates-'))
 const project = join(root, 'project')
 const manifest = JSON.parse(await readFile(join(repo, 'apps/desktop/package.json'), 'utf8')) as { version: string }
 const pnpm = JSON.parse(await readFile(join(repo, 'apps/desktop/node_modules/pnpm/package.json'), 'utf8')) as { version: string }
@@ -46,11 +47,8 @@ try {
     if (timedOut || result.signal !== null || result.code !== 0) {
       throw new Error(`Host update qualification failed: timeout=${String(timedOut)}, signal=${String(result.signal)}, code=${String(result.code)}`)
     }
-    console.log('Host update qualification passed')
-  } finally {
-    clearTimeout(timeout)
-  }
+    console.log(`Host update evidence: ${root}`)
+  } finally { clearTimeout(timeout) }
 } finally {
   removeOwnedDirectory(project)
-  await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 }

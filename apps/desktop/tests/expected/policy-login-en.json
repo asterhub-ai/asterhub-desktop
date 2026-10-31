@@ -1,0 +1,22 @@
+{
+  "disabled": [
+    "Checking for updates…",
+    "The latest version is installed."
+  ],
+  "returned": [
+    "Checking for updates…",
+    "The latest version is installed.",
+    "Sign in with Feishu to check update requirements for this test build. Signing in will not download or install an update."
+  ],
+  "cancelled": [
+    "Checking for updates…",
+    "The latest version is installed.",
+    "Sign in with Feishu to check update requirements for this test build. Signing in will not download or install an update."
+  ],
+  "failed": [
+    "Checking for updates…",
+    "The latest version is installed.",
+    "Sign in with Feishu to check update requirements for this test build. Signing in will not download or install an update.",
+    "Feishu sign-in did not complete. Please try again."
+  ]
+}

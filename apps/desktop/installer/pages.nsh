@@ -12,11 +12,14 @@ Var InstallerButton
 Var InstallerStatus
 Var InstallerFont
 Var InstallerSmallFont
-Var InstallerPathLabel
+Var InstallerChoose
 Var InstallerEdit
 Var InstallerEditFrame
 Var InstallerBrowse
 Var InstallerLaunch
+Var InstallerExpanded
+Var InstallerMinimizeButton
+Var InstallerCloseButton
 !include "${__FILEDIR__}\path.nsh"
 !include "${__FILEDIR__}\drawing.nsh"
 
@@ -58,11 +61,13 @@ Function InstallerCreate
     !insertmacro InstallerControlColors $4
     ${NSD_CreateButton} 0 0 0 0 "−"
     Pop $4
+    StrCpy $InstallerMinimizeButton $4
     !insertmacro InstallerPlace $4 504 8 40 32
     ${NSD_OnClick} $4 InstallerMinimize
     ${NSD_OnNotify} $4 InstallerPaintButton
     ${NSD_CreateButton} 0 0 0 0 "×"
     Pop $4
+    StrCpy $InstallerCloseButton $4
     !insertmacro InstallerPlace $4 548 8 40 32
     ${NSD_OnClick} $4 InstallerClose
     ${NSD_OnNotify} $4 InstallerPaintButton
@@ -87,16 +92,14 @@ Function InstallerCreate
     SendMessage $InstallerStatus ${WM_SETFONT} $InstallerSmallFont 1
     !insertmacro InstallerControlColors $InstallerStatus
 
-    ${NSD_CreateLabel} 0 0 0 0 "$(INSTALLER_CHOOSE_PATH)"
-    Pop $InstallerPathLabel
-    !insertmacro InstallerPlace $InstallerPathLabel 64 392 472 28
-    ${NSD_AddStyle} $InstallerPathLabel ${SS_LEFT}|${SS_CENTERIMAGE}|${SS_NOTIFY}
-    SendMessage $InstallerPathLabel ${WM_SETFONT} $InstallerSmallFont 1
-    ${NSD_OnClick} $InstallerPathLabel InstallerFocusPath
-    !insertmacro InstallerControlColors $InstallerPathLabel
+    ${NSD_CreateButton} 0 0 0 0 "$(INSTALLER_CHOOSE_PATH)"
+    Pop $InstallerChoose
+    !insertmacro InstallerPlace $InstallerChoose 232 438 136 28
+    ${NSD_OnClick} $InstallerChoose InstallerExpandPath
+    ${NSD_OnNotify} $InstallerChoose InstallerPaintButton
     ${NSD_CreateBitmap} 0 0 0 0 ""
     Pop $InstallerEditFrame
-    !insertmacro InstallerPlace $InstallerEditFrame 64 434 400 34
+    !insertmacro InstallerPlace $InstallerEditFrame 64 434 384 34
     Call InstallerDrawEditFrame
     ${NSD_CreateText} 0 0 0 0 "$InstallerPath"
     Pop $InstallerEdit
@@ -119,7 +122,7 @@ Function InstallerCreate
     System::Call 'user32::ReleaseDC(p $InstallerEdit, p r4)'
     System::Call 'kernel32::MulDiv(i 76, i $InstallerDpi, i 96) i.r0'
     System::Call 'kernel32::MulDiv(i 434, i $InstallerDpi, i 96) i.r1'
-    System::Call 'kernel32::MulDiv(i 376, i $InstallerDpi, i 96) i.r2'
+    System::Call 'kernel32::MulDiv(i 360, i $InstallerDpi, i 96) i.r2'
     System::Call 'kernel32::MulDiv(i 34, i $InstallerDpi, i 96) i.r3'
     IntOp $3 $3 - $7
     IntOp $3 $3 / 2
@@ -131,7 +134,7 @@ Function InstallerCreate
     ${NSD_OnChange} $InstallerEdit InstallerPathChanged
     ${NSD_CreateButton} 0 0 0 0 "$(INSTALLER_BROWSE)"
     Pop $InstallerBrowse
-    !insertmacro InstallerPlace $InstallerBrowse 472 434 64 34
+    !insertmacro InstallerPlace $InstallerBrowse 456 434 80 34
     ${NSD_OnClick} $InstallerBrowse InstallerBrowsePath
     ${NSD_OnNotify} $InstallerBrowse InstallerPaintButton
     ${NSD_CreateCheckbox} 0 0 0 0 "$(INSTALLER_LAUNCH)"
@@ -181,7 +184,7 @@ Function InstallerCreate
 FunctionEnd
 
 Function InstallerRender
-    ShowWindow $InstallerPathLabel 0
+    ShowWindow $InstallerChoose 0
     ShowWindow $InstallerEdit 0
     ShowWindow $InstallerEditFrame 0
     ShowWindow $InstallerBrowse 0
@@ -192,10 +195,13 @@ Function InstallerRender
         ShowWindow $InstallerLaunch 5
     ${Else}
         ${NSD_SetText} $InstallerButton "$(INSTALLER_INSTALL)"
-        ShowWindow $InstallerPathLabel 5
-        ShowWindow $InstallerEditFrame 5
-        ShowWindow $InstallerEdit 5
-        ShowWindow $InstallerBrowse 5
+        ${If} $InstallerExpanded == 1
+            ShowWindow $InstallerEditFrame 5
+            ShowWindow $InstallerEdit 5
+            ShowWindow $InstallerBrowse 5
+        ${Else}
+            ShowWindow $InstallerChoose 5
+        ${EndIf}
     ${EndIf}
 FunctionEnd
 
@@ -242,8 +248,10 @@ Function InstallerFinishLeave
     ${EndIf}
 FunctionEnd
 
-Function InstallerFocusPath
+Function InstallerExpandPath
     Pop $0
+    StrCpy $InstallerExpanded 1
+    Call InstallerRender
     SendMessage $InstallerEdit ${EM_SETSEL} 0 0
     System::Call 'user32::SetFocus(p $InstallerEdit)'
 FunctionEnd
@@ -317,6 +325,13 @@ Function InstallerPaintButton
         ${If} $R1 != 0
             StrCpy $R3 $InstallerControlHover
         ${EndIf}
+        ${If} $R0 == $InstallerMinimizeButton
+        ${OrIf} $R0 == $InstallerCloseButton
+            IntOp $R1 $R9 & 1
+            ${If} $R1 != 0
+                StrCpy $R3 $InstallerControlPressed
+            ${EndIf}
+        ${EndIf}
     ${EndIf}
     System::Call 'gdiplus::GdipCreateSolidFill(i R3, *p .R1)'
     System::Call 'gdiplus::GdipCreateFromHDC(p R4, *p .R5)'
@@ -343,7 +358,8 @@ Function InstallerPaintButton
         System::Call 'gdi32::SetTextColor(p R4, i $InstallerTextColorref)'
     ${EndIf}
     System::Call 'gdi32::SelectObject(p R4, p $InstallerFont)'
-    ${If} $R0 == $InstallerBrowse
+    ${If} $R0 == $InstallerChoose
+    ${OrIf} $R0 == $InstallerBrowse
         System::Call 'gdi32::SelectObject(p R4, p $InstallerSmallFont)'
     ${EndIf}
     ${NSD_GetText} $R0 $R3

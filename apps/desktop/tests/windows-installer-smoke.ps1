@@ -1,10 +1,11 @@
-﻿<# Native installation checks use a unique product identity and a private directory. #>
+<# Native installation checks use a unique product identity and a private directory. #>
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$Installer, [Parameter(Mandatory)][string]$ProductName,
     [Parameter(Mandatory)][string]$RegistryKey,
-    [Parameter(Mandatory)][string]$OutputDirectory)
+    [Parameter(Mandatory)][string]$OutputDirectory, [Parameter(Mandatory)][string]$Language)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'windows-installer-ui.ps1')
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 [InstallerCapture]::Initialize()
 [InstallerCapture]::ProductName = $ProductName
 $installPath = Join-Path $OutputDirectory 'Installed App'
@@ -13,12 +14,8 @@ $uninstaller = Join-Path $installPath ('Uninstall ' + $ProductName + '.exe')
 $processes = [Collections.Generic.List[Diagnostics.Process]]::new()
 $results = [Collections.Generic.List[string]]::new()
 $expected = Get-Content (Join-Path $PSScriptRoot 'expected/windows-installer.json') -Raw | ConvertFrom-Json
-$localizedCopy = @{ ENGLISH = @{}; SIMPCHINESE = @{} }
-Get-Content (Join-Path $PSScriptRoot '../installer/strings.nsh') -Encoding UTF8 | ForEach-Object {
-    if ($_ -match '^LangString (INSTALLER_\w+) \$\{LANG_(ENGLISH|SIMPCHINESE)\} "(.*)"$') {
-        $localizedCopy[$Matches[2]][$Matches[1]] = $Matches[3]
-    }
-}
+$resource = Get-Content (Join-Path $PSScriptRoot "../installer/locales/$Language.json") -Encoding UTF8 -Raw | ConvertFrom-Json
+$localizedCopy = @{ $Language = $resource.strings }
 function Wait-Control([Diagnostics.Process]$Process, [string]$Text, [switch]$Dialog) {
     $timer = [Diagnostics.Stopwatch]::StartNew()
     do {
@@ -136,7 +133,7 @@ try {
     $results.Add('welcome-presented-on-first-show')
     $window = [InstallerCapture]::Find($process.Id)
     [void][InstallerCapture]::Save($window, (Join-Path $OutputDirectory 'light-welcome.png'))
-    [void](Wait-Control $process $copy.INSTALLER_CHOOSE_PATH)
+    Click-Control $process $copy.INSTALLER_CHOOSE_PATH
     $edit = Wait-Control $process $installPath
     [void][InstallerCapture]::Save($window, (Join-Path $OutputDirectory 'light-path.png'))
     Click-Control $process $copy.INSTALLER_BROWSE
@@ -160,8 +157,28 @@ try {
     $results.Add('welcome-ready-before-first-show')
     $results.Add('successful-install-paints-100-before-finish')
 
+    $lockedFile = [IO.File]::Open($appPath, 'Open', 'Read', 'Read')
+    try {
+        $process = Start-Setup light
+        Click-Control $process $copy.INSTALLER_INSTALL
+        $copyButton = Wait-Control $process $copy.INSTALLER_EXTRACT_COPY
+        $dialog = [InstallerCapture]::TopLevel($copyButton)
+        $automation = [Windows.Automation.AutomationElement]::FromHandle($dialog)
+        $heading = $automation.FindFirst([Windows.Automation.TreeScope]::Descendants,
+            [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty, $copy.INSTALLER_DIRECTORY_FAILED))
+        if ($null -eq $heading) { throw 'Directory failure dialog lacks its localized heading' }
+        [void][InstallerCapture]::SaveNative($dialog, (Join-Path $OutputDirectory 'directory-failure.png'), $false)
+        [void][InstallerCapture]::SendMessage($dialog, (0x400 + 102), [IntPtr]1, [IntPtr]::Zero)
+        if (-not $process.WaitForExit(10000) -or $process.ExitCode -ne 2 -or -not (Test-Path -LiteralPath $appPath)) {
+            throw 'Directory failure did not exit with the old installation intact'
+        }
+    } finally {
+        $lockedFile.Dispose()
+    }
+    $results.Add('locked-directory-shows-error-and-copy-control-and-preserves-installation')
+
     $process = Start-Setup dark ''
-    [void](Wait-Control $process $copy.INSTALLER_CHOOSE_PATH)
+    Click-Control $process $copy.INSTALLER_CHOOSE_PATH
     $edit = Wait-Control $process $installPath
     [void][InstallerCapture]::SendMessage($edit, 0xC, [IntPtr]::Zero, ($installPath + '\\'))
     [void][InstallerCapture]::Save([InstallerCapture]::Find($process.Id), (Join-Path $OutputDirectory 'dark-welcome.png'))

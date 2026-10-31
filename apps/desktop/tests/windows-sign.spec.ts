@@ -203,7 +203,7 @@ describe('Windows token signing', () => {
     }, {
       certificateFile: CERTIFICATE_FILE,
       signTool: 'C:\\tools\\signtool.exe',
-      path: 'C:\\release\\AsterHub.exe',
+      path: 'C:\\release\\DeepSeek Harness.exe',
       isNest: false,
       tokenPin: 'token-secret!',
       keyContainer: 'te-container',
@@ -213,7 +213,7 @@ describe('Windows token signing', () => {
       DSH_DESKTOP_WINDOWS_CER_FILE: CERTIFICATE_FILE,
       DSH_DESKTOP_WINDOWS_TOKEN_PIN: 'token-secret!',
       DSH_DESKTOP_WINDOWS_KEY_CONTAINER: 'te-container',
-      DSH_DESKTOP_WINDOWS_SIGN_TARGET: 'C:\\release\\AsterHub.exe',
+      DSH_DESKTOP_WINDOWS_SIGN_TARGET: 'C:\\release\\DeepSeek Harness.exe',
       DSH_DESKTOP_WINDOWS_SIGN_APPEND: '',
     })
   })
@@ -317,7 +317,9 @@ describe('Windows token signing', () => {
       'C:\\release\\setup.exe',
       ['token-secret'],
     )
-    expect(failure.message).toBe('Windows release signing failed for C:\\release\\setup.exe (exit 1): provider rejected <redacted>')
+    expect(failure.message).toContain('Windows release signing failed for C:\\release\\setup.exe (exit 1): provider rejected <redacted>')
+    expect(failure.message).toContain('After replacing the UKey')
+    expect(failure.message).toContain('does not establish device lock status')
     expect(failure.message).not.toContain('token-secret')
     expect(failure).not.toHaveProperty('cause')
     expect(failure).not.toHaveProperty('cmd')

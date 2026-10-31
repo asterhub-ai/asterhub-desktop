@@ -3,6 +3,9 @@
     "label": "Check for Updates…"
   },
   {
+    "label": "Manage workbench command…"
+  },
+  {
     "role": "hide",
     "label": "Hide AsterHub"
   },

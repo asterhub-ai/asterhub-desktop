@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
+import type { DesktopBrowserTabCommand } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
+import type { DesktopFileDrag, FileDragHandle, FileDragRequestId } from '@deepseek-ai/dsh-util-file-drag'
 import { JSDOM } from 'jsdom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { DesktopBrowserTabCommand } from '@deepseek-ai/dsh-client-ui-sidebar-browser/src/client/electron/types.ts'
 import { installMandatoryUpdateOverlay } from '../src/preload-mandatory-overlay.ts'
 import { syncWindowsAppearance } from '../src/preload-windows.ts'
 import { DESKTOP_IPC, type DshDesktopProductApi } from '../src/ipc.ts'
@@ -69,6 +70,7 @@ it('exposes updates.check() that invokes only the updatesCheck channel', async (
   expect(api.updates).not.toHaveProperty('download')
   expect(api.updates).not.toHaveProperty('install')
 })
+
 it.each(['dsh-app://shell/plugin-manager.html', 'dsh-app://other/index.html', 'https://shell/startup.html', 'http://example.com/'])('exposes only the carrier marker to %s', async (url) => {
   vi.stubGlobal('location', new URL(url))
   await import('../src/preload-app.ts')
@@ -267,6 +269,24 @@ it('forwards browser guest input only for the focused live webview lease', async
   off()
 })
 
+it('prepares original image bytes and starts native drags without renderer filesystem paths', async () => {
+  vi.stubGlobal('location', new URL('dsh-app://app/'))
+  await import('../src/preload-app.ts')
+  const api = electron.contextBridge.exposeInMainWorld.mock.calls.find(([name]) => name === 'dshDesktop')?.[1] as DshDesktopProductApi
+  const bytes = new Uint8Array([137, 80, 78, 71])
+  electron.ipcRenderer.invoke.mockResolvedValueOnce('image-handle').mockResolvedValueOnce(true).mockResolvedValueOnce(undefined)
+  await expect(api.fileDrag.prepare({ kind: 'bytes', bytes, name: 'original.png', mediaType: 'image/png' }, 'request' as FileDragRequestId)).resolves.toBe('image-handle')
+  await expect(api.fileDrag.start('image-handle' as FileDragHandle)).resolves.toBe(true)
+  api.fileDrag.release('image-handle' as FileDragHandle)
+  api.fileDrag.cancel('request' as FileDragRequestId)
+  expect(electron.ipcRenderer.invoke.mock.calls).toEqual([
+    [DESKTOP_IPC.fileDragPrepare, { kind: 'bytes', bytes, name: 'original.png', mediaType: 'image/png' }, 'request'],
+    [DESKTOP_IPC.fileDragStart, 'image-handle'],
+    [DESKTOP_IPC.fileDragRelease, 'image-handle'],
+    [DESKTOP_IPC.fileDragCancel, 'request'],
+  ])
+})
+
 it('replies to a correlated browser automation request from Main', async () => {
   vi.stubGlobal('location', new URL('dsh-app://app/'))
   await import('../src/preload-app.ts')
@@ -301,3 +321,9 @@ it('forwards Main cancellation by request id to the browser handler', async () =
   dispose?.()
   expect(electron.ipcRenderer.off).toHaveBeenCalledExactlyOnceWith(DESKTOP_IPC.browserAutomationCancel, listener)
 })
+
+// The Host and Client compiler faces share no runtime entry; this assignment checks their image protocol.
+const imageProtocol = (value: import('../src/ipc.ts').DshDesktopProductApi['fileDrag']): DesktopFileDrag => value
+const imageProtocolBack = (value: DesktopFileDrag): import('../src/ipc.ts').DshDesktopProductApi['fileDrag'] => value
+void imageProtocol
+void imageProtocolBack

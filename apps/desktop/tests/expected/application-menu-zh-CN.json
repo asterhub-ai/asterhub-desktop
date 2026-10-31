@@ -3,6 +3,9 @@
     "label": "检查更新…"
   },
   {
+    "label": "管理工作台命令…"
+  },
+  {
     "role": "hide",
     "label": "隐藏 AsterHub"
   },

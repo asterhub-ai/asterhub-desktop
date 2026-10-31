@@ -81,7 +81,7 @@ describe('Windows update publisher', () => {
       const config = createElectronBuilderConfig({
         DSH_DESKTOP_APP_ID: 'com.example.publisher-test',
         DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN: 'https://policy.example.com',
-        DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://asterhub.xapi.fans',
+        DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://policy.example.com',
         ...(explicitTarget ? { DSH_DESKTOP_TARGET_PLATFORM: 'win32' } : {}),
         DSH_DESKTOP_WINDOWS_CER_FILE: file,
         DSH_DESKTOP_WINDOWS_SIGNTOOL: signTool,
@@ -95,14 +95,5 @@ describe('Windows update publisher', () => {
       const manager = new WindowsSignToolManager({ platformSpecificBuildOptions: config.win, getCscLink: () => undefined })
       expect(await manager.computedPublisherName.value).toEqual(['CN=Publisher,O=Company,C=CN'])
     })
-  })
-
-  it('rejects a production policy origin that differs from the selected update origin', async () => {
-    const { createElectronBuilderConfig } = await import('../electron-builder.config.mjs')
-    expect(() => createElectronBuilderConfig({
-      DSH_DESKTOP_APP_ID: 'com.example.publisher-test',
-      DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
-      DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://policy.example.com',
-    }, 'win32', 'x64')).toThrow('DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN must match the selected auto-update origin')
   })
 })

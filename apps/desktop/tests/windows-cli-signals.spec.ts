@@ -3,14 +3,13 @@
 import { execFile } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { existsSync } from 'node:fs'
-import { chmod, copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import ts from 'typescript'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type Koffi from 'koffi'
 
 const execute = promisify(execFile)
 const require = createRequire(import.meta.url)
@@ -19,26 +18,7 @@ let probe: string
 let electron: string
 let entry: string
 
-/**
- * Console control event delivery (GenerateConsoleCtrlEvent) requires an interactive
- * user session (Session ID > 0). Windows services running in Session 0 (such as Nomad
- * workers, LocalSystem, or SCM services) lack an interactive console window station
- * and cannot deliver console control signals across processes.
- */
-function hasInteractiveConsoleSession(): boolean {
-  if (process.platform !== 'win32') return false
-  const koffi = require('koffi') as typeof Koffi
-  const kernel = koffi.load('kernel32.dll')
-  const GetCurrentProcessId = kernel.func('uint32 __stdcall GetCurrentProcessId()')
-  const ProcessIdToSessionId = kernel.func('int __stdcall ProcessIdToSessionId(uint32 pid, _Out_ uint32 *sessionId)')
-  const sessionSlot: [number] = [0]
-  if (!ProcessIdToSessionId(GetCurrentProcessId(), sessionSlot)) {
-    throw new Error('Windows process session lookup failed')
-  }
-  return sessionSlot[0] > 0
-}
-
-describe.skipIf(process.platform !== 'win32' || !hasInteractiveConsoleSession())('Windows Electron console signals', () => {
+describe.skipIf(process.platform !== 'win32')('Windows Electron console signals', () => {
   beforeAll(async () => {
     root = await mkdtemp(join(tmpdir(), 'dsh-cli-console-'))
     electron = require('electron') as string
@@ -49,21 +29,13 @@ describe.skipIf(process.platform !== 'win32' || !hasInteractiveConsoleSession())
       'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'], { windowsHide: true })).stdout.trim()
     const quote = (value: string) => '"' + value.replaceAll('%', '%%') + '"'
     probe = join(root, 'console-probe.exe')
-    const probeSource = join(root, 'console-probe.cpp')
-    await copyFile(new URL('fixtures/cli-console-probe.cpp', import.meta.url), probeSource)
     const compile = join(root, 'compile.cmd')
-    // cmd reads batch files in the console code page, so the relative source and output names
-    // keep non-ASCII checkout and profile paths out of the batch text.
     await writeFile(compile, ['@echo off', 'call ' + quote(join(vs, 'VC/Auxiliary/Build/vcvars64.bat')) + ' >nul',
       'if errorlevel 1 exit /b %errorlevel%',
-      'cl /nologo /std:c++17 /EHsc /MT /W4 /WX console-probe.cpp /Foconsole.obj /Feconsole-probe.exe', '',
+      'cl /nologo /std:c++17 /EHsc /MT /W4 /WX ' + quote(join(import.meta.dirname, 'fixtures/cli-console-probe.cpp'))
+        + ' /Fo' + quote(join(root, 'console.obj')) + ' /Fe' + quote(probe), '',
     ].join('\r\n'))
-    try {
-      await execute(process.env.ComSpec, ['/d', '/v:off', '/c', compile], { cwd: root, windowsHide: true })
-    } catch (error) {
-      const compilerOutput = (error as { stdout?: string }).stdout ?? (error as Error).message
-      throw new Error(`Windows console probe compilation failed: ${compilerOutput}`)
-    }
+    await execute(process.env.ComSpec, ['/d', '/v:off', '/c', compile], { windowsHide: true })
     // Only TypeScript is erased; the child has no source-loader hook that could change signal handling.
     const source = await readFile(new URL('../../desktop-host/src/windows-cli-signals.ts', import.meta.url), 'utf8')
     const code = ts.transpileModule(source, {
@@ -84,13 +56,13 @@ describe.skipIf(process.platform !== 'win32' || !hasInteractiveConsoleSession())
       "writeFileSync(ready, 'ready')",
       'setInterval(() => {}, 1000)', '',
     ].join('\n'))
-  }, 120_000)
+  })
 
   afterAll(async () => {
     if (root === undefined) return
     await chmod(root, 0o700)
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
-  }, 30_000)
+  })
 
   it.each([['SIGINT', '0'], ['SIGBREAK', '1']] as const)('delivers %s before process exit', async (signal, event) => {
     if (root === undefined) throw new Error('Console fixture is not prepared')
@@ -98,10 +70,10 @@ describe.skipIf(process.platform !== 'win32' || !hasInteractiveConsoleSession())
     const ready = join(root, signal + '.ready')
     const report = join(root, signal + '.report')
     let failure: unknown
-    try { await execute(probe, [electron, entry, marker, ready, report, event], { windowsHide: true, timeout: 50_000 }) }
+    try { await execute(probe, [electron, entry, marker, ready, report, event], { windowsHide: true }) }
     catch (error) { failure = error }
     const observed = existsSync(report) ? await readFile(report, 'utf8') : 'Console probe exited before reporting.'
     expect(failure, observed).toBeUndefined()
     expect(await readFile(marker, 'utf8')).toBe(signal)
-  }, 60_000)
+  })
 })

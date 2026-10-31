@@ -26,9 +26,19 @@ const overlays = await vi.hoisted(async () => {
     isDestroyed() { return this.destroyed }
     destroy() { this.destroyed = true; this.emit('closed') }
   }
-  return { Window }
+  class View extends EventEmitter {
+    private destroyed = false
+    readonly webContents = Object.assign(new EventEmitter(), { setWindowOpenHandler: vi.fn(),
+      focus: vi.fn(), isDestroyed: () => this.destroyed, loadURL: vi.fn(async () => {}),
+      close: () => { this.destroyed = true; this.webContents.emit('destroyed') },
+    })
+    readonly setBounds = vi.fn()
+    readonly setBackgroundColor = vi.fn()
+    isDestroyed() { return this.destroyed }
+  }
+  return { Window, View }
 })
-vi.mock('electron', () => ({ ipcMain: ipc, BrowserWindow: overlays.Window, app: { isPackaged: true }, session: { fromPartition: () => ({
+vi.mock('electron', () => ({ ipcMain: ipc, BrowserWindow: overlays.Window, WebContentsView: overlays.View, app: { isPackaged: true }, session: { fromPartition: () => ({
   setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn(), setDevicePermissionHandler: vi.fn(),
   setDisplayMediaRequestHandler: vi.fn(), on: vi.fn(), webRequest: { onBeforeRequest: vi.fn() },
 }) } }))
@@ -100,7 +110,8 @@ async function fixture(platform: 'macos' | 'windows' | 'linux' = 'macos') {
     isDestroyed: () => false, isFocused: () => true, send: vi.fn(),
     setIgnoreMenuShortcuts: vi.fn(), focus: vi.fn(), sendInputEvent: vi.fn() })
   const window = Object.assign(new EventEmitter(), { webContents: contents, isDestroyed: vi.fn(() => false),
-    isFocused: vi.fn(() => true), isEnabled: vi.fn(() => true), close: vi.fn() })
+    isFocused: vi.fn(() => true), isEnabled: vi.fn(() => true), close: vi.fn(),
+    contentView: { addChildView: vi.fn(), removeChildView: vi.fn() } })
   let current: WindowFixture | undefined = window
   const updateMenu = vi.fn()
   const updateOverlays = new DesktopUpdateOverlays()
@@ -126,9 +137,8 @@ function updateOverlayFixture(f: Awaited<ReturnType<typeof fixture>>) {
   })
   Object.assign(f.contents, { insertCSS: vi.fn(async () => 'blur'), removeInsertedCSS: vi.fn(async () => {}) })
   return () => {
-    const overlay = f.updateOverlays.create(parent as BrowserWindow, 'test-overlay-preload', 'Update', false)
+    const overlay = f.updateOverlays.create(parent as BrowserWindow, 'test-overlay-preload')
     onTestFinished(() => { if (!overlay.isDestroyed()) overlay.destroy() })
-    expect(vi.spyOn(overlay, 'show')).not.toHaveBeenCalled()
     return overlay
   }
 }

@@ -1,7 +1,6 @@
 /** Keep prepared Windows PE files outside ASAR without changing their sealed bytes. */
 import { cp, lstat, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { readAsar } from 'app-builder-lib/out/asar/asar.js'
 import { windowsRuntimeCode } from './windows-runtime-signature.mjs'
 
@@ -17,14 +16,6 @@ function unpackPattern(path) {
     character => character === '{' || character === '}' ? '?' : `[${character}]`).replace(/^!/u, '@(!)')
 }
 
-function unpackRelativePath(appDir, file) {
-  // Builder's ASAR unpack filter slices the appDir prefix from every source path
-  // instead of resolving it, so external staged sources need the same suffix.
-  const prefix = appDir.endsWith(sep) ? appDir : appDir + sep
-  const sliced = file.substring(prefix.length)
-  return sliced.startsWith(sep) ? sliced.slice(1) : sliced
-}
-
 /**
  * Install source-relative PE patterns in the configuration consumed by electron-builder.
  * @param {import('app-builder-lib').BeforePackContext} context Active builder configuration and cleanup owner.
@@ -38,7 +29,7 @@ export async function prepareWindowsAsarUnpack(context, sourceRoot) {
   let copyRoot = sourceRoot
   if (!inside(appDir, sourceRoot)) {
     // Builder's source matcher slices the appDir prefix even for external FileSets.
-    const parent = fileURLToPath(new URL('../../../temp/asar-unpack/', import.meta.url))
+    const parent = join(appDir, '.desktop-build')
     await mkdir(parent, { recursive: true })
     const stage = await mkdtemp(join(parent, 'asar-source-'))
     copyRoot = join(stage, 'dsh')
@@ -52,7 +43,7 @@ export async function prepareWindowsAsarUnpack(context, sourceRoot) {
   }
   const existing = config.asarUnpack ?? []
   config.asarUnpack = [...(typeof existing === 'string' ? [existing] : existing),
-    ...files.map(file => unpackPattern(unpackRelativePath(appDir, join(copyRoot, file))))]
+    ...files.map(file => unpackPattern(relative(appDir, join(copyRoot, file))))]
   return files
 }
 

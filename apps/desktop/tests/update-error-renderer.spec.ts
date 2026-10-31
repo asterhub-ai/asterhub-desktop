@@ -153,7 +153,7 @@ it('uses client copy and retry when optional policy fields are absent', async ()
 
 it('uses the same modal for download, verification, inspected confirmation and task-aware restart', async () => {
   const p = mandatoryPage({ phase: 'available', version: '1.0.1-nightly.1' })
-  await expect.poll(() => p.element('update').textContent).toBe(p.initial.locale.messages.updateDownload)
+  await expect.poll(() => p.element('update').textContent).toBe('下载并安装')
   const modal = p.document.querySelector('main')
   const pending = Promise.withResolvers<undefined>()
   p.action.mockReturnValueOnce(pending.promise)
@@ -209,7 +209,7 @@ it('reveals the complete selectable address only after copy failure, without rep
 
 it('renders server markup literally in a dedicated safety case', async () => {
   const p = mandatoryPage({ phase: 'available', version: '1.0.1-nightly.1' })
-  await expect.poll(() => p.element('update').textContent).toBe(p.initial.locale.messages.updateDownload)
+  await expect.poll(() => p.element('update').textContent).toBe('下载并安装')
   p.publish({ ...p.initial, policy: { ...p.initial.policy, title: '<b>请更新</b>', detail: '<img src=x onerror=alert(1)>' } })
   expect(p.element('title').textContent).toBe('<b>请更新</b>')
   expect(p.element('title').childElementCount).toBe(0)
@@ -242,4 +242,20 @@ it.each(['en', 'zh-CN'])('records mandatory update guidance and actions across i
       .map(id => [id, p.element(id).textContent]))
   })
   await expect(JSON.stringify(snapshots, null, 2) + '\n').toMatchFileSnapshot(`./expected/update-guidance-${language}.json`)
+})
+
+it.each(['en', 'zh-CN'])('shows fullscreen recovery guidance directly in the mandatory update page: %s', async (language) => {
+  const p = page('mandatory-update')
+  const locale = resolveDesktopLocale(language)
+  const state: MandatoryUpdateView = { locale, deferred: false, policy: { blocking: true, checking: false },
+    update: { phase: 'error', failedOperation: 'install', preparationFailure: 'fullscreen-timeout',
+      version: '0.1.6-nightly.1', message: 'different shell locale' } }
+  const action = vi.fn(async () => {})
+  Object.defineProperty(p.dom.window, 'dshMandatoryUpdate', { value: {
+    status: async () => state, action, subscribe: () => () => {},
+  } satisfies MandatoryUpdateApi })
+  p.run()
+  await expect.poll(() => p.element('error').textContent).toBe(locale.messages.updateFullscreenTimeout)
+  expect((p.element('technical-details') as HTMLDetailsElement).open).toBe(false)
+  expect(action).not.toHaveBeenCalled()
 })

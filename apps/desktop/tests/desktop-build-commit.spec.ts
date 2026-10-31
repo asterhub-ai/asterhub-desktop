@@ -1,4 +1,3 @@
-import { existsSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -41,7 +40,7 @@ describe('desktop build commit', () => {
       .toThrow(/must be 0 or 1/u)
   })
 
-  it.skipIf(!existsSync(join(import.meta.dirname, '..', '..', '..', '.git')))('reads the checkout this repository is in', () => {
+  it('reads the checkout this repository is in', () => {
     const packaged = readDesktopBuildCommit(join(import.meta.dirname, '..', '..', '..'))
     expect(packaged.commit).toMatch(/^[0-9a-f]{40}$/u)
     expect(typeof packaged.dirty).toBe('boolean')

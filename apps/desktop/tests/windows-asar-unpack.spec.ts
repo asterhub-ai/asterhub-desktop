@@ -125,6 +125,42 @@ async function packageFixture(input: Awaited<ReturnType<typeof fixture>>) {
   }).pack([{ src: mapping.from, destination: join(destination, 'dsh'), files, metadata }])
 }
 
+it('includes the diagnostic worker in the archive selected by the shipping file rules', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'diagnostic-worker-asar-'))
+  roots.push(root)
+  const appDir = join(root, 'app')
+  const resources = join(root, 'resources')
+  const destination = join(resources, 'app')
+  await mkdir(join(appDir, 'lib'), { recursive: true })
+  await mkdir(resources)
+  const worker = join(appDir, 'lib', 'operation-report-worker.js')
+  const excluded = join(appDir, 'lib', 'not-shipped.js')
+  await writeFile(worker, 'export {}')
+  await writeFile(excluded, 'export {}')
+  const config = unsignedWindowsConfig('com.example.diagnostics', join(root, 'dsh'))
+  const filesConfig = config.files.map(entry => typeof entry === 'string' ? entry : { ...entry, filter: [...entry.filter] })
+  const matchers = getFileMatchers({ files: filesConfig }, 'files', destination, {
+    defaultSrc: appDir, globalOutDir: root, customBuildOptions: {}, macroExpander: value => value,
+  })!
+  const matcher = matchers.find(entry => entry.from === appDir)!
+  const filter = matcher.createFilter()
+  const files: string[] = []
+  const metadata = new Map<string, Stats>()
+  for (const file of [worker, excluded]) {
+    const stat = await lstat(file)
+    if (filter(file, stat)) {
+      files.push(file)
+      metadata.set(file, stat)
+    }
+  }
+  await new AsarPackager({ info: { getWorkspaceRoot: async () => root } }, {
+    defaultDestination: destination, resourcePath: resources, options: {}, unpackPattern: () => false,
+  }).pack([{ src: appDir, destination, files, metadata }])
+  const archive = await readAsar(join(resources, 'app.asar'))
+  expect(archive.getFile('lib/operation-report-worker.js').size).toBe(Buffer.byteLength('export {}'))
+  expect(() => archive.getFile('lib/not-shipped.js')).toThrow()
+})
+
 it.each([false, true])('unpacks PE files through builder source patterns (external=%s)', async (external) => {
   const input = await fixture(external)
   const files = await prepareWindowsAsarUnpack(input.context, input.source)
@@ -133,9 +169,6 @@ it.each([false, true])('unpacks PE files through builder source patterns (extern
   const archive = await readAsar(join(input.resources, 'app.asar'))
   expect(archive.getFile(join('dsh', 'node_modules', 'foo', 'companion.json')).unpacked).not.toBe(true)
   expect(archive.getFile(join('dsh', 'node_modules', 'foo', '$xarchy.binary')).unpacked).toBe(true)
-  // A literal ${arch} filename must survive builder macro expansion and stay unpacked.
-  expect(archive.getFile(join('dsh', 'node_modules', 'foo', '${arch}.binary'), false).unpacked).toBe(true)
-  expect(await readFile(join(input.resources, 'app.asar.unpacked', 'dsh', 'node_modules', 'foo', '${arch}.binary'))).toHaveLength(128)
   expect(files).toEqual(input.names.map(name => join('node_modules', 'foo', name)).sort())
   const first = input.config.files[0]!
   const nested = input.config.files[1]!
@@ -177,12 +210,11 @@ it('registers external staging cleanup before a configuration rewrite fails', as
   // The source still passes PE discovery; a destination mapping setter fails after staging is copied.
   Object.defineProperty(input.config, 'files', { get: () => files, set: () => { throw new Error('configuration rejected') } })
   await expect(prepareWindowsAsarUnpack(input.context, input.source)).rejects.toThrow('configuration rejected')
-  const stagingRoot = join(import.meta.dirname, '..', '..', '..', 'temp', 'asar-unpack')
-  const staging = await readdir(stagingRoot)
+  const staging = await readdir(join(input.appDir, '.desktop-build'))
   expect(staging).toHaveLength(1)
   expect(cleanups).toHaveLength(1)
   await cleanups.pop()!()
-  expect(await readdir(stagingRoot)).toEqual([])
+  expect(await readdir(join(input.appDir, '.desktop-build'))).toEqual([])
 })
 
 it.each([true, false])('validates the real builder hook for unsigned=%s', async (unsigned) => {

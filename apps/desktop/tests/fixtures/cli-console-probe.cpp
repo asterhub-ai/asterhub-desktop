@@ -15,8 +15,6 @@ int wmain(int count, wchar_t** args) {
   FreeConsole();
   if (!AllocConsole()) return 3;
   ShowWindow(GetConsoleWindow(), SW_HIDE);
-  // The child must inherit ignored Ctrl+C; its CLI bridge must restore delivery.
-  if (!SetConsoleCtrlHandler(nullptr, TRUE)) return 3;
   SetEnvironmentVariableW(L"ELECTRON_RUN_AS_NODE", L"1");
   std::wstring command = L"\"" + std::wstring(args[1]) + L"\" --expose-internals \"" + args[2]
     + L"\" \"" + args[3] + L"\" \"" + args[4] + L"\"";

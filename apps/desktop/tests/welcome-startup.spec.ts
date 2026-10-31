@@ -13,6 +13,9 @@ const state = vi.hoisted(() => ({
   appListeners: new Map<string, (...args: unknown[]) => void>(),
   dialogLocale: undefined as (() => DesktopLocale) | undefined,
   beforeRead: vi.fn(async () => {}),
+  expiryListener: undefined as (() => void) | undefined,
+  accountListener: undefined as ((value: unknown) => void) | undefined,
+  accountState: vi.fn(async () => ({ status: 'signed-out', attempt: null, links: { usageUrl: '', topUpUrl: '' } })),
   quit: vi.fn(),
   startHost: vi.fn().mockResolvedValue({ url: 'http://127.0.0.1:3080/?token=test', injections: [] }),
   stopHost: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
@@ -102,7 +105,8 @@ vi.mock('../src/project-manager.ts', () => ({ DesktopProjectManager: class {
   applyRelease = vi.fn(async () => {})
   canRecoverProfile = vi.fn(() => true)
 } }))
-vi.mock('../src/host-process.ts', () => ({
+vi.mock('../src/host-process.ts', async importOriginal => ({
+  ...await importOriginal<typeof import('../src/host-process.ts')>(),
   DesktopHostProcess: class {
     start = state.startHost
     stop = state.stopHost
@@ -122,6 +126,14 @@ vi.mock('../src/welcome-backend.ts', () => ({
       return { loggedIn: false, hasApiKey: state.hasApiKey, writable: true, localePreference: state.preference }
     },
     save: async () => ({ ok: true }),
+    account: {
+      watch: (listener: (value: unknown) => void, _failed: () => void, expired: () => void) => {
+        state.accountListener = listener
+        state.expiryListener = expired
+        return () => {}
+      },
+      state: state.accountState,
+    },
   }),
 }))
 vi.mock('node:fs/promises', async importOriginal => ({

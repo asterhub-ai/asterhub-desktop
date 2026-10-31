@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
@@ -13,12 +13,37 @@ import SkillRegistry from '@deepseek-ai/dsh-skill'
 import DesktopBrowserProvider from '@deepseek-ai/dsh-browser-use-desktop'
 import { createPluginProfile } from '../src/project-manager.ts'
 
+const WORKSPACE_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
+/**
+ * Desktop profile bundle package directories, keyed by bundle name. The test
+ * materializes the profile `node_modules` that the desktop profile's hoisted
+ * pnpm install creates, because `loadProfileDirectory` resolves bundles from
+ * the installation anchor and the profile directory only.
+ */
+const BUNDLE_DIRS: readonly (readonly [bundle: string, dir: string])[] = [
+  ['@deepseek-ai/dsh-base', 'packages/bundle/base'],
+  ['@deepseek-ai/dsh-asterhub-product', 'packages/bundle/asterhub-product'],
+  ['@deepseek-ai/dsh-web-app', 'packages/bundle/web-app'],
+  ['@deepseek-ai/dsh-asterhub-product-web', 'packages/bundle/asterhub-product-web'],
+  ['@deepseek-ai/dsh-asterhub-desktop-native', 'packages/bundle/asterhub-desktop-native'],
+]
+
+/** Link every desktop bundle package into the profile so bundle resolution sees an installed profile. */
+function materializeProfileBundles(profileDir: string): void {
+  for (const [bundle, dir] of BUNDLE_DIRS) {
+    const link = join(profileDir, 'node_modules', bundle)
+    mkdirSync(dirname(link), { recursive: true })
+    symlinkSync(join(WORKSPACE_ROOT, dir), link, 'junction')
+  }
+}
+
 describe('Desktop browser profile composition', () => {
   it('includes browser-use and browser-use-desktop in the composed Desktop profile', () => {
     const home = mkdtempSync(join(tmpdir(), 'dsh-desktop-profile-browser-'))
     try {
       const profileDir = join(home, 'profiles', 'desktop')
       createPluginProfile(profileDir)
+      materializeProfileBundles(profileDir)
       const installAnchor = fileURLToPath(new URL('../../desktop-host/package.json', import.meta.url))
       const profile = loadProfileDirectory('dsh desktop', profileDir, installAnchor)
       const warnings: string[] = []

@@ -1,11 +1,9 @@
 import { join, resolve, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  DESKTOP_BUILD_ROOT,
   desktopTargetBuildPaths,
   desktopTargetPlatform,
   developmentRuntimeDirectory,
-  resolveDesktopBuildRoot,
   resolveDesktopBuildTarget,
   resolveDesktopTargetBuildPaths,
 } from '../scripts/desktop-build-paths.mjs'
@@ -19,6 +17,7 @@ describe('desktop build paths', () => {
       'root',
       'artifacts',
       'unsignedArtifacts',
+      'unnotarizedArtifacts',
       'runtime',
       'animaRuntime',
       'packageSet',
@@ -39,11 +38,34 @@ describe('desktop build paths', () => {
     expect(windows.animaRuntime).toContain(join('targets', 'win-x64', 'anima-runtime'))
   })
 
-  it('shares only the immutable upstream download cache', () => {
+  it('shares download and package caches outside target output directories', () => {
     const arm64 = desktopTargetBuildPaths('mac-arm64')
     const x64 = desktopTargetBuildPaths('mac-x64')
     expect(arm64.downloads).toBe(x64.downloads)
     expect(arm64.downloads).not.toContain(`${sep}targets${sep}`)
+    expect(arm64.pnpmStore).toBe(x64.pnpmStore)
+    expect(arm64.pnpmStore).not.toContain(`${sep}targets${sep}`)
+  })
+
+  it('retains target outputs while relocating caches through the supplied environment', () => {
+    const cache = resolve('external-package-cache')
+    const environment = { DSH_DESKTOP_PACKAGE_CACHE_DIR: cache }
+    const defaults = desktopTargetBuildPaths('win-x64', {})
+    const paths = resolveDesktopTargetBuildPaths(environment, 'win32', 'x64')
+    expect(paths).toEqual({ ...defaults, downloads: join(cache, 'downloads'), pnpmStore: join(cache, 'pnpm-store') })
+    expect(desktopTargetBuildPaths('mac-arm64', environment).pnpmStore).toBe(paths.pnpmStore)
+    for (const target of ['mac-arm64', 'mac-x64', 'win-x64'] as const) {
+      const configured = desktopTargetBuildPaths(target, environment)
+      expect(configured.downloads).toBe(join(cache, 'downloads'))
+      expect(configured.pnpmStore).toBe(join(cache, 'pnpm-store'))
+      expect(configured.root).not.toContain(cache)
+    }
+    expect(defaults.pnpmStore).toBe(resolve(defaults.root, '../..', 'pnpm-store'))
+  })
+
+  it.each(['', ' ', 'relative/cache', './cache', 'cache\0invalid'])('rejects invalid cache directory %j', (directory) => {
+    expect(() => desktopTargetBuildPaths('win-x64', { DSH_DESKTOP_PACKAGE_CACHE_DIR: directory }))
+      .toThrow('DSH_DESKTOP_PACKAGE_CACHE_DIR')
   })
 
   it('resolves the development primary runtime from the build target rather than the host architecture', () => {
@@ -60,43 +82,6 @@ describe('desktop build paths', () => {
     expect(desktopTargetPlatform('mac-x64')).toEqual({ platform: 'darwin', arch: 'x64' })
     expect(desktopTargetPlatform('win-x64')).toEqual({ platform: 'win32', arch: 'x64' })
     expect(() => desktopTargetPlatform('linux-x64' as 'mac-x64')).toThrow(/unsupported target/u)
-  })
-
-  it('defaults build output inside the repository and rejects external overrides', () => {
-    const repository = resolve(import.meta.dirname, '../../..')
-    expect(resolveDesktopBuildRoot({}, repository))
-      .toBe(resolve(import.meta.dirname, '..', '.desktop-build'))
-    expect(resolveDesktopBuildRoot({ DSH_DESKTOP_BUILD_ROOT: join(repository, '.build') }, repository))
-      .toBe(resolve(repository, '.build'))
-    expect(() => resolveDesktopBuildRoot({ DSH_DESKTOP_BUILD_ROOT: 'C:\\Temp\\AsterHub-build' }, repository))
-      .toThrow(/must stay inside the repository/u)
-    expect(() => resolveDesktopBuildRoot({ DSH_DESKTOP_BUILD_ROOT: '.build' }, repository))
-      .toThrow(/must be absolute/u)
-    expect(() => resolveDesktopBuildRoot({ DSH_DESKTOP_BUILD_ROOT: '' }, repository))
-      .toThrow(/must not be empty/u)
-    expect(desktopTargetBuildPaths('mac-arm64').root).toContain(join('targets', 'mac-arm64'))
-    expect(DESKTOP_BUILD_ROOT).toBe(resolveDesktopBuildRoot())
-  })
-  it('resolves compact custom-root paths for script consumers and rejects invalid overrides', () => {
-    const repository = resolve(import.meta.dirname, '../../..')
-    const env = {
-      DSH_DESKTOP_BUILD_ROOT: join(repository, '.short-build'),
-      DSH_DESKTOP_BUILD_LAYOUT: 'compact',
-      DSH_DESKTOP_TARGET_PLATFORM: 'win32',
-      DSH_DESKTOP_TARGET_ARCH: 'x64',
-    }
-    const paths = resolveDesktopTargetBuildPaths(env, 'darwin', 'arm64')
-    expect(paths.root).toBe(join(repository, '.short-build', 'w64'))
-    expect(paths.dsh).toBe(join(repository, '.short-build', 'w64', 'dsh'))
-    expect(paths.runtime).toBe(join(repository, '.short-build', 'w64', 'runtime'))
-    expect(paths.unsignedArtifacts).toBe(join(repository, '.short-build', 'w64', 'u'))
-    expect(paths.artifacts).toBe(join(repository, '.short-build', 'w64', 'a'))
-    expect(() => resolveDesktopTargetBuildPaths({
-      ...env, DSH_DESKTOP_BUILD_ROOT: join(repository, '..', 'outside'),
-    }, 'darwin', 'arm64')).toThrow(/must stay inside the repository/u)
-    expect(() => resolveDesktopTargetBuildPaths({
-      ...env, DSH_DESKTOP_BUILD_LAYOUT: 'compressed',
-    }, 'darwin', 'arm64')).toThrow(/must be standard or compact/u)
   })
 
   it('resolves environment overrides and rejects unsupported targets', () => {

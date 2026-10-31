@@ -1,5 +1,6 @@
 AsterHub is unavailable
 The application could not start or stopped unexpectedly.
 Another AsterHub process is running. Quit it before restarting the application.
+The diagnostic report could not be saved. You can provide a screenshot of this dialog when requesting support.
 Exit
 Restart
