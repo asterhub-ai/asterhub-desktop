@@ -152,7 +152,7 @@ describe('SDK command dispatch', () => {
       contentBlocks: order === 'image-first' ? [...attachments, text] : [text, ...attachments],
     })
     expect(response).toMatchObject({ kind: 'command', execution: { result: { kind: 'success' } } })
-    expect(saveImages).toHaveBeenCalledWith([{ data: Uint8Array.of(1), mediaType: 'image/png', name: 'diagram.png' }])
+    expect(saveImages).toHaveBeenCalledWith([{ data: Uint8Array.of(1), mediaType: 'image/png', name: 'diagram.png' }], undefined)
     expect(handler.mock.calls[0]![0]).toMatchObject({ rawInput: ' inspect', attachments: [{ type: 'image', attachment: ref }] })
   })
 
@@ -540,7 +540,7 @@ describe('SDK query dispatch', () => {
     })).toMatchObject({ kind: 'prompt' })
     expect(saveImages).toHaveBeenCalledWith([
       { data: Uint8Array.of(1), mediaType: 'image/png' }, { data: Uint8Array.of(2), mediaType: 'image/png' },
-    ])
+    ], undefined)
     const admitted = [contentBlocks[0], { type: 'image', attachment: refs[0] }, contentBlocks[2], contentBlocks[3],
       { type: 'image', attachment: refs[1] }, contentBlocks[5], contentBlocks[6]]
     expect(queued).toHaveBeenCalledWith(expect.objectContaining({ content: admitted }))
