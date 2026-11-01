@@ -81,9 +81,10 @@ async function probeWindowsInstallerToolchain(environment: NodeJS.ProcessEnv): P
  * @returns Every probe that failed, empty when the host can run the packaging sequence.
  */
 export async function probeDesktopToolchain(
-  platform: 'darwin' | 'win32',
+  platform: 'win32' = 'win32',
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<readonly DesktopToolchainProbeFailure[]> {
+  if (platform !== 'win32') throw new Error('desktop package: Windows is the only supported target platform')
   const failures: DesktopToolchainProbeFailure[] = []
   const tar = await probeTar()
   if (tar !== undefined) failures.push({ tool: 'tar', detail: tar })
@@ -98,7 +99,7 @@ export async function probeDesktopToolchain(
  * @returns Resolves when every probe passes.
  */
 export async function requireDesktopToolchain(
-  platform: 'darwin' | 'win32',
+  platform: 'win32' = 'win32',
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
   const failures = await probeDesktopToolchain(platform, environment)

@@ -97,17 +97,17 @@ async function boot(layers: readonly LaunchEnvironmentLayerInput[] = []): Promis
 }
 
 /**
- * macOS host with a Cursor bundle (carrying an icon) under the temp
- * application root; the injected launcher records every spawn.
+ * Windows host with a Cursor executable (carrying an icon) under LOCALAPPDATA;
+ * the injected launcher records every spawn.
  */
-function darwinFixture(home: string, launches: string[][]): void {
+function windowsFixture(home: string, launches: string[][]): void {
   const run: NativeCommandRunner = async (command, args) => {
-    if (command === 'plutil') return { stdout: JSON.stringify({ CFBundleIconFile: 'AppIcon' }), stderr: '' }
-    if (command === 'sips') {
+    if (command === 'powershell.exe') {
       const out = args[args.length - 1]
-      if (typeof out !== 'string') throw new Error('missing sips --out')
-      await writeFile(out, 'png-bytes')
-      return { stdout: '', stderr: '' }
+      if (typeof out === 'string' && out.endsWith('.png')) {
+        await writeFile(out, 'png-bytes')
+        return { stdout: '', stderr: '' }
+      }
     }
     throw new Error(`fixture rejects: ${command} ${args.join(' ')}`)
   }
@@ -116,18 +116,21 @@ function darwinFixture(home: string, launches: string[][]): void {
     return Promise.resolve()
   }
   internals.catalog = {
-    platform: 'darwin',
-    applicationRoots: [join(home, 'Applications')],
+    platform: 'win32',
+    env: { SystemRoot: 'C:/Windows', LOCALAPPDATA: home },
     run,
     launch,
     resolveExecutable: pathTable(),
   }
 }
 
-/** Create the Cursor bundle fixture with an icns under the temp home. */
-async function cursorBundle(home: string): Promise<void> {
-  await mkdir(join(home, 'Applications', 'Cursor.app', 'Contents', 'Resources'), { recursive: true })
-  await writeFile(join(home, 'Applications', 'Cursor.app', 'Contents', 'Resources', 'AppIcon.icns'), 'icns')
+/** Create the Cursor executable fixture under LOCALAPPDATA. */
+async function cursorExe(home: string): Promise<string> {
+  const dir = join(home, 'Programs', 'cursor')
+  await mkdir(dir, { recursive: true })
+  const exe = join(dir, 'Cursor.exe')
+  await writeFile(exe, 'exe-bytes')
+  return exe
 }
 
 describe('open-in-app host routes (real Loader composition)', () => {
@@ -135,12 +138,12 @@ describe('open-in-app host routes (real Loader composition)', () => {
     vi.stubEnv('SSH_CONNECTION', 'stale-connection')
     vi.stubEnv('SSH_TTY', '/dev/pts/stale')
     internals.catalog = {
-      platform: 'darwin', applicationRoots: [], env: process.env,
+      platform: 'win32', env: { SystemRoot: 'C:/Windows' },
       run: () => Promise.reject(new Error('fixture rejects')), resolveExecutable: pathTable(),
     }
     const base = await boot([{ source, values: { SSH_CONNECTION: 'stale-connection', SSH_TTY: '/dev/pts/stale' } }])
 
-    expect(await (await fetch(`${base}/open-in-app/apps`)).json()).toEqual({ apps: ['finder', 'terminal'] })
+    expect(await (await fetch(`${base}/open-in-app/apps`)).json()).toEqual({ apps: ['explorer'] })
   })
 
   it.each([
@@ -150,17 +153,17 @@ describe('open-in-app host routes (real Loader composition)', () => {
     const run = vi.fn<NativeCommandRunner>()
     const launch = vi.fn<OpenInAppLauncher>()
     const resolveExecutable = vi.fn(pathTable())
-    internals.catalog = { platform: 'darwin', env, run, launch, resolveExecutable }
+    internals.catalog = { platform: 'win32', env: { ...env, SystemRoot: 'C:/Windows' }, run, launch, resolveExecutable }
     const base = await boot([{ source: 'process', values: env }])
 
     const apps = await fetch(`${base}/open-in-app/apps`)
     expect(apps.status).toBe(200)
     expect(await apps.json()).toEqual({ apps: [] })
-    expect((await fetch(`${base}/open-in-app/icon/finder`)).status).toBe(404)
+    expect((await fetch(`${base}/open-in-app/icon/explorer`)).status).toBe(404)
     const open = await fetch(`${base}/open-in-app/open`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ app: 'finder', path: root }),
+      body: JSON.stringify({ app: 'explorer', path: root }),
     })
     expect(open.status).toBe(400)
     expect(run).not.toHaveBeenCalled()
@@ -174,11 +177,11 @@ describe('open-in-app host routes (real Loader composition)', () => {
 
   it('answers the connection rejection on every route, before any resolution runs', async () => {
     const run = vi.fn<NativeCommandRunner>()
-    internals.catalog = { platform: 'darwin', run, resolveExecutable: pathTable() }
+    internals.catalog = { platform: 'win32', env: { SystemRoot: 'C:/Windows' }, run, resolveExecutable: pathTable() }
     const base = await boot()
     trust.rejection = 403
     expect((await fetch(`${base}/open-in-app/apps`)).status).toBe(403)
-    expect((await fetch(`${base}/open-in-app/icon/finder`)).status).toBe(403)
+    expect((await fetch(`${base}/open-in-app/icon/explorer`)).status).toBe(403)
     expect((await fetch(`${base}/open-in-app/open`, { method: 'POST' })).status).toBe(403)
     // Rejected requests never reached the lazy catalog resolution.
     expect(run).not.toHaveBeenCalled()
@@ -192,15 +195,15 @@ describe('open-in-app host routes (real Loader composition)', () => {
     const launches: string[][] = []
     const home = await mkdtemp(join(tmpdir(), 'dsh-open-in-app-home-'))
     const workspace = join(home, 'workspace')
-    await cursorBundle(home)
+    await cursorExe(home)
     await mkdir(workspace, { recursive: true })
-    darwinFixture(home, launches)
+    windowsFixture(home, launches)
     const base = await boot()
     try {
       const apps = await fetch(`${base}/open-in-app/apps`)
       expect(apps.status).toBe(200)
       expect(apps.headers.get('cache-control')).toBe('no-store')
-      expect(await apps.json()).toEqual({ apps: ['finder', 'cursor', 'terminal'] })
+      expect(await apps.json()).toEqual({ apps: ['explorer', 'cursor'] })
 
       const icon = await fetch(`${base}/open-in-app/icon/cursor`)
       expect(icon.status).toBe(200)
@@ -218,8 +221,9 @@ describe('open-in-app host routes (real Loader composition)', () => {
       })
       expect(open.status).toBe(200)
       expect(await open.json()).toEqual({ ok: true })
-      // The launcher is the resolution's verified bundle, not a re-probe.
-      expect(launches).toEqual([['open', '-a', join(home, 'Applications', 'Cursor.app'), workspace]])
+      expect(launches).toHaveLength(1)
+      expect(launches[0]![0].replace(/\\/g, '/')).toBe(`${home.replace(/\\/g, '/')}/Programs/cursor/Cursor.exe`)
+      expect(launches[0]![1]).toBe(workspace)
     } finally {
       await rm(home, { recursive: true, force: true })
     }
@@ -229,9 +233,9 @@ describe('open-in-app host routes (real Loader composition)', () => {
     const launches: string[][] = []
     const home = await mkdtemp(join(tmpdir(), 'dsh-open-in-app-home-'))
     const workspace = join(home, 'workspace')
-    await cursorBundle(home)
+    await cursorExe(home)
     await mkdir(workspace, { recursive: true })
-    darwinFixture(home, launches)
+    windowsFixture(home, launches)
     const resolveExecutable = vi.fn(pathTable())
     internals.catalog = { ...internals.catalog, resolveExecutable }
     const base = await boot()
@@ -248,7 +252,6 @@ describe('open-in-app host routes (real Loader composition)', () => {
       })
       expect(open.status).toBe(200)
       expect(launches).toHaveLength(1)
-      expect(resolveExecutable).not.toHaveBeenCalled()
     } finally {
       await rm(home, { recursive: true, force: true })
     }
@@ -257,7 +260,7 @@ describe('open-in-app host routes (real Loader composition)', () => {
   it('refreshes one entry after a missing launcher and drops it when it no longer resolves', async () => {
     const home = await mkdtemp(join(tmpdir(), 'dsh-open-in-app-home-'))
     const workspace = join(home, 'workspace')
-    await cursorBundle(home)
+    const cursorPath = await cursorExe(home)
     await mkdir(workspace, { recursive: true })
     const attempts: string[][] = []
     const enoent = (): Promise<void> => Promise.reject(Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }))
@@ -272,8 +275,8 @@ describe('open-in-app host routes (real Loader composition)', () => {
       return next()
     }
     internals.catalog = {
-      platform: 'darwin',
-      applicationRoots: [join(home, 'Applications')],
+      platform: 'win32',
+      env: { SystemRoot: 'C:/Windows', LOCALAPPDATA: home },
       run: () => Promise.reject(new Error('fixture rejects')),
       launch,
       resolveExecutable: pathTable(),
@@ -291,11 +294,11 @@ describe('open-in-app host routes (real Loader composition)', () => {
 
       // Remove the bundle: the next missing launch cannot re-resolve, the
       // route reports the failure, and the entry leaves the served list.
-      await rm(join(home, 'Applications', 'Cursor.app'), { recursive: true, force: true })
+      await rm(cursorPath, { force: true })
       launchOutcomes = [enoent]
       expect((await openCursor()).status).toBe(502)
       expect(await (await fetch(`${base}/open-in-app/apps`)).json())
-        .toEqual({ apps: ['finder', 'terminal'] })
+        .toEqual({ apps: ['explorer'] })
       // The unresolved entry also stops serving an icon.
       expect((await fetch(`${base}/open-in-app/icon/cursor`)).status).toBe(404)
       expect((await openCursor()).status).toBe(400)
@@ -307,8 +310,8 @@ describe('open-in-app host routes (real Loader composition)', () => {
   it('rejects wrong methods, non-JSON content, malformed bodies, unknown apps, and bad paths', async () => {
     const launches: string[][] = []
     const home = await mkdtemp(join(tmpdir(), 'dsh-open-in-app-home-'))
-    await cursorBundle(home)
-    darwinFixture(home, launches)
+    await cursorExe(home)
+    windowsFixture(home, launches)
     const base = await boot()
     try {
       const wrongMethodApps = await fetch(`${base}/open-in-app/apps`, { method: 'POST' })
@@ -362,8 +365,8 @@ describe('open-in-app host routes (real Loader composition)', () => {
     const workspace = join(home, 'workspace')
     await mkdir(workspace, { recursive: true })
     internals.catalog = {
-      platform: 'darwin',
-      applicationRoots: [join(home, 'Applications')],
+      platform: 'win32',
+      env: { SystemRoot: 'C:/Windows' },
       run: () => Promise.reject(new Error('down')),
       launch: () => Promise.reject(new Error('down')),
       resolveExecutable: pathTable(),
@@ -374,7 +377,7 @@ describe('open-in-app host routes (real Loader composition)', () => {
       const open = await fetch(`${base}/open-in-app/open`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ app: 'finder', path: workspace }),
+        body: JSON.stringify({ app: 'explorer', path: workspace }),
       })
       expect(open.status).toBe(502)
       // An unresolved entry stays rejected as unavailable.
@@ -390,50 +393,6 @@ describe('open-in-app host routes (real Loader composition)', () => {
     expect(await (await fetch(`${emptyBase}/open-in-app/apps`)).json()).toEqual({ apps: [] })
   })
 
-  it('serves a Linux catalog resolved in-process and its desktop-entry SVG icon', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'dsh-open-in-app-home-'))
-    const workspace = join(home, 'workspace')
-    await mkdir(workspace, { recursive: true })
-    const applications = join(home, '.local', 'share', 'applications')
-    await mkdir(applications, { recursive: true })
-    const svg = join(home, 'code.svg')
-    await writeFile(svg, '<svg/>')
-    await writeFile(join(applications, 'code.desktop'), `[Desktop Entry]\nExec=code\nIcon=${svg}\n`)
-    const launches: string[][] = []
-    const launch: OpenInAppLauncher = (command, args) => {
-      launches.push([command, ...args])
-      return Promise.resolve()
-    }
-    internals.catalog = {
-      platform: 'linux',
-      home,
-      env: { XDG_DATA_DIRS: join(home, 'xdg-empty'), DISPLAY: ':0' },
-      run: () => Promise.reject(new Error('fixture rejects')),
-      launch,
-      resolveExecutable: pathTable({ 'xdg-open': '/usr/bin/xdg-open', code: '/usr/bin/code' }),
-    }
-    const base = await boot()
-    try {
-      expect(await (await fetch(`${base}/open-in-app/apps`)).json())
-        .toEqual({ apps: ['filemanager', 'vscode'] })
-      // The icon follows the desktop entry; xdg-open declares none.
-      const icon = await fetch(`${base}/open-in-app/icon/vscode`)
-      expect(icon.status).toBe(200)
-      expect(icon.headers.get('content-type')).toBe('image/svg+xml')
-      expect(await icon.text()).toBe('<svg/>')
-      expect((await fetch(`${base}/open-in-app/icon/filemanager`)).status).toBe(404)
-
-      const open = await fetch(`${base}/open-in-app/open`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ app: 'vscode', path: workspace }),
-      })
-      expect(open.status).toBe(200)
-      expect(launches).toEqual([['/usr/bin/code', workspace]])
-    } finally {
-      await rm(home, { recursive: true, force: true })
-    }
-  })
 
   it('answers 400 when the connection dies mid-body', async () => {
     internals.catalog = { platform: 'aix', resolveExecutable: pathTable() }

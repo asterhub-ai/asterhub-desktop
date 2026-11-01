@@ -70,8 +70,8 @@ describe.skipIf(!existsSync(preload('preload-app')))('built sandboxed Desktop pr
     })
     if (name === 'preload-app') {
       const product = exposed.get('dshDesktop') as { deviceInfo(): Promise<string> }
-      invoke.mockResolvedValueOnce('platform=darwin; memory_gib=32.0')
-      await expect(product.deviceInfo()).resolves.toBe('platform=darwin; memory_gib=32.0')
+      invoke.mockResolvedValueOnce('platform=win32; memory_gib=16.0')
+      await expect(product.deviceInfo()).resolves.toBe('platform=win32; memory_gib=16.0')
       expect(invoke).toHaveBeenCalledWith('dsh-desktop:device-info')
       browser.loadTheme('dark')
       expect(send).toHaveBeenCalledWith('dsh-desktop:native-theme-set', 'dark')

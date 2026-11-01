@@ -48,8 +48,8 @@ it.each(['en', 'zh-CN'])('offers only exit and restart for a listener conflict i
   expect(operations.disablePlugins).not.toHaveBeenCalled()
 })
 
-it.each(['win32', 'darwin', 'linux'] as const)('offers the same listener conflict recovery on %s', async (platform) => {
-  vi.spyOn(process, 'platform', 'get').mockReturnValue(platform)
+it('offers listener conflict recovery on Windows', async () => {
+  vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
   const { operations, choice, stopped, recovery } = fixture()
   const pending = recovery.report(new Error('listen EADDRINUSE: address already in use'), 'main')
   await shown(operations)

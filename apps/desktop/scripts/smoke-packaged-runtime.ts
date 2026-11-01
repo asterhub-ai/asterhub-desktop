@@ -11,18 +11,16 @@ import { verifyNeo4jRuntime } from '@deepseek-ai/dsh-anima-memory/src/neo4j-runt
 const paths = resolveDesktopTargetBuildPaths()
 const { values } = parseArgs({ options: { unsigned: { type: 'boolean', default: false } }, allowPositionals: false })
 const target = resolveDesktopBuildTarget()
-const windows = target === 'win-x64'
-if (values.unsigned && !windows) throw new Error('desktop smoke: unsigned artifacts require Windows')
+if (target !== 'win-x64') throw new Error('desktop smoke: win-x64 is the only supported target')
 const artifacts = values.unsigned ? paths.unsignedArtifacts : paths.artifacts
-const application = windows ? join(artifacts, 'win-unpacked')
-  : join(artifacts, target === 'mac-arm64' ? 'mac-arm64' : 'mac', 'AsterHub.app', 'Contents')
-const resources = join(application, windows ? 'resources' : 'Resources')
-const executable = windows ? join(application, 'AsterHub.exe') : join(application, 'MacOS', 'AsterHub')
+const application = join(artifacts, 'win-unpacked')
+const resources = join(application, 'resources')
+const executable = join(application, 'AsterHub.exe')
 const descriptor = await verifyDesktopRuntime(paths.dsh, readDesktopRuntime(paths.dsh).release.version,
   resolveDesktopPackageTarget(target))
 const animaRuntime = join(resources, 'anima-runtime')
-const platform = target === 'win-x64' ? 'win32' : 'darwin'
-const architecture = target === 'mac-arm64' ? 'arm64' : 'x64'
+const platform = 'win32'
+const architecture = 'x64'
 await verifyNeo4jRuntime(animaRuntime, platform, architecture)
-if (windows && !values.unsigned) await verifyWindowsCode(application)
+if (!values.unsigned) await verifyWindowsCode(application)
 await smokePreparedRuntime(join(resources, 'app.asar', 'dsh'), executable, join(resources, 'runtime'), descriptor)

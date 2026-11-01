@@ -33,13 +33,6 @@ import {
 } from './spawn.ts'
 import { logSpillFailure, prepareManagedProcessBinding } from './output.ts'
 import type { LocalSubprocessHandle, SpawnInternals } from './spawn.ts'
-import {
-  launchLinuxScope,
-  prepareLinuxTerminalScope,
-  probeLinuxManager,
-  probeLinuxNative,
-  signalLinuxDirectProcess,
-} from './linux-scope.ts'
 import { launchWindowsJob, probeWindowsJob } from './windows-job.ts'
 import { targetEnvironment } from './runner-launch.ts'
 import { createProcessInspector } from './process-inspector.ts'
@@ -67,8 +60,6 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
   internals: SpawnInternals = {}
   /** Provider-lifetime latch suppressing repeated weaker-containment warnings. */
   private fallbackWarningIssued = false
-  /** Positive-only cache for the expensive Linux bootstrap and scope probe. */
-  private linuxDeepProbePassed = false
   /** Test hook for platform process inspection; production resolves lazily on terminal spawn. */
   terminalInspector: ProcessInspector | undefined
 
@@ -189,9 +180,7 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
       handle = spawnSubprocess(spec, internals)
     } else {
       const binding = prepareManagedProcessBinding(internals)
-      const launch = containmentMode === 'linux-scope'
-        ? launchLinuxScope(spec, env)
-        : launchWindowsJob(spec, env)
+      const launch = launchWindowsJob(spec, env)
       handle = bindManagedProcess(spec, launch, binding)
     }
     this.live.add(handle)
@@ -212,22 +201,13 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
 
   private selectContainmentMode(
     kind: 'ordinary' | 'terminal',
-  ): 'linux-scope' | 'windows-job' | 'fallback' {
+  ): 'windows-job' | 'fallback' {
     const platform = this.internals.platform ?? process.platform
-    let fallbackReason: string | undefined
-    if (platform === 'linux') {
-      const available = this.linuxDeepProbePassed
-        ? probeLinuxManager()
-        : probeLinuxNative()
-      if (available) this.linuxDeepProbePassed = true
-      if (available) return 'linux-scope'
-      fallbackReason = 'the current user-systemd scope or private bootstrap is unavailable'
-    }
     if (kind === 'ordinary' && platform === 'win32') {
       const available = probeWindowsJob()
       if (available) return 'windows-job'
     }
-    this.warnFallback(platform, kind, fallbackReason)
+    this.warnFallback(platform, kind)
     return 'fallback'
   }
 
@@ -238,13 +218,11 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
   ): void {
     if (this.fallbackWarningIssued) return
     this.fallbackWarningIssued = true
-    const reason = selectedReason ?? (platform === 'darwin'
-      ? 'macOS has no supported persistent process-range owner'
-      : platform === 'win32'
-        ? kind === 'terminal'
-          ? 'Windows ConPTY remains outside Job containment'
-          : 'the Win32 Job runner is unavailable'
-        : `platform ${platform} has no native managed range`)
+    const reason = selectedReason ?? (platform === 'win32'
+      ? kind === 'terminal'
+        ? 'Windows ConPTY remains outside Job containment'
+        : 'the Win32 Job runner is unavailable'
+      : `platform ${platform} has no native managed range`)
     this.ctx.logger.warn(
       `subprocess-local is using weaker process-tree containment because ${reason}; descendants that escape the process group or direct-parent tree are not guaranteed to terminate or delay waitForExit()`,
     )
@@ -267,7 +245,6 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
     }
     spec.signal?.throwIfAborted()
     const inspector = this.terminalInspector ?? createProcessInspector()
-    const containmentMode = this.selectContainmentMode('terminal')
     const env = targetEnvironment(spec)
     const platform = this.internals.platform ?? process.platform
     const activity = prepareShellActivity(spec, env, platform)
@@ -280,47 +257,32 @@ export class LocalSubprocessRuntime extends SubprocessRuntime {
       // use node-pty's bundled OpenConsole to preserve the readiness tail.
       ...(platform === 'win32' ? { useConptyDll: true } : {}),
     }
-    let scope: ReturnType<typeof prepareLinuxTerminalScope> | undefined
     let terminal: NodePty.IPty
     try {
-      scope = containmentMode === 'linux-scope'
-        ? prepareLinuxTerminalScope(launch, { ...activity?.env ?? env, PWD: spec.cwd, TERM: spec.terminalType })
-        : undefined
-      if (scope !== undefined) { options.cwd = scope.cwd; options.env = scope.env }
       terminal = requireNodePty().spawn(
-        scope?.command ?? file,
-        scope?.args ?? [...launch.argv.slice(1)],
+        file,
+        [...launch.argv.slice(1)],
         options,
       )
     } catch (error) {
-      scope?.cleanup()
       activity?.dispose()
       throw error
     }
     // oxlint-disable-next-line eslint/prefer-const -- The owner can query readiness before the handle is published.
     let handle: LocalTerminalHandle | undefined
-    const directSettlement = Promise.withResolvers<void>()
-    const owner = scope?.bindOwner({
-      running: () => handle?.running ?? true,
-      settled: directSettlement.promise,
-      // node-pty swallows signal errors; the scope owner requires their delivery result.
-      signal: signal => signalLinuxDirectProcess(terminal.pid, () => process.kill(terminal.pid, signal)),
-    })
     handle = new LocalTerminalHandle(
       terminal,
       inspector,
       spec.graceMs,
       platform,
-      owner,
-      scope?.resolveOutcome,
+      undefined,
+      undefined,
       activity,
       () => { this.terminals.delete(handle as LocalTerminalHandle) },
       spec.shellActivity === true,
     )
     this.terminals.add(handle)
     const release = async (): Promise<void> => {
-      // terminate() can wait on this direct-exit promise.
-      directSettlement.resolve()
       if (spec.shellActivity === true) return
       await handle.terminate()
       this.terminals.delete(handle)

@@ -31,14 +31,12 @@ describe('workspace dependency ranges', () => {
   const dependency = { dir: 'packages/core/runtime', manifest: { name: '@deepseek-ai/dsh-runtime' } }
   const cli = { dir: 'apps/cli', manifest: { name: '@deepseek-ai/dsh' } }
   const vendor = { dir: 'vendor/cordis', manifest: { name: '@deepseek-ai/cordis' } }
-  const native = { dir: 'native/system', manifest: { name: '@deepseek-ai/node-addon-system' } }
-  const platform = { dir: 'native/system/packages/darwin-arm64', manifest: { name: '@deepseek-ai/node-addon-system-darwin-arm64' } }
   const unrelated = { dir: 'tools/helper', manifest: { name: '@other/helper' } }
 
   describe.each([
     '.', 'packages/core/probe', 'packages/experimental/probe', 'apps/cli', 'apps/web',
     'apps/desktop', 'apps/desktop-host', 'benchmarks', 'website', 'python/sdk-runtime', 'tools/probe',
-    'vendor/loader', 'native/system', 'native/system/packages/entry',
+    'vendor/loader',
   ])('consumer %s', (dir) => {
     it.each(['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const)(
       'requires exact DSH and tilde vendor/native %s independently of the consumer name',
@@ -47,7 +45,7 @@ describe('workspace dependency ranges', () => {
           dir, manifest: { name: 'consumer', [section]: { [name]: range } },
         })
         const check = (name: string, range: string): string[] =>
-          checkWorkspaceProtocol([dependency, cli, vendor, native, platform, unrelated, consumer(name, range)])
+          checkWorkspaceProtocol([dependency, cli, vendor, unrelated, consumer(name, range)])
         for (const name of ['@deepseek-ai/dsh', '@deepseek-ai/dsh-runtime']) {
           expect(check(name, 'workspace:*')).toEqual([])
           for (const range of ['workspace:^', 'workspace:~', 'workspace:^0.1.7', '^0.1.7', '*']) {
@@ -56,7 +54,7 @@ describe('workspace dependency ranges', () => {
             ])
           }
         }
-        for (const name of ['@deepseek-ai/cordis', '@deepseek-ai/node-addon-system', '@deepseek-ai/node-addon-system-darwin-arm64']) {
+        for (const name of ['@deepseek-ai/cordis']) {
           expect(check(name, 'workspace:~')).toEqual([])
           for (const range of ['workspace:*', 'workspace:^', '^4.0.3', '~4.0.3']) {
             expect(check(name, range)).toEqual([
@@ -246,10 +244,6 @@ describe('dsh family version coherence', () => {
 
   it('leaves other sequences to their own version lines', () => {
     expect(checkDshFamilyVersion({ name: '@deepseek-ai/cordis', version: '4.0.1' }, '0.1.2-rc.1')).toBeUndefined()
-    expect(checkDshFamilyVersion(
-      { name: '@deepseek-ai/node-addon-system', version: '0.1.1' },
-      '0.1.2-rc.1',
-    )).toBeUndefined()
     expect(checkDshFamilyVersion({ version: '0.1.2-alpha.5' }, '0.1.2-rc.1')).toBeUndefined()
   })
 })
@@ -261,8 +255,8 @@ describe('package payload constraints', () => {
     ])
   })
 
-  it('accepts the Agent Team icon payload and rejects its omission', () => {
-    const dir = 'packages/experimental/agent-team-profile'
+  it('accepts the Schedule bundle icon payload and rejects its omission', () => {
+    const dir = 'packages/experimental/schedule-bundle'
     const manifest = JSON.parse(readFileSync(new URL(`../${dir}/package.json`, import.meta.url), 'utf8')) as WorkspaceManifest['manifest']
     expect(checkWorkspaceManifest({ dir, manifest })).toEqual([])
     expect(checkWorkspaceManifest({ dir, manifest: { ...manifest, files: manifest.files!.filter(file => file !== 'icon.svg') } }))
@@ -294,7 +288,7 @@ describe('package payload constraints', () => {
     })).toEqual(['lib/index.js', 'lib/types/**/*.d.ts'])
   })
 
-  it.each(['agent-team', 'agent-team-profile', 'auto-review', 'client-ui-agent-team', 'tool-agent-team'])(
+  it.each(['auto-review', 'schedule-bundle', 'voice-input-bundle'])(
     'accepts the published locale files for %s and rejects their omission', (name) => {
       const dir = `packages/experimental/${name}`
       const manifest = JSON.parse(readFileSync(new URL(`../${dir}/package.json`, import.meta.url), 'utf8')) as WorkspaceManifest['manifest']

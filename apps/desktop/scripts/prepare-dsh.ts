@@ -26,12 +26,8 @@ import { prepareRuntimePatches, verifyRuntimePatches } from './prepare-runtime-p
 import { writeDesktopRuntime, verifyDesktopRuntime } from '../src/runtime-tree.ts'
 import {
   resolveDesktopAppId,
-  resolveMacOSSigningEnvironment,
   resolveNpmRegistry,
 } from './desktop-release-environment.mjs'
-import {
-  signMacOSRuntime,
-} from './macos-runtime.ts'
 import { desktopTargetPlatform, resolveDesktopBuildTarget, resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { desktopRuntimeFileExclusion } from './runtime-file-policy.ts'
 import { selectOfficeEngine } from '../../../scripts/libreoffice-packages.mjs'
@@ -260,10 +256,6 @@ async function main(): Promise<void> {
       throw new Error(`desktop runtime: missing required LibreOffice engine ${officeEngine}`)
     }
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:speech-models', () => prepareSpeechModels())
-    if (process.platform === 'darwin') {
-      await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'sign:dsh-native', () => signMacOSRuntime(DSH_OUTPUT_ROOT, resolveDesktopAppId(process.env), resolveMacOSSigningEnvironment(process.env), target.arch, join(BUILD_PATHS.root, 'signature-cache')))
-      await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'sign:primary-native', () => signMacOSRuntime(join(RUNTIME_ROOT, 'primary-runtime'), resolveDesktopAppId(process.env), resolveMacOSSigningEnvironment(process.env), target.arch, join(BUILD_PATHS.root, 'signature-cache')))
-    }
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:manifests', () => prepareRuntimeManifests(DSH_OUTPUT_ROOT))
     if (process.argv.includes('--skip-primary-runtime-smoke') && process.env.DSH_DESKTOP_UNSIGNED !== '1') {
       throw new Error('desktop runtime: skipping primary runtime smoke requires an unsigned build')

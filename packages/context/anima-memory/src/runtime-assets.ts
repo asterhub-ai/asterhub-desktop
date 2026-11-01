@@ -7,10 +7,10 @@ export const JRE_RELEASE = 'jdk-21.0.12.1+1'
 /** Filename of the platform and version marker required in packaged runtimes. */
 export const RUNTIME_MANIFEST_NAME = 'anima-runtime.json'
 
-/** Supported Node platform identifiers. */
-export type Neo4jRuntimePlatform = 'win32' | 'linux' | 'darwin'
+/** Supported Node platform identifiers (Windows only). */
+export type Neo4jRuntimePlatform = 'win32'
 /** Supported Node architecture identifiers. */
-export type Neo4jRuntimeArchitecture = 'x64' | 'arm64'
+export type Neo4jRuntimeArchitecture = 'x64'
 
 /** Platform-specific Neo4j archive names and checksum locations. */
 export interface Neo4jPlatformAsset {
@@ -42,34 +42,24 @@ export interface Neo4jRuntimeManifest {
   java_release: typeof JRE_RELEASE
 }
 
-/** Return the official pinned downloads for one supported operating system and architecture.
+/** Return the official pinned downloads for the supported Windows x64 target.
  * @param platform - Node platform identifier.
  * @param architecture - Node architecture identifier.
  * @returns platform asset URLs, or throws when no pinned build exists.
  */
 export function neo4jPlatformAsset(platform: string, architecture: string): Neo4jPlatformAsset {
-  const normalizedPlatform: Neo4jRuntimePlatform | undefined = platform === 'win32'
-    ? 'win32'
-    : platform === 'linux' ? 'linux' : platform === 'darwin' ? 'darwin' : undefined
-  const normalizedArchitecture: Neo4jRuntimeArchitecture | undefined = architecture === 'x64'
-    ? 'x64'
-    : architecture === 'arm64' ? 'arm64' : undefined
-  if (normalizedPlatform === undefined || normalizedArchitecture === undefined) {
-    throw new Error(`Anima has no pinned Neo4j runtime for ${platform}-${architecture}.`)
+  if (platform !== 'win32' || architecture !== 'x64') {
+    throw new Error(`Anima has no pinned Neo4j runtime for ${platform}-${architecture}. Only win32-x64 is supported.`)
   }
-  const archive = normalizedPlatform === 'win32'
-    ? `neo4j-community-${NEO4J_VERSION}-windows.zip`
-    : `neo4j-community-${NEO4J_VERSION}-unix.tar.gz`
-  const os = normalizedPlatform === 'win32' ? 'windows' : normalizedPlatform === 'darwin' ? 'mac' : 'linux'
-  const arch = normalizedArchitecture === 'arm64' ? 'aarch64' : 'x64'
+  const archive = `neo4j-community-${NEO4J_VERSION}-windows.zip`
   const javaVersion = encodeURIComponent(`${JRE_RELEASE}-LTS`)
   return {
-    platform: normalizedPlatform,
-    architecture: normalizedArchitecture,
+    platform: 'win32',
+    architecture: 'x64',
     neo4jArchive: archive,
     neo4jUrl: `https://dist.neo4j.org/${archive}`,
     neo4jChecksumUrl: `https://dist.neo4j.org/${archive}.sha256`,
-    javaMetadataUrl: `https://api.adoptium.net/v3/assets/version/${javaVersion}?architecture=${arch}&heap_size=normal&image_type=jre&jvm_impl=hotspot&os=${os}`,
+    javaMetadataUrl: `https://api.adoptium.net/v3/assets/version/${javaVersion}?architecture=x64&heap_size=normal&image_type=jre&jvm_impl=hotspot&os=windows`,
   }
 }
 

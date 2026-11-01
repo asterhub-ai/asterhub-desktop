@@ -50,7 +50,7 @@ function setup() {
   const owner = Object.assign(new EventEmitter(), {
     webContents: new EventEmitter(), contentView: { addChildView: vi.fn(), removeChildView }, isDestroyed: () => false,
   })
-  const manager = new DesktopPlatformView('/bundled/preload.cjs', () => 'en_US', 'darwin')
+  const manager = new DesktopPlatformView('/bundled/preload.cjs', () => 'en_US', 'win32')
   manager.setSession({ origin: 'https://platform.deepseek.com', userId: 'fixture-user' as AccountUserId, token: 'fixture-secret' })
   return { manager, owner, removeChildView }
 }
@@ -141,7 +141,7 @@ it('injects the deployment and client identity headers only at the Platform orig
   const request = { Cookie: 'route=user', 'x-client-platform': 'stale', 'x-deployment': 'stale' }
   expect(interceptHeaders(1, 'https://platform.deepseek.com/api/v0/users/current', request)).toEqual({
     'x-deployment': 'harness', cookie: 'route=user; gate=synthetic', 'x-client-bundle-id': '',
-    'x-client-platform': 'desktop-mac', 'x-client-version': '1.2.3', 'x-client-locale': 'en_US',
+    'x-client-platform': 'desktop-win', 'x-client-version': '1.2.3', 'x-client-locale': 'en_US',
     'x-client-timezone-offset': String(-new Date().getTimezoneOffset() * 60),
   })
   // A redirect to another origin keeps the injected headers out of the follow-up request.
@@ -154,7 +154,7 @@ it('samples the language and UTC offset on every Platform request', async () => 
   const owner = Object.assign(new EventEmitter(), {
     webContents: new EventEmitter(), contentView: { addChildView: vi.fn(), removeChildView: vi.fn() }, isDestroyed: () => false,
   })
-  const manager = new DesktopPlatformView('/bundled/preload.cjs', () => locale, 'darwin')
+  const manager = new DesktopPlatformView('/bundled/preload.cjs', () => locale, 'win32')
   manager.setSession({ origin: 'https://platform.deepseek.com', userId: null, token: 'fixture-secret' })
   await manager.open(owner, 'usage', bounds)
   const offset = vi.spyOn(Date.prototype, 'getTimezoneOffset').mockReturnValue(480)
@@ -218,7 +218,7 @@ it('does not reveal a document closed before its load settles', async () => {
 it('injects deployment headers only at the Platform origin and excludes them from bootstrap', async () => {
   const { manager, owner } = setup()
   manager.setSession({ origin: 'https://platform.deepseek.com', userId: 'fixture-user' as AccountUserId, token: 'fixture-secret',
-    requestHeaders: { cookie: 'route=new; gate=private', 'x-private-gate': 'private', 'x-client-platform': 'desktop-mac' } })
+    requestHeaders: { cookie: 'route=new; gate=private', 'x-private-gate': 'private', 'x-client-platform': 'desktop-windows' } })
   await manager.open(owner, 'usage', bounds)
   const browserSession = state.sessions.at(-1) as { webRequest: { onBeforeSendHeaders: ReturnType<typeof vi.fn> } }
   const intercept = browserSession.webRequest.onBeforeSendHeaders.mock.calls[0]![0] as (
@@ -229,13 +229,13 @@ it('injects deployment headers only at the Platform origin and excludes them fro
   for (const path of ['/usage', '/top_up', '/api/v0/users/get_user_summary']) {
     intercept({ id: 1, url: `https://platform.deepseek.com${path}`, requestHeaders: { Cookie: 'route=old; browser=keep', Accept: 'application/json' } }, callback)
     expect(callback).toHaveBeenLastCalledWith({ requestHeaders: {
-      cookie: 'route=new; browser=keep; gate=private', accept: 'application/json', 'x-private-gate': 'private', 'x-client-platform': 'desktop-mac',
+      cookie: 'route=new; browser=keep; gate=private', accept: 'application/json', 'x-private-gate': 'private', 'x-client-platform': 'desktop-win',
       'x-client-bundle-id': '', 'x-client-version': '1.2.3', 'x-client-locale': 'en_US',
       'x-client-timezone-offset': String(-new Date().getTimezoneOffset() * 60),
     } })
   }
   intercept({ id: 1, url: 'https://other.example/api', requestHeaders: {
-    cookie: 'route=new; gate=private', 'x-private-gate': 'private', 'x-client-platform': 'desktop-mac', accept: 'application/json',
+    cookie: 'route=new; gate=private', 'x-private-gate': 'private', 'x-client-platform': 'desktop-windows', accept: 'application/json',
   } }, callback)
   expect(callback).toHaveBeenLastCalledWith({ requestHeaders: { accept: 'application/json' } })
   intercept({ id: 2, url: 'https://other.example/api', requestHeaders: { cookie: 'payment=session', constructor: 'keep' } }, callback)

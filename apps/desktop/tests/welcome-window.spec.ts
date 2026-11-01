@@ -50,29 +50,19 @@ const operations = {
 }
 
 describe('desktop welcome window', () => {
-  it.each(['darwin', 'win32', 'linux'] as const)('keeps the %s preview fixed-size and sandboxed', (platform) => {
-    const options = welcomeWindowOptions(platform, resolveDesktopLocale('zh-CN'))
+  it('keeps the Windows preview fixed-size and sandboxed', () => {
+    const options = welcomeWindowOptions(resolveDesktopLocale('zh-CN'))
     expect(options).toMatchObject({
       width: 600, height: 700, useContentSize: true, center: true, show: false,
       resizable: false, maximizable: false, fullscreenable: false,
+      backgroundMaterial: 'acrylic',
+      titleBarOverlay: { height: 42 },
       webPreferences: {
         nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true,
         additionalArguments: ['--dsh-welcome-locale=zh-CN'],
       },
     })
     expect(options.webPreferences?.preload).toMatch(/preload-welcome\.cjs$/u)
-    if (platform === 'darwin') {
-      expect(options.vibrancy).toBe('menu')
-      expect(options.visualEffectState).toBe('active')
-      expect(options.trafficLightPosition).toEqual({ x: 21, y: 21 })
-    } else if (platform === 'win32') {
-      expect(options.backgroundMaterial).toBe('acrylic')
-      expect(options.titleBarOverlay).toMatchObject({ height: 42 })
-    } else {
-      expect(options.backgroundColor).toBe('#FFFFFF')
-      expect(options.vibrancy).toBeUndefined()
-      expect(options.backgroundMaterial).toBeUndefined()
-    }
   })
 
   it('waits for its local document and blocks renderer navigation', async () => {

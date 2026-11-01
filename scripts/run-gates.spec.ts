@@ -48,14 +48,6 @@ function captureStreamedOutput(onOutput?: (chunks: readonly string[]) => void): 
  * kill(pid, 0), whose ESRCH means the process is gone.
  */
 function procStopped(pid: number): boolean {
-  if (process.platform === 'linux') {
-    try {
-      const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
-      return /\)\s+Z\s/.test(stat)
-    } catch {
-      return true
-    }
-  }
   try {
     process.kill(pid, 0)
     return false
@@ -212,7 +204,6 @@ describe('CI worker allocation', () => {
 describe('gate graph validation', () => {
   it.each([
     'ci-primary',
-    'ci-linux-primary',
     'ci-static',
     'ci-lint-contracts-ready',
     'ci-coverage',
@@ -481,7 +472,7 @@ describe('gate graph validation', () => {
 
     expect(scripts['check:ci:windows-observational-ready']).toBe('tsx scripts/run-gates.ts ci-windows-observational-ready')
     expect(scripts).not.toHaveProperty('check:ci:windows-observational')
-    const completeOnly = new Set(['build', 'windows-site', 'native-system', 'coverage', 'coverage-exempt-heavy'])
+    const completeOnly = new Set(['build', 'windows-site', 'coverage', 'coverage-exempt-heavy'])
     const shared = complete.filter(gate => !completeOnly.has(gate.id))
     expect(ready.map(gate => gate.id).sort()).toEqual([...shared.map(gate => gate.id), 'docs-site-build'].sort())
     expect(ready.some(gate => gate.id === 'build')).toBe(false)
@@ -546,7 +537,7 @@ describe('gate graph validation', () => {
     },
   )
 
-  it.each(['ci-primary', 'ci-linux-primary', 'ci-artifacts', 'ci-windows-blocking'] as const)(
+  it.each(['ci-primary', 'ci-artifacts', 'ci-windows-blocking'] as const)(
     'does not provision the observational Electron dependency in %s', (mode) => {
       expect(withPnpmEntrypoint(() => gatesForMode(mode)).some(gate => gate.id === 'electron-install')).toBe(false)
     },
@@ -569,31 +560,24 @@ describe('gate graph validation', () => {
     }
   })
 
-  it('runs the plain unit inventory after the native build and leaves its budget to the inherited environment', () => {
+  it('runs the plain unit inventory and leaves its budget to the inherited environment', () => {
     const { scripts } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
       scripts: Record<string, string>
     }
     expect(scripts['check:ci:unit']).toBe('tsx scripts/run-gates.ts ci-unit')
 
-    // The aggregate is the `test` package script's two segments, in order,
-    // so a step added to one cannot silently leave the other. The lane sets
-    // DSH_COVERAGE_TEST_TIMEOUT_MS; vitest.config.ts reads it per inline
-    // project (coverageTestTimeoutOptions), so the gate passes no budget flag.
-    const [nativeBuild, unitRun, ...rest] = (scripts.test ?? '').split(' && ')
-    expect(rest).toEqual([])
+    const unitRun = scripts.test ?? ''
     for (const budget of ['15000', undefined]) {
       const gates = withEnv('DSH_COVERAGE_TEST_TIMEOUT_MS', budget, () =>
         withPnpmEntrypoint(() => gatesForMode('ci-unit')))
-      expect(gates.map(gate => gate.id)).toEqual(['native-system', 'unit'])
-      expect(gates[0]).toMatchObject({ displayCommand: nativeBuild })
-      expect(gates[1]?.displayCommand).toBe(`pnpm exec ${unitRun}`)
-      expect(gates[1]).toMatchObject({
+      expect(gates.map(gate => gate.id)).toEqual(['unit'])
+      expect(gates[0]?.displayCommand).toBe(`pnpm exec ${unitRun}`)
+      expect(gates[0]).toMatchObject({
         label: 'test',
-        needs: ['native-system'],
         streamOutput: true,
         args: ['/private/pnpm.cjs', 'exec', 'vitest', 'run'],
       })
-      expect(gates[1]?.env ?? {}).not.toHaveProperty('DSH_COVERAGE_TEST_TIMEOUT_MS')
+      expect(gates[0]?.env ?? {}).not.toHaveProperty('DSH_COVERAGE_TEST_TIMEOUT_MS')
     }
   })
 
@@ -823,7 +807,6 @@ describe('Node 24 lane ownership', () => {
         'packages/subprocess/subprocess-local/tests/spawn-runner-built.e2e.ts',
         'packages/subagent/subagent-codex/tests/loader-composition.e2e.ts',
         'packages/subagent/subagent-claude-code/tests/loader-composition.e2e.ts',
-        'packages/experimental/agent-team/tests/built-lib.e2e.ts',
       ]),
     )
     expect(subject.find(item => item.id === 'web-snapshot')).toMatchObject({
@@ -842,18 +825,6 @@ describe('Node 24 lane ownership', () => {
   })
 })
 
-describe('Linux primary graph', () => {
-  it('adds the same compare-only web gate after built client artifacts', () => {
-    const subject = withPnpmEntrypoint(() => gatesForMode('ci-linux-primary'))
-    const web = subject.find(item => item.id === 'web-snapshot')
-
-    expect(web).toMatchObject({
-      displayCommand: 'DSH_SNAPSHOT=replay pnpm run test:web:built',
-      env: { DSH_SNAPSHOT: 'replay' },
-      needs: ['built-package-invariants'],
-    })
-  })
-})
 
 describe('gate process outcomes', () => {
   it('streams selected gate output without retaining it', async () => {

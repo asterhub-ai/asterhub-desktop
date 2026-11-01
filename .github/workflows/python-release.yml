@@ -24,16 +24,16 @@ concurrency:
 
 jobs:
   build:
-    name: Build six wheels
+    name: Build Windows wheels
     uses: ./.github/workflows/build-exe-for-python-sdk.yml
     with:
-      targets: node24-linux-x64,node24-linux-arm64,node24-macos-arm64,node24-macos-x64,node24-win-x64
+      targets: node24-win-x64
       release: true
 
   python-compat:
     name: Python ${{ matrix.python }} / installed SDK
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: windows-2025
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -56,6 +56,7 @@ jobs:
 
       - name: Resolve installed wheel version
         id: compatibility-version
+        shell: bash
         run: |
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import runpy
@@ -66,12 +67,13 @@ jobs:
           PY
 
       - name: Install local release wheels and run the public entry path
+        shell: bash
         env:
           VERSION: ${{ steps.compatibility-version.outputs.version }}
         run: |
           python -m pip install \
             "dist/deepseek_harness_sdk-$VERSION-py3-none-any.whl" \
-            "dist/deepseek_harness_runtime_bin-$VERSION-py3-none-manylinux_2_28_x86_64.whl"
+            "dist/deepseek_harness_runtime_bin-$VERSION-py3-none-win_amd64.whl"
           python scripts/smoke-python-runtime.py --scenario sdk-default
           python scripts/smoke-python-runtime.py --scenario sdk-mcp
 
@@ -148,10 +150,6 @@ jobs:
           expected="$(mktemp)"
           actual="$(mktemp)"
           printf '%s\n' \
-            "deepseek_harness_runtime_bin-$VERSION-py3-none-macosx_14_0_arm64.whl" \
-            "deepseek_harness_runtime_bin-$VERSION-py3-none-macosx_14_0_x86_64.whl" \
-            "deepseek_harness_runtime_bin-$VERSION-py3-none-manylinux_2_28_aarch64.whl" \
-            "deepseek_harness_runtime_bin-$VERSION-py3-none-manylinux_2_28_x86_64.whl" \
             "deepseek_harness_runtime_bin-$VERSION-py3-none-win_amd64.whl" \
             "deepseek_harness_sdk-$VERSION-py3-none-any.whl" > "$expected"
           find dist -maxdepth 1 -type f -name '*.whl' -exec basename {} \; | sort > "$actual"

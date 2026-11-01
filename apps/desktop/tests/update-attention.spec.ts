@@ -28,13 +28,12 @@ function setup(platform: string) {
   return { window, modal, returned, ready }
 }
 
-it.each(['win32', 'darwin'])('requests one silent reminder and returns to confirmation without installing: %s', (platform) => {
-  const f = setup(platform)
+it('requests one silent reminder and returns to confirmation without installing on Windows', () => {
+  const f = setup('win32')
   f.ready(); f.ready()
   expect(native.notices).toHaveLength(1)
   expect(native.notices[0]!.options).toEqual({ title: '更新已准备就绪', body: '返回应用确认安装并重启。', silent: true })
-  if (platform === 'win32') expect(f.window.flashFrame).toHaveBeenCalledWith(true)
-  else expect(native.dock.bounce).toHaveBeenCalledWith('informational')
+  expect(f.window.flashFrame).toHaveBeenCalledWith(true)
   native.notices[0]!.emit('click')
   expect(f.returned).toHaveBeenCalledOnce()
   expect(native.notices[0]!.close).toHaveBeenCalledOnce()
@@ -70,12 +69,11 @@ it('does not notify foreground readiness and does not require notification suppo
   expect(native.notices).toHaveLength(0)
 })
 
-it('keeps icon attention when the system rejects a notification', () => {
-  const f = setup('darwin')
+it('keeps icon attention when the system rejects a notification on Windows', () => {
+  const f = setup('win32')
   f.ready()
   native.notices[0]!.emit('failed')
-  expect(native.dock.cancelBounce).not.toHaveBeenCalled()
+  expect(f.window.flashFrame).toHaveBeenCalledWith(true)
   attention!.reset()
-  expect(native.dock.cancelBounce).toHaveBeenCalledWith(17)
   expect(f.modal.listenerCount('focus')).toBe(0)
 })

@@ -72,19 +72,6 @@ describe('RepositoryCleaner', () => {
     expect(existsSync(join(root, 'products/shell/lib'))).toBe(true)
   })
 
-  it('removes the native Landlock entry output and solution build info', async () => {
-    const root = fixture()
-    const entry = 'native/system/packages/entry'
-    addProject(root, entry, 'lib')
-    write(join(root, entry, 'lib/index.js'))
-    write(join(root, 'native/system/tsconfig.tsbuildinfo'))
-
-    await new RepositoryCleaner(root).clean()
-
-    expect(existsSync(join(root, entry, 'lib'))).toBe(false)
-    expect(existsSync(join(root, entry, 'src/index.ts'))).toBe(true)
-    expect(existsSync(join(root, 'native/system/tsconfig.tsbuildinfo'))).toBe(false)
-  })
 
   it('refuses project outputs reached through a symlink outside the repository', async () => {
     const root = fixture()

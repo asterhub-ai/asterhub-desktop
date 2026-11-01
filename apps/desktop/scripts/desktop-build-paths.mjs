@@ -30,10 +30,8 @@ export function resolveDesktopBuildRoot(env = process.env, repositoryRoot = REPO
 }
 
 export const DESKTOP_BUILD_ROOT = resolveDesktopBuildRoot()
-const SUPPORTED_TARGETS = new Set(['mac-arm64', 'mac-x64', 'win-x64'])
+const SUPPORTED_TARGETS = new Set(['win-x64'])
 const COMPACT_TARGET_DIRECTORIES = {
-  'mac-arm64': 'ma64',
-  'mac-x64': 'mx64',
   'win-x64': 'w64',
 }
 
@@ -56,7 +54,7 @@ export function resolveDesktopBuildLayout(env = process.env) {
  * @param {NodeJS.ProcessEnv} env - Packaging environment.
  * @param {NodeJS.Platform} hostPlatform - Build-host platform used when no target override exists.
  * @param {string} hostArch - Build-host architecture used when no target override exists.
- * @returns {'mac-arm64' | 'mac-x64' | 'win-x64'} Supported Desktop target name.
+ * @returns {'win-x64'} Supported Desktop target name.
  */
 export function resolveDesktopBuildTarget(
   env = process.env,
@@ -66,12 +64,12 @@ export function resolveDesktopBuildTarget(
   const platform = env.DSH_DESKTOP_TARGET_PLATFORM ?? env.npm_config_platform ?? hostPlatform
   const arch = env.DSH_DESKTOP_TARGET_ARCH ?? env.npm_config_arch
     ?? (platform === 'win32' || platform === 'win' ? 'x64' : hostArch)
-  const os = platform === 'darwin' ? 'mac' : platform === 'win32' || platform === 'win' ? 'win' : platform
+  const os = platform === 'win32' || platform === 'win' ? 'win' : platform
   const target = `${os}-${arch}`
   if (!SUPPORTED_TARGETS.has(target)) {
     throw new Error(`desktop build paths: unsupported target ${target}`)
   }
-  return /** @type {'mac-arm64' | 'mac-x64' | 'win-x64'} */ (target)
+  return /** @type {'win-x64'} */ (target)
 }
 
 function assertSupportedTarget(target) {
@@ -82,9 +80,9 @@ function assertSupportedTarget(target) {
 
 /**
  * Return the mutable preparation and artifact directories owned by one release target.
- * @param {'mac-arm64' | 'mac-x64' | 'win-x64'} target - Supported Desktop target name.
+ * @param {'win-x64'} target - Supported Desktop target name.
  * @param {'standard' | 'compact'} [layout] - Directory layout; defaults to the validated packaging environment.
- * @returns {{ root: string, artifacts: string, unsignedArtifacts: string, runtime: string, animaRuntime: string, packageSet: string, dsh: string, dshPnpm: string, electron: string, packedDsh: string, packedVendor: string, packedLandlock: string, downloads: string }} Target paths plus the shared immutable download cache.
+ * @returns {{ root: string, artifacts: string, unsignedArtifacts: string, runtime: string, animaRuntime: string, packageSet: string, dsh: string, dshPnpm: string, electron: string, packedDsh: string, packedVendor: string, downloads: string }} Target paths plus the shared immutable download cache.
  */
 export function desktopTargetBuildPaths(
   target,
@@ -108,7 +106,6 @@ export function desktopTargetBuildPaths(
     electron: join(root, 'electron'),
     packedDsh: join(packed, 'dsh'),
     packedVendor: join(packed, 'vendor'),
-    packedLandlock: join(packed, 'landlock'),
     downloads: join(buildRoot, 'downloads'),
   }
 }
@@ -116,14 +113,14 @@ export function desktopTargetBuildPaths(
 /**
  * Return the platform and architecture of the payload one release target prepares.
  * Windows is prepared as x64 only, so this differs from the build host on an arm64 Windows machine.
- * @param {'mac-arm64' | 'mac-x64' | 'win-x64'} target - Supported Desktop target name.
- * @returns {{ platform: 'darwin' | 'win32', arch: 'arm64' | 'x64' }} Platform and architecture of the prepared payload.
+ * @param {'win-x64'} target - Supported Desktop target name.
+ * @returns {{ platform: 'win32', arch: 'x64' }} Platform and architecture of the prepared payload.
  */
 export function desktopTargetPlatform(target) {
   assertSupportedTarget(target)
   return {
-    platform: /** @type {'darwin' | 'win32'} */ (target === 'win-x64' ? 'win32' : 'darwin'),
-    arch: /** @type {'arm64' | 'x64'} */ (target === 'mac-arm64' ? 'arm64' : 'x64'),
+    platform: /** @type {'win32'} */ ('win32'),
+    arch: /** @type {'x64'} */ ('x64'),
   }
 }
 

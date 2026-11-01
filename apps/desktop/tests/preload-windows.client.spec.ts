@@ -17,12 +17,6 @@ afterEach(() => {
   send.mockClear()
 })
 
-it.each(['darwin', 'linux'] as const)('does not install Windows controls on %s', (platform) => {
-  vi.spyOn(process, 'platform', 'get').mockReturnValue(platform)
-  syncWindowsAppearance()
-  expect(document.documentElement.hasAttribute('data-windows-titlebar')).toBe(false)
-  expect(send).not.toHaveBeenCalled()
-})
 
 it('synchronizes live language and palette changes and stops observing a closed document', async () => {
   vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')

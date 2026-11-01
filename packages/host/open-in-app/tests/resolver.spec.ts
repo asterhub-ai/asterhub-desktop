@@ -12,8 +12,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NativeCommandRunner } from '@deepseek-ai/dsh-native-command'
 import { OPEN_IN_APP_CATALOG, type OpenInAppApp } from '../src/catalog.ts'
 import {
-  execCommand, launchDetachedApp, launchResolved, parseDesktopEntry, parseRegistryDump, resolveInternals,
-  resolveLaunch, resolveOpenInAppApps, xdgDataDirectories,
+  execCommand, launchDetachedApp, launchResolved, parseRegistryDump,
+  resolveLaunch, resolveOpenInAppApps,
   type OpenInAppInternals, type OpenInAppLauncher, type OpenInAppResolvedLaunch,
 } from '../src/resolver.ts'
 
@@ -97,48 +97,6 @@ describe('resolveOpenInAppApps', () => {
     expect(resolveExecutable).not.toHaveBeenCalled()
   })
 
-  it('resolves macOS entries from the known application directories, in menu order', async () => {
-    const home = await tempRoot()
-    const applications = join(home, 'Applications')
-    const cursor = join(applications, 'Cursor.app')
-    const zed = join(applications, 'Zed Preview.app')
-    await mkdir(cursor, { recursive: true })
-    await mkdir(zed, { recursive: true })
-    const map = await resolveOpenInAppApps(TIMEOUT_MS, bare({
-      platform: 'darwin', applicationRoots: [applications],
-    }))
-    // finder and terminal ship with the OS (fixed); cursor and the Zed
-    // Preview spelling resolve from the injected application root.
-    expect([...map.keys()]).toEqual(['finder', 'cursor', 'zed', 'terminal'])
-    expect(map.get('cursor')).toEqual({
-      launch: { kind: 'argv', command: 'open', args: ['-a', cursor] },
-      icon: { kind: 'app-bundle', path: cursor },
-    })
-    expect(map.get('zed')?.launch).toEqual({ kind: 'argv', command: 'open', args: ['-a', zed] })
-  })
-
-  it('resolves Linux entries in-process through the PATH resolver, never spawning a lookup', async () => {
-    const home = await tempRoot()
-    const run = vi.fn<NativeCommandRunner>()
-    const map = await resolveOpenInAppApps(TIMEOUT_MS, {
-      platform: 'linux', home, env: { ...linuxEnv(home), DISPLAY: ':0' }, run,
-      resolveExecutable: pathTable({ 'xdg-open': '/usr/bin/xdg-open', code: '/usr/bin/code', ghostty: '/usr/bin/ghostty' }),
-    })
-    expect([...map.keys()]).toEqual(['filemanager', 'vscode', 'ghostty'])
-    expect(map.get('ghostty')?.launch).toEqual({ kind: 'argv', command: '/usr/bin/ghostty', args: ['--working-directory={path}'] })
-    expect(run).not.toHaveBeenCalled()
-  })
-
-  it('does not offer the Linux file manager without a desktop session', async () => {
-    const home = await tempRoot()
-    const resolveExecutable = pathTable({ 'xdg-open': '/usr/bin/xdg-open' })
-    await expect(resolveLaunch(byId('filemanager'), TIMEOUT_MS, bare({
-      platform: 'linux', home, env: linuxEnv(home), resolveExecutable,
-    }))).resolves.toBeNull()
-    await expect(resolveLaunch(byId('filemanager'), TIMEOUT_MS, bare({
-      platform: 'linux', home, env: { ...linuxEnv(home), WAYLAND_DISPLAY: 'wayland-0' }, resolveExecutable,
-    }))).resolves.toEqual({ launch: { kind: 'argv', command: '/usr/bin/xdg-open', args: [] }, icon: undefined })
-  })
 
   it('reads the Windows registry at most once per pass, sharing the view across entries', async () => {
     const root = await tempRoot()
@@ -188,31 +146,7 @@ describe('resolveLaunch locators', () => {
     // An unset ${SystemRoot} drops the icon claim, not the entry.
     await expect(resolveLaunch(byId('explorer'), TIMEOUT_MS, bare({ platform: 'win32', env: {} })))
       .resolves.toMatchObject({ launch: { kind: 'shell-open' }, icon: undefined })
-    // macOS fixed entries trust their OS-shipped bundle path.
-    await expect(resolveLaunch(byId('finder'), TIMEOUT_MS, bare({ platform: 'darwin', env: {} })))
-      .resolves.toEqual({
-        launch: { kind: 'shell-open' },
-        icon: { kind: 'app-bundle', path: '/System/Library/CoreServices/Finder.app' },
-      })
   })
-
-  it('derives the Xcode bundle from xcode-select with the open -a fallback, rejecting non-bundle answers', async () => {
-    const home = await tempRoot()
-    const bundle = join(home, 'Xcode-beta.app')
-    await mkdir(join(bundle, 'Contents', 'Developer'), { recursive: true })
-    const run = runner(command => command === 'xcode-select' ? `${join(bundle, 'Contents', 'Developer')}\n` : null)
-    await expect(resolveLaunch(byId('xcode'), TIMEOUT_MS, bare({ platform: 'darwin', run })))
-      .resolves.toEqual({
-        launch: { kind: 'argv', command: 'xed', args: [] },
-        fallbackLaunch: { kind: 'argv', command: 'open', args: ['-a', bundle] },
-        icon: { kind: 'app-bundle', path: bundle },
-      })
-    const rootAnswer = runner(command => command === 'xcode-select' ? '/\n' : null)
-    await expect(resolveLaunch(byId('xcode'), TIMEOUT_MS, bare({ platform: 'darwin', run: rootAnswer })))
-      .resolves.toBeNull()
-    await expect(resolveLaunch(byId('xcode'), TIMEOUT_MS, bare({ platform: 'darwin' }))).resolves.toBeNull()
-  })
-
   it('marks a resolved Windows CLI as its own icon source', async () => {
     await expect(resolveLaunch(byId('windowsterminal'), TIMEOUT_MS, bare({
       platform: 'win32', env: {}, resolveExecutable: pathTable({ wt: 'C:\\WA\\wt.exe' }),
@@ -392,76 +326,6 @@ describe('resolveLaunch locators', () => {
     }))).resolves.toBeNull()
   })
 
-  it('falls back to the desktop entry when the CLI is off PATH, honoring TryExec and quoted Exec', async () => {
-    const home = await tempRoot()
-    const applications = join(home, '.local', 'share', 'applications')
-    await mkdir(applications, { recursive: true })
-    const kittyBin = join(home, 'bin', 'kitty')
-    await mkdir(join(home, 'bin'), { recursive: true })
-    await writeFile(kittyBin, 'bin')
-    await writeFile(join(applications, 'kitty.desktop'), [
-      '[Desktop Entry]',
-      `TryExec=${kittyBin}`,
-      'Exec=kitty --start-as normal %U',
-      'Icon=kitty',
-      '',
-    ].join('\n'))
-    const found = await resolveLaunch(byId('kitty'), TIMEOUT_MS, bare({ platform: 'linux', home, env: linuxEnv(home) }))
-    expect(found?.launch).toEqual({ kind: 'argv', command: kittyBin, args: ['--directory'] })
-
-    // A quoted absolute Exec command verifies on disk through its first token.
-    const gnomeBin = join(home, 'bin', 'gnome-terminal-bin')
-    await writeFile(gnomeBin, 'bin')
-    await writeFile(join(applications, 'org.gnome.Terminal.desktop'), [
-      '[Desktop Entry]',
-      `Exec="${gnomeBin}" --window %U`,
-      '',
-    ].join('\n'))
-    const viaExec = await resolveLaunch(byId('gnometerminal'), TIMEOUT_MS, bare({
-      platform: 'linux', home, env: linuxEnv(home),
-    }))
-    expect(viaExec?.launch).toEqual({ kind: 'argv', command: gnomeBin, args: ['--working-directory={path}'] })
-
-    // A bare Exec name resolves through the in-process PATH resolver;
-    // XDG_DATA_HOME takes precedence over the home-derived default.
-    const dataHome = join(home, 'xdg-data')
-    await mkdir(join(dataHome, 'applications'), { recursive: true })
-    await writeFile(join(dataHome, 'applications', 'org.kde.konsole.desktop'), [
-      '[Desktop Entry]',
-      'Exec=konsole-launcher --hold',
-      '',
-    ].join('\n'))
-    const viaPath = await resolveLaunch(byId('konsole'), TIMEOUT_MS, bare({
-      platform: 'linux', home, env: { ...linuxEnv(home), XDG_DATA_HOME: dataHome },
-      resolveExecutable: pathTable({ 'konsole-launcher': '/usr/bin/konsole-launcher' }),
-    }))
-    expect(viaPath?.launch).toEqual({ kind: 'argv', command: '/usr/bin/konsole-launcher', args: ['--workdir'] })
-  })
-
-  it('resolves nothing from missing or unusable desktop entries', async () => {
-    const home = await tempRoot()
-    const applications = join(home, '.local', 'share', 'applications')
-    await mkdir(applications, { recursive: true })
-    const internals = bare({ platform: 'linux', home, env: linuxEnv(home) })
-    // No desktop entry at all.
-    await expect(resolveLaunch(byId('konsole'), TIMEOUT_MS, internals)).resolves.toBeNull()
-    // A TryExec absent from disk.
-    await writeFile(join(applications, 'org.kde.konsole.desktop'), [
-      '[Desktop Entry]',
-      `TryExec=${join(home, 'gone')}`,
-      '',
-    ].join('\n'))
-    await expect(resolveLaunch(byId('konsole'), TIMEOUT_MS, internals)).resolves.toBeNull()
-    // An empty TryExec with no Exec proves nothing.
-    await writeFile(join(applications, 'org.kde.konsole.desktop'), '[Desktop Entry]\nTryExec=\n')
-    await expect(resolveLaunch(byId('konsole'), TIMEOUT_MS, internals)).resolves.toBeNull()
-    // No Exec/TryExec keys at all.
-    await writeFile(join(applications, 'org.kde.konsole.desktop'), '[Desktop Entry]\nIcon=konsole\n')
-    await expect(resolveLaunch(byId('konsole'), TIMEOUT_MS, internals)).resolves.toBeNull()
-    // A bare Exec name off PATH.
-    await writeFile(join(applications, 'org.kde.konsole.desktop'), '[Desktop Entry]\nExec=konsole-launcher\n')
-    await expect(resolveLaunch(byId('konsole'), TIMEOUT_MS, internals)).resolves.toBeNull()
-  })
 })
 
 describe('registry and desktop parsing', () => {
@@ -481,20 +345,6 @@ describe('registry and desktop parsing', () => {
     expect(values?.has('Flags')).toBe(false)
   })
 
-  it('reads only the [Desktop Entry] section and tolerates comment and malformed lines', () => {
-    expect(parseDesktopEntry([
-      '# comment',
-      '[Desktop Action new-window]',
-      'Exec=ignored --new-window',
-      '[Desktop Entry]',
-      'no separator line',
-      'Name=Kitty',
-      'Exec=kitty %U',
-      'TryExec=/usr/bin/kitty',
-      'Icon=kitty',
-      '',
-    ].join('\n'))).toEqual({ exec: 'kitty %U', tryExec: '/usr/bin/kitty', icon: 'kitty' })
-  })
 
   it('takes an Exec command as its quoted or bare first token, and none from blank text', () => {
     expect(execCommand(undefined)).toBeNull()
@@ -503,15 +353,6 @@ describe('registry and desktop parsing', () => {
     expect(execCommand('   ')).toBeNull()
   })
 
-  it('orders XDG data directories home-first with the freedesktop defaults', () => {
-    const completed = { env: {}, home: '/h', resolveExecutable: pathTable() }
-    // The home default goes through join(), so the expectation does too —
-    // the Windows lane runs this unit over win32 separators.
-    expect(xdgDataDirectories(resolveInternals(completed)))
-      .toEqual([join('/h', '.local', 'share'), '/usr/local/share', '/usr/share'])
-    expect(xdgDataDirectories(resolveInternals({ ...completed, env: { XDG_DATA_HOME: '/x', XDG_DATA_DIRS: '/a::/b' } })))
-      .toEqual(['/x', '/a', '/b'])
-  })
 })
 
 describe('launchResolved', () => {
@@ -588,32 +429,6 @@ describe('launchResolved', () => {
     ])
   })
 
-  it('counts a shell-open opener that outlives the watch window as launched, and a fast failure as failed', async () => {
-    // A cold shell opener can outlive the window: still-running counts launched.
-    await expect(launchResolved(
-      { launch: { kind: 'shell-open' } }, '/w/dir', 25,
-      bare({ platform: 'darwin', run: () => new Promise(() => {}) }),
-    )).resolves.toBe('launched')
-    // A failure inside the window is the outcome.
-    await expect(launchResolved(
-      { launch: { kind: 'shell-open' } }, '/w/dir', TIMEOUT_MS,
-      bare({ platform: 'darwin', run: async () => { throw new Error('opener failed') } }),
-    )).resolves.toBe('failed')
-    // A vanished opener marks the resolution stale, like an argv launcher.
-    await expect(launchResolved(
-      { launch: { kind: 'shell-open' } }, '/w/dir', TIMEOUT_MS,
-      bare({ platform: 'darwin', run: async () => {
-        throw Object.assign(new Error('spawn open ENOENT'), { code: 'ENOENT' })
-      } }),
-    )).resolves.toBe('missing')
-    // A late failure after the window settles nothing (already launched).
-    let rejectLate: ((error: Error) => void) | undefined
-    await expect(launchResolved(
-      { launch: { kind: 'shell-open' } }, '/w/dir', 25,
-      bare({ platform: 'darwin', run: () => new Promise((_resolve, reject) => { rejectLate = reject }) }),
-    )).resolves.toBe('launched')
-    rejectLate?.(new Error('late opener failure'))
-  })
 
   it('tries the fallback when the primary fails and classifies the ways an attempt ends', async () => {
     const calls: unknown[][] = []

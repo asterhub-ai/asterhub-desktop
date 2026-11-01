@@ -27,7 +27,8 @@ afterEach(() => {
   send.mockClear()
 })
 
-it.each(['darwin', 'win32'] as const)('mirrors the application theme source on %s', async (platform) => {
+it('mirrors the application theme source on Windows', async () => {
+  const platform = 'win32'
   vi.stubGlobal('MutationObserver', TrackedMutationObserver)
   vi.spyOn(process, 'platform', 'get').mockReturnValue(platform)
   document.documentElement.setAttribute('data-ds-theme-source', 'dark')

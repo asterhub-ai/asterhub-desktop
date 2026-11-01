@@ -3,47 +3,47 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write apps/desktop/README.md
 /asterhub-desktop:
-  en: 5c0af40fb2abe25c
-  zh: aa8b9ff9b963337d
+  en: 0e2d068a91870cb1
+  zh: c3cee738e101b9bf
 /asterhub-desktop/closing-the-window-and-quitting:
-  en: 53248165119e411a
-  zh: 7b4f1fd2388a1e66
+  en: 7e675452ca7a499b
+  zh: d9f7e9a209921ce1
 /asterhub-desktop/key-technical-decisions:
-  en: 98068371030790c8
-  zh: 6f18f35f5d6cf049
+  en: 6864b23f6e15a0ae
+  zh: 0906f782240104b0
 /asterhub-desktop/key-technical-decisions/bundled-workspace-dependencies:
   en: cd294331bf9ca21c
   zh: 4421e951d593b3f8
 /asterhub-desktop/installation-ownership:
-  en: de7923d33c1e0d0b
-  zh: bde25fc44e79163a
+  en: 2db038795474655b
+  zh: 6612e2018e43f3f9
 /asterhub-desktop/installation-ownership/runtime-and-plugin-activation:
-  en: 7dbd7478229bb2ba
-  zh: c03cc81759790726
+  en: b1431632faffb3b6
+  zh: 96fa63d6d198dd57
 /asterhub-desktop/installation-ownership/host-environment:
-  en: 11792f050643ac0e
-  zh: f99de8f351008614
+  en: f4d4d2315a7c9d90
+  zh: 978592af915dc590
 /asterhub-desktop/develop:
-  en: 1fcbf1bf4803aae5
-  zh: 12e0946d663f9fbd
+  en: bba3866de39dec74
+  zh: 97132a21c36e4c8a
 /asterhub-desktop/develop/startup-onboarding:
   en: 6899bd3ee0ac251a
   zh: 6359ed3810f012e7
 /asterhub-desktop/develop/welcome-window-appearance:
-  en: ae319a496639b38d
-  zh: ef044103240ac9da
+  en: 997540aa1fdde916
+  zh: 7d012c8cbf9e2ce0
 /asterhub-desktop/package:
   en: 279c757530c85f63
   zh: f50cd5321a2b00fb
 /asterhub-desktop/package/release-versions:
-  en: e3742c25415ec56b
-  zh: 71024f61ce3ccea9
+  en: 67de8de23f921680
+  zh: ac004196d6d61d11
 /asterhub-desktop/package/runtime-file-selection:
-  en: b1012b55043d846f
-  zh: 76ff566f9307f714
+  en: 40ec2d5deeb53c76
+  zh: 87cb2eb7c722901f
 /asterhub-desktop/package/upload-updates:
-  en: 72073b2e72590067
-  zh: 63b1f9790395c37d
+  en: c329cbc4546c4788
+  zh: 271f3bff5f360f0e
 /asterhub-desktop/package/unsigned-windows-test-installer:
   en: b7c260d519369a05
   zh: 41a43129590f09ac
@@ -52,22 +52,22 @@
   zh: 92c3f1a8b9acf301
 /asterhub-desktop/package/windows-ev-signing:
   en: bea8e3b9b54d94b4
-  zh: 2b9161f999aecc43
+  zh: 6916ab52032e63d8
 /asterhub-desktop/updates:
-  en: 8a57edfd490c6f06
-  zh: 1ae4a303b967d2b2
+  en: 3091ba9a6e2179f6
+  zh: e80e74fe2c08dafa
 /asterhub-desktop/updates/mandatory-update-policy:
-  en: 2f789a4949fafb12
-  zh: d8b28c01cfee11b7
+  en: 722e8b77698d6948
+  zh: 9329609e6dd22ed5
 /asterhub-desktop/updates/local-updater-qualification:
-  en: bc50fd8a4d96c227
-  zh: fb0a6ce80c31cda6
+  en: f8321a76ff3cfee6
+  zh: 0192fe83345b36ea
 /asterhub-desktop/low-level-development-overrides:
   en: 0b225f914142ef0b
   zh: 9ffd07768d37824e
 /asterhub-desktop/known-limitations:
-  en: 3fcb4434217ed5ab
-  zh: 1221c004e6421295
+  en: cebde08c81d063d1
+  zh: 3c29719226c752fd
 /asterhub-desktop/dev-note:
   en: 8e26b460ba31f21b
   zh: fbcd0307b3867125

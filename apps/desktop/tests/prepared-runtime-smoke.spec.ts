@@ -26,7 +26,7 @@ it('smokes an x64 target verified on an arm64 build host without revalidating ag
   const root = mkdtempSync(join(tmpdir(), 'prepared-runtime-target-'))
   roots.push(root)
   const fixture = runtimeFixture(root)
-  const target = { platform: 'darwin' as const, arch: 'x64' }
+  const target = { platform: 'win32' as const, arch: 'x64' }
   writeDesktopRuntime(root, fixture.release, fixture.sharedPackages.map(entry => entry.name), target)
   Object.defineProperty(process, 'arch', { ...hostArch, value: 'arm64' })
   await expect(verifyDesktopRuntime(root, fixture.release.version, { ...target, arch: process.arch }))

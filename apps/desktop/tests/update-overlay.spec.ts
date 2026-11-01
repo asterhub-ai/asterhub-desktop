@@ -78,8 +78,8 @@ it('does not show or change parent styles when closed before its document is rea
   expect(parent.webContents.removeInsertedCSS).not.toHaveBeenCalled()
 })
 
-it('releases a macOS overlay after its parent has already been destroyed', async () => {
-  vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+it('releases an overlay after its parent has already been destroyed', async () => {
+  vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
   const { parent, window } = visibilityFixture()
   await Promise.resolve()
   vi.spyOn(parent, 'isDestroyed').mockReturnValue(true)
@@ -93,33 +93,9 @@ type ParentFixture = EventEmitter & Pick<BrowserWindow, 'getContentBounds' | 'is
   webContents: EventEmitter & Pick<WebContents, 'insertCSS' | 'removeInsertedCSS'>
 }
 
-it('keeps the macOS mandatory overlay stationary and blocks parent keyboard input until close', () => {
-  const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
-  const parent: ParentFixture = Object.assign(new EventEmitter(), {
-    getContentBounds: () => ({ x: 0, y: 0, width: 1000, height: 700 }),
-    webContents: Object.assign(new EventEmitter(), { insertCSS: vi.fn(async () => 'blur'), removeInsertedCSS: vi.fn(async () => {}) }),
-    isDestroyed: () => false,
-  })
-  const window = Object.assign(new EventEmitter(), {
-    webContents: { setWindowOpenHandler: vi.fn() }, show: vi.fn(), focus: vi.fn(),
-    setMenu: vi.fn(), setBounds: vi.fn(), isDestroyed: () => false,
-  })
-  native.create.mockReturnValue(window)
-  try {
-    new DesktopUpdateOverlays().create(parent as BrowserWindow, 'owned', 'Update required', false)
-    expect(native.create).toHaveBeenLastCalledWith(expect.objectContaining({ modal: false, transparent: true, frame: false }))
-    const event = { preventDefault: vi.fn() }
-    parent.webContents.emit('before-input-event', event)
-    expect(event.preventDefault).toHaveBeenCalledOnce()
-    expect(window.focus).toHaveBeenCalledOnce()
-    window.emit('closed')
-    expect(parent.listenerCount('focus')).toBe(0)
-    expect(parent.webContents.listenerCount('before-input-event')).toBe(0)
-  } finally { platform.mockRestore() }
-})
 
 it('blocks each parent until its last owned overlay closes and invalidates each transition', () => {
-  const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+  const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
   onTestFinished(() => { platform.mockRestore() })
   const parent = (): ParentFixture => Object.assign(new EventEmitter(), {
     getContentBounds: () => ({ x: 0, y: 0, width: 1000, height: 700 }),
@@ -139,15 +115,15 @@ it('blocks each parent until its last owned overlay closes and invalidates each 
     return window
   })
   expect(overlays.input(firstParent)).toEqual({ revision: 0, blocked: false })
-  const first = overlays.create(firstParent, 'owned', 'Update required', false)
-  const second = overlays.create(firstParent, 'owned', 'Confirm installation', false)
-  const other = overlays.create(secondParent, 'owned', 'Update required', false)
+  const first = overlays.create(firstParent, 'owned', 'Update required')
+  const second = overlays.create(firstParent, 'owned', 'Confirm installation')
+  const other = overlays.create(secondParent, 'owned', 'Update required')
   expect(overlays.input(firstParent)).toMatchObject({ revision: 2, blocked: true })
   expect(overlays.input(secondParent)).toMatchObject({ revision: 1, blocked: true })
   expect(isolated.input(firstParent)).toEqual({ revision: 0, blocked: false })
   first.emit('closed')
   expect(overlays.input(firstParent)).toMatchObject({ revision: 3, blocked: true })
-  expect(firstParent.webContents.listenerCount('before-input-event')).toBe(1)
+  expect(firstParent.webContents.listenerCount('before-input-event')).toBe(0)
   second.emit('closed')
   expect(overlays.input(firstParent)).toMatchObject({ revision: 4, blocked: false })
   expect(firstParent.listenerCount('move')).toBe(0)

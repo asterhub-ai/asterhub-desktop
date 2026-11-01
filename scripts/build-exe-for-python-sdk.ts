@@ -12,7 +12,7 @@ import { chmod, copyFile, cp, lstat, mkdir, readFile, readdir, realpath, rm, wri
 import { tmpdir } from 'node:os'
 import { basename, dirname, extname, join, resolve, sep } from 'node:path'
 import { parseArgs } from 'node:util'
-import { resolveLinuxNodePtyAddon, resolveWindowsNodePtyAddons } from './build-exe-for-python-sdk-native-pty.ts'
+import { resolveWindowsNodePtyAddons } from './build-exe-for-python-sdk-native-pty.ts'
 import { copyOfficeSidecar, OFFICE_ASSET_IGNORES } from './build-exe-for-python-sdk-office.ts'
 import { preparePrimaryRuntime, smokePrimaryRuntime, type PrimaryRuntimeTarget } from './primary-runtime/prepare.ts'
 
@@ -50,11 +50,8 @@ const ASSET_GLOBS = [
   'node_modules/**/*.json',
   // Package-owned Markdown includes runtime skill instructions and badge content.
   'node_modules/**/*.md',
-  'node_modules/**/*.dylib',
   'node_modules/**/*.dll',
   'node_modules/**/*.node',
-  'node_modules/**/*.so',
-  'node_modules/**/*.so.*',
   'node_modules/**/*.wasm',
   'node_modules/**/*.yaml',
   'node_modules/**/*.yml',
@@ -66,8 +63,8 @@ const ASSET_GLOBS = [
   'node_modules/@deepseek-ai/dsh-sandbox-windows-acl/assets/**/*',
 ]
 
-const PLATFORMS = ['linux', 'macos', 'win'] as const
-const ARCHES = ['x64', 'arm64'] as const
+const PLATFORMS = ['win'] as const
+const ARCHES = ['x64'] as const
 type Platform = (typeof PLATFORMS)[number]
 type Arch = (typeof ARCHES)[number]
 
@@ -99,26 +96,23 @@ class Target {
 
   /**
    * Parse one target spec, rejecting malformed triples and unsupported platform or architecture.
-   * @param spec - the raw triple, e.g. `node24-linux-x64`.
+   * @param spec - the raw triple, e.g. `node24-win-x64`.
    * @returns the parsed target.
    */
   static parse(spec: string): Target {
     const parts = spec.split('-')
     const [nodeRange, platform, arch] = parts
     if (parts.length !== 3 || nodeRange === undefined || platform === undefined || arch === undefined) {
-      throw new Error(`build-exe-for-python-sdk: target ${JSON.stringify(spec)} must be <nodeRange>-<platform>-<arch>, e.g. node24-linux-x64.`)
+      throw new Error(`build-exe-for-python-sdk: target ${JSON.stringify(spec)} must be <nodeRange>-<platform>-<arch>, e.g. node24-win-x64.`)
     }
     if (!/^node\d+$/.test(nodeRange)) {
       throw new Error(`build-exe-for-python-sdk: target ${JSON.stringify(spec)}: node range must look like node24, got ${JSON.stringify(nodeRange)}.`)
     }
     if (!isPlatform(platform)) {
-      throw new Error(`build-exe-for-python-sdk: target ${JSON.stringify(spec)}: platform must be one of ${PLATFORMS.join(', ')}, got ${JSON.stringify(platform)}.`)
+      throw new Error(`build-exe-for-python-sdk: target ${JSON.stringify(spec)}: platform must be win, got ${JSON.stringify(platform)}.`)
     }
     if (!isArch(arch)) {
-      throw new Error(`build-exe-for-python-sdk: target ${JSON.stringify(spec)}: arch must be one of ${ARCHES.join(', ')}, got ${JSON.stringify(arch)}.`)
-    }
-    if (platform === 'win' && arch !== 'x64') {
-      throw new Error(`build-exe-for-python-sdk: target ${JSON.stringify(spec)}: Windows supports x64 only.`)
+      throw new Error(`build-exe-for-python-sdk: target ${JSON.stringify(spec)}: arch must be x64, got ${JSON.stringify(arch)}.`)
     }
     return new Target(nodeRange, platform, arch)
   }
@@ -128,24 +122,13 @@ class Target {
    * @returns the host target; throws on an unsupported host platform or arch.
    */
   static host(): Target {
-    const platform = process.platform === 'darwin'
-      ? 'macos'
-      : process.platform === 'linux'
-        ? 'linux'
-        : process.platform === 'win32'
-          ? 'win'
-          : undefined
-    if (platform === undefined) {
-      throw new Error(`build-exe-for-python-sdk: unsupported host platform ${process.platform}; pass --targets explicitly.`)
+    if (process.platform !== 'win32') {
+      throw new Error(`build-exe-for-python-sdk: unsupported host platform ${process.platform}; AsterHub supports Windows win32-x64 only.`)
     }
-    const arch = process.arch === 'x64' || process.arch === 'arm64' ? process.arch : undefined
-    if (arch === undefined) {
-      throw new Error(`build-exe-for-python-sdk: unsupported host arch ${process.arch}; pass --targets explicitly.`)
-    }
-    if (platform === 'win' && arch !== 'x64') {
+    if (process.arch !== 'x64') {
       throw new Error('build-exe-for-python-sdk: Windows supports x64 only; use an x64 Node process.')
     }
-    return new Target(DEFAULT_NODE_RANGE, platform, arch)
+    return new Target(DEFAULT_NODE_RANGE, 'win', 'x64')
   }
 }
 
@@ -212,7 +195,7 @@ class BuildCli {
     return [
       'Usage: pnpm exec tsx scripts/build-exe-for-python-sdk.ts [flags]',
       '',
-      '  --targets=<t1,t2,...>  pkg targets, e.g. node24-linux-x64,node24-linux-arm64,node24-macos-arm64,node24-macos-x64,node24-win-x64.',
+      '  --targets=<t1,t2,...>  pkg targets, e.g. node24-win-x64.',
       '                         Default: the host platform only (on node24).',
       '  --skip-build           skip `pnpm run build` (lib/ artifacts must already exist).',
       '  --dry-run              print every command and config patch without executing.',
@@ -447,13 +430,13 @@ class SingleExeBuild {
     if (this.cli.dryRun) {
       console.log(`build-exe-for-python-sdk: [dry-run] copy Office dependency closure from ${this.staging} to ${office}`)
     } else {
-      const platform = target.platform === 'macos' ? 'darwin' : target.platform === 'win' ? 'win32' : target.platform
+      const platform = 'win32'
       const packages = await copyOfficeSidecar(this.staging, office, { platform, arch: target.arch })
       console.log(`build-exe-for-python-sdk: copied ${packages.length} Office packages to ${office}`)
     }
     const ripgrep = await this.copyRipgrepSidecar(target, product)
     const resources = join(this.outDir, `${target.platform}-${target.arch}`)
-    const runtimeTarget = `${target.platform === 'macos' ? 'mac' : target.platform}-${target.arch}` as PrimaryRuntimeTarget
+    const runtimeTarget = `${target.platform}-${target.arch}` as PrimaryRuntimeTarget
     if (this.cli.dryRun) {
       console.log(`build-exe-for-python-sdk: [dry-run] prepare Python and Office skills for ${runtimeTarget} in ${resources}`)
     } else {
@@ -462,22 +445,13 @@ class SingleExeBuild {
         cache: join(tmpdir(), 'dsh-primary-runtime-downloads'), version })
       smokePrimaryRuntime(join(resources, 'primary-runtime'))
     }
-    if (target.platform !== 'macos') return [product, ripgrep, office, resources]
-    const spawnHelper = `${product}-spawn-helper`
-    const source = join(this.staging, 'node_modules', 'node-pty', 'prebuilds', `darwin-${target.arch}`, 'spawn-helper')
-    if (this.cli.dryRun) {
-      console.log(`build-exe-for-python-sdk: [dry-run] cp ${source} ${spawnHelper}`)
-    } else {
-      await copyFile(source, spawnHelper)
-      await chmod(spawnHelper, 0o755)
-    }
-    return [product, ripgrep, spawnHelper, office, resources]
+    return [product, ripgrep, office, resources]
   }
 
   /** Copy the target ripgrep binary beside the executable so Node can spawn it outside pkg's virtual filesystem. */
   private async copyRipgrepSidecar(target: Target, product: string): Promise<string> {
-    const platform = target.platform === 'macos' ? 'darwin' : target.platform === 'win' ? 'win32' : target.platform
-    const executable = target.platform === 'win' ? 'rg.exe' : 'rg'
+    const platform = 'win32'
+    const executable = 'rg.exe'
     const source = join(
       this.staging,
       'node_modules',
@@ -486,9 +460,7 @@ class SingleExeBuild {
       'bin',
       executable,
     )
-    const destination = target.platform === 'win'
-      ? `${product.slice(0, -'.exe'.length)}-rg.exe`
-      : `${product}-rg`
+    const destination = `${product.slice(0, -'.exe'.length)}-rg.exe`
     if (this.cli.dryRun) {
       console.log(`build-exe-for-python-sdk: [dry-run] cp ${source} ${destination}`)
       return destination
@@ -510,14 +482,6 @@ class SingleExeBuild {
     const stagedBuild = join(this.staging, 'node_modules', 'node-pty', 'build')
     if (this.cli.dryRun) console.log(`build-exe-for-python-sdk: [dry-run] rm -rf ${stagedBuild}`)
     else await rm(stagedBuild, { recursive: true, force: true })
-    const packageDirectory = join(
-      root,
-      'packages',
-      'subprocess',
-      'subprocess-local',
-      'node_modules',
-      'node-pty',
-    )
     if (target.platform === 'win') {
       if (target.arch !== 'x64') {
         throw new Error('build-exe-for-python-sdk: Windows supports x64 only.')
@@ -529,25 +493,14 @@ class SingleExeBuild {
           + `target ${target.platform}-${target.arch} does not match host ${host.platform}-${host.arch}.`,
         )
       }
+      if (this.cli.dryRun) {
+        const destination = join(this.staging, 'node_modules', 'node-pty', 'prebuilds', `win32-${target.arch}`)
+        console.log(`build-exe-for-python-sdk: [dry-run] plan Windows node-pty addons in ${destination}`)
+        return
+      }
       resolveWindowsNodePtyAddons(join(this.staging, 'node_modules', 'node-pty'), target.arch)
       return
     }
-    if (target.platform !== 'linux') return
-    const destination = join(stagedBuild, 'Release', 'pty.node')
-    const source = resolveLinuxNodePtyAddon(packageDirectory, target.arch)
-    if (this.cli.dryRun) {
-      console.log(`build-exe-for-python-sdk: [dry-run] cp ${source} ${destination}`)
-      return
-    }
-    const host = Target.host()
-    if (target.platform !== host.platform || target.arch !== host.arch) {
-      throw new Error(
-        'build-exe-for-python-sdk: build the Linux runtime on its target architecture; '
-        + `target ${target.platform}-${target.arch} does not match host ${host.platform}-${host.arch}.`,
-      )
-    }
-    await mkdir(dirname(destination), { recursive: true })
-    await copyFile(source, destination)
   }
 
   /**

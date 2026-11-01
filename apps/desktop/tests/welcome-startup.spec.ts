@@ -94,10 +94,6 @@ vi.mock('electron', () => ({
 vi.mock('../src/tray.ts', () => ({ DesktopTray: class { relabel() {} dispose() {} } }))
 
 vi.mock('../src/paths.ts', () => ({ resolveDesktopPaths: () => ({ profile: '/profile' }) }))
-vi.mock('../src/login-shell-environment.ts', async importOriginal => ({
-  ...await importOriginal<typeof import('../src/login-shell-environment.ts')>(),
-  readDesktopLoginShellEnvironment: async (base: NodeJS.ProcessEnv) => ({ environment: base, failures: [] }),
-}))
 vi.mock('../src/project-manager.ts', () => ({ DesktopProjectManager: class {
   applyRelease = vi.fn(async () => {})
   canRecoverProfile = vi.fn(() => true)
@@ -195,7 +191,6 @@ it.each([false, true])('opens the workspace directly without carrying update foc
   expect(state.moveTopWorkspace).toHaveBeenCalledTimes(updated ? 1 : 0)
   expect(state.focusWorkspace).toHaveBeenCalledTimes(updated ? 1 : 0)
   expect(state.windowOptions).toMatchObject({
-    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 18 }, vibrancy: 'sidebar' } : {}),
     webPreferences: { contextIsolation: true, sandbox: true },
   })
   expect(state.quit).not.toHaveBeenCalled()

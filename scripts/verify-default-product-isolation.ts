@@ -65,7 +65,7 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
   const display = (path: string): string => relative(root, path).replaceAll('\\', '/')
   for (const path of globSync([
     'apps/*/package.json', 'packages/*/*/package.json', 'vendor/*/package.json',
-    'native/system/packages/*/package.json', 'python/sdk-runtime/package.json',
+    'python/sdk-runtime/package.json',
   ], { cwd: root }).sort()) {
     const manifest = JSON.parse(readFileSync(resolve(root, path), 'utf8')) as Manifest
     if (typeof manifest.name !== 'string' || manifest.name === '') throw new Error(`${path}: missing package name`)

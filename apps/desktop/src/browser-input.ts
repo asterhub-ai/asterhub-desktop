@@ -111,8 +111,8 @@ export async function insertPageText(guest: WebContents, text: string): Promise<
 
 /** Replace the focused control's contents using native select-all and text input events. */
 export async function replacePageText(guest: WebContents, text: string): Promise<void> {
-  const modifier = process.platform === 'darwin' ? 'meta' : 'control'
-  const modifierKey = modifier === 'meta' ? 'Meta' : 'Control'
+  const modifier = 'control'
+  const modifierKey = 'Control'
   guest.sendInputEvent({ type: 'keyDown', keyCode: modifierKey })
   guest.sendInputEvent({ type: 'keyDown', keyCode: 'A', modifiers: [modifier] })
   guest.sendInputEvent({ type: 'keyUp', keyCode: 'A', modifiers: [modifier] })

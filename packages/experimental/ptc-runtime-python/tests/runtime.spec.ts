@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { PythonPtcRuntime, hostFrameParseCeiling, readProcessStart, resolvePythonBin } from '../src/index.ts'
+import { PythonPtcRuntime, hostFrameParseCeiling, resolvePythonBin } from '../src/index.ts'
 import { logTruncationMarker } from '../src/protocol.ts'
 import type { Config } from '../src/index.ts'
 
@@ -760,38 +760,6 @@ describe('PythonPtcRuntime — seam descriptors and misuse', () => {
   }, 15_000)
 })
 
-describe('PythonPtcRuntime — process identity', () => {
-  it('reads a live process start time and distinguishes it from an absent pid', () => {
-    // The teardown guard signals `-child.pid` with a RAW `process.kill`, which
-    // (unlike `child.kill()`) has no handle check, so it would reach a recycled
-    // pgid during the window between the leader being reaped and `close` firing.
-    // A pid alone cannot separate the original from its replacement -- both
-    // answer `kill(pid, 0)` -- so the guard compares START TIME, and this pins
-    // that the reading is stable for one process and absent for a pid that
-    // cannot be read.
-    const own = readProcessStart(process.pid)
-    if (process.platform === 'linux') {
-      // Same process, two reads: the identity must be stable, or the guard would
-      // refuse to signal its own live group.
-      expect(own).toBeDefined()
-      expect(readProcessStart(process.pid)).toBe(own)
-      // Pid 0 is never a readable /proc entry, so the guard degrades to
-      // undefined rather than throwing on a teardown path. This is also the
-      // reading a REAPED leader produces -- its /proc entry is gone while the
-      // group it led can still hold survivors -- so `undefined` must NOT be
-      // treated as an identity mismatch. Reading it as one refused the SIGKILL
-      // that the same-group survivor tests depend on, which is why they went red
-      // on Linux while passing on Darwin (where the reader always returns
-      // undefined and the guard is inert).
-      expect(readProcessStart(0)).toBeUndefined()
-    } else {
-      // Darwin has no /proc: the reader reports undefined, and `killGroup`
-      // signals the pgid without the identity re-check instead of paying a `ps`
-      // fork per signal.
-      expect(own).toBeUndefined()
-    }
-  })
-})
 
 describe('PythonPtcRuntime — inherited resource limits', () => {
   // Darwin deliberately does not apply RLIMIT_AS, and its shell rejects `ulimit -v`.

@@ -10,63 +10,51 @@ import {
 
 describe('desktop package target', () => {
   it('selects matching runtime and electron-builder architectures', () => {
-    expect(resolveDesktopPackageTarget('mac-arm64', 'darwin', 'arm64')).toMatchObject({
-      platform: 'darwin', arch: 'arm64', builderPlatform: '--mac', builderArch: '--arm64',
-    })
-    expect(resolveDesktopPackageTarget('mac-x64', 'darwin', 'x64')).toMatchObject({
-      platform: 'darwin', arch: 'x64', builderPlatform: '--mac', builderArch: '--x64',
-    })
     expect(resolveDesktopPackageTarget('win-x64', 'win32', 'x64')).toMatchObject({
       platform: 'win32', arch: 'x64', builderPlatform: '--win', builderArch: '--x64',
     })
   })
 
-  it('allows an Apple Silicon host to build the Intel target through Rosetta', () => {
-    expect(resolveDesktopPackageTarget('mac-x64', 'darwin', 'arm64').arch).toBe('x64')
-  })
-
   it('rejects unsupported targets and hosts before building', () => {
     expect(() => resolveDesktopPackageTarget('linux-x64', 'linux', 'x64')).toThrow(/unsupported target/u)
+    expect(() => resolveDesktopPackageTarget('mac-arm64', 'darwin', 'arm64')).toThrow(/unsupported target/u)
+    expect(() => resolveDesktopPackageTarget('mac-x64', 'darwin', 'x64')).toThrow(/unsupported target/u)
     expect(() => resolveDesktopPackageTarget('win-x64', 'darwin', 'arm64')).toThrow(/Windows x64/u)
-    expect(() => resolveDesktopPackageTarget('mac-arm64', 'darwin', 'x64')).toThrow(/Apple Silicon/u)
-    expect(() => resolveDesktopPackageTarget('mac-arm64', 'linux', 'arm64')).toThrow(/macOS/u)
-    expect(() => resolveDesktopPackageTarget('mac-x64', 'darwin', 'ppc64')).toThrow(/Rosetta/u)
   })
 
   it('parses installer and unpacked-directory invocations', () => {
-    expect(parseDesktopPackageInvocation(['mac-arm64'], 'darwin', 'arm64').directory).toBe(false)
-    expect(parseDesktopPackageInvocation(['mac-arm64', '--dir'], 'darwin', 'arm64').directory).toBe(true)
-    expect(parseDesktopPackageInvocation([], 'darwin', 'arm64').target.name).toBe('mac-arm64')
-    expect(parseDesktopPackageInvocation(['--prepare-only'], 'darwin', 'arm64').prepareOnly).toBe(true)
-    expect(parseDesktopPackageInvocation(['--check'], 'darwin', 'arm64').check).toBe(true)
+    expect(parseDesktopPackageInvocation(['win-x64'], 'win32', 'x64').directory).toBe(false)
+    expect(parseDesktopPackageInvocation(['win-x64', '--dir'], 'win32', 'x64').directory).toBe(true)
+    expect(parseDesktopPackageInvocation([], 'win32', 'x64').target.name).toBe('win-x64')
+    expect(parseDesktopPackageInvocation(['--prepare-only'], 'win32', 'x64').prepareOnly).toBe(true)
+    expect(parseDesktopPackageInvocation(['--check'], 'win32', 'x64').check).toBe(true)
     expect(parseDesktopPackageInvocation(['win-x64', '--check', '--unsigned'], 'win32', 'x64')).toMatchObject({ check: true, unsigned: true })
-    expect(() => parseDesktopPackageInvocation(['mac-arm64', 'mac-x64'], 'darwin', 'arm64'))
+    expect(() => parseDesktopPackageInvocation(['win-x64', 'extra'], 'win32', 'x64'))
       .toThrow(/at most one target/u)
   })
 
   it('parses a build version, including the separator a pnpm run script forwards', () => {
-    expect(parseDesktopPackageInvocation(['mac-arm64'], 'darwin', 'arm64').requestedBuildVersion).toBeUndefined()
-    expect(parseDesktopPackageInvocation(['mac-arm64', '--build-version', '0.1.6-alpha.2.20260921.1'], 'darwin', 'arm64')
+    expect(parseDesktopPackageInvocation(['win-x64'], 'win32', 'x64').requestedBuildVersion).toBeUndefined()
+    expect(parseDesktopPackageInvocation(['win-x64', '--build-version', '0.1.6-alpha.2.20260921.1'], 'win32', 'x64')
       .requestedBuildVersion).toBe('0.1.6-alpha.2.20260921.1')
-    expect(parseDesktopPackageInvocation(['mac-arm64', '--build-version', 'auto'], 'darwin', 'arm64')
+    expect(parseDesktopPackageInvocation(['win-x64', '--build-version', 'auto'], 'win32', 'x64')
       .requestedBuildVersion).toBe('auto')
-    // A run script's preset arguments come first, so pnpm forwards the separator after the target.
-    expect(parseDesktopPackageInvocation(['mac-arm64', '--', '--build-version', 'auto'], 'darwin', 'arm64'))
-      .toMatchObject({ requestedBuildVersion: 'auto', target: { name: 'mac-arm64' } })
-    expect(parseDesktopPackageInvocation(['--', '--check'], 'darwin', 'arm64').check).toBe(true)
-    expect(() => parseDesktopPackageInvocation(['mac-arm64', '--build-version', '  '], 'darwin', 'arm64'))
+    expect(parseDesktopPackageInvocation(['win-x64', '--', '--build-version', 'auto'], 'win32', 'x64'))
+      .toMatchObject({ requestedBuildVersion: 'auto', target: { name: 'win-x64' } })
+    expect(parseDesktopPackageInvocation(['--', '--check'], 'win32', 'x64').check).toBe(true)
+    expect(() => parseDesktopPackageInvocation(['win-x64', '--build-version', '  '], 'win32', 'x64'))
       .toThrow(/--build-version requires a value/u)
   })
 
   it('keeps electron-builder publishing disabled for the separate validated upload', () => {
-    const target = resolveDesktopPackageTarget('mac-arm64', 'darwin', 'arm64')
+    const target = resolveDesktopPackageTarget('win-x64', 'win32', 'x64')
     expect(desktopElectronBuilderArguments(target, false)).toEqual([
       'exec',
       'electron-builder',
       '--config',
       'electron-builder.config.mjs',
-      '--mac',
-      '--arm64',
+      '--win',
+      '--x64',
       '--publish',
       'never',
     ])
@@ -79,8 +67,6 @@ describe('desktop package target', () => {
     expect(parseDesktopPackageInvocation(['--unsigned', '--dir'], 'win32', 'x64')).toMatchObject({
       unsigned: true, directory: true,
     })
-    expect(() => parseDesktopPackageInvocation(['mac-arm64', '--unsigned'], 'darwin', 'arm64'))
-      .toThrow(/requires win-x64/u)
     expect(() => parseDesktopPackageInvocation(['--unsigned', '--prepare-only'], 'win32', 'x64'))
       .toThrow(/cannot use --prepare-only/u)
   })
@@ -107,9 +93,6 @@ describe('desktop package target', () => {
     expect(desktopElectronBuilderEnvironment({
       DSH_DESKTOP_TARGET_PLATFORM: 'win32', ELECTRON_BUILDER_7Z_FILTER: 'ARM64',
     }, unsigned).ELECTRON_BUILDER_7Z_FILTER).toBe('BCJ')
-    expect(desktopElectronBuilderEnvironment({
-      DSH_DESKTOP_TARGET_PLATFORM: 'darwin', ELECTRON_BUILDER_7Z_FILTER: 'ARM',
-    }, unsigned).ELECTRON_BUILDER_7Z_FILTER).toBe('ARM')
   })
 
   it('keeps Windows signing fields out of build and runtime preparation subprocesses', () => {

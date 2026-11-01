@@ -70,12 +70,6 @@ def test_pep440_version_spells_a_prerelease_the_python_way() -> None:
         build_python_release.pep440_version("1.2.3-nightly")
 
 
-def test_macos_wheel_tag_does_not_claim_unsupported_node_platforms() -> None:
-    assert build_python_release.PLATFORMS["macos-arm64"][0] == "macosx_14_0_arm64"
-    assert build_python_release.PLATFORMS["macos-arm64"][1] == "deepseek-harness-sdk-runtime-macos-arm64"
-    assert build_python_release.PLATFORMS["macos-x64"][0] == "macosx_14_0_x86_64"
-    assert build_python_release.PLATFORMS["macos-x64"][1] == "deepseek-harness-sdk-runtime-macos-x64"
-
 
 def test_windows_wheel_tag_and_payload_are_x64_only() -> None:
     assert build_python_release.PLATFORMS["win-x64"] == (
@@ -87,7 +81,7 @@ def test_windows_wheel_tag_and_payload_are_x64_only() -> None:
 
 def test_platform_manifest_rejects_incomplete_entries(tmp_path: Path) -> None:
     manifest = tmp_path / "platforms.json"
-    manifest.write_text('{"macos-arm64":{"tag":"macosx_14_0_arm64"}}\n')
+    manifest.write_text('{"win-x64":{"tag":"win_amd64"}}\n')
 
     with pytest.raises(ValueError, match="tag and executable fields"):
         build_python_release.load_platforms(manifest)
@@ -111,7 +105,7 @@ def test_stage_sdk_keeps_distribution_module_and_runtime_pin_distinct(tmp_path: 
 def test_copy_package_omits_generated_carriers_before_staging_one_target(tmp_path: Path) -> None:
     source = tmp_path / "source"
     module = source / "src/deepseek_harness_runtime"
-    for path in ("runtime/macos-arm64/primary-runtime/runtime.json", "runtime/node/package.json",
+    for path in ("runtime/win-x64/primary-runtime/runtime.json", "runtime/node/package.json",
                  "runtime/deepseek-harness-sdk-runtime-win-x64.exe", "__init__.py", "_resources.py"):
         file = module / path
         file.parent.mkdir(parents=True, exist_ok=True)
@@ -123,7 +117,7 @@ def test_copy_package_omits_generated_carriers_before_staging_one_target(tmp_pat
 
 @pytest.mark.parametrize(
     ("target", "with_helper"),
-    [("linux-x64", False), ("macos-arm64", True), ("macos-x64", True), ("win-x64.exe", False)],
+    [("win-x64.exe", False)],
 )
 def test_stage_runtime_copies_platform_payload(
     tmp_path: Path, target: str, with_helper: bool
@@ -192,20 +186,17 @@ def test_stage_runtime_rejects_a_noncanonical_executable_name(tmp_path: Path) ->
 
 
 @pytest.mark.parametrize("platform_tag,selected", [
-    ("manylinux_2_28_x86_64", "wasm"), ("macosx_14_0_arm64", "darwin-arm64"),
-    ("macosx_14_0_x86_64", "darwin-x64"), ("win_amd64", "win32-x64"),
-    ("manylinux_2_28_x86_64", "linux-x64"), ("macosx_14_0_arm64", "wasm"),
+    ("win_amd64", "win32-x64"),
+    ("win_amd64", "wasm"),
 ])
-@pytest.mark.parametrize("invalid", [None, "asset", "missing-engine", "foreign-engine", "helper-mode"])
+@pytest.mark.parametrize("invalid", [None, "asset", "missing-engine", "foreign-engine"])
 def test_office_wheel_requires_only_target_engine(
     tmp_path: Path, platform_tag: str, selected: str, invalid: str | None,
 ) -> None:
     root = "runtime-office/node_modules"
     wheel = tmp_path / "office.zip"
     native = selected != "wasm"
-    if invalid == "helper-mode" and (not native or platform_tag == "win_amd64"):
-        pytest.skip("executable mode applies to POSIX native helpers")
-    engine = ({"kind": "native", "executable": "bin/helper"} if native else
+    engine = ({"kind": "native", "executable": "bin/helper.exe"} if native else
               {"kind": "wasm", "loader": "loader.cjs", "wasm": "engine.wasm", "data": "engine.data", "metadata": "fonts.json"})
     with zipfile.ZipFile(wheel, "w") as archive:
         archive.writestr(f"{root}/@deepseek-ai/libreoffice-kit/package.json", json.dumps({
@@ -218,16 +209,16 @@ def test_office_wheel_requires_only_target_engine(
             if invalid == "asset" and field == ("executable" if native else "data"):
                 continue
             asset = zipfile.ZipInfo(f"{base}/{engine[field]}")
-            asset.external_attr = (0o644 if invalid == "helper-mode" else 0o755) << 16
+            asset.external_attr = 0o755 << 16
             archive.writestr(asset, b"payload")
         if invalid == "foreign-engine":
-            foreign = "wasm" if native else "darwin-arm64"
+            foreign = "wasm" if native else "win32-arm64"
             archive.writestr(f"{root}/@deepseek-ai/libreoffice-kit-{foreign}/prebuilds.json", "{}")
     with zipfile.ZipFile(wheel) as archive:
         if invalid is None:
             build_python_release.verify_office_payload(archive, root, platform_tag)
         else:
             message = {"asset": "asset is missing", "missing-engine": "dependency is missing",
-                       "foreign-engine": "Unexpected Office engine", "helper-mode": "executable bit"}[invalid]
+                       "foreign-engine": "Unexpected Office engine"}[invalid]
             with pytest.raises(RuntimeError, match=message):
                 build_python_release.verify_office_payload(archive, root, platform_tag)

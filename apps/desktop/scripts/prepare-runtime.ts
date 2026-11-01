@@ -28,20 +28,18 @@ function preparePnpm(): string {
 async function main(): Promise<void> {
   const { values } = parseArgs({ options: { 'defer-primary-runtime-smoke': { type: 'boolean', default: false } } })
   const target = resolveDesktopBuildTarget()
-  const platform = target.startsWith('mac-') ? 'darwin' : 'win32'
-  const arch = target.endsWith('arm64') ? 'arm64' : 'x64'
+  const platform = 'win32'
+  const arch = 'x64'
   const require = createRequire(import.meta.url)
   const { version } = require('electron/package.json') as { version: string }
   const archive = await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'download:electron',
     () => downloadArtifact({ version, platform, arch, artifactName: 'electron', cacheRoot: BUILD_PATHS.downloads }))
   rmSync(BUILD_PATHS.electron, { recursive: true, force: true })
   await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'extract:electron', () => extractZip(archive, { dir: BUILD_PATHS.electron }))
-  const executable = join(BUILD_PATHS.electron, platform === 'win32' ? 'electron.exe' : 'Electron.app/Contents/MacOS/Electron')
+  const executable = join(BUILD_PATHS.electron, 'electron.exe')
   const nodeVersion = execFileSync(executable, ['-p', 'process.versions.node'], {
     encoding: 'utf8', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
   }).trim()
-  // Note: macOS minimum version can be retrieved here for future use with prepareCommandLink
-  // const macosMinimumVersion = platform === 'darwin' ? execFileSync(...).trim() : undefined
   rmSync(RUNTIME_ROOT, { recursive: true, force: true })
   mkdirSync(RUNTIME_ROOT, { recursive: true })
   const pnpmVersion = preparePnpm()

@@ -191,7 +191,7 @@ export class DesktopMandatoryUpdateWindow {
     if (this.window === undefined) {
       const parent = this.options.parent()
       if (parent === undefined) return
-      const window = this.options.overlays.create(parent, this.options.preload, this.options.locale.messages.mandatoryTitle, false)
+      const window = this.options.overlays.create(parent, this.options.preload, this.options.locale.messages.mandatoryTitle)
       this.window = window
       window.setMenu(null)
       window.on('close', (event) => { if (!this.disposed && this.options.policy().blocking) { event.preventDefault(); app.quit() } })

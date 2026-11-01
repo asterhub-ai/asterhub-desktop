@@ -78,22 +78,11 @@ it('applies package-specific rules inside scoped and nested dependency container
   expect(desktopRuntimeFileExclusion('outer/fs-ext/build/Release/fs_ext.lib', windows, 'win32-x64')).toBeUndefined()
 })
 
-it('retains native prebuilds for the selected macOS architecture', () => {
-  const mac = { platform: 'darwin' as const, arch: 'arm64' }
-  expect(desktopRuntimeFileExclusion('node-pty/prebuilds/darwin-arm64/pty.node', mac, 'darwin-arm64')).toBeUndefined()
-  expect(desktopRuntimeFileExclusion('node-pty/prebuilds/darwin-x64/pty.node', mac, 'darwin-arm64')).toBeDefined()
-  expect(desktopRuntimeFileExclusion('node-pty/prebuilds/win32-x64/conpty.node', mac, 'darwin-arm64')).toBeDefined()
-})
-
-it.each([
-  ['linux', 'x64', 'linux-x64'],
-  ['linux', 'arm64', 'wasm'],
-  ['freebsd', 'x64', 'wasm'],
-] as const)('retains only the selected Office engine for %s/%s', (platform, arch, engine) => {
-  for (const candidate of ['linux-x64', 'darwin-arm64', 'wasm']) {
+it('retains only the selected Office engine for Windows', () => {
+  for (const candidate of ['win32-x64', 'wasm']) {
     const omitted = desktopRuntimeFileExclusion(
-      `@deepseek-ai/libreoffice-kit-${candidate}/prebuilds.json`, { platform, arch }, engine,
+      `@deepseek-ai/libreoffice-kit-${candidate}/prebuilds.json`, windows, 'win32-x64',
     )
-    expect(omitted === undefined).toBe(candidate === engine)
+    expect(omitted === undefined).toBe(candidate === 'win32-x64')
   }
 })

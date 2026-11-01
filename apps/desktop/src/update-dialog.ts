@@ -88,7 +88,7 @@ export class DesktopUpdateDialog {
     clearTimeout(this.closing)
     this.closing = undefined
     const existing = this.window
-    const window = existing ?? this.overlays.create(parent, this.preload, options.title ?? locale.messages.updateTitle, false)
+    const window = existing ?? this.overlays.create(parent, this.preload, options.title ?? locale.messages.updateTitle)
     this.window = window
     this.parent = parent
     const view: UpdateDialogView = { revision: ++this.revision, locale: locale.id, title: options.title ?? '', message: options.message,

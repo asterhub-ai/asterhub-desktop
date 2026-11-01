@@ -10,7 +10,6 @@ import type { DesktopRelease } from '../src/release.ts'
 import { DESKTOP_BUILD_ROOT, developmentRuntimeDirectory, resolveDesktopBuildTarget } from './desktop-build-paths.mjs'
 import { resolveDevelopmentHome } from '../../../scripts/development-home.mjs'
 import { prepareDevelopmentProject } from './development-project.ts'
-import { prepareDevelopmentApp } from './development-app.ts'
 import { preparePrimaryRuntime } from './prepare-primary-runtime.ts'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
@@ -76,11 +75,8 @@ async function launchElectron(): Promise<void> {
   console.log(`desktop development: DSH_HOME=${home}`)
   console.log(`desktop development: userData=${userData}`)
   console.log(`desktop development: inspectors main=${String(mainPort)}, renderer=${String(rendererPort)}, host=${String(hostPort)}`)
-  if (process.platform === 'darwin') {
-    const executable = prepareDevelopmentApp({ electron, appRoot: APP_ROOT, directory: DEVELOPMENT_ROOT, home, userData,
-      mainPort, rendererPort, hostPort, openDevtools: environment.DSH_DESKTOP_OPEN_DEVTOOLS! })
-    await run(executable, [], APP_ROOT, environment)
-    return
+  if (process.platform !== 'win32') {
+    throw new Error('desktop development: Windows is the only supported desktop platform')
   }
   await run(electron, [
     `--inspect=127.0.0.1:${String(mainPort)}`,

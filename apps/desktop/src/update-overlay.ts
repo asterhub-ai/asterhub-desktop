@@ -19,12 +19,11 @@ export class DesktopUpdateOverlays {
    * @param parent - Product window whose content is blocked while the overlay is open.
    * @param preload - Isolated shell-only preload.
    * @param title - Localized window title.
-   * @param nativeModal - Use a native modal; false keeps overlays out of macOS sheets.
    * @returns A transparent child that follows its parent's bounds and visibility after loading and releases its listeners on close.
    */
-  create(parent: BrowserWindow, preload: string, title: string, nativeModal = true): BrowserWindow {
+  create(parent: BrowserWindow, preload: string, title: string): BrowserWindow {
     const window = new BrowserWindow({
-      parent, modal: nativeModal || process.platform !== 'darwin', show: false, frame: false, transparent: true,
+      parent, modal: true, show: false, frame: false, transparent: true,
       ...parent.getContentBounds(), resizable: false, minimizable: false, maximizable: false,
       skipTaskbar: true, hasShadow: false, title,
       webPreferences: { preload, contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true },
@@ -33,18 +32,6 @@ export class DesktopUpdateOverlays {
     this.inputStates.set(parent, inputState)
     inputState.active++; inputState.revision++
     window.once('closed', () => { inputState.active--; inputState.revision++ })
-    // macOS native modals animate the entire viewport as a sheet.
-    const focus = (): void => { if (!window.isDestroyed()) window.focus() }
-    const blockInput = (event: Electron.Event): void => { event.preventDefault(); focus() }
-    if (!nativeModal && process.platform === 'darwin') {
-      parent.on('focus', focus)
-      // Shell dialogs block input before product shortcut listeners can dispatch it.
-      parent.webContents.prependListener('before-input-event', blockInput)
-      window.once('closed', () => {
-        parent.off('focus', focus)
-        if (!parent.isDestroyed()) parent.webContents.off('before-input-event', blockInput)
-      })
-    }
     const follow = (): void => { if (!window.isDestroyed()) window.setBounds(parent.getContentBounds()) }
     parent.on('move', follow)
     parent.on('resize', follow)

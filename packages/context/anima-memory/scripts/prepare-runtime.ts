@@ -6,9 +6,9 @@ import { installProxyFromEnvironment } from '@deepseek-ai/dsh-http-proxy'
 const platform = process.env.DSH_DESKTOP_TARGET_PLATFORM
 const architecture = process.env.DSH_DESKTOP_TARGET_ARCH
 const destination = process.env.DSH_ANIMA_RUNTIME_DESTINATION
-if ((platform !== 'win32' && platform !== 'darwin') || (architecture !== 'x64' && architecture !== 'arm64')
+if (platform !== 'win32' || architecture !== 'x64'
   || destination === undefined || destination === '') {
-  throw new Error('Anima runtime preparation requires a supported Desktop target and destination.')
+  throw new Error('Anima runtime preparation requires a supported Desktop target (win32-x64) and destination.')
 }
 
 const controller = new AbortController()

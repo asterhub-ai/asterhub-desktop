@@ -77,7 +77,7 @@ it.each(['dsh-app://shell/plugin-manager.html', 'dsh-app://other/index.html', 'h
 })
 
 it('reads the local machine description only from the application main frame', async () => {
-  const description = 'platform=darwin; os=15.6; app_arch=arm64; cpu=Apple M4; memory_gib=32.0'
+  const description = 'platform=win32; os=10.0.26100; app_arch=x64; cpu=Intel Core; memory_gib=16.0'
   vi.stubGlobal('location', new URL('dsh-app://app/index.html'))
   electron.ipcRenderer.invoke.mockResolvedValue(description)
   await import('../src/preload-app.ts')
@@ -167,7 +167,8 @@ it('moves welcome-entry focus to the document without changing keyboard tab orde
   } finally { dom.window.close() }
 })
 
-it.each(['win32', 'darwin'] as const)('installs the embedded mandatory UI only in the Windows app document (%s)', async (platform) => {
+it('installs the embedded mandatory UI only in the Windows app document', async () => {
+  const platform = 'win32'
   vi.stubGlobal('process', { ...process, platform })
   for (const url of ['dsh-app://app/', 'dsh-app://shell/mandatory-update.html', 'https://example.com/']) {
     vi.resetModules()

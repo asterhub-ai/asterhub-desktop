@@ -1,16 +1,16 @@
-/** Locate the Java home inside supported Temurin archive layouts. */
+/** Locate the Java home inside supported Windows Temurin archive layouts. */
 
 import { lstat, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
 /**
- * Find the directory containing the Java executable, including nested macOS bundle layouts.
+ * Find the directory containing the Windows Java executable below an extracted archive root.
  * @param root - Extracted archive root.
- * @param windows - Whether the archive uses `java.exe`.
- * @returns The Java home directory containing `bin/java` or `bin/java.exe`.
+ * @param _windows - Optional compatibility parameter (Windows java.exe is always sought).
+ * @returns The Java home directory containing `bin/java.exe`.
  */
-export async function findJavaHome(root: string, windows: boolean): Promise<string> {
-  const executable = windows ? 'java.exe' : 'java'
+export async function findJavaHome(root: string, _windows = true): Promise<string> {
+  const executable = 'java.exe'
   const pending = [root]
   while (pending.length > 0) {
     const directory = pending.pop()

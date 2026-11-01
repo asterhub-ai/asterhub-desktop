@@ -92,8 +92,6 @@ Linux 普通进程和终端进程即使在 bootstrap 消费启动请求前被取
 | [`src/index.ts`](src/index.ts) | 服务接线：存活句柄集合、dispose、宿主退出最终清理、可执行文件查找 |
 | [`src/spawn.ts`](src/spawn.ts) | 共享进程管道：直接结果、保尾收集、spill 文件与 fallback spawn |
 | [`src/managed-owner.ts`](src/managed-owner.ts) | 每个普通句柄使用的私有信号与等待 owner |
-| [`src/linux-scope.ts`](src/linux-scope.ts) | Linux user-systemd 能力检查、scope 启动、信号发送与完全停稳 |
-| [`src/linux-execve.ts`](src/linux-execve.ts) | Linux libc 进程映像替换与继承标准文件描述符保留 |
 | [`src/windows-job.ts`](src/windows-job.ts) | Windows Job 能力检查与 helper 启动 |
 | [`src/runner-launch.ts`](src/runner-launch.ts) | source、built 与 packaged 私有 runner 选择 |
 | [`src/spawn-runner.ts`](src/spawn-runner.ts) | Linux 一次性 exec bootstrap 与 Windows Job runner |

@@ -16,27 +16,26 @@ async function archiveRoot(): Promise<string> {
   return root
 }
 
-describe('Temurin archive layouts', () => {
-  it('accepts archives with the executable directly under the extracted root', async () => {
+describe('Windows Temurin archive layouts', () => {
+  it('accepts archives with java.exe directly under the extracted root', async () => {
     const root = await archiveRoot()
     await mkdir(join(root, 'bin'))
-    await writeFile(join(root, 'bin', 'java'), '')
-    await expect(findJavaHome(root, false)).resolves.toBe(root)
-  })
-
-  it('finds Java inside the macOS Contents/Home bundle', async () => {
-    const root = await archiveRoot()
-    const home = join(root, 'Contents', 'Home')
-    await mkdir(join(home, 'bin'), { recursive: true })
-    await writeFile(join(home, 'bin', 'java'), '')
-    await expect(findJavaHome(root, false)).resolves.toBe(home)
+    await writeFile(join(root, 'bin', 'java.exe'), '')
+    await expect(findJavaHome(root)).resolves.toBe(root)
   })
 
   it('finds the Windows Java executable below an archive wrapper', async () => {
     const root = await archiveRoot()
-    const home = join(root, 'jdk')
+    const home = join(root, 'jdk-21-jre')
     await mkdir(join(home, 'bin'), { recursive: true })
     await writeFile(join(home, 'bin', 'java.exe'), '')
-    await expect(findJavaHome(root, true)).resolves.toBe(home)
+    await expect(findJavaHome(root)).resolves.toBe(home)
+  })
+
+  it('throws when the archive does not contain java.exe', async () => {
+    const root = await archiveRoot()
+    await mkdir(join(root, 'bin'))
+    await writeFile(join(root, 'bin', 'other.exe'), '')
+    await expect(findJavaHome(root)).rejects.toThrow('The verified Java archive did not contain its expected executable.')
   })
 })

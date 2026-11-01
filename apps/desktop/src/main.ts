@@ -47,7 +47,6 @@ import { DesktopUpdatePreparationError } from './update-error.ts'
 import { DesktopUpdateSchedule, resolveDesktopUpdateScheduleConfig } from './update-schedule.ts'
 import { desktopUpdateErrorSummary, presentDesktopUpdate } from './update-presentation.ts'
 import { desktopErrorState } from './startup-error.ts'
-import { readDesktopLoginShellEnvironment, resolveDesktopLoginShellConfig } from './login-shell-environment.ts'
 import { DesktopMandatoryUpdatePolicy, resolveDesktopPolicyConfig, type DesktopPolicyState } from './mandatory-update-policy.ts'
 import { desktopClientMetadata, desktopClientVersion } from './client-metadata.ts'
 import { DesktopMandatoryUpdateWindow } from './mandatory-update-window.ts'
@@ -218,22 +217,11 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
     minWidth: 520,
     minHeight: 600,
     show,
-    ...(process.platform === 'win32' && primary ? {
+    ...(primary ? {
       icon: desktopIconPath(),
       titleBarStyle: 'hidden' as const,
       titleBarOverlay: { height: WINDOWS_TITLEBAR_HEIGHT, color: chromeFallbackFill(),
         symbolColor: nativeTheme.shouldUseDarkColors ? '#f9fafb' : '#0f1115' },
-    } : {}),
-    // hiddenInset places traffic lights inside the sidebar; sidebar vibrancy
-    // needs a transparent window background to show through the page.
-    ...(process.platform === 'darwin' ? {
-      titleBarStyle: 'hiddenInset' as const,
-      trafficLightPosition: { x: 16, y: 18 },
-      vibrancy: 'sidebar' as const,
-      // 'active' keeps the vibrancy material stable when the window blurs;
-      // 'followWindow' washes the sidebar out behind an unfocused window.
-      visualEffectState: 'active' as const,
-      backgroundColor: '#00000000',
     } : {}),
     webPreferences: {
       preload,
@@ -249,39 +237,15 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
     if (['http:', 'https:'].includes(new URL(url).protocol)) void shell.openExternal(url)
     return { action: 'deny' }
   })
-  if (process.platform === 'darwin' || process.platform === 'win32') {
-    // Fullscreen hides native window controls; overlays drop their caption clearance.
-    const sendFullscreen = (): void => {
-      if (!window.isDestroyed()) window.webContents.send(DESKTOP_IPC.windowFullscreen, window.isFullScreen())
-    }
-    window.on('enter-full-screen', sendFullscreen)
-    window.on('leave-full-screen', sendFullscreen)
-    // Reloads and navigations re-register the preload listener; resend the
-    // current state so a fullscreen reload does not fall back to windowed CSS.
-    window.webContents.on('did-finish-load', sendFullscreen)
+  // Fullscreen hides native window controls; overlays drop their caption clearance.
+  const sendFullscreen = (): void => {
+    if (!window.isDestroyed()) window.webContents.send(DESKTOP_IPC.windowFullscreen, window.isFullScreen())
   }
-  if (process.platform === 'darwin') {
-    // Deminiaturize reattaches the NSVisualEffectView material late
-    // (electron/electron#25368), so a transparent window shows the desktop
-    // through the sidebar until then. Paint an opaque base while minimized or
-    // hidden so the deminiaturize animation and the reattachment gap show a
-    // solid fill; restoring flips back, and the null -> 'sidebar' transition
-    // forces the material to reattach.
-    const applyBackdrop = (): void => {
-      if (window.isDestroyed()) return
-      if (window.isMinimized() || !window.isVisible()) {
-        window.setVibrancy(null)
-        window.setBackgroundColor(chromeFallbackFill())
-      } else {
-        window.setVibrancy('sidebar')
-        window.setBackgroundColor('#00000000')
-      }
-    }
-    window.on('minimize', applyBackdrop)
-    window.on('hide', applyBackdrop)
-    window.on('restore', applyBackdrop)
-    window.on('show', applyBackdrop)
-  }
+  window.on('enter-full-screen', sendFullscreen)
+  window.on('leave-full-screen', sendFullscreen)
+  // Reloads and navigations re-register the preload listener; resend the
+  // current state so a fullscreen reload does not fall back to windowed CSS.
+  window.webContents.on('did-finish-load', sendFullscreen)
   window.webContents.on('context-menu', (_event, { isEditable, selectionText, editFlags }) => {
     const items: MenuItemConstructorOptions[] = []
     if (isEditable) {
@@ -334,18 +298,8 @@ async function main(): Promise<void> {
     : join(process.resourcesPath, 'runtime', 'primary-runtime')
   const activeProject = paths.profile
   const manager = new DesktopProjectManager(paths, resources)
-  // Dock and Finder launches inherit only launchd's environment; every Host shares one login-shell read.
-  const loginShellRead = new AbortController()
-  // The probe runs in its own process group, which outlives Desktop unless the read is aborted.
-  app.on('will-quit', () => { loginShellRead.abort() })
-  const loginShell = readDesktopLoginShellEnvironment(process.env, resolveDesktopLoginShellConfig(process.env), {
-    signal: loginShellRead.signal,
-  }).then((result) => {
-    for (const failure of result.failures) console.warn(`desktop login shell: ${failure.shell} failed (${failure.reason})`)
-    return result.environment
-  })
-  let hostEnvironment: NodeJS.ProcessEnv = process.env
-  const prepareHostEnvironment = async (): Promise<void> => { hostEnvironment = await loginShell }
+  const hostEnvironment: NodeJS.ProcessEnv = process.env
+  const prepareHostEnvironment = async (): Promise<void> => {}
   let quitting = false
   let startup: Promise<void> | undefined
   let workspaceRecovery: Promise<void> | undefined
@@ -436,7 +390,7 @@ async function main(): Promise<void> {
     return next.promise
   }
   const platformView = new DesktopPlatformView(join(app.getAppPath(), 'lib', 'preload-platform-account.cjs'),
-    () => locale.id === 'zh-CN' ? 'zh_CN' : 'en_US', process.platform === 'win32' ? 'win32' : 'darwin')
+    () => locale.id === 'zh-CN' ? 'zh_CN' : 'en_US', 'win32')
   const backend = new DesktopBackendController((onFailure) => {
     const hostInspectPort = developmentHostInspectPort(development)
     const hostEnvironmentForBackend = {
@@ -464,9 +418,6 @@ async function main(): Promise<void> {
       },
       (operation, value) => {
         if (!safeStorage.isEncryptionAvailable()) throw new Error('OS credential encryption is unavailable')
-        if (process.platform === 'linux' && ['basic_text', 'unknown'].includes(safeStorage.getSelectedStorageBackend())) {
-          throw new Error('A system password manager is required for encrypted credentials')
-        }
         return operation === 'encrypt'
           ? safeStorage.encryptString(value).toString('base64')
           : safeStorage.decryptString(Buffer.from(value, 'base64'))
@@ -706,8 +657,7 @@ async function main(): Promise<void> {
   installDesktopDirectoryPicker(() => mainWindow)
   installMicrophonePermissions(session.defaultSession, () => mainWindow?.webContents)
   const shortcuts = installDesktopShortcuts(() => mainWindow, app.getPath('userData'),
-    process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : 'linux', () => { refreshApplicationMenu() }, window => updateOverlays.input(window))
-  app.on('will-quit', () => { shortcuts.dispose() })
+    'windows', () => { refreshApplicationMenu() }, window => updateOverlays.input(window))
 
   ipcMain.handle(DESKTOP_IPC.boot, async (event) => {
     assertDesktopSender(event, ['app'])
@@ -1015,26 +965,13 @@ async function main(): Promise<void> {
   // A custom application menu replaces Electron's default menu, so macOS needs
   // its standard menus and application hide commands declared explicitly.
   // Keep app.name stable: Electron derives its default userData directory from it.
-  const darwin = process.platform === 'darwin'
-  const platformMenus = (): MenuItemConstructorOptions[] => darwin
-    ? [shortcuts.fileMenu(currentDesktopLocale().messages), { role: 'editMenu' }, { role: 'windowMenu' }]
-    : [{ role: 'editMenu' }]
-  const hideCommands: MenuItemConstructorOptions[] = darwin
-    ? [{ role: 'hide', label: currentDesktopLocale().messages.hideApplication },
-      { role: 'hideOthers', label: currentDesktopLocale().messages.hideOtherApplications },
-      { role: 'unhide', label: currentDesktopLocale().messages.showAllApplications }, { type: 'separator' }]
-    : []
   const sendAccountCommand = (command: 'open' | 'logout'): void => {
     if (mainWindow === undefined || mainWindow.isDestroyed()) return
     mainWindow.webContents.send(DESKTOP_IPC.accountCommand, command)
   }
   const applicationItems = (): MenuItemConstructorOptions[] => [
-    // Windows has no system About panel; Electron's fallback is a plain
-    // message box, so the shell shows its own dimmed dialog instead.
-    process.platform === 'win32'
-      ? { label: currentDesktopLocale().messages.aboutMenu,
-        click: () => { void showAbout().catch((error: unknown) => { console.error(error) }) } }
-      : { label: currentDesktopLocale().messages.aboutMenu, role: 'about' },
+    { label: currentDesktopLocale().messages.aboutMenu,
+      click: () => { void showAbout().catch((error: unknown) => { console.error(error) }) } },
     { type: 'separator' },
     {
       label: currentDesktopLocale().messages.accountMenu,
@@ -1055,34 +992,24 @@ async function main(): Promise<void> {
       } },
     ] : [],
     { type: 'separator' },
-    ...hideCommands,
-    { role: 'quit', ...(darwin ? { label: currentDesktopLocale().messages.quitApplication }
-      : process.platform === 'win32' ? { label: currentDesktopLocale().messages.exitApplication } : {}) },
+    { role: 'quit', label: currentDesktopLocale().messages.exitApplication },
   ]
   const devToolsItems: MenuItemConstructorOptions[] = [
     { role: 'toggleDevTools', visible: false },
     { role: 'toggleDevTools', visible: false, accelerator: 'F12' },
   ]
   const refreshApplicationMenu = (): void => {
-    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32' ? devToolsItems : [{
-      label: darwin ? app.name : currentDesktopLocale().messages.application,
-      submenu: [...applicationItems(), ...devToolsItems],
-    }, ...platformMenus()]))
+    Menu.setApplicationMenu(Menu.buildFromTemplate(devToolsItems))
     tray?.relabel()
   }
   refreshApplicationMenu()
   const trayIconPath = development ? join(app.getAppPath(), 'resources', 'tray-windows.ico') : join(process.resourcesPath, 'tray.ico')
-  if (process.platform === 'win32') {
-    // The tray is the way back to a hidden window; without it, relaunching the application still focuses it.
-    try {
-      tray = new DesktopTray({ iconPath: trayIconPath, locale: currentDesktopLocale,
-        open: () => { focusPrimaryWindow() }, quit: () => { app.quit() } })
-    } catch (error) { console.warn('desktop tray: unavailable', error) }
-  }
-  const backgroundNotice = process.platform === 'win32'
-    ? new DesktopBackgroundNotice({ markerPath: join(app.getPath('userData'), 'background-close-confirmed'),
-      locale: () => locale, show: ordinaryMessageBox, focus: () => { updateDialog.focus() } })
-    : undefined
+  try {
+    tray = new DesktopTray({ iconPath: trayIconPath, locale: currentDesktopLocale,
+      open: () => { focusPrimaryWindow() }, quit: () => { app.quit() } })
+  } catch (error) { console.warn('desktop tray: unavailable', error) }
+  const backgroundNotice = new DesktopBackgroundNotice({ markerPath: join(app.getPath('userData'), 'background-close-confirmed'),
+    locale: () => locale, show: ordinaryMessageBox, focus: () => { updateDialog.focus() } })
   const quitConfirmation = new DesktopQuitConfirmation({
     locale: () => locale,
     inspect: () => backend.host?.inspectQuit(),
@@ -1090,67 +1017,59 @@ async function main(): Promise<void> {
     show: options => dialog.showMessageBox(options),
     // macOS raises the open alert with the application; Electron exposes no handle to the Windows task
     // dialog, so a repeated request there only joins the open decision.
-    focus: () => { if (process.platform === 'darwin') app.focus({ steal: true }) },
+    focus: () => {},
     // The task dialog draws its main icon at the system icon size; the multi-size ICO yields that
     // size directly, where the 1024 px PNG would be scaled down by GDI.
-    ...(process.platform === 'win32' ? { icon: nativeImage.createFromPath(trayIconPath) } : {}),
+    icon: nativeImage.createFromPath(trayIconPath),
   })
 
-  if (process.platform === 'win32') {
-    ipcMain.handle(DESKTOP_IPC.windowsMenu, (event, name: unknown, x: unknown, y: unknown) => {
-      assertDesktopSender(event, ['app'])
-      if (mainWindow === undefined || event.sender !== mainWindow.webContents
+  ipcMain.handle(DESKTOP_IPC.windowsMenu, (event, name: unknown, x: unknown, y: unknown) => {
+    assertDesktopSender(event, ['app'])
+    if (mainWindow === undefined || event.sender !== mainWindow.webContents
         || event.senderFrame !== mainWindow.webContents.mainFrame) throw new Error('desktop menu: rejected sender')
-      if ((name !== 'application' && name !== 'edit')
+    if ((name !== 'application' && name !== 'edit')
         || typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)
         || x < 0 || y < 0 || x > 100_000 || y > 100_000) throw new Error('desktop menu: invalid popup request')
-      const window = mainWindow
-      // Editor-owned history listens to key events rather than Chromium's native undo stack.
-      const editItem = (label: string, keyCode: string, modifiers: Array<'control'>, accelerator?: string): MenuItemConstructorOptions => ({
-        label,
-        ...(accelerator === undefined ? {} : { accelerator }),
-        click: () => {
-          shortcuts.sendEditingKey(keyCode, modifiers)
-        },
-      })
-      const items: MenuItemConstructorOptions[] = name === 'application' ? applicationItems() : [
-        editItem(currentDesktopLocale().messages.undo, 'Z', ['control'], 'Ctrl+Z'),
-        editItem(currentDesktopLocale().messages.redo, 'Y', ['control'], 'Ctrl+Y'),
-        { type: 'separator' },
-        editItem(currentDesktopLocale().messages.cut, 'X', ['control'], 'Ctrl+X'),
-        editItem(currentDesktopLocale().messages.copy, 'C', ['control'], 'Ctrl+C'),
-        editItem(currentDesktopLocale().messages.paste, 'V', ['control'], 'Ctrl+V'),
-        editItem(currentDesktopLocale().messages.delete, 'Delete', []),
-        { type: 'separator' },
-        editItem(currentDesktopLocale().messages.selectAll, 'A', ['control'], 'Ctrl+A'),
-      ]
-      const zoom = mainWindow.webContents.getZoomFactor()
-      return new Promise<void>((resolve) => {
-        Menu.buildFromTemplate(items).popup({ window, x: Math.round(x * zoom), y: Math.round(y * zoom), callback: resolve })
-      })
+    const window = mainWindow
+    // Editor-owned history listens to key events rather than Chromium's native undo stack.
+    const editItem = (label: string, keyCode: string, modifiers: Array<'control'>, accelerator?: string): MenuItemConstructorOptions => ({
+      label,
+      ...(accelerator === undefined ? {} : { accelerator }),
+      click: () => {
+        shortcuts.sendEditingKey(keyCode, modifiers)
+      },
     })
-    ipcMain.on(DESKTOP_IPC.windowsAppearance, (event, language: unknown, color: unknown, symbolColor: unknown) => {
-      if (mainWindow === undefined || event.sender !== mainWindow.webContents
+    const items: MenuItemConstructorOptions[] = name === 'application' ? applicationItems() : [
+      editItem(currentDesktopLocale().messages.undo, 'Z', ['control'], 'Ctrl+Z'),
+      editItem(currentDesktopLocale().messages.redo, 'Y', ['control'], 'Ctrl+Y'),
+      { type: 'separator' },
+      editItem(currentDesktopLocale().messages.cut, 'X', ['control'], 'Ctrl+X'),
+      editItem(currentDesktopLocale().messages.copy, 'C', ['control'], 'Ctrl+C'),
+      editItem(currentDesktopLocale().messages.paste, 'V', ['control'], 'Ctrl+V'),
+      editItem(currentDesktopLocale().messages.delete, 'Delete', []),
+      { type: 'separator' },
+      editItem(currentDesktopLocale().messages.selectAll, 'A', ['control'], 'Ctrl+A'),
+    ]
+    const zoom = mainWindow.webContents.getZoomFactor()
+    return new Promise<void>((resolve) => {
+      Menu.buildFromTemplate(items).popup({ window, x: Math.round(x * zoom), y: Math.round(y * zoom), callback: resolve })
+    })
+  })
+  ipcMain.on(DESKTOP_IPC.windowsAppearance, (event, language: unknown, color: unknown, symbolColor: unknown) => {
+    if (mainWindow === undefined || event.sender !== mainWindow.webContents
         || event.senderFrame !== mainWindow.webContents.mainFrame) return
-      if (!event.senderFrame.url.startsWith(`${SCHEME}://app/`)) return
-      if (typeof language === 'string' && /^[a-zA-Z]+(?:-[a-zA-Z0-9]+)*$/u.test(language)) {
-        windowsLanguage = language
-      }
-      // Empty colors precede client stylesheet installation; only CSS color values cross IPC.
-      const validColor = (value: unknown): value is string => typeof value === 'string'
+    if (!event.senderFrame.url.startsWith(`${SCHEME}://app/`)) return
+    if (typeof language === 'string' && /^[a-zA-Z]+(?:-[a-zA-Z0-9]+)*$/u.test(language)) {
+      windowsLanguage = language
+    }
+    // Empty colors precede client stylesheet installation; only CSS color values cross IPC.
+    const validColor = (value: unknown): value is string => typeof value === 'string'
         && /^(?:#[\da-f]{3,8}|rgba?\([\d.,%\s]+\))$/iu.test(value)
-      if (validColor(color) && validColor(symbolColor)) mainWindow.setTitleBarOverlay({ color, symbolColor })
-    })
-  }
+    if (validColor(color) && validColor(symbolColor)) mainWindow.setTitleBarOverlay({ color, symbolColor })
+  })
 
   const hideMainWindow = (window: BrowserWindow): void => {
-    if (process.platform === 'darwin' && window.isFullScreen()) {
-      // Hiding a fullscreen window leaves an empty black space; leave fullscreen first.
-      window.once('leave-full-screen', () => { if (!window.isDestroyed()) window.hide() })
-      window.setFullScreen(false)
-    } else {
-      window.hide()
-    }
+    window.hide()
   }
   const createMainWindow = (): BrowserWindow => {
     const window = createWindow(appPreload, false, true)
@@ -1169,16 +1088,9 @@ async function main(): Promise<void> {
       if (backgroundNotice === undefined) hide()
       else backgroundNotice.close(hide)
     })
-    if (process.platform === 'win32') {
-      // Shutdown, restart, and log-off must not wait on a confirmation. query-session-end is only a
-      // question that another application can veto without any follow-up message, so it does not count.
-      window.on('session-end', () => { sessionEnding = true })
-    } else {
-      // The macOS power-off notification arrives before the terminate request; a cancelled shutdown
-      // leaves the process running, and user attention on the window shows the session continues.
-      window.on('focus', () => { sessionEnding = false })
-      window.on('show', () => { sessionEnding = false })
-    }
+    // Shutdown, restart, and log-off must not wait on a confirmation. query-session-end is only a
+    // question that another application can veto without any follow-up message, so it does not count.
+    window.on('session-end', () => { sessionEnding = true })
     window.on('closed', () => { if (mainWindow === window) mainWindow = undefined })
     window.webContents.on('console-message', (details) => {
       if (details.level !== 'error') return
@@ -1276,8 +1188,7 @@ async function main(): Promise<void> {
         if (enteredWorkspace || recovery.active) return
         // Nothing runs before the workspace opens. macOS keeps the Dock convention and drops the
         // unused main window so the next activation rebuilds the welcome; elsewhere the close quits.
-        if (process.platform === 'darwin') mainWindow?.destroy()
-        else app.quit()
+        app.quit()
       })
       if (isQuitting() || recovery.active || enteredWorkspace) window.close()
       else mainWindow?.hide()
@@ -1326,9 +1237,8 @@ async function main(): Promise<void> {
     if (!hasVisibleWindows) focusPrimaryWindow()
   })
   app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit()
+    app.quit()
   })
-  if (process.platform !== 'win32') powerMonitor.on('shutdown', () => { sessionEnding = true })
   const finishQuit = (): void => {
     quitting = true
     shuttingDown = true
@@ -1385,10 +1295,10 @@ async function main(): Promise<void> {
         () => mandatoryUI?.confirmationWindow ?? currentDialogWindow(),
         (event) => { console.info(`desktop policy authentication: ${event}`); updateJournal?.action(`policy-login-${event}`) })
     }
-    if (!['win32', 'darwin'].includes(process.platform) || !['x64', 'arm64'].includes(process.arch)) throw new Error('desktop policy: unsupported platform')
+    if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('desktop policy: unsupported platform')
     let wasBlocking = false
     mandatoryPolicy = new DesktopMandatoryUpdatePolicy(policyConfig, {
-      platform: process.platform as 'win32' | 'darwin', arch: process.arch as 'x64' | 'arm64',
+      platform: 'win32', arch: 'x64',
       bundledDshVersion: readDesktopRuntime(resources.dsh).release.version,
     }, (state) => {
       if (state.error !== 'authentication-required') policyAuthenticationQueued = false

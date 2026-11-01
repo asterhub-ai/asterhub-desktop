@@ -22,7 +22,6 @@ export interface DesktopTargetBuildPaths {
   readonly electron: string
   readonly packedDsh: string
   readonly packedVendor: string
-  readonly packedLandlock: string
   readonly downloads: string
 }
 
@@ -61,8 +60,8 @@ export function desktopTargetBuildPaths(target: DesktopAutoUpdateTarget, layout?
  * @returns Platform and architecture of the prepared payload.
  */
 export function desktopTargetPlatform(target: DesktopAutoUpdateTarget): {
-  readonly platform: 'darwin' | 'win32'
-  readonly arch: 'arm64' | 'x64'
+  readonly platform: 'win32'
+  readonly arch: 'x64'
 }
 
 /**

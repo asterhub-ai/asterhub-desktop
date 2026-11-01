@@ -1,14 +1,10 @@
 import { EventEmitter } from 'node:events'
 import { spawnSync } from 'node:child_process'
 import {
-  existsSync,
   mkdtempSync,
   mkdirSync,
-  readdirSync,
   rmSync,
-  statSync,
   symlinkSync,
-  unlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -20,17 +16,11 @@ import type {
   NativePtr,
 } from '@deepseek-ai/dsh-win32-process'
 import {
-  cleanupLinuxLaunchFiles,
-  consumeLinuxLaunchRequest,
-  createLinuxLaunchFiles,
   deserializeRunnerError,
   isWindowsTerminateRequest,
-  linuxLaunchFilesFromLocator,
   parseWindowsRunnerResult,
   parseWindowsStartRequest,
-  readLinuxStartupError,
   serializeRunnerError,
-  writeLinuxStartupError,
 } from '../src/runner-protocol.ts'
 import {
   consumeRunnerSelection,
@@ -57,10 +47,6 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function track<T extends { directory: string }>(files: T): T {
-  scratch.push(files.directory)
-  return files
-}
 
 class FakeRunnerHost extends EventEmitter {
   env: NodeJS.ProcessEnv = { [SUBPROCESS_RUNNER_ENV]: 'stale', SAFE: 'bootstrap' }
@@ -92,7 +78,6 @@ function hostArgument(host: FakeRunnerHost): Parameters<typeof runSpawnRunner>[2
 
 function internals(overrides: Partial<SpawnRunnerInternals> = {}): SpawnRunnerInternals {
   return {
-    execve: vi.fn(() => { throw Object.assign(new Error('missing'), { code: 'ENOENT' }) }),
     loadWin32ProcessBindings: vi.fn(() => ({} as CurrentTokenProcessBindings)),
     spawnCurrentTokenJobProcess: vi.fn(() => ({
       pid: 123,
@@ -126,79 +111,13 @@ async function runWindows(
 }
 
 describe('closed runner protocol', () => {
-  it('preserves the explicit control request and rejects other transport values', () => {
-    const files = track(createLinuxLaunchFiles({ cwd: '/target', env: {}, control: 'pipe' }))
-    expect(consumeLinuxLaunchRequest(files.requestPath)).toEqual({ cwd: '/target', env: {}, control: 'pipe' })
+  it('preserves the explicit control request and rejects other transport values on Windows', () => {
     expect(parseWindowsStartRequest({ type: 'start', cwd: 'C:\\target', env: {}, control: 'pipe' }))
       .toEqual({ type: 'start', cwd: 'C:\\target', env: {}, control: 'pipe' })
-    const invalid = track(createLinuxLaunchFiles({ cwd: '/target', env: {} }))
-    writeFileSync(invalid.requestPath, JSON.stringify({ cwd: '/target', env: {}, control: 'ipc' }))
-    expect(() => consumeLinuxLaunchRequest(invalid.requestPath)).toThrow('invalid Linux launch request')
     expect(() => parseWindowsStartRequest({ type: 'start', cwd: 'C:\\target', env: {}, control: 'ipc' })).toThrow()
   })
 
-  it('creates, consumes, reports through, and cleans one private Linux exchange', () => {
-    const files = track(createLinuxLaunchFiles({ cwd: '/target', env: { A: '1' } }))
-    if (process.platform !== 'win32') {
-      expect(statSync(files.directory).mode & 0o777).toBe(0o700)
-      expect(statSync(files.requestPath).mode & 0o777).toBe(0o600)
-    }
-    expect(linuxLaunchFilesFromLocator(files.requestPath)).toEqual(files)
-    expect(consumeLinuxLaunchRequest(files.requestPath)).toEqual({ cwd: '/target', env: { A: '1' } })
-    expect(existsSync(files.requestPath)).toBe(false)
-
-    const failure = Object.assign(new Error('spawn missing'), {
-      name: 'SpawnError', code: 'ENOENT', errno: -2, syscall: 'spawn tool', path: 'tool', spawnargs: ['x'],
-    })
-    writeLinuxStartupError(files, { type: 'error', error: serializeRunnerError(failure) })
-    if (process.platform !== 'win32') {
-      expect(statSync(files.startupErrorPath).mode & 0o777).toBe(0o600)
-    }
-    const result = readLinuxStartupError(files.startupErrorPath)
-    expect(result).toEqual({
-      type: 'error',
-      error: {
-        name: 'SpawnError', message: 'spawn missing', code: 'ENOENT', syscall: 'spawn tool', path: 'tool',
-      },
-    })
-    expect(deserializeRunnerError(result!.error)).toMatchObject({
-      name: 'SpawnError', message: 'spawn missing', code: 'ENOENT', syscall: 'spawn tool', path: 'tool',
-    })
-    cleanupLinuxLaunchFiles(files)
-    expect(existsSync(files.directory)).toBe(false)
-  })
-
-  it('removes the private directory when request creation fails partway through', () => {
-    const isolatedTmp = mkdtempSync(join(tmpdir(), 'dsh-launch-failure-spec-'))
-    vi.stubEnv('TMPDIR', isolatedTmp)
-    vi.stubEnv('TMP', isolatedTmp)
-    vi.stubEnv('TEMP', isolatedTmp)
-    try {
-      const stringify = vi.spyOn(JSON, 'stringify').mockImplementationOnce(() => {
-        throw new Error('request serialization failed')
-      })
-      expect(() => createLinuxLaunchFiles({ cwd: '/target', env: {} })).toThrow('request serialization failed')
-      stringify.mockRestore()
-      expect(readdirSync(isolatedTmp)).toEqual([])
-    } finally {
-      vi.unstubAllEnvs()
-      rmSync(isolatedTmp, { recursive: true, force: true })
-    }
-  })
-
-  it('strictly rejects malformed Linux and Windows messages', () => {
-    const files = track(createLinuxLaunchFiles({ cwd: '/ok', env: {} }))
-    writeFileSync(files.requestPath, JSON.stringify({ cwd: '/ok', env: {}, extra: true }))
-    expect(() => consumeLinuxLaunchRequest(files.requestPath)).toThrow('invalid Linux launch request')
-    expect(() => linuxLaunchFilesFromLocator('relative.json')).toThrow('invalid Linux launch-request locator')
-    expect(readLinuxStartupError(files.startupErrorPath)).toBeUndefined()
-    writeFileSync(files.startupErrorPath, 'null')
-    expect(() => readLinuxStartupError(files.startupErrorPath)).toThrow('invalid startup error')
-    writeFileSync(files.startupErrorPath, JSON.stringify({
-      type: 'unknown', error: { name: 'Error', message: 'bad' },
-    }))
-    expect(() => readLinuxStartupError(files.startupErrorPath)).toThrow('unknown error result')
-
+  it('strictly rejects malformed Windows messages', () => {
     expect(parseWindowsStartRequest({ type: 'start', cwd: 'C:\\x', env: { A: '1' } })).toEqual({
       type: 'start', cwd: 'C:\\x', env: { A: '1' },
     })
@@ -222,31 +141,6 @@ describe('closed runner protocol', () => {
       { type: 'runner-error', error: { name: 'Error', message: 'bad' } },
       { type: 'error', error: { name: 'Error', message: 'bad', cause: {} } },
     ]) expect(() => parseWindowsRunnerResult(invalid)).toThrow()
-  })
-
-  it('contains cleanup failures and removes a substituted symlink only', () => {
-    const files = track(createLinuxLaunchFiles({ cwd: '/ok', env: {} }))
-    cleanupLinuxLaunchFiles(files)
-    cleanupLinuxLaunchFiles(files)
-
-    const target = join(tmpdir(), `dsh-runner-cleanup-target-${String(process.pid)}`)
-    const link = join(tmpdir(), `dsh-runner-cleanup-link-${String(process.pid)}`)
-    scratch.push(target, link)
-    mkdirSync(target, { recursive: true })
-    symlinkSync(target, link)
-    cleanupLinuxLaunchFiles({
-      directory: link,
-      requestPath: join(link, 'launch-request.json'),
-      startupErrorPath: join(link, 'startup-error.json'),
-    })
-    expect(existsSync(link)).toBe(false)
-    expect(existsSync(target)).toBe(true)
-
-    const blocked = track(createLinuxLaunchFiles({ cwd: '/ok', env: {} }))
-    unlinkSync(blocked.requestPath)
-    mkdirSync(blocked.requestPath)
-    cleanupLinuxLaunchFiles(blocked)
-    expect(existsSync(blocked.directory)).toBe(true)
   })
 })
 
@@ -462,163 +356,6 @@ describe('runner launch inputs', () => {
   })
 })
 
-describe('Linux one-shot exec bootstrap', () => {
-  it('uses final cwd/env PATH while preserving the original argv', async () => {
-    const files = track(createLinuxLaunchFiles({
-      cwd: '/final/work',
-      env: { PATH: 'relative::/absolute', [SUBPROCESS_RUNNER_ENV]: 'target-value' },
-    }))
-    const host = new FakeRunnerHost()
-    const execve = vi.fn((_file: string, _argv: string[], _env: Record<string, string>) => {
-      throw Object.assign(new Error('not found'), { code: 'ENOENT' })
-    })
-    await runSpawnRunner(files.requestPath, ['--', 'tool', 'literal arg'], hostArgument(host), internals({ execve }))
-    expect(host.directory).toBe('/final/work')
-    expect(host.env[SUBPROCESS_RUNNER_ENV]).toBeUndefined()
-    expect(execve.mock.calls.map(call => call[0])).toEqual([
-      '/final/work/relative/tool',
-      '/final/work/tool',
-      '/absolute/tool',
-    ])
-    expect(execve.mock.calls[0]?.[1]).toEqual(['tool', 'literal arg'])
-    expect(execve.mock.calls[0]?.[2]).toMatchObject({ [SUBPROCESS_RUNNER_ENV]: 'target-value' })
-    expect(readLinuxStartupError(files.startupErrorPath)).toMatchObject({
-      type: 'error',
-      error: {
-        name: 'Error',
-        message: 'spawn tool ENOENT',
-        code: 'ENOENT',
-        syscall: 'spawn tool',
-        path: 'tool',
-      },
-    })
-  })
-
-  it('resolves relative PATH entries from the cwd after chdir', async () => {
-    const files = track(createLinuxLaunchFiles({ cwd: 'work', env: { PATH: 'bin:' } }))
-    const host = new FakeRunnerHost()
-    host.directory = '/base'
-    const execve = vi.fn((_file: string, _argv: string[], _env: Record<string, string>): never => {
-      throw Object.assign(new Error('not found'), { code: 'ENOENT' })
-    })
-    await runSpawnRunner(files.requestPath, ['--', 'tool'], hostArgument(host), internals({ execve }))
-    expect(host.directory).toBe('/base/work')
-    expect(execve.mock.calls.map(call => call[0])).toEqual([
-      '/base/work/bin/tool',
-      '/base/work/tool',
-    ])
-
-    const rootFiles = track(createLinuxLaunchFiles({ cwd: '/', env: { PATH: '' } }))
-    const rootExecve = vi.fn((): never => {
-      throw Object.assign(new Error('not found'), { code: 'ENOENT' })
-    })
-    await runSpawnRunner(
-      rootFiles.requestPath,
-      ['--', 'tool'],
-      hostArgument(new FakeRunnerHost()),
-      internals({ execve: rootExecve }),
-    )
-    expect(rootExecve).toHaveBeenCalledWith('/tool', ['tool'], { PATH: '' })
-  })
-
-  it.skipIf(process.platform === 'win32')('preserves symlink-sensitive parent traversal in PATH candidates', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'dsh-linux-path-symlink-'))
-    scratch.push(root)
-    const cwd = join(root, 'cwd')
-    const target = join(root, 'target')
-    mkdirSync(cwd)
-    mkdirSync(join(target, 'child'), { recursive: true })
-    writeFileSync(join(target, 'tool'), '')
-    symlinkSync(join(target, 'child'), join(cwd, 'link'), 'dir')
-    const files = track(createLinuxLaunchFiles({ cwd, env: { PATH: 'link/..' } }))
-    const execve = vi.fn((file: string): never => {
-      throw Object.assign(new Error(existsSync(file) ? 'selected' : 'not found'), {
-        code: existsSync(file) ? 'EIO' : 'ENOENT',
-      })
-    })
-    await runSpawnRunner(files.requestPath, ['--', 'tool'], hostArgument(new FakeRunnerHost()), internals({ execve }))
-    expect(execve).toHaveBeenCalledWith(`${cwd}/link/../tool`, ['tool'], { PATH: 'link/..' })
-    expect(readLinuxStartupError(files.startupErrorPath)).toMatchObject({
-      type: 'error', error: { code: 'EIO' },
-    })
-  })
-
-  it.each([undefined, 'pipe'] as const)('retries ENOEXEC through /bin/sh with control %s', async (control) => {
-    const files = track(createLinuxLaunchFiles({ cwd: '/work', env: { PATH: 'bin' }, ...control === undefined ? {} : { control } }))
-    const execve = vi.fn()
-      .mockImplementationOnce(() => { throw Object.assign(new Error('exec format'), { code: 'ENOEXEC' }) })
-      .mockImplementationOnce(() => { throw Object.assign(new Error('shell failed'), { code: 'EIO' }) })
-    await runSpawnRunner(
-      files.requestPath,
-      ['--', 'tool', 'literal arg'],
-      hostArgument(new FakeRunnerHost()),
-      internals({ execve: execve as never }),
-    )
-    expect(execve.mock.calls).toEqual([
-      ['/work/bin/tool', ['tool', 'literal arg'], { PATH: 'bin' }, ...control === undefined ? [] : [control]],
-      ['/bin/sh', ['/bin/sh', '/work/bin/tool', 'literal arg'], { PATH: 'bin' }, ...control === undefined ? [] : [control]],
-    ])
-    expect(readLinuxStartupError(files.startupErrorPath)).toMatchObject({
-      type: 'error', error: { code: 'EIO', path: 'tool' },
-    })
-  })
-
-  it('uses the default PATH and stops on a non-search error', async () => {
-    const files = track(createLinuxLaunchFiles({ cwd: '/work', env: {} }))
-    const execve = vi.fn((_file: string) => {
-      throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES', errno: -13 })
-    })
-    await runSpawnRunner(files.requestPath, ['--', 'tool'], hostArgument(new FakeRunnerHost()), internals({ execve }))
-    expect(execve.mock.calls.map(call => call[0])).toEqual(['/usr/bin/tool', '/bin/tool'])
-    expect(readLinuxStartupError(files.startupErrorPath)).toMatchObject({
-      type: 'error',
-      error: {
-        name: 'Error',
-        message: 'spawn tool EACCES',
-        code: 'EACCES',
-        syscall: 'spawn tool',
-        path: 'tool',
-      },
-    })
-
-    const explicit = track(createLinuxLaunchFiles({ cwd: '/work', env: {} }))
-    const fatal = vi.fn(() => { throw Object.assign(new Error('bad executable'), { code: 'EIO' }) })
-    await runSpawnRunner(explicit.requestPath, ['--', './tool'], hostArgument(new FakeRunnerHost()), internals({ execve: fatal }))
-    expect(fatal).toHaveBeenCalledOnce()
-
-    const stackless = track(createLinuxLaunchFiles({ cwd: '/work', env: {} }))
-    await runSpawnRunner(stackless.requestPath, ['--', './tool'], hostArgument(new FakeRunnerHost()), internals({
-      execve: vi.fn(() => { throw new Error('unclassified failure') }),
-    }))
-    expect(readLinuxStartupError(stackless.startupErrorPath)).toMatchObject({
-      type: 'error', error: { message: 'unclassified failure' },
-    })
-
-    const searched = track(createLinuxLaunchFiles({ cwd: '/work', env: {} }))
-    const searchedExecve = vi.fn()
-      .mockImplementationOnce(() => { throw Object.assign(new Error('not a directory'), { code: 'ENOTDIR' }) })
-      .mockImplementationOnce(() => { throw Object.assign(new Error('I/O failure'), { code: 'EIO' }) })
-    await runSpawnRunner(searched.requestPath, ['--', 'tool'], hostArgument(new FakeRunnerHost()), internals({
-      execve: searchedExecve as never,
-    }))
-    expect(readLinuxStartupError(searched.startupErrorPath)).toMatchObject({
-      type: 'error', error: { code: 'EIO' },
-    })
-  })
-
-  it('publishes request and early protocol failures through the single error branch', async () => {
-    const files = track(createLinuxLaunchFiles({ cwd: '/work', env: {} }))
-    writeFileSync(files.requestPath, '{')
-    await runSpawnRunner(files.requestPath, ['--', 'tool'], hostArgument(new FakeRunnerHost()), internals())
-    expect(readLinuxStartupError(files.startupErrorPath)).toMatchObject({ type: 'error' })
-
-    const early = track(createLinuxLaunchFiles({ cwd: '/work', env: {} }))
-    await reportSpawnRunnerFailure(early.requestPath, new Error('delimiter failed'), hostArgument(new FakeRunnerHost()))
-    expect(readLinuxStartupError(early.startupErrorPath)).toMatchObject({
-      type: 'error', error: { message: 'delimiter failed' },
-    })
-  })
-})
 
 describe('Windows Job runner protocol owner', () => {
   it('publishes a Node-shaped path-search miss before loading Win32 bindings', async () => {

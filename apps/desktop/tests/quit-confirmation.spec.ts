@@ -32,18 +32,18 @@ describe('quit prompt selection', () => {
 
 describe('DesktopQuitConfirmation', () => {
   it('quits silently when nothing is running and no Host is ready', async () => {
-    const idle = setup('darwin', async () => ({ activeTasks: false, scheduledTasks: false }))
+    const idle = setup('win32', async () => ({ activeTasks: false, scheduledTasks: false }))
     expect(await idle.confirmation.confirm()).toBe(true)
-    const starting = setup('darwin', () => undefined)
+    const starting = setup('win32', () => undefined)
     expect(await starting.confirmation.confirm()).toBe(true)
     expect([...idle.shown, ...starting.shown]).toEqual([])
   })
 
-  it('shows the macOS alert with the warning icon, Chinese copy, and Quit as the default right-hand button', async () => {
-    const f = setup('darwin', async () => ({ activeTasks: true, scheduledTasks: true }))
+  it('shows the Windows task dialog with the application icon, Chinese copy, and buttons', async () => {
+    const f = setup('win32', async () => ({ activeTasks: true, scheduledTasks: true }))
     expect(await f.confirmation.confirm()).toBe(true)
     expect(f.shown).toEqual([{
-      type: 'warning', title: 'AsterHub', message: '退出 AsterHub？',
+      type: 'none', icon: f.icon, title: 'AsterHub', message: '退出 AsterHub？',
       detail: '当前正在运行的任务将会中断，且应用关闭期间，定时任务不会运行',
       buttons: ['退出', '取消'], defaultId: 0, cancelId: 1, noLink: true,
     }])
@@ -62,7 +62,7 @@ describe('DesktopQuitConfirmation', () => {
 
   it('warns about running tasks when the inspection fails', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const f = setup('darwin', async () => { throw new Error('desktop quit: inspection timed out') })
+    const f = setup('win32', async () => { throw new Error('desktop quit: inspection timed out') })
     f.answer(1)
     expect(await f.confirmation.confirm()).toBe(false)
     expect(f.shown.map(options => options.detail)).toEqual(['当前正在运行的任务将会中断'])
@@ -72,7 +72,7 @@ describe('DesktopQuitConfirmation', () => {
   it('joins an open confirmation instead of stacking a second one and inspects once per decision', async () => {
     const inspected = Promise.withResolvers<DesktopQuitInspection>()
     const inspect = vi.fn(() => inspected.promise)
-    const f = setup('darwin', inspect)
+    const f = setup('win32', inspect)
     const first = f.confirmation.confirm()
     const second = f.confirmation.confirm()
     expect(second).toBe(first)
@@ -88,7 +88,7 @@ describe('DesktopQuitConfirmation', () => {
 
   it('resolves a pending decision to false without a box once disposed, and refuses later requests', async () => {
     const inspected = Promise.withResolvers<DesktopQuitInspection>()
-    const f = setup('darwin', () => inspected.promise)
+    const f = setup('win32', () => inspected.promise)
     const pending = f.confirmation.confirm()
     f.confirmation.dispose()
     inspected.resolve({ activeTasks: true, scheduledTasks: false })
@@ -102,7 +102,7 @@ describe('DesktopQuitConfirmation', () => {
     const answered = Promise.withResolvers<MessageBoxReturnValue>()
     const confirmation = new DesktopQuitConfirmation({
       locale: () => resolveDesktopLocale('en'), inspect: async () => ({ activeTasks: true, scheduledTasks: false }),
-      focus: () => {}, platform: 'darwin', show: () => answered.promise,
+      focus: () => {}, platform: 'win32', show: () => answered.promise,
     })
     const pending = confirmation.confirm()
     await Promise.resolve()

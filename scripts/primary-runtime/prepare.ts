@@ -127,14 +127,12 @@ export async function preparePrimaryRuntime(options: PreparePrimaryRuntimeOption
       const nodeArchive = await downloadPrimaryRuntimeAsset(`https://nodejs.org/dist/v${lock.nodeVersion}/${nodeFilename}`, artifact.nodeSha256, paths.downloads)
       const unpackedNode = join(staging, 'node')
       mkdirSync(unpackedNode)
-      if (target === 'win-x64') await extractZip(nodeArchive, { dir: unpackedNode })
-      else await extractTar({ file: nodeArchive, cwd: unpackedNode })
-      const nodeSource = join(unpackedNode, nodeFilename.replace(/\.(?:zip|tar\.gz)$/u, ''))
+      await extractZip(nodeArchive, { dir: unpackedNode })
+      const nodeSource = join(unpackedNode, nodeFilename.replace(/\.zip$/u, ''))
       mkdirSync(join(dependencies, 'node', 'bin'), { recursive: true })
       mkdirSync(join(dependencies, 'node', 'node_modules'))
       writeFileSync(join(dependencies, 'node', 'node_modules', 'README.txt'), 'Reserved for bundled Node packages. pnpm uses its default installation directories.\n')
-      cpSync(join(nodeSource, ...(target === 'win-x64' ? ['node.exe'] : ['bin', 'node'])),
-        join(dependencies, 'node', 'bin', target === 'win-x64' ? 'node.exe' : 'node'))
+      cpSync(join(nodeSource, 'node.exe'), join(dependencies, 'node', 'bin', 'node.exe'))
       cpSync(join(nodeSource, 'LICENSE'), join(dependencies, 'node', 'LICENSE'))
       const require = createRequire(import.meta.url)
       const pnpmManifest = require.resolve('pnpm')
@@ -144,8 +142,8 @@ export async function preparePrimaryRuntime(options: PreparePrimaryRuntimeOption
     await extractTar({ file: await pythonArchive(target, paths.downloads), cwd: dependencies })
     const manifest: PrimaryRuntimeManifest = {
       desktopVersion: options.version,
-      platform: target === 'win-x64' ? 'win32' : target.startsWith('linux-') ? 'linux' : 'darwin',
-      arch: target.endsWith('-arm64') ? 'arm64' : 'x64',
+      platform: 'win32',
+      arch: 'x64',
       payloadDigest: primaryRuntimePayloadDigest(target, lock, pnpmVersion),
       python: lock.pythonVersion,
       ...(pnpmVersion === undefined ? {} : { node: lock.nodeVersion, pnpm: pnpmVersion }),

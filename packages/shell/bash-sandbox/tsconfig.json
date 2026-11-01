@@ -15,9 +15,6 @@
       "path": "../../../vendor/cordis"
     },
     {
-      "path": "../../../native/system/packages/entry"
-    },
-    {
       "path": "../../util/brand"
     },
     {

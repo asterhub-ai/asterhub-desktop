@@ -8,7 +8,7 @@ import type { MenuItemConstructorOptions, MessageBoxOptions } from 'electron'
 import { DESKTOP_IPC, type DesktopUpdateState } from '../src/ipc.ts'
 import { MANDATORY_IPC } from '../src/mandatory-update-ipc.ts'
 import { DesktopHostFatalError, DesktopHostUncleanExitError } from '../src/host-process.ts'
-import { en, zh } from '../src/locale.ts'
+import { en } from '../src/locale.ts'
 import { DesktopUpdatePreparationError } from '../src/update-error.ts'
 import { writeCrashReport } from '../src/crash-report.ts'
 
@@ -306,10 +306,6 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     return encoding === undefined ? original.readFile(path) : original.readFile(path, encoding)
   }) }
 })
-vi.mock('../src/login-shell-environment.ts', async importOriginal => ({
-  ...await importOriginal<typeof import('../src/login-shell-environment.ts')>(),
-  readDesktopLoginShellEnvironment: harness.loginShell,
-}))
 vi.mock('../src/runtime-tree.ts', () => ({ readDesktopRuntime: () => ({ release: { version: '1.0.0' } }) }))
 vi.mock('../src/paths.ts', () => ({ resolveDesktopPaths: () => ({ profile: 'desktop-test-profile' }) }))
 vi.mock('../src/project-manager.ts', () => ({
@@ -478,19 +474,20 @@ describe('desktop main startup', () => {
     expect((await handler(new Request('dsh-app://unknown/update-dialog.html'))).status).toBe(404)
   })
 
-  it('installs hidden native DevTools shortcuts in the macOS application menu', async () => {
-    vi.stubGlobal('process', { ...process, platform: 'darwin' })
+  it('installs hidden native DevTools shortcuts in the application menu', async () => {
+    vi.stubGlobal('process', { ...process, platform: 'win32' })
     await readyForUpdate()
-    expect(applicationMenuItems().slice(-2)).toEqual([
-      { role: 'toggleDevTools', visible: false },
-      { role: 'toggleDevTools', visible: false, accelerator: 'F12' },
-    ])
+    const template = harness.menu.buildFromTemplate.mock.calls
+      .map(call => call[0])
+      .find(items => items.some(item => item.role === 'toggleDevTools'))
+    expect(template).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'toggleDevTools', visible: false }),
+      expect.objectContaining({ role: 'toggleDevTools', visible: false, accelerator: 'F12' }),
+    ]))
     expect(harness.windows[0]!.options).toMatchObject({ webPreferences: { devTools: true } })
   })
 
   it.each([
-    ['darwin', true, 'en-US'],
-    ['darwin', false, 'zh-CN'],
     ['win32', true, 'zh-CN'],
     ['win32', false, 'en-US'],
   ] as const)('offers the About command before other commands on %s (packaged=%s, locale=%s)', async (platform, packaged, locale) => {
@@ -756,25 +753,18 @@ describe('desktop main startup', () => {
     }
   })
 
-  it.each(['darwin', 'win32', 'linux'] as const)('limits native titlebar styling to macOS on %s', async (platform) => {
-    vi.spyOn(process, 'platform', 'get').mockReturnValue(platform)
+  it('configures native titlebar styling on Windows', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
     await import('../src/main.ts')
     await harness.preparing.promise
     const window = harness.windows[0]!
     expect(window.urls).toEqual(['dsh-app://app/'])
-    if (platform === 'darwin') {
-      expect(window.options).toMatchObject({ titleBarStyle: 'hiddenInset', vibrancy: 'sidebar', backgroundColor: '#00000000' })
-    } else if (platform === 'win32') {
-      expect(window.options).toMatchObject({ titleBarStyle: 'hidden', titleBarOverlay: { height: WINDOWS_TITLEBAR_HEIGHT } })
-      expect(window.options).not.toHaveProperty('vibrancy')
-      expect(harness.menu.mock.calls[0]![0]).toEqual([
-        { role: 'toggleDevTools', visible: false },
-        { role: 'toggleDevTools', visible: false, accelerator: 'F12' },
-      ])
-    } else {
-      expect(window.options).not.toHaveProperty('titleBarStyle')
-      expect(window.options).not.toHaveProperty('vibrancy')
-    }
+    expect(window.options).toMatchObject({ titleBarStyle: 'hidden', titleBarOverlay: { height: WINDOWS_TITLEBAR_HEIGHT } })
+    expect(window.options).not.toHaveProperty('vibrancy')
+    expect(harness.menu.mock.calls[0]![0]).toEqual([
+      { role: 'toggleDevTools', visible: false },
+      { role: 'toggleDevTools', visible: false, accelerator: 'F12' },
+    ])
     expect(harness.hosts).toHaveLength(0)
   })
 
@@ -790,8 +780,8 @@ describe('desktop main startup', () => {
     expect((await handler(new Request('dsh-app://foreign/index.html'))).status).toBe(404)
   })
 
-  it.each(['darwin', 'win32'] as const)('relays the %s fullscreen state on transitions and after each load', async (platform) => {
-    vi.spyOn(process, 'platform', 'get').mockReturnValue(platform)
+  it('relays the fullscreen state on transitions and after each load on Windows', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
     await import('../src/main.ts')
     await harness.preparing.promise
     const window = harness.windows[0]!
@@ -800,8 +790,6 @@ describe('desktop main startup', () => {
     window.fullscreen = true
     window.emit('enter-full-screen')
     expect(sent().at(-1)).toEqual([DESKTOP_IPC.windowFullscreen, true])
-    // A reload re-registers the preload listener; the finished load resends
-    // the current state so fullscreen CSS survives the reload.
     window.webContents.emit('did-finish-load')
     expect(sent().at(-1)).toEqual([DESKTOP_IPC.windowFullscreen, true])
     window.fullscreen = false
@@ -811,58 +799,6 @@ describe('desktop main startup', () => {
     window.destroyed = true
     window.emit('enter-full-screen')
     expect(sent()).toHaveLength(relayed)
-  })
-
-  it.each(['linux'] as const)('registers no fullscreen relay on %s', async (platform) => {
-    vi.spyOn(process, 'platform', 'get').mockReturnValue(platform)
-    await import('../src/main.ts')
-    await harness.preparing.promise
-    const window = harness.windows[0]!
-    window.emit('enter-full-screen')
-    window.webContents.emit('did-finish-load')
-    expect(window.webContents.send.mock.calls.filter(([channel]) => channel === DESKTOP_IPC.windowFullscreen)).toHaveLength(0)
-  })
-
-  it('covers the macOS vibrancy reattach gap with an opaque base while minimized or hidden', async () => {
-    vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
-    await import('../src/main.ts')
-    await harness.preparing.promise
-    const window = harness.windows[0]!
-    // Minimizing drops the vibrancy material and paints the theme's opaque fill.
-    window.minimized = true
-    window.emit('minimize')
-    expect(window.setVibrancy).toHaveBeenLastCalledWith(null)
-    expect(window.setBackgroundColor).toHaveBeenLastCalledWith('#f9fafb')
-    // Restoring re-requests the material and returns to the transparent base.
-    window.minimized = false
-    window.emit('restore')
-    expect(window.setVibrancy).toHaveBeenLastCalledWith('sidebar')
-    expect(window.setBackgroundColor).toHaveBeenLastCalledWith('#00000000')
-    // Hiding under the dark palette picks the dark opaque fill.
-    harness.nativeTheme.shouldUseDarkColors = true
-    window.visible = false
-    window.emit('hide')
-    expect(window.setVibrancy).toHaveBeenLastCalledWith(null)
-    expect(window.setBackgroundColor).toHaveBeenLastCalledWith('#1b1b1c')
-    window.visible = true
-    window.emit('show')
-    expect(window.setBackgroundColor).toHaveBeenLastCalledWith('#00000000')
-    // A destroyed window ends the backdrop updates.
-    const applied = window.setVibrancy.mock.calls.length
-    window.destroyed = true
-    window.emit('minimize')
-    expect(window.setVibrancy.mock.calls).toHaveLength(applied)
-  })
-
-  it.each(['win32', 'linux'] as const)('registers no backdrop swap on %s', async (platform) => {
-    vi.spyOn(process, 'platform', 'get').mockReturnValue(platform)
-    await import('../src/main.ts')
-    await harness.preparing.promise
-    const window = harness.windows[0]!
-    window.minimized = true
-    window.emit('minimize')
-    expect(window.setVibrancy).not.toHaveBeenCalled()
-    expect(window.setBackgroundColor).not.toHaveBeenCalled()
   })
 
   it('follows the Windows primary document language and palette without trusting other frames', async () => {
@@ -928,44 +864,6 @@ describe('desktop main startup', () => {
     }
     harness.popup.mock.lastCall![0].callback!()
     await edit
-  })
-
-  it.each(['darwin', 'linux'] as const)('adds the product File menu and standard window commands only on macOS (%s)', async (platform) => {
-    vi.spyOn(process, 'platform', 'get').mockReturnValue(platform)
-    await import('../src/main.ts')
-    await harness.preparing.promise
-    const describeItem = (item: MenuItemConstructorOptions): string | undefined =>
-      item.role ?? (item.type === 'separator' ? 'separator' : item.label)
-    const template = harness.menu.buildFromTemplate.mock.calls
-      .map(call => call[0])
-      .find(items => items.some(item => item.role === 'editMenu'))
-    if (template === undefined) throw new Error('application menu missing')
-    expect(template.map(describeItem)).toEqual(platform === 'darwin'
-      ? ['Desktop test', en.fileMenu, 'editMenu', 'windowMenu']
-      : ['Application', 'editMenu'])
-    const application = template[0]!.submenu as MenuItemConstructorOptions[]
-    expect(application.filter(item => item.visible !== false).map(describeItem)).toEqual(platform === 'darwin'
-      ? ['about', 'separator', en.accountMenu, 'separator', en.checkUpdatesMenu, 'separator', 'hide', 'hideOthers', 'unhide', 'separator', 'quit']
-      : ['about', 'separator', en.accountMenu, 'separator', en.checkUpdatesMenu, 'separator', 'quit'])
-    expect(harness.menu.setApplicationMenu).toHaveBeenCalledOnce()
-  })
-
-  it.each(['en-US', 'zh-CN'])('localizes macOS application commands without changing the application name (%s)', async (locale) => {
-    vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
-    vi.spyOn(harness.app, 'getLocale').mockReturnValue(locale)
-    vi.spyOn(harness.app, 'getPreferredSystemLanguages').mockReturnValue([locale])
-    const originalName = harness.app.name
-    harness.app.name = '@deepseek-ai/dsh-desktop'
-    try {
-      await import('../src/main.ts')
-      await harness.preparing.promise
-      const commands = applicationMenuItems().filter(item =>
-        item.role === 'hide' || item.role === 'hideOthers' || item.role === 'unhide' || item.role === 'quit'
-        || item.label === en.checkUpdatesMenu || item.label === zh.checkUpdatesMenu)
-      await expect(JSON.stringify(commands, null, 2) + '\n')
-        .toMatchFileSnapshot(`./expected/application-menu-${locale}.json`)
-      expect(harness.app.name).toBe('@deepseek-ai/dsh-desktop')
-    } finally { harness.app.name = originalName }
   })
 
   it('attaches Host socket credentials only to the owned application origin and window', async () => {
@@ -1058,31 +956,6 @@ describe('desktop main startup', () => {
     expect(harness.windows[0]!.urls).toEqual(['dsh-app://app/'])
   })
 
-  it('retains macOS native editing actions on right-click and only copy for selected read-only text', async () => {
-    vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
-    await import('../src/main.ts')
-    await harness.preparing.promise
-    const window = harness.windows[0]!
-    const editFlags = { canUndo: true, canRedo: false, canCut: true, canCopy: true, canPaste: true, canSelectAll: true }
-    harness.menu.mockClear()
-
-    window.webContents.emit('context-menu', {}, { isEditable: true, selectionText: 'text', editFlags })
-    expect(harness.menu).toHaveBeenLastCalledWith([
-      { role: 'undo', enabled: true, accelerator: '' }, { role: 'redo', enabled: false, accelerator: '' },
-      { type: 'separator', accelerator: '' },
-      { role: 'cut', enabled: true, accelerator: '' }, { role: 'copy', enabled: true, accelerator: '' },
-      { role: 'paste', enabled: true, accelerator: '' }, { type: 'separator', accelerator: '' },
-      { role: 'selectAll', enabled: true, accelerator: '' },
-    ])
-    expect(harness.popup).toHaveBeenCalledWith({ window })
-
-    window.webContents.emit('context-menu', {}, { isEditable: false, selectionText: 'text', editFlags })
-    expect(harness.menu).toHaveBeenLastCalledWith([{ role: 'copy', enabled: true, accelerator: '' }])
-
-    harness.menu.mockClear()
-    window.webContents.emit('context-menu', {}, { isEditable: false, selectionText: '', editFlags })
-    expect(harness.menu).not.toHaveBeenCalled()
-  })
 
   it('opens message links externally while retaining same-origin application navigation', async () => {
     await readyForUpdate()
@@ -1117,8 +990,6 @@ describe('desktop main startup', () => {
   it.each([
     ['win32', ['--updated'], true],
     ['win32', [], false],
-    ['darwin', ['--updated'], false],
-    ['linux', ['--updated'], false],
   ] as const)('raises the first workspace only for a Windows installer restart (%s, %j)', async (platform, args, raises) => {
     vi.stubGlobal('process', { ...process, platform, argv: ['desktop', ...args] })
     await import('../src/main.ts')
@@ -1146,7 +1017,7 @@ describe('desktop main startup', () => {
   })
 
   it.each([
-    ['win32', 'zh-CN'], ['win32', 'en-US'], ['darwin', 'zh-CN'], ['darwin', 'en-US'],
+    ['win32', 'zh-CN'], ['win32', 'en-US'],
   ] as const)('records the restart confirmation on %s in %s', async (platform, language) => {
     vi.stubGlobal('process', { ...process, platform })
     vi.spyOn(harness.app, 'getPreferredSystemLanguages').mockReturnValue([language])
@@ -1233,46 +1104,6 @@ describe('desktop main startup', () => {
     expect(window.hide).not.toHaveBeenCalled()
   })
 
-  it('leaves macOS fullscreen before hiding on close and reopens the hidden window on activate', async () => {
-    vi.stubGlobal('process', { ...process, platform: 'darwin', arch: 'arm64', resourcesPath: 'desktop-test-resources' })
-    await readyWorkspace()
-    const window = harness.windows[0]!
-    expect(harness.trays).toHaveLength(0)
-    window.fullscreen = true
-    window.close()
-    expect(window.setFullScreen).toHaveBeenCalledWith(false)
-    expect(window.hide).toHaveBeenCalledOnce()
-    expect(harness.backgroundNotice.close).not.toHaveBeenCalled()
-    window.show.mockClear()
-    harness.app.emit('activate', {}, false)
-    expect(window.show).toHaveBeenCalledOnce()
-    harness.app.emit('activate', {}, true)
-    expect(window.show).toHaveBeenCalledOnce()
-  })
-
-  it('skips the confirmation during a macOS shutdown but asks again once a cancelled shutdown returns focus', async () => {
-    vi.stubGlobal('process', { ...process, platform: 'darwin', arch: 'arm64', resourcesPath: 'desktop-test-resources' })
-    const host = await readyWorkspace()
-    const window = harness.windows[0]!
-    host.inspectQuit.mockResolvedValue({ activeTasks: true, scheduledTasks: false })
-    harness.dialog.showMessageBox.mockResolvedValue({ response: 1, checkboxChecked: false })
-    harness.powerMonitor.emit('shutdown')
-    // Another application vetoed the shutdown; the user comes back to the window.
-    window.emit('focus')
-    window.close()
-    expect(window.isDestroyed()).toBe(false)
-    harness.app.quit()
-    await vi.advanceTimersByTimeAsync(0)
-    expect(harness.dialog.showMessageBox).toHaveBeenCalledOnce()
-    expect(host.stop).not.toHaveBeenCalled()
-    harness.powerMonitor.emit('shutdown')
-    harness.app.quit()
-    await vi.advanceTimersByTimeAsync(0)
-    expect(harness.dialog.showMessageBox).toHaveBeenCalledOnce()
-    await host.stopping.promise
-    host.exited.resolve()
-    await harness.quitCompleted.promise
-  })
 
   it('drops a pending confirmation when a bypassing quit starts first', async () => {
     harness.app.isPackaged = false
@@ -2083,7 +1914,7 @@ describe('desktop main startup', () => {
     expect(report.error).toBeInstanceOf(Error)
     expect((report.error as Error).message).toContain('fatal uncaught exception: ENOENT')
     expect(report.rendererConsole).toEqual(['dsh-app://app/assets/entry.js:12 client-modules: bundle script plugins/??a/client.js&rev=1 failed to load'])
-    expect(report.app).toMatchObject({ name: 'Desktop test', version: '1.0.0', platform: process.platform, locale: 'en' })
+    expect(report.app).toMatchObject({ version: '1.0.0', platform: process.platform, locale: 'en' })
     expect(report.time).toBeInstanceOf(Date)
     host.exited.resolve()
     await harness.quitCompleted.promise
@@ -2117,26 +1948,6 @@ describe('desktop main startup', () => {
     expect(harness.windows[0]!.urls).toEqual(['dsh-app://app/'])
   })
 
-  it('creates the Host only after the login-shell read and ends the read on quit', async () => {
-    let finishRead!: () => void
-    const read = new Promise<void>((resolve) => { finishRead = resolve })
-    harness.loginShell.mockImplementation(async (base) => { await read; return harness.readLoginShell(base) })
-    await import('../src/main.ts')
-    await harness.preparing.promise
-    const boot = invoke(DESKTOP_IPC.boot)
-    harness.prepared.resolve()
-    await vi.advanceTimersByTimeAsync(0)
-    expect(harness.hosts).toHaveLength(0)
-    finishRead()
-    await harness.hostStarted.promise
-    expect(harness.hosts[0]!.environment?.DSH_TEST_LOGIN_SHELL).toBe('login')
-    harness.hosts[0]!.ready.resolve()
-    await Promise.all([boot, harness.navigated.promise])
-    const { signal } = harness.loginShell.mock.calls[0]![2]
-    expect(signal?.aborted).toBe(false)
-    harness.app.emit('will-quit')
-    expect(signal?.aborted).toBe(true)
-  })
 
   it('prepares recovery offscreen and starts one Host before choosing the first visible window', async () => {
     await import('../src/main.ts')
@@ -2164,8 +1975,6 @@ describe('desktop main startup', () => {
     })
     expect(harness.hosts[0]!.environment).not.toBe(process.env)
     expect(harness.hosts[0]!.environment?.DSH_CLIENT_VERSION).toBe('1.2.3')
-    expect(harness.hosts[0]!.environment?.DSH_TEST_LOGIN_SHELL).toBe('login')
-    expect(console.warn).toHaveBeenCalledWith('desktop login shell: /account/shell failed (timeout)')
     expect(harness.analytics).toHaveBeenCalledExactlyOnceWith({ eventName: 'desktop_app_launch', timestamp: Date.now(), attributes: {} })
     expect(harness.hosts[0]!.start).toHaveBeenCalledTimes(1)
     expect(harness.windows).toHaveLength(1)

@@ -9,21 +9,15 @@ import {
   resolveDesktopAutoUpdateConfig,
 } from './desktop-auto-update-environment.mjs'
 import { DESKTOP_BUILD_ROOT, desktopTargetBuildPaths, resolveDesktopBuildLayout, resolveDesktopBuildRoot } from './desktop-build-paths.mjs'
-import { packageMacOSArtifacts, type DesktopPrepackagedArtifact } from './package-macos.ts'
 import { loadDesktopPackageEnvironment, validateDesktopPackageEnvironment } from './desktop-package-environment.mjs'
 import { createPackagingRun, recordPackagingEvent } from './packaging-run.mjs'
 import { withWindowsSigningStage } from './windows-signing-stage.mjs'
 import { prepareWindowsSignatureCacheDirectory, resolveWindowsSignatureCacheDirectory } from './windows-signature-cache-directory.mjs'
-import { withMacOSSigningKeychain } from './macos-signing-keychain.mjs'
-import { macOSDownloadEnvironment, resolveMacOSPackageSettings } from './macos-package-settings.mjs'
 import { packagingErrorDetails, packagingStep } from './packaging-step.mjs'
-import { notarizeMacOS } from './notarize-macos.mjs'
-import { resolveMacOSNotarizationEnvironment } from './desktop-release-environment.mjs'
 import { DESKTOP_BUILD_VERSION_ENV, resolveDesktopBuildVersion, validateDesktopBuildVersion } from './desktop-build-version.mjs'
 import { suggestDesktopBuildVersion } from './desktop-build-version-discovery.ts'
 import { desktopBuildCommitEnvironment, readDesktopBuildCommit, resolveDesktopBuildCommit } from './desktop-build-commit.mjs'
 import { requireDesktopToolchain } from './desktop-toolchain-preflight.ts'
-import { withMacOSNotarizationProxy } from './macos-notarization-proxy.ts'
 import { prepareWindowsPortableLauncher } from './portable-launcher.ts'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
@@ -48,32 +42,18 @@ const DESKTOP_UPLOAD_CREDENTIAL_ENV_NAMES = new Set([
 const AUTOMATIC_BUILD_VERSION = 'auto'
 
 /** Fixed platform and architecture identifiers exposed by package scripts. */
-export type DesktopPackageTargetName = 'mac-arm64' | 'mac-x64' | 'win-x64'
+export type DesktopPackageTargetName = 'win-x64'
 
 /** One supported release target and its electron-builder selectors. */
 export interface DesktopPackageTarget {
   readonly name: DesktopPackageTargetName
-  readonly platform: 'darwin' | 'win32'
-  readonly arch: 'arm64' | 'x64'
-  readonly builderPlatform: '--mac' | '--win'
-  readonly builderArch: '--arm64' | '--x64'
+  readonly platform: 'win32'
+  readonly arch: 'x64'
+  readonly builderPlatform: '--win'
+  readonly builderArch: '--x64'
 }
 
 const TARGETS: Record<DesktopPackageTargetName, DesktopPackageTarget> = {
-  'mac-arm64': {
-    name: 'mac-arm64',
-    platform: 'darwin',
-    arch: 'arm64',
-    builderPlatform: '--mac',
-    builderArch: '--arm64',
-  },
-  'mac-x64': {
-    name: 'mac-x64',
-    platform: 'darwin',
-    arch: 'x64',
-    builderPlatform: '--mac',
-    builderArch: '--x64',
-  },
   'win-x64': {
     name: 'win-x64',
     platform: 'win32',
@@ -176,15 +156,6 @@ export function resolveDesktopPackageTarget(
   if (target.platform === 'win32' && (hostPlatform !== 'win32' || hostArch !== 'x64')) {
     throw new Error('desktop package: win-x64 requires a Windows x64 build host')
   }
-  if (target.platform === 'darwin' && hostPlatform !== 'darwin') {
-    throw new Error(`desktop package: ${name} requires a macOS build host`)
-  }
-  if (name === 'mac-arm64' && hostArch !== 'arm64') {
-    throw new Error('desktop package: mac-arm64 requires an Apple Silicon build host')
-  }
-  if (name === 'mac-x64' && hostArch !== 'arm64' && hostArch !== 'x64') {
-    throw new Error('desktop package: mac-x64 requires an Intel Mac or Apple Silicon with Rosetta')
-  }
   return target
 }
 
@@ -200,7 +171,7 @@ interface DesktopPackageInvocation {
 }
 
 function hostTargetName(platform: NodeJS.Platform, arch: string): DesktopPackageTargetName {
-  const name = `${platform === 'darwin' ? 'mac' : platform === 'win32' ? 'win' : platform}-${arch}`
+  const name = `${platform === 'win32' ? 'win' : platform}-${arch}`
   if (!isTargetName(name)) throw new Error(`desktop package: unsupported build host ${platform}-${arch}`)
   return name
 }
@@ -255,13 +226,11 @@ export function parseDesktopPackageInvocation(
  * Build the electron-builder command arguments for one validated target.
  * @param target - Supported release target.
  * @param directory - Whether to stop at an unpacked application directory.
- * @param artifact - Optional single artifact built from an existing signed application.
  * @returns Arguments that keep publishing under the separate validated upload command.
  */
 export function desktopElectronBuilderArguments(
   target: DesktopPackageTarget,
   directory: boolean,
-  artifact?: DesktopPrepackagedArtifact,
 ): readonly string[] {
   return [
     'exec',
@@ -269,16 +238,10 @@ export function desktopElectronBuilderArguments(
     '--config',
     'electron-builder.config.mjs',
     target.builderPlatform,
-    ...(artifact === undefined ? [] : [artifact.format]),
     target.builderArch,
     '--publish',
     'never',
     ...(directory ? ['--dir'] : []),
-    ...(artifact === undefined ? [] : [
-      ...(target.platform === 'darwin' ? ['--config.mac.notarize=false'] : []),
-      '--prepackaged', artifact.appPath,
-      '--config.directories.output', artifact.output,
-    ]),
   ]
 }
 
@@ -356,7 +319,7 @@ async function main(): Promise<void> {
     version: buildVersion, productVersion, node: process.version,
     commit: packaged.commit,
     dirty: packaged.dirty,
-  }, { parallel: target.platform === 'darwin', secrets })
+  }, { parallel: false, secrets })
   console.log(`DESKTOP_PACKAGING_RECORD ${run.directory}`)
   const previousDirectory = process.env.DSH_DESKTOP_PACKAGING_RUN_DIR
   process.env.DSH_DESKTOP_PACKAGING_RUN_DIR = run.directory
@@ -366,16 +329,7 @@ async function main(): Promise<void> {
     if (!invocation.directory) {
       await packagingStep(run.directory, 'toolchain', () => requireDesktopToolchain(target.platform, environment), secrets)
     }
-    if (target.platform === 'darwin') {
-      const settings = resolveMacOSPackageSettings(environment)
-      recordPackagingEvent(run.directory, { type: 'macos-settings', packConcurrency: settings.packConcurrency,
-        downloadProxyConfigured: settings.downloadProxy !== undefined,
-        notarizationProxyConfigured: settings.notarizationProxy !== undefined })
-      await packagingStep(run.directory, 'macos-package', () => withMacOSSigningKeychain(environment,
-        signingEnvironment => packageTarget(invocation, signingEnvironment, run)), secrets)
-    } else {
-      await packagingStep(run.directory, 'windows-package', () => packageTarget(invocation, environment, run), secrets)
-    }
+    await packagingStep(run.directory, 'windows-package', () => packageTarget(invocation, environment, run), secrets)
     success = true
   } catch (error) {
     process.stderr.write(`${packagingErrorDetails(error, secrets)}\n`)
@@ -403,10 +357,7 @@ export async function packageTarget(
   if (invocation.skipSmoke && !invocation.unsigned) throw new Error('desktop package: skipping smoke requires an unsigned build')
   const { target } = invocation
   const execute = (args: readonly string[], env: NodeJS.ProcessEnv, cwd: string = APP_ROOT) => runPnpm(args, env, cwd, run)
-  const journal = target.platform === 'darwin' ? process.env.DSH_DESKTOP_PACKAGING_RUN_DIR : undefined
-  const proxyEvent = (status: string) => { if (journal) recordPackagingEvent(journal, { type: 'notarization-proxy', status }) }
-  const mac = target.platform === 'darwin' ? resolveMacOSPackageSettings(environment) : undefined
-  const packArguments = mac === undefined ? [] : ['--concurrency', String(mac.packConcurrency)]
+  const journal = process.env.DSH_DESKTOP_PACKAGING_RUN_DIR
   const buildPaths = desktopTargetBuildPaths(target.name, resolveDesktopBuildLayout(environment), resolveDesktopBuildRoot(environment))
   const releaseRecordPath = join(buildPaths.artifacts, desktopBuildRecordFilename(target.name))
   if (!invocation.prepareOnly && !invocation.unsigned) {
@@ -420,7 +371,7 @@ export async function packageTarget(
     DSH_DESKTOP_TARGET_PLATFORM: target.platform,
     DSH_DESKTOP_TARGET_ARCH: target.arch,
   }
-  const downloadEnv = macOSDownloadEnvironment(targetEnv, mac?.downloadProxy)
+  const downloadEnv = targetEnv
   const electronBuilderEnv = desktopElectronBuilderEnvironment(downloadEnv, invocation.unsigned)
   if (invocation.skipSmoke) console.log('desktop package: smoke checks skipped for this unsigned test build')
   if (invocation.directory && invocation.unsigned && target.platform === 'win32') {
@@ -459,7 +410,7 @@ export async function packageTarget(
     })
   }
   await execute(['run', 'build:official'], buildEnv, REPOSITORY_ROOT)
-  await execute(['run', 'release:pack', '--family', 'dsh', '--out', buildPaths.packedDsh, ...packArguments], buildEnv, REPOSITORY_ROOT)
+  await execute(['run', 'release:pack', '--family', 'dsh', '--out', buildPaths.packedDsh], buildEnv, REPOSITORY_ROOT)
   await execute([
     '--dir',
     'apps/desktop-host',
@@ -481,20 +432,10 @@ export async function packageTarget(
     '--pack-destination',
     buildPaths.packedDsh,
   ], buildEnv, REPOSITORY_ROOT)
-  await execute(['run', 'release:pack', '--family', 'vendor', '--out', buildPaths.packedVendor, ...packArguments], buildEnv, REPOSITORY_ROOT)
+  await execute(['run', 'release:pack', '--family', 'vendor', '--out', buildPaths.packedVendor], buildEnv, REPOSITORY_ROOT)
   for (const directory of ['vendor/anima-protocol', 'vendor/anima-capture', 'vendor/anima-memory']) {
     await execute(['--dir', directory, 'pack', '--pack-destination', buildPaths.packedVendor], buildEnv, REPOSITORY_ROOT)
   }
-  rmSync(buildPaths.packedLandlock, { recursive: true, force: true })
-  mkdirSync(buildPaths.packedLandlock, { recursive: true })
-  await execute(['--dir', 'native/system', 'run', 'build:ts'], buildEnv, REPOSITORY_ROOT)
-  await execute([
-    '--dir',
-    'native/system/packages/entry',
-    'pack',
-    '--pack-destination',
-    buildPaths.packedLandlock,
-  ], buildEnv, REPOSITORY_ROOT)
   await execute(['run', 'prepare:runtime', ...(signPrimaryRuntime || invocation.skipSmoke ? ['--defer-primary-runtime-smoke'] : [])], downloadEnv)
   if (signPrimaryRuntime) await execute(['run', 'sign:primary-runtime'], electronBuilderEnv)
   await execute(['run', 'prepare:packages'], targetEnv)
@@ -505,30 +446,9 @@ export async function packageTarget(
   ], { ...downloadEnv, DSH_ANIMA_RUNTIME_DESTINATION: buildPaths.animaRuntime }, REPOSITORY_ROOT)
   if (signPrimaryRuntime) await execute(['run', 'sign:primary-runtime', '--dsh'], electronBuilderEnv)
   if (invocation.prepareOnly) return
-  if (target.platform === 'darwin' && !invocation.directory) {
-    await execute([
-      ...desktopElectronBuilderArguments(target, true),
-      '--config.mac.notarize=false',
-    ], electronBuilderEnv)
-    await execute(['exec', 'tsx', 'scripts/smoke-packaged-runtime.ts'], targetEnv)
-    await withMacOSNotarizationProxy(mac?.notarizationProxy, () => packageMacOSArtifacts({
-      arch: target.arch,
-      // electron-builder named these artifacts after the published version, so locating them uses the same identifier.
-      version: resolveDesktopBuildVersion(environment, packageVersion(join(APP_ROOT, 'package.json'), 'desktop package')),
-      artifactsRoot: buildPaths.artifacts,
-      environment: electronBuilderEnv,
-    }, artifact => execute(desktopElectronBuilderArguments(target, false, artifact), electronBuilderEnv)), undefined, undefined, proxyEvent)
-  } else if (target.platform === 'darwin') {
-    await execute([...desktopElectronBuilderArguments(target, true), '--config.mac.notarize=false'], electronBuilderEnv)
-    await execute(['exec', 'tsx', 'scripts/smoke-packaged-runtime.ts'], targetEnv)
-    const appPath = join(buildPaths.artifacts, target.arch === 'arm64' ? 'mac-arm64' : 'mac', 'AsterHub.app')
-    await withMacOSNotarizationProxy(mac?.notarizationProxy,
-      () => notarizeMacOS({ appPath, ...resolveMacOSNotarizationEnvironment(environment) }), undefined, undefined, proxyEvent)
-  } else {
-    await signedStage('artifacts', () => execute(desktopElectronBuilderArguments(target, invocation.directory), electronBuilderEnv))
-    if (!invocation.skipSmoke) {
-      await execute(['exec', 'tsx', 'scripts/smoke-packaged-runtime.ts', ...(invocation.unsigned ? ['--unsigned'] : [])], targetEnv)
-    }
+  await signedStage('artifacts', () => execute(desktopElectronBuilderArguments(target, invocation.directory), electronBuilderEnv))
+  if (!invocation.skipSmoke) {
+    await execute(['exec', 'tsx', 'scripts/smoke-packaged-runtime.ts', ...(invocation.unsigned ? ['--unsigned'] : [])], targetEnv)
   }
   if (invocation.unsigned && invocation.directory && target.platform === 'win32') {
     const launcher = prepareWindowsPortableLauncher(join(buildPaths.unsignedArtifacts, 'win-unpacked'))

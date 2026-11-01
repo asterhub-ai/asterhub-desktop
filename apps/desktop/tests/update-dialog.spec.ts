@@ -101,7 +101,7 @@ it('follows the parent geometry and removes listeners when closed or replaced', 
   const f = setup()
   const first = f.show()
   const window = fixture.windows.at(-1)!
-  expect(window.options).toMatchObject({ frame: false, transparent: true, modal: process.platform !== 'darwin', width: 900, height: 650 })
+  expect(window.options).toMatchObject({ frame: false, transparent: true, modal: true, width: 900, height: 650 })
   window.emit('ready-to-show')
   expect(window.show).toHaveBeenCalledOnce()
   f.parent.emit('resize')
@@ -202,19 +202,6 @@ it('fades out before releasing the backdrop and cancels pending removal when ano
   expect(f.parent.webContents.listenerCount('before-input-event')).toBe(0)
 })
 
-it.runIf(process.platform === 'darwin')('blocks parent keyboard input and redirects focus without a native sheet', async () => {
-  const f = setup()
-  const pending = f.show()
-  const window = fixture.windows.at(-1)!
-  const event = { preventDefault: vi.fn() }
-  f.parent.webContents.emit('before-input-event', event)
-  expect(event.preventDefault).toHaveBeenCalledOnce()
-  f.parent.emit('focus')
-  expect(window.focus).toHaveBeenCalledTimes(2)
-  dialogs!.dispose()
-  await pending
-  expect(f.parent.webContents.listenerCount('before-input-event')).toBe(0)
-})
 
 it('reads the current locale for each presentation', async () => {
   let locale = resolveDesktopLocale('en')

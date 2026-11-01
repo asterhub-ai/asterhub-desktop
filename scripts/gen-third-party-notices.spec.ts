@@ -458,12 +458,10 @@ describe('official Claude distribution authorization', () => {
 
 describe('manifestPatterns', () => {
   it('derives globs from the declared members, so a new member area is read', () => {
-    expect(manifestPatterns(['packages/*/*', 'tools/*', 'native/system', 'native/system/packages/*'])).toEqual([
+    expect(manifestPatterns(['packages/*/*', 'tools/*'])).toEqual([
       'package.json',
       'packages/*/*/package.json',
       'tools/*/package.json',
-      'native/system/package.json',
-      'native/system/packages/*/package.json',
     ])
   })
 })

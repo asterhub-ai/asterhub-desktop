@@ -38,21 +38,11 @@ _PLATFORMS = _load_platforms()
 
 def _host_platform_tag() -> str:
     machine = platform.machine().lower()
-    arch = "arm64" if machine in {"arm64", "aarch64"} else "x64" if machine in {"x86_64", "amd64"} else machine
+    arch = "x64" if machine in {"x86_64", "amd64"} else machine
     system = platform.system().lower()
-    key = (
-        f"macos-{arch}"
-        if system == "darwin"
-        else f"linux-{arch}"
-        if system == "linux"
-        else f"win-{arch}"
-        if system == "windows"
-        else system
-    )
-    try:
-        return _PLATFORMS[key][0]
-    except KeyError as exc:
-        raise RuntimeError(f"unsupported deepseek-harness-runtime-bin build platform: {key}") from exc
+    if system != "windows" or arch != "x64":
+        raise RuntimeError(f"unsupported deepseek-harness-runtime-bin build platform: {system}-{arch}; AsterHub supports Windows x64 only")
+    return _PLATFORMS["win-x64"][0]
 
 
 class RuntimeBuildHook(BuildHookInterface):
@@ -79,13 +69,7 @@ class RuntimeBuildHook(BuildHookInterface):
         runtime_files = sorted(
             (path for path in runtime_dir.iterdir() if path.name != "node") if runtime_dir.is_dir() else []
         )
-        expected_files = (
-            [expected_executable, f"{expected_executable.removesuffix('.exe')}-rg.exe"]
-            if expected_executable.endswith(".exe")
-            else [expected_executable, f"{expected_executable}-rg"]
-        )
-        if "-macos-" in expected_executable:
-            expected_files.append(f"{expected_executable}-spawn-helper")
+        expected_files = [expected_executable, f"{expected_executable.removesuffix('.exe')}-rg.exe"]
         office = runtime_dir / f"{expected_executable.removesuffix('.exe')}-office"
         expected_files.append(office.name)
         resources = runtime_dir / target
@@ -105,7 +89,7 @@ class RuntimeBuildHook(BuildHookInterface):
                 adapter = office / "node_modules/@deepseek-ai/libreoffice-kit/package.json"
                 if not adapter.is_file():
                     raise RuntimeError(f"runtime Office dependency is missing: {adapter}")
-                native = target.replace("win-", "win32-").replace("macos-", "darwin-")
+                native = "win32-x64"
                 declared = json.loads(adapter.read_text(encoding="utf-8")).get("optionalDependencies", {})
                 engine = native if f"@deepseek-ai/libreoffice-kit-{native}" in declared else "wasm"
                 required = office / "node_modules" / f"@deepseek-ai/libreoffice-kit-{engine}/prebuilds.json"
@@ -114,8 +98,6 @@ class RuntimeBuildHook(BuildHookInterface):
                 continue
             if not executable.is_file():
                 raise RuntimeError(f"runtime executable is not a file: {executable}")
-            if platform_tag != "win_amd64" and executable.stat().st_mode & stat.S_IXUSR == 0:
-                raise RuntimeError(f"runtime executable is not executable: {executable}")
         build_data["pure_python"] = False
         build_data["infer_tag"] = False
         build_data["tag"] = f"py3-none-{platform_tag}"

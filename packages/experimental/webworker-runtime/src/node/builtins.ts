@@ -46,7 +46,6 @@ import * as nodeNet from './builtin_modules/mock/net.ts'
 import * as nodeSqlite from './builtin_modules/mock/sqlite.ts'
 import * as nodeVm from './builtin_modules/mock/vm.ts'
 import * as nodeWorkerThreads from './builtin_modules/mock/worker_threads.ts'
-import * as systemFlock from './external_packages/node-addon-system-flock.ts'
 import * as koffi from './external_packages/koffi.ts'
 import * as libreofficeKit from './external_packages/libreoffice-kit.ts'
 import * as nodePty from './external_packages/node-pty.ts'
@@ -92,7 +91,6 @@ const BUILTINS: Record<string, StaticModuleFactory> = {
 /** Exact package or subpath specifiers served by worker stubs and fakes. */
 const EXTERNALS: Record<string, StaticModuleFactory> = {
   '@deepseek-ai/libreoffice-kit': () => libreofficeKit,
-  '@deepseek-ai/node-addon-system/flock': () => systemFlock,
   'koffi': () => koffi,
   'sharp': () => sharp,
   'node-pty': () => nodePty,

@@ -1,5 +1,5 @@
 /** Best-effort background attention never grants update or task-stop authorization. */
-import { app, type BrowserWindow, Notification } from 'electron'
+import { type BrowserWindow, Notification } from 'electron'
 import type { DesktopLocale } from './locale.ts'
 
 /** Owns one reminder per downloaded version until reset for a new download. */
@@ -25,18 +25,15 @@ export class DesktopUpdateAttention {
     this.version = version
     if (parent.isFocused() || modal.isFocused()) return
     const clear = (): void => { this.clear() }
-    let bounce: number | undefined
     parent.on('focus', clear)
     modal.on('focus', clear)
     this.stop = () => {
       parent.off('focus', clear)
       modal.off('focus', clear)
       if (this.platform === 'win32' && !parent.isDestroyed()) parent.flashFrame(false)
-      if (bounce !== undefined) app.dock?.cancelBounce(bounce)
     }
     try {
       if (this.platform === 'win32') parent.flashFrame(true)
-      if (this.platform === 'darwin') bounce = app.dock?.bounce('informational')
     } catch (error) { console.warn('desktop update: attention unavailable', error) }
     try {
       if (!Notification.isSupported()) return
