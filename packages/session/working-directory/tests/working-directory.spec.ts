@@ -137,6 +137,26 @@ describe('Session working directories', () => {
     expect(f.harness.claim(f.agent, 'next-step', 1)).toEqual([])
   })
 
+  it('renders deployment cwd templates from committed state after changes and recovery', async () => {
+    await using f = await fixture()
+    f.ctx.systemPrompt.section({
+      name: 'test:sdk-persona',
+      order: 10200,
+      text: 'Your working directory is {{cwd}}.',
+    })
+    const render = async () => renderPrompt(await f.ctx.systemPrompt.assemble({ agent: f.agent, scope: f.agent }))
+    expect(await render()).toContain(`Your working directory is ${f.root}.`)
+    const child = join(f.root, 'persona-workspace')
+    await mkdir(child)
+    await f.ctx.workingDirectory.set(f.agent, child)
+    expect(await render()).toContain(`Your working directory is ${child}.`)
+    expect(f.agent.session.header.cwd).toBe(f.root)
+    await rm(child, { recursive: true })
+    expect(await render()).toContain(`Your working directory is ${f.root}.`)
+    expect(f.agent.session.snapshotEvents().filter(event => event.type === 'working-directory/change').at(-1))
+      .toMatchObject({ type: 'working-directory/change', data: { cwd: f.root } })
+  })
+
   it('provides required user context instead of a system-prompt directory, including recovery during assembly', async () => {
     await using f = await fixture()
     const child = join(f.root, 'temporary')

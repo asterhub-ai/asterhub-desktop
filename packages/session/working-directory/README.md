@@ -27,6 +27,8 @@ Change one Session’s working directory while existing processes retain theirs.
 
 Mount alongside `fs`, `sessionProjections`, and `systemPrompt`. `defaultDirectory` selects an absolute fallback for Sessions without an original directory; omission uses the launch directory. See the [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-working-directory).
 
+Agent prompt assembly supplies `{{cwd}}` from the committed directory after validation and recovery, so deployment persona templates use the current directory rather than the immutable Session header. An explicitly registered `cwd` variable keeps its value; the directory service only supplies the missing default.
+
 ```yaml
 - name: '@deepseek-ai/dsh-working-directory'
 ```
@@ -72,6 +74,8 @@ The initial snapshot and changed values add user-context tokens; unchanged snaps
 #### KV Cache effect
 
 Directory transitions append context without replacing the stable system-prompt prefix. A changed directory or recovery creates new context after retained history.
+
+Deployments that reference `{{cwd}}` in a system-prompt template also change that template when the directory changes or recovers. The service adds no system-prompt section by default; its required user context remains the standard directory surface.
 
 ## Known Limitations and Deferred Work
 

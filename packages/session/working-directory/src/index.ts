@@ -1,5 +1,7 @@
 /**
  * Session working directories, durable changes, and model context.
+ * Agent prompt assemblies receive a default cwd variable after directory validation
+ * and recovery; explicitly registered variable providers keep their precedence.
  * @module @deepseek-ai/dsh-working-directory
  */
 
@@ -99,6 +101,7 @@ export class WorkingDirectoryService extends Service {
       await this.ensure(context.agent, context.signal)
       const assembly = await next()
       this.lifecycle.signal.throwIfAborted()
+      if (!Object.hasOwn(assembly.variables, 'cwd')) assembly.variables.cwd = this.get(context.agent.session)
       const text = this.contextText(context.agent.session)
       const contribution = assembly.contexts.find(entry => entry.name === 'working-directory:current')
       if (contribution === undefined) assembly.contexts.unshift({ name: 'working-directory:current', text, interpolate: false })

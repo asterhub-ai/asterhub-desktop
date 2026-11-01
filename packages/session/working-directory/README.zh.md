@@ -27,6 +27,8 @@ kind: "package-reference"
 
 与 `fs`、`sessionProjections` 和 `systemPrompt` 一起挂载。`defaultDirectory` 为没有原始目录的 Session 指定绝对回退目录；省略时使用启动目录。参见[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-working-directory)。
 
+Agent 提示词组装在目录验证与恢复后，从已提交的当前目录提供 `{{cwd}}`，让部署 persona 模板使用当前目录，而非不可变的 Session header。显式注册的 `cwd` 变量保留原值；目录服务仅补充缺失的默认值。
+
 ```yaml
 - name: '@deepseek-ai/dsh-working-directory'
 ```
@@ -72,6 +74,8 @@ Session 投影拥有当前目录，并通过 Session observation 暴露它，因
 #### KV Cache 影响
 
 目录变更追加上下文，不替换稳定的系统提示词前缀。目录变化或恢复在保留的历史之后生成新上下文。
+
+部署若在系统提示词模板中引用 `{{cwd}}`，目录变化或恢复时该模板也会变化。服务默认不新增系统提示词段；必需的用户上下文仍是标准的目录呈现方式。
 
 ## 已知限制与后续工作
 
