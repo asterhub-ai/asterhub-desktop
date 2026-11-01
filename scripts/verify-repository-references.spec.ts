@@ -125,7 +125,7 @@ describe('maintained repository reference policy', () => {
     fixture.write('.gitignore', 'ignored.md\ntracked-ignore.md\n')
     fixture.write('ignored.md', fixture.commit)
     fixture.write('vendor/project/file.md', `${fixture.commit}\n${organizationUrl}`)
-    fixture.write('.agents/notes/archived/process/frozen.md', `${fixture.commit}\n${organizationUrl}`)
+    fixture.write('项目现状/board.md', `${fixture.commit}\n${organizationUrl}`)
     fixture.write('tracked-ignore.md', fixture.commit)
     fixture.git(['add', '--force', 'tracked-ignore.md'])
     unlinkSync(join(fixture.root, 'tracked.md'))
