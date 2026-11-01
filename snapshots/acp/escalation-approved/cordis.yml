@@ -2,6 +2,20 @@
 # launcher owns environment loading, plugin resolution, and process shutdown;
 # stdout remains reserved for ACP JSON-RPC.
 
+# Product skill catalogs are outside the transport snapshot corpus.
+- id: asterhub-skills
+  disabled: true
+
+# Keep the recorded tool family independent of the replay host.
+- id: bash-sandbox
+  disabled: false
+- id: pwsh-sandbox
+  disabled: true
+- id: tool-bash
+  disabled: false
+- id: tool-pwsh
+  disabled: true
+
 - id: llm-deepseek
   name: '@deepseek-ai/dsh-llm-deepseek-api-key'
   config:

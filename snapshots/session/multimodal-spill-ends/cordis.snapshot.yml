@@ -1,3 +1,16 @@
+# Replay pins the passthrough sandbox: the recorded corpus is machine-independent,
+# and a host-local backend would register platform-specific repair skills.
+- id: sandbox
+  name: '@deepseek-ai/dsh-sandbox-local'
+  config:
+    runnerCommand:
+      - bash
+      - -c
+      - while [ "$1" != "--" ]; do shift; done; shift; exec "$@"
+      - passthrough-runner
+    runnerFailureSignatures:
+      - 'passthrough-runner: profile rejected'
+
 # Keyless replay for the read-image success scenario. This profile patch swaps
 # the adapter and re-pins the recorded vision model. The replay catalog declares image input,
 # so the strict read_image gate accepts the route and the tool result carries

@@ -2,6 +2,28 @@
 # The shipped profile owns application startup; this patch fixes only the
 # deterministic test composition and raw persistence needed for recording.
 
+# The AsterHub product skill catalog (asterhub-rpc-*) is a fork product-layer
+# mount whose entries would leak machine-local skills into recorded and
+# replayed sessions. Snapshot compositions are keyless and machine-independent,
+# so disable it here for every scenario that layers this patch; product
+# profiles keep the mount.
+- id: asterhub-skills
+  disabled: true
+
+# The default recording exposes bash on every replay host. Dedicated pwsh
+# compositions override these rows; shipped Windows profiles are unchanged.
+- id: bash-sandbox
+  disabled: false
+
+- id: pwsh-sandbox
+  disabled: true
+
+- id: tool-bash
+  disabled: false
+
+- id: tool-pwsh
+  disabled: true
+
 - id: llm-deepseek
   name: '@deepseek-ai/dsh-llm-deepseek-api-key'
   config:

@@ -1,10 +1,10 @@
 - insert:
-    - id: office-skills
+    - id: skill-office
       name: '@deepseek-ai/dsh-skill-office'
       config:
         assetRoot: !!js process.cwd() + '/office-skills'
-        node: !!js process.execPath
-        cli: !!js process.cwd() + '/office-cli.cjs'
+        node: !!js process.cwd() + '/office-node'
+        cli: !!js process.cwd() + '/office-cli.js'
 
 - id: tool-bash
   disabled: true

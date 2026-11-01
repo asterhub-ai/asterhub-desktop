@@ -1,5 +1,4 @@
-# Add PTC mode and Cordis tools to the base spawn/workflow stack, exercising
-# all four boundaries in one ACP snapshot.
+# Native Cordis inspection alongside the base spawn and workflow capabilities.
 - id: agent-default-model
   name: '@deepseek-ai/dsh-agent-default-model'
   config:
@@ -19,6 +18,7 @@
 
 - id: tool-executor-native
   disabled: false
+
 - id: tool-executor-ptc
   disabled: true
 

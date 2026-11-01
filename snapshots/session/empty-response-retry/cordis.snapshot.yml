@@ -1,3 +1,16 @@
+# Replay pins the passthrough sandbox: the recorded corpus is machine-independent,
+# and a host-local backend would register platform-specific repair skills.
+- id: sandbox
+  name: '@deepseek-ai/dsh-sandbox-local'
+  config:
+    runnerCommand:
+      - bash
+      - -c
+      - while [ "$1" != "--" ]; do shift; done; shift; exec "$@"
+      - passthrough-runner
+    runnerFailureSignatures:
+      - 'passthrough-runner: profile rejected'
+
 # Keyless replay for the retry overlay: disable the key-requiring DeepSeek
 # adapter, insert `llm-replay`, and give its provider the same deterministic
 # 1 ms zero-jitter retry policy as the live sibling. The app patch still

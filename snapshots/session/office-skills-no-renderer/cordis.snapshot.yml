@@ -1,3 +1,16 @@
+# Replay pins the passthrough sandbox: the recorded corpus is machine-independent,
+# and a host-local backend would register platform-specific repair skills.
+- id: sandbox
+  name: '@deepseek-ai/dsh-sandbox-local'
+  config:
+    runnerCommand:
+      - bash
+      - -c
+      - while [ "$1" != "--" ]; do shift; done; shift; exec "$@"
+      - passthrough-runner
+    runnerFailureSignatures:
+      - 'passthrough-runner: profile rejected'
+
 - id: llm-deepseek
   disabled: true
 
@@ -16,11 +29,13 @@
                 defaultReasoningEffort: high
 
 - insert:
-    - id: office-skills
+    - id: skill-office
       name: '@deepseek-ai/dsh-skill-office'
+      disabled: false
       config:
         assetRoot: !!js process.cwd() + '/office-skills'
-        cli: false
+        node: !!js process.cwd() + '/office-node'
+        cli: !!js process.cwd() + '/render-cli.cjs'
 
 - id: tool-bash
   disabled: true

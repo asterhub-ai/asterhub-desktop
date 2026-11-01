@@ -735,7 +735,13 @@ function fixtureMessageIdReplacements(logs: readonly string[], fixtures: readonl
 /** Apply literal fixture replacements without changing any other fresh value. */
 function applyFixtureReplacements(content: string, replacements: readonly FixtureReplacement[]): string {
   let stable = content
-  for (const { from, to } of replacements) stable = stable.split(from).join(to)
+  for (const { from, to } of replacements) {
+    // JSONL stores paths JSON-escaped; replace that spelling with the escaped
+    // target so the rewritten line stays valid JSON.
+    const escapedFrom = JSON.stringify(from).slice(1, -1)
+    const escapedTo = JSON.stringify(to).slice(1, -1)
+    stable = stable.split(from).join(to).split(escapedFrom).join(escapedTo)
+  }
   return stable
 }
 

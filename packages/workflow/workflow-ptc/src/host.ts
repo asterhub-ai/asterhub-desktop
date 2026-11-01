@@ -205,7 +205,7 @@ export class PtcWorkflowRun implements WorkflowRun {
     const callId = ++this.started
     const run = await this.subagents.startActivation({
       provider: this.provider,
-      label: this.meta.name,
+      label: `${this.meta.name} child ${callId}`,
       delivery: 'caller',
       signal: this.controller.signal,
       request: {

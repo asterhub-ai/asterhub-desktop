@@ -19,8 +19,8 @@ export interface HookInvocation {
   dialect: HookDialect
   /** A stable id correlating the invoked event with its result. */
   handlerId: string
-  /** The matcher-group pattern that selected it (absent for match-all). */
-  matcher?: string
+  /** The matcher-group pattern; absent or `undefined` is omitted from the event. */
+  matcher?: string | undefined
 }
 
 /** The decided outcome half of the pair. */

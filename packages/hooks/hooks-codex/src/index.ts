@@ -11,11 +11,11 @@
 // Each dialect bridge keeps its complete dependency list visible at the entry
 // point; a cross-package facade for imports alone would add indirection.
 /* jscpd:ignore-start */
+import type {} from '@deepseek-ai/dsh-working-directory'
 import { readFileSync } from 'node:fs'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
-import type {} from '@deepseek-ai/dsh-working-directory'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 declare module '@deepseek-ai/dsh-llm' {
@@ -33,11 +33,10 @@ import {
   createDetachedRuns,
   DEFAULT_HOOK_TIMEOUT_MS,
   DEFAULT_STDERR_SUMMARY_MAX_CHARS,
-  matchesMatcher,
   mergeHookOutputs,
   runHook,
+  selectHookGroups,
   type HookOutput,
-  type MatcherGroup,
   type MergedHookOutcome,
 } from '@deepseek-ai/dsh-hook-protocol'
 import { parseCodexConfig, type CodexHookConfig } from './config.ts'
@@ -106,7 +105,7 @@ export function apply(ctx: Context, config: Config): void {
 
   // SessionStart is the one emit-shaped (detached) point Codex has: track its
   // run chains so disposal aborts a still-running hook process and drains the
-  // continuation (docs/defensive-patterns.md: dispose must reach quiescence).
+  // continuation (docs/defensive-patterns/general.md: dispose must reach quiescence).
   const detached = createDetachedRuns()
   ctx.effect(() => () => detached.drain(), 'hooks-codex: drain detached hook runs')
 
@@ -119,7 +118,7 @@ export function apply(ctx: Context, config: Config): void {
   async function runPoint(
     point: string,
     matchQuery: string,
-    payload: (cwd: string) => unknown,
+    payload: Record<string, unknown>,
     opts: {
       agent?: Agent
       turn?: number
@@ -127,26 +126,22 @@ export function apply(ctx: Context, config: Config): void {
       plainStdoutAsContext?: boolean
     },
   ): Promise<MergedHookOutcome> {
-    const groups: MatcherGroup[] = parsed[point] ?? []
+    const groups = selectHookGroups(parsed[point], matchQuery, 'codex')
+    if (groups.length === 0) return mergeHookOutputs([])
     const outputs: HookOutput[] = []
-    // A missing or failed provider is authoritative; never use the immutable header or server cwd for an Agent.
-    const cwd = opts.agent === undefined ? process.cwd() : requireExecutionCwd(opts.agent)
-    const workdir = opts.agent === undefined ? undefined : cwd
-    const hookPayload = payload(cwd)
+    const workdir = opts.agent === undefined ? undefined : await ctx.workingDirectory.ensure(opts.agent, opts.signal)
     for (const group of groups) {
-      // Codex always interprets matchers as regexes; it has no literal fast path.
-      if (!matchesMatcher(group.matcher, matchQuery, 'codex')) continue
       for (const hook of group.hooks) {
         const handlerId = nextHandlerId(point)
         const session = opts.agent?.session
         if (session && opts.turn !== undefined) {
           appendHookInvoked(session, {
             turn: opts.turn, point, dialect: 'codex', handlerId,
-            ...group.matcher !== undefined ? { matcher: group.matcher } : {},
+            matcher: group.matcher,
           })
         }
         const { output, durationMs } = await runHook(ctx.shell, hook, {
-          payload: hookPayload,
+          payload: { ...payload, cwd: workdir ?? process.cwd() },
           defaultTimeoutMs,
           ...workdir !== undefined ? { cwd: workdir } : {},
           signal: opts.signal,
@@ -191,7 +186,7 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.on('agent/created', async ({ agent, source, signal }) => {
     const ownerSignal = signal === undefined ? detached.signal : AbortSignal.any([signal, detached.signal])
-    const run = runPoint('SessionStart', source, cwd => ({ ...base(agent, 'SessionStart', model, cwd), source }), { agent, plainStdoutAsContext: true, signal: ownerSignal })
+    const run = runPoint('SessionStart', source, { ...base(agent, 'SessionStart', model), source }, { agent, plainStdoutAsContext: true, signal: ownerSignal })
       .then((merged) => {
         const context = contextFrom(merged)
         if (context) agent.inject(context)
@@ -205,11 +200,12 @@ export function apply(ctx: Context, config: Config): void {
   // UserPromptSubmit → PreStepDecision. Codex supports reject, not rewrite or ask.
   ctx.on('agent/pre-step', async ({ agent, messages, turn, signal }, next): Promise<PreStepDecision> => {
     if (messages.length === 0) return next()
-    const merged = await runPoint('UserPromptSubmit', '', cwd => ({
-      ...base(agent, 'UserPromptSubmit', model, cwd),
+    const payload = {
+      ...base(agent, 'UserPromptSubmit', model),
       turn_id: String(turn),
       prompt: blocksToText(messages.flatMap(message => message.content)),
-    }), {
+    }
+    const merged = await runPoint('UserPromptSubmit', '', payload, {
       agent, turn, plainStdoutAsContext: true, signal,
     })
     /* jscpd:ignore-start */
@@ -230,7 +226,7 @@ export function apply(ctx: Context, config: Config): void {
   // PreToolUse → PreToolDecision. Codex blocks only (no allow/ask honored).
   ctx.on('tools/pre-execute', async (exec, next): Promise<PreToolDecision> => {
     const turn = lastTurn(ctx, exec.agent)
-    const merged = await runPoint('PreToolUse', exec.name, cwd => preToolPayload(ctx, exec, model, cwd), { ...exec.agent ? { agent: exec.agent } : {}, turn, signal: exec.signal })
+    const merged = await runPoint('PreToolUse', exec.name, preToolPayload(ctx, exec, model), { ...exec.agent ? { agent: exec.agent } : {}, turn, signal: exec.signal })
     /* jscpd:ignore-end */
     if (merged.decision === 'deny') return { kind: 'deny', reason: merged.reason ?? 'blocked by PreToolUse hook' }
     return next()
@@ -240,7 +236,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.on('tools/post-execute', async (exec, result, next): Promise<PostToolDecision> => {
     const turn = lastTurn(ctx, exec.agent)
     /* jscpd:ignore-start */
-    const merged = await runPoint('PostToolUse', exec.name, cwd => postToolPayload(ctx, exec, result, model, cwd), { ...exec.agent ? { agent: exec.agent } : {}, turn, signal: exec.signal })
+    const merged = await runPoint('PostToolUse', exec.name, postToolPayload(ctx, exec, result, model), { ...exec.agent ? { agent: exec.agent } : {}, turn, signal: exec.signal })
     const context = contextFrom(merged)
     if (merged.decision === 'deny') {
       return { kind: 'block', feedback: [{ type: 'text', text: merged.reason ?? 'blocked by PostToolUse hook' }], ...context ? { additionalContexts: [context] } : {} }
@@ -264,7 +260,7 @@ export function apply(ctx: Context, config: Config): void {
   // avoid continuing the same turn indefinitely. It is always false here, so an
   // unconditionally blocking hook force-continues every step until it self-limits.
   ctx.on('agent/turn-stopping', async ({ agent, turn, signal }): Promise<void> => {
-    const merged = await runPoint('Stop', '', cwd => ({ ...turnBase(ctx, agent, 'Stop', model, cwd), stop_hook_active: false, last_assistant_message: null }), { agent, turn, signal })
+    const merged = await runPoint('Stop', '', { ...turnBase(ctx, agent, 'Stop', model), stop_hook_active: false, last_assistant_message: null }, { agent, turn, signal })
     /* jscpd:ignore-end */
     if (merged.decision === 'deny') {
       // A blocking Stop hook forces continuation; a block with no reason (exit 2,
@@ -292,18 +288,13 @@ function blocksToText(content: ContentBlock[]): string {
 }
 /* jscpd:ignore-end */
 
-function requireExecutionCwd(agent: Agent): string {
-  return agent.ctx.workingDirectory.get(agent.session)
-}
-
 /** Base fields on every Codex payload (no turn_id). */
-function base(agent: Agent | undefined, event: string, model: string, cwd: string): Record<string, unknown> {
+function base(agent: Agent | undefined, event: string, model: string): Record<string, unknown> {
   return {
     session_id: agent?.session.header.id ?? '',
     // The persistence seam exposes no artifact path; the field stays null
     // (a durable consumer gap recorded in this package's README).
     transcript_path: null,
-    cwd,
     hook_event_name: event,
     model,
     permission_mode: 'default',
@@ -311,8 +302,8 @@ function base(agent: Agent | undefined, event: string, model: string, cwd: strin
 }
 
 /** Base + turn_id, for the turn-scoped events (PreToolUse/PostToolUse/UserPromptSubmit/Stop). */
-function turnBase(ctx: Context, agent: Agent | undefined, event: string, model: string, cwd: string): Record<string, unknown> {
-  return { ...base(agent, event, model, cwd), turn_id: String(lastTurn(ctx, agent)) }
+function turnBase(ctx: Context, agent: Agent | undefined, event: string, model: string): Record<string, unknown> {
+  return { ...base(agent, event, model), turn_id: String(lastTurn(ctx, agent)) }
 }
 
 /** Extract a `command` string from a tool call's parsed arguments, else ''. */
@@ -324,26 +315,14 @@ function commandOf(args: unknown): string {
   return ''
 }
 
-function preToolPayload(ctx: Context, exec: ToolExecution, model: string, cwd: string): Record<string, unknown> {
+function preToolPayload(ctx: Context, exec: ToolExecution, model: string): Record<string, unknown> {
   // `tool_name` is the REAL tool name (matching the `exec.name` matcher subject);
   // a hardcoded constant would disagree with what the matcher tests and make a
   // config's tool matcher never fire. `tool_input` keeps Codex's `{ command }`
   // shape (its shell payload), derived from the call's `command` arg when present.
-  return { ...turnBase(ctx, exec.agent, 'PreToolUse', model, cwd), tool_name: exec.name, tool_input: { command: commandOf(exec.arguments) }, tool_use_id: exec.callId }
+  return { ...turnBase(ctx, exec.agent, 'PreToolUse', model), tool_name: exec.name, tool_input: { command: commandOf(exec.arguments) }, tool_use_id: exec.callId }
 }
 
-function postToolPayload(
-  ctx: Context,
-  exec: ToolExecution,
-  result: ToolExecutionResult,
-  model: string,
-  cwd: string,
-): Record<string, unknown> {
-  return {
-    ...turnBase(ctx, exec.agent, 'PostToolUse', model, cwd),
-    tool_name: exec.name,
-    tool_input: { command: commandOf(exec.arguments) },
-    tool_use_id: exec.callId,
-    tool_response: blocksToText(result.content),
-  }
+function postToolPayload(ctx: Context, exec: ToolExecution, result: ToolExecutionResult, model: string): Record<string, unknown> {
+  return { ...turnBase(ctx, exec.agent, 'PostToolUse', model), tool_name: exec.name, tool_input: { command: commandOf(exec.arguments) }, tool_use_id: exec.callId, tool_response: blocksToText(result.content) }
 }

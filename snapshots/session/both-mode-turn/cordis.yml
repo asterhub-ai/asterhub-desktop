@@ -1,6 +1,5 @@
-# Both mode adds `ctx.ptcRuntime` while keeping native tools on the wire and
-# adding `run_code` plus its generated TypeScript SDK prompt. Recording applies
-# this profile patch; replay applies its sibling patch.
+# PTC mode executes the recorded program through run_code and its TypeScript
+# SDK. Recording applies this profile patch; replay applies its sibling patch.
 - id: agent-default-model
   name: '@deepseek-ai/dsh-agent-default-model'
   config:
@@ -20,6 +19,7 @@
 
 - id: tool-executor-native
   disabled: true
+
 - id: tool-executor-ptc
   disabled: false
 

@@ -1,3 +1,16 @@
+# Replay pins the passthrough sandbox: the recorded corpus is machine-independent,
+# and a host-local backend would register platform-specific repair skills.
+- id: sandbox
+  name: '@deepseek-ai/dsh-sandbox-local'
+  config:
+    runnerCommand:
+      - bash
+      - -c
+      - while [ "$1" != "--" ]; do shift; done; shift; exec "$@"
+      - passthrough-runner
+    runnerFailureSignatures:
+      - 'passthrough-runner: profile rejected'
+
 # Keyless replay counterpart of system-prompt-in-history/cordis.yml: the
 # replay route declares the same in-history capability.
 - id: llm-deepseek

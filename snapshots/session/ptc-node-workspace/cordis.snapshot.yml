@@ -35,6 +35,13 @@
   disabled: false
 
 # The runtime mounts after the executor, which waits for its required service.
+- id: ptc-runtime
+  disabled: true
+
+- insert:
+    - id: ptc-runtime-late
+      name: '@deepseek-ai/dsh-ptc-runtime-node'
+
 - id: system-prompt
   name: '@deepseek-ai/dsh-system-prompt'
   config:

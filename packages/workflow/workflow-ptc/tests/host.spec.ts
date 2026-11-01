@@ -212,7 +212,7 @@ describe('workflow runtime outcomes', () => {
       const { parent: delegatedParent, ...request } = delegation.request
       expect(delegatedParent).toBe(parent)
       expect({ ...delegation, request }).toEqual({
-        provider: 'stub', label: 'host-test', delivery: 'caller',
+        provider: 'stub', label: 'host-test child 1', delivery: 'caller',
         request: {
           prompt: [{ type: 'text', text: 'answer' }], outputSchema: schema, agentOptions: { model: 'selected' },
         },
