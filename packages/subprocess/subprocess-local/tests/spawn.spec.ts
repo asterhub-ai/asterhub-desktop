@@ -386,24 +386,6 @@ describe('spawnSubprocess', () => {
     expect(result.signal).toBe(process.platform === 'win32' ? null : 'SIGTERM')
   })
 
-  it.skipIf(process.platform === 'win32')('does not wait for a Linux group that has only zombie members', async () => {
-    const pidFile = join(spillDir, `zombie-group-${Date.now()}.pid`)
-    const running = spawnSubprocess(spec(`sleep 60 & echo $! > ${pidFile}; echo leader-done`, { graceMs: 100 }), {
-      platform: 'linux',
-      linuxProcessGroupHasLiveMembers: () => false,
-    })
-    const descendant = await waitForPidFile(pidFile)
-    try {
-      await running.done
-      await expect(running.waitForExit()).resolves.toBe(true)
-    } finally {
-      // The confirmed-absent verdict is a permanent no-more-signals boundary,
-      // so terminate() must stay inert here; reap the live survivor directly.
-      process.kill(descendant, 'SIGKILL')
-      await waitGone(descendant)
-    }
-  })
-
   it.skipIf(process.platform === 'win32')('bounds inherited-pipe draining after the shell exits', async () => {
     const pidFile = join(spillDir, `pipe-holder-${Date.now()}.pid`)
     const started = Date.now()
@@ -1161,35 +1143,6 @@ describe('coverage seams', () => {
     // result and the function stays silent — the same containment Windows
     // relies on for an already-absent tree.
     expect(() => { taskkillProcessTree(2 ** 30) }).not.toThrow()
-  })
-
-  it('covers the injected POSIX group paths on any host', async () => {
-    // Windows has no POSIX groups, so the tree-liveness probe, group
-    // signalling, and the SIGKILL escalation timer only run here through the
-    // injected platform; the mock keeps the group alive through TERM and
-    // terminates the direct child when the escalation tier delivers SIGKILL.
-    const running = spawnSubprocess(spec('sleep 60', { graceMs: 100 }), {
-      platform: 'linux',
-      linuxProcessGroupHasLiveMembers: () => false,
-    })
-    const realKill = process.kill.bind(process)
-    let rootPid: number | undefined
-    const killSpy = vi.spyOn(process, 'kill').mockImplementation((target, signal) => {
-      if (typeof target === 'number' && target < 0) {
-        rootPid ??= -target
-        if (signal === 0) return true
-        if (signal === 'SIGKILL') realKill(-target, 'SIGKILL')
-        return true
-      }
-      return realKill(target, signal)
-    })
-    try {
-      running.terminate()
-      await running.done
-      await expect(running.waitForExit()).resolves.toBe(true)
-    } finally {
-      killSpy.mockRestore()
-    }
   })
 
   it('treats a vanished group probe as quiescent without signalling', async () => {

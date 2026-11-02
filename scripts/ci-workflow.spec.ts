@@ -591,7 +591,7 @@ describe('Runtime and LLM e2e Blacksmith routing', () => {
       for (const ci of [false, true]) {
         for (const release of [false, true]) {
           for (const mode of ['', 'selfhosted', 'unexpected', 'blacksmith']) {
-            const vars = { DSH_CI_FAILOVER_LINUX: 'blacksmith', DSH_CI_FAILOVER_WINDOWS: 'blacksmith', [variable]: mode }
+            const vars = { [variable]: mode }
             expect(evaluateRunsOn(build['runs-on'], { inputs: { ci, release }, vars, matrix: { target, runner } }), `${target} ci=${ci} release=${release} mode=${mode}`)
               .toBe(ci && !release && mode === 'blacksmith' ? blacksmith : runner)
           }
