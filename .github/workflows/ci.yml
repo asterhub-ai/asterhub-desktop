@@ -190,8 +190,9 @@ jobs:
     with:
       targets: node24-win-x64
       ci: true
-    secrets:
-      DEEPSEEK_API_KEY_EXTERNAL: ${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}
+    # AsterHub fork: no real DeepSeek API key is passed; the product signs in
+    # through its own account system and the installed-wheel live-API steps
+    # were removed from the reusable workflow (2026-11-03 user decision).
 
   # Native builds and process tests block pull requests independently of coverage.
   # Observational checks reuse the successful build and remain non-blocking.
