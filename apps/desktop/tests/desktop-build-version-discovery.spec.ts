@@ -67,7 +67,7 @@ describe('desktop build version discovery', () => {
       `asterhub-${PRERELEASE}.${DATE}.3-mac-arm64.dmg`,
       `asterhub-${PRERELEASE}.${DATE}.3-mac-arm64.zip`,
     ])
-    await expect(suggestDesktopBuildVersion({ productVersion: PRERELEASE, target: 'mac-arm64', environment: {}, date: DATE, artifactsRoot }))
+    await expect(suggestDesktopBuildVersion({ productVersion: PRERELEASE, target: 'win-x64', environment: {}, date: DATE, artifactsRoot }))
       .resolves.toBe(`${PRERELEASE}.${DATE}.4`)
   })
 
@@ -77,7 +77,7 @@ describe('desktop build version discovery', () => {
       `asterhub-${PRERELEASE}.${DATE}.4-mac-arm64-unnotarized.zip`,
       `asterhub-${PRERELEASE}.${DATE}.9-mac-arm64-unnotarized.zip.blockmap`,
     ])
-    await expect(suggestDesktopBuildVersion({ productVersion: PRERELEASE, target: 'mac-arm64', environment: {}, date: DATE, artifactsRoot }))
+    await expect(suggestDesktopBuildVersion({ productVersion: PRERELEASE, target: 'win-x64', environment: {}, date: DATE, artifactsRoot }))
       .resolves.toBe(`${PRERELEASE}.${DATE}.5`)
   })
 

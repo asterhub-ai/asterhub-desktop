@@ -38,8 +38,6 @@
         compression: zstd
     - id: project-adopt
       name: '@deepseek-ai/dsh-project-adopt'
-    - id: ui-settings-account
-      name: '@deepseek-ai/dsh-client-ui-settings-account'
     - id: ui-settings-anima
       name: '@deepseek-ai/dsh-client-ui-settings-anima'
     - id: speech-to-text

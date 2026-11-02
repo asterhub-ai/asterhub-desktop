@@ -249,7 +249,7 @@ function collectEventAttachmentRefs(
     case 'user/message': case 'tool/ptc-dispatch':
       collectAttachmentRefs(carrier.content, images, files)
       return
-    case 'system/message': case 'developer/message': case 'tool/result': case 'team/message/queued':
+    case 'system/message': case 'developer/message': case 'tool/result':
       collectAttachmentRefs(carrier.message?.content, images, files)
       return
     case 'agent/inbox/spliced': {

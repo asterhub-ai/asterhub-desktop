@@ -7,7 +7,7 @@ import { modulePackage } from './runtime-roster.ts'
 import { experimentalRuntimeReferences } from './runtime-roster-isolation.ts'
 import { withDefaultWeb, webGet } from './default-web-process.ts'
 
-const experimentalName = '@deepseek-ai/dsh-experimental-client-ui-agent-team'
+const experimentalName = '@deepseek-ai/dsh-experimental-client-ui-voice-input'
 
 it('boots default Web with the shipped Schedule rows, without experimental modules, time context, or an active built-in Browser', async (test) => {
   await withDefaultWeb(test, async ({ url, request }) => {
@@ -50,7 +50,7 @@ it('boots default Web with the shipped Schedule rows, without experimental modul
     const mounted = contaminated.plugins.filter(plugin => plugin.modules.some(url => modulePackage(url) === experimentalName))
     expect(mounted).toEqual([expect.objectContaining({ state: FiberState.ACTIVE })])
     expect(experimentalRuntimeReferences(contaminated)).toEqual(expect.arrayContaining([
-      expect.stringContaining('/packages/experimental/client-ui-agent-team/'),
+      expect.stringContaining('/packages/experimental/client-ui-voice-input/'),
     ]))
   })
 })

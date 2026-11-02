@@ -9,7 +9,6 @@ import { buildLibraryArtifacts, runPnpmCommand } from './compile-referenced-proj
  * @throws If any build fails.
  */
 export function buildCiBenchArtifacts(root: string): void {
-  runPnpmCommand(root, ['run', 'build:native-system'])
   buildLibraryArtifacts(root, false, 'benchmark-emit')
   runPnpmCommand(root, ['exec', 'tsdown', '--config-loader', 'native', '--config', 'benchmarks/tsdown.config.ts'])
   runPnpmCommand(root, ['run', 'build:web'])

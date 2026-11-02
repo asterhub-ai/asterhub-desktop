@@ -813,7 +813,7 @@ describe('session.export download endpoint', () => {
   })
 
   it.each([
-    ['system/message', 'message'], ['developer/message', 'message'], ['tool/result', 'message'], ['team/message/queued', 'message'],
+    ['system/message', 'message'], ['developer/message', 'message'], ['tool/result', 'message'],
     ['tool/ptc-dispatch', 'content'],
     ['compaction/summary', 'summary'], ['compaction/summary', 'rawOutput'],
   ] as const)('exports attachments from the declared %s %s content', async (type, field) => {
@@ -822,7 +822,7 @@ describe('session.export download endpoint', () => {
       ? { role: 'tool', toolCallId: 'declared-call', source: { kind: 'tool', callId: 'declared-call' }, content }
       : { content }
     const data = field === 'message' ? { message } : { [field]: content }
-    const stored = log('session-root', undefined, [{ type, seq: SessionSeq(1), time: 1000, data } as SessionEvent])
+    const stored = log('session-root', undefined, [{ type: type as SessionEvent['type'], seq: SessionSeq(1), time: 1000, data } as SessionEvent])
     const api = await buildApi({ 'session-root': stored })
     const response = await toFetchHandler(api).fetch(new Request('http://host/api/session.export?sessionId=session-root'))
     const files = unzipSync(await responseBytes(response))

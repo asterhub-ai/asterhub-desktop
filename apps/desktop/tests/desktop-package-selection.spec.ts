@@ -72,13 +72,15 @@ it('resolves an old locally retained package with publishRequested=false without
   const root = await mkdtemp(join(tmpdir(), 'desktop-selection-'))
   try {
     const f = fixture()
-    const selection = selectDesktopPackage('owner/repo', { package_run_id: '42' }, f.routes, f.api)
-    const file = join(root, 'installer.dmg')
+    f.run.path = '.github/workflows/windows-package.yml'
+    const routes = { mini: { label: 'dsh-mini', target: 'win-x64' } }
+    const selection = selectDesktopPackage('owner/repo', { package_run_id: '42' }, routes, f.api)
+    const file = join(root, 'installer.exe')
     await writeFile(file, 'fixture')
     const source = { repository: 'owner/repo', runId: '42', attempt: '2', commit: 'a'.repeat(40),
       workflowCommit: 'a'.repeat(40), sourceRef: 'master', channel: 'nightly' as const, runnerName: 'mini',
-      target: 'mac-arm64' as const, preset: 'test' as const, productVersion: '1.0.0', version: '1.0.0',
-      testReleaseId: 'b'.repeat(32), publishRequested: false, qualification: 'notarized' as const }
+      target: 'win-x64' as const, preset: 'test' as const, productVersion: '1.0.0', version: '1.0.0',
+      testReleaseId: 'b'.repeat(32), publishRequested: false, qualification: 'signed' as const }
     await retainDesktopRelease(join(root, 'releases'), source, [file])
     const env = { GITHUB_REPOSITORY: 'owner/repo', RUNNER_NAME: 'mini', DSH_PACKAGING_CONFIG_DIR: join(root, 'packaging'),
       DESKTOP_PACKAGE_SELECTION: JSON.stringify(selection) }
@@ -115,7 +117,7 @@ it('resolves an old locally retained package with publishRequested=false without
     await expect(resolveRetainedDesktopPublication(env, path => path.endsWith('/commits/refs%2Ftags%2Fdsh-v1.0.0') ? { sha: 'c'.repeat(40) } : api(path)))
       .rejects.toThrow(/source tag changed/u)
     await writeFile(manifestPath, original)
-    await writeFile(join(root, 'releases/42/2/installer.dmg'), 'changed')
+    await writeFile(join(root, 'releases/42/2/installer.exe'), 'changed')
     await expect(resolveRetainedDesktopPublication(env, api)).rejects.toThrow(/changed file/u)
     await rm(join(root, 'releases/42/2'), { recursive: true })
     await expect(resolveRetainedDesktopPublication(env, api)).rejects.toThrow()

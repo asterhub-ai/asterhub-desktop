@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-asterhub-automation",
   "description": "Native scheduled-task management with fresh-session execution for AsterHub Desktop",
-  "version": "0.2.0-rc.3",
+  "version": "0.2.2-alpha.2",
   "publishConfig": {
     "access": "public"
   },

@@ -13,11 +13,11 @@
  */
 
 import { spawn } from 'node:child_process'
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
 import { homedir, platform as osPlatform } from 'node:os'
-import { dirname, isAbsolute, join } from 'node:path'
+import { join } from 'node:path'
 import {
-  canOpenNativePath, openNativePath, runNativeCommand, desktopEntryFields, desktopDataDirectories, type NativeCommandRunner,
+  canOpenNativePath, openNativePath, runNativeCommand, type NativeCommandRunner,
 } from '@deepseek-ai/dsh-native-command'
 import { scrubbedParentEnv } from '@deepseek-ai/dsh-subprocess'
 import {
@@ -366,67 +366,6 @@ async function recordLauncher(
   return null
 }
 
-/** Fields of one parsed XDG desktop entry the resolver and icon route read. */
-export interface DesktopEntry {
-  readonly exec?: string
-  readonly tryExec?: string
-  readonly icon?: string
-}
-
-/**
- * Parse the `[Desktop Entry]` section's `Exec`/`TryExec`/`Icon` keys.
- * @param text - desktop-entry file text.
- * @returns the recognized fields; keys outside the entry section are ignored.
- */
-export function parseDesktopEntry(text: string): DesktopEntry {
-  const fields = desktopEntryFields(text)
-  return {
-    ...(fields.Exec === undefined ? {} : { exec: fields.Exec }),
-    ...(fields.TryExec === undefined ? {} : { tryExec: fields.TryExec }),
-    ...(fields.Icon === undefined ? {} : { icon: fields.Icon }),
-  }
-}
-
-/**
- * XDG data directories in precedence order (`XDG_DATA_HOME`, then `XDG_DATA_DIRS`).
- * @param internals - completed platform facts.
- * @returns the data directories, freedesktop defaults applied.
- */
-export function xdgDataDirectories(internals: ResolvedInternals): readonly string[] {
-  return desktopDataDirectories(internals.home, internals.env)
-}
-
-/**
- * Read one desktop entry by id from the XDG application directories.
- * @param desktopId - entry id without the `.desktop` suffix.
- * @param internals - completed platform facts.
- * @returns the parsed entry, or null when no directory holds it.
- */
-export async function findDesktopEntry(
-  desktopId: string, internals: ResolvedInternals,
-): Promise<DesktopEntry | null> {
-  for (const dataDir of xdgDataDirectories(internals)) {
-    const path = join(dataDir, 'applications', `${desktopId}.desktop`)
-    try {
-      return parseDesktopEntry(await readFile(path, 'utf8'))
-    } catch {
-      // Swallows ENOENT/EACCES: try the next data directory.
-    }
-  }
-  return null
-}
-
-/**
- * The executable one desktop entry proves: a `TryExec` when present,
- * otherwise `Exec`'s first token (quoted or bare); absolute paths verify on
- * disk and bare names resolve in-process through the subprocess capability.
- */
-async function desktopLauncher(entry: DesktopEntry, internals: ResolvedInternals): Promise<string | null> {
-  const candidate = entry.tryExec ?? execCommand(entry.exec)
-  if (candidate === null || candidate === '') return null
-  if (isAbsolute(candidate)) return await isFile(candidate) ? candidate : null
-  return internals.resolveExecutable(candidate)
-}
 
 /**
  * First token of an `Exec=` value.
@@ -461,7 +400,6 @@ function executableIcon(path: string, internals: ResolvedInternals): OpenInAppIc
 /** Resolve one locator to a verified launch, or null when it proves nothing. */
 async function locate(
   locator: OpenInAppLocator,
-  probeTimeoutMs: number,
   registry: RegistryViewOnce,
   internals: ResolvedInternals,
 ): Promise<OpenInAppResolvedLaunch | null> {
@@ -473,36 +411,11 @@ async function locate(
       const iconPath = expandCandidate(locator.iconPath, internals)
       const icon = iconPath === null
         ? undefined
-        : internals.platform === 'win32'
-          ? { kind: 'executable' as const, path: iconPath }
-          : { kind: 'app-bundle' as const, path: iconPath }
+        : { kind: 'executable' as const, path: iconPath }
       return { launch: locator.launch, icon }
     }
-    case 'app': {
-      for (const root of internals.applicationRoots) {
-        for (const fsName of locator.fsNames) {
-          const bundle = join(root, fsName)
-          if (await isDirectory(bundle)) {
-            return {
-              launch: { kind: 'argv', command: 'open', args: ['-a', bundle] },
-              icon: { kind: 'app-bundle', path: bundle },
-            }
-          }
-        }
-      }
-      return null
-    }
-    case 'xcode': {
-      const developer = await output('xcode-select', ['-p'], probeTimeoutMs, internals)
-      if (developer === null) return null
-      const bundle = dirname(dirname(developer.trim()))
-      if (!bundle.endsWith('.app') || !await isDirectory(bundle)) return null
-      return {
-        launch: { kind: 'argv', command: 'xed', args: [] },
-        fallbackLaunch: { kind: 'argv', command: 'open', args: ['-a', bundle] },
-        icon: { kind: 'app-bundle', path: bundle },
-      }
-    }
+    case 'app': return null
+    case 'xcode': return null
     case 'cli': {
       if (locator.requiresDesktop === true && !canOpenNativePath({
         platform: internals.platform,
@@ -590,12 +503,7 @@ async function locate(
       }
       return null
     }
-    case 'desktop': {
-      const entry = await findDesktopEntry(locator.desktopId, internals)
-      if (entry === null) return null
-      const launcher = await desktopLauncher(entry, internals)
-      return launcher === null ? null : { launch: { kind: 'argv', command: launcher, args: locator.args } }
-    }
+    case 'desktop': return null
     /* v8 ignore next -- closed locator union */
     default: return assertNever(locator)
   }
@@ -614,20 +522,19 @@ export async function resolveLaunch(
 ): Promise<OpenInAppResolvedLaunch | null> {
   const resolved = resolveInternals(internals)
   if (resolved.ssh) return null
-  return resolveWithRegistry(app, probeTimeoutMs, new RegistryViewOnce(probeTimeoutMs, resolved), resolved)
+  return resolveWithRegistry(app, new RegistryViewOnce(probeTimeoutMs, resolved), resolved)
 }
 
 /** Resolve one entry against a pass-shared registry view. */
 async function resolveWithRegistry(
   app: OpenInAppApp,
-  probeTimeoutMs: number,
   registry: RegistryViewOnce,
   internals: ResolvedInternals,
 ): Promise<OpenInAppResolvedLaunch | null> {
   const platformSpec = specFor(app, internals.platform)
   if (platformSpec === undefined) return null
   for (const locator of platformSpec.locators) {
-    const found = await locate(locator, probeTimeoutMs, registry, internals)
+    const found = await locate(locator, registry, internals)
     if (found !== null) return found
   }
   return null
@@ -653,7 +560,7 @@ export async function resolveOpenInAppApps(
   }
   const registry = new RegistryViewOnce(probeTimeoutMs, resolved)
   const entries = await Promise.all(OPEN_IN_APP_CATALOG.map(async app =>
-    [app.id, await resolveWithRegistry(app, probeTimeoutMs, registry, resolved)] as const))
+    [app.id, await resolveWithRegistry(app, registry, resolved)] as const))
   const map = new Map<string, OpenInAppResolvedLaunch>()
   for (const [id, launch] of entries) {
     if (launch !== null) map.set(id, launch)

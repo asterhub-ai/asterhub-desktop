@@ -13,7 +13,7 @@ describe('Python runtime executable assets', () => {
       script,
       '--skip-build',
       '--dry-run',
-      '--targets=node24-macos-arm64',
+      '--targets=node24-win-x64',
     ], {
       cwd: root,
       encoding: 'utf8',

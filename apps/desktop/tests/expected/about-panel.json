@@ -1,30 +1,4 @@
 {
-  "darwin:en-US": {
-    "menu": [
-      { "label": "About AsterHub", "role": "about" },
-      { "type": "separator" }
-    ],
-    "options": {
-      "applicationName": "AsterHub",
-      "applicationVersion": "1.0.0",
-      "version": "",
-      "copyright": "",
-      "iconPath": "<app icon>"
-    }
-  },
-  "darwin:zh-CN": {
-    "menu": [
-      { "label": "关于 AsterHub", "role": "about" },
-      { "type": "separator" }
-    ],
-    "options": {
-      "applicationName": "AsterHub",
-      "applicationVersion": "1.0.0",
-      "version": "",
-      "copyright": "",
-      "iconPath": "<app icon>"
-    }
-  },
   "win32:zh-CN": {
     "menu": [
       { "label": "关于 AsterHub" },

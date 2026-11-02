@@ -92,8 +92,6 @@ Each spawn selects one owner for both signalling and quiescence. Supported Linux
 | [`src/index.ts`](src/index.ts) | Service wiring: live-handle sets, disposal, host-exit finalization, executable lookup |
 | [`src/spawn.ts`](src/spawn.ts) | Shared process plumbing: direct outcomes, tail-keep collection, spill files, and fallback spawning |
 | [`src/managed-owner.ts`](src/managed-owner.ts) | Private signal-and-wait owner used by each ordinary handle |
-| [`src/linux-scope.ts`](src/linux-scope.ts) | Linux user-systemd capability checks, scope launch, signalling, and quiescence |
-| [`src/linux-execve.ts`](src/linux-execve.ts) | Linux libc image replacement and inherited-standard-descriptor preservation |
 | [`src/windows-job.ts`](src/windows-job.ts) | Windows Job capability checks and helper launch |
 | [`src/runner-launch.ts`](src/runner-launch.ts) | Source, built, and packaged private-runner selection |
 | [`src/spawn-runner.ts`](src/spawn-runner.ts) | Linux one-shot exec bootstrap and Windows Job runner |

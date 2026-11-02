@@ -95,9 +95,8 @@ export function buildGates(
   const env = { ...environment }
   const gates: Gate[] = []
   if (scope === 'complete' || scope === 'artifacts') {
-    gates.push(pnpmGate('native', 'native addon', ['run', 'build:native-system'], [], env))
     for (const step of libraryBuildSteps(root, 'all')) {
-      gates.push(libraryGate(step, step.id === 'host-src' ? ['native', ...step.needs] : step.needs, env))
+      gates.push(libraryGate(step, step.needs, env))
     }
     gates.push(pnpmGate('web', 'Web build', ['run', 'build:web'], ['client-bundle'], env))
   }

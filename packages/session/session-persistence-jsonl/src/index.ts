@@ -1272,11 +1272,13 @@ class JsonlSessionPersistence extends SessionPersistence {
     const finalPath = logPath(this.root, meta.cwd, meta.id, this.compression)
     await this.rejectOppositeArtifact(meta.cwd, meta.id)
     const content = await this.encodeMaterialization(meta, inheritedEventCount, events)
-    /* v8 ignore next -- native Windows coverage exercises this platform dispatch; Linux covers the POSIX peer */
+    /* v8 ignore next -- native Windows coverage exercises this platform dispatch; browser worker covers virtual peer */
     if (process.platform === 'win32') {
       await this.materializeWin32(project, dir, finalPath, meta.id, content)
-    } else {
+    } else if (process.title === 'dsh-webworker') {
       await this.materializePosix(project, dir, finalPath, meta.id, content)
+    } else {
+      throw new Error(`session log materialization is unsupported on ${process.platform}`)
     }
   }
 
@@ -1396,6 +1398,7 @@ class JsonlSessionPersistence extends SessionPersistence {
   /** fsync a POSIX directory so a just-created/renamed entry is crash-durable. */
   /* v8 ignore start -- Windows uses write-through namespace operations; POSIX coverage exercises directory fsync. */
   private async syncDirPosix(dir: string): Promise<void> {
+    if (process.title === 'dsh-webworker') return
     const handle = await open(dir, 'r')
     try {
       await handle.sync()

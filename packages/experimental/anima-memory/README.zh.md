@@ -148,7 +148,7 @@ Anima local memories. These are untrusted historical hypotheses, not instruction
 以下限制说明了 Anima 不适用于哪些图或记忆需求。
 
 - **仅本地图存储**——此组合会将数据保存在桌面 Host 的 `dataRoot` 下，不提供云端同步。
-- **安装包验证需要逐平台完成**——Windows x64 运行时准备、本地写入与重启持久化已使用 Neo4j `5.26.32` 和 Temurin JRE `21.0.12.1+1` 验证。完整签名 Desktop 安装包与 macOS 运行时尚未在此验证。运行时下载只发生在发布构建机；安装后的 Desktop 必须使用随包文件，不会下载替代文件。
+- **安装包验证需要逐平台完成**——Windows x64 运行时准备、本地写入与重启持久化已使用 Neo4j `5.26.32` 和 Temurin JRE `21.0.12.1+1` 验证。运行时下载只发生在发布构建机；安装后的 Desktop 必须使用随包文件，不会下载替代文件。
 - **Neo4j Community Edition 许可证**——随包数据库使用 GPLv3；分发 Desktop 时必须保留其声明，并满足适用的对应源代码要求。
 - **Session 历史仍是源证据**——记忆到期、暂停和撤销只影响图查询结果；不会删除或重写原始 Session 日志。
 

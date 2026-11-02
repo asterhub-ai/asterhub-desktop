@@ -15,17 +15,12 @@ import type {
   CurrentTokenProcessBindings,
   NativePtr,
 } from '@deepseek-ai/dsh-win32-process'
-import { loadLinuxExecve } from './linux-execve.ts'
 import {
-  consumeLinuxLaunchRequest,
   isWindowsTerminateRequest,
-  linuxLaunchFilesFromLocator,
   parseWindowsStartRequest,
   serializeRunnerError,
-  writeLinuxStartupError,
 } from './runner-protocol.ts'
 import type {
-  LinuxLaunchFiles,
   SerializedRunnerError,
   WindowsRunnerResult,
   WindowsStartRequest,
@@ -43,7 +38,6 @@ type RunnerHost = Pick<NodeJS.Process, 'env' | 'exitCode' | 'connected' | 'cwd' 
 
 /** Injectable operations used by the protocol-owner tests. */
 export interface SpawnRunnerInternals {
-  execve(file: string, argv: string[], env: Record<string, string>, control?: 'pipe'): never
   loadWin32ProcessBindings(): CurrentTokenProcessBindings
   spawnCurrentTokenJobProcess: typeof spawnCurrentTokenJobProcess
   closeFileDescriptor(fileDescriptor: number): void
@@ -55,8 +49,6 @@ export interface SpawnRunnerInternals {
 }
 
 const defaultInternals: SpawnRunnerInternals = {
-  /* v8 ignore next -- source/built/packaged subprocess smoke executes this only in a replaceable child process. */
-  execve: (file, argv, env, control) => loadLinuxExecve()(file, argv, env, control),
   loadWin32ProcessBindings,
   spawnCurrentTokenJobProcess,
   closeFileDescriptor: closeSync,
@@ -120,88 +112,6 @@ function windowsStartCancelledError(): SerializedRunnerError {
   }
 }
 
-function linuxPathNotFoundError(program: string): NodeJS.ErrnoException {
-  return Object.assign(new Error(`spawn ${program} ENOENT`), {
-    code: 'ENOENT',
-    errno: -2,
-    syscall: `spawn ${program}`,
-    path: program,
-    spawnargs: [] as string[],
-  })
-}
-
-function execLinuxFile(
-  file: string,
-  argv: string[],
-  env: Record<string, string>,
-  internals: SpawnRunnerInternals,
-  control?: 'pipe',
-): never {
-  try {
-    return control === undefined ? internals.execve(file, argv, env) : internals.execve(file, argv, env, control)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOEXEC') throw error
-    return control === undefined
-      ? internals.execve('/bin/sh', ['/bin/sh', file, ...argv.slice(1)], env)
-      : internals.execve('/bin/sh', ['/bin/sh', file, ...argv.slice(1)], env, control)
-  }
-}
-
-function execLinuxTarget(
-  request: { cwd: string; env: Record<string, string>; control?: 'pipe' },
-  argv: string[],
-  internals: SpawnRunnerInternals,
-): never {
-  const program = argv[0] as string
-  if (program.includes('/')) return execLinuxFile(program, argv, request.env, internals, request.control)
-  const path = request.env.PATH ?? '/usr/bin:/bin'
-  let permissionFailure: Error | undefined
-  for (const directory of path.split(':')) {
-    const root = directory.startsWith('/')
-      ? directory
-      : `${request.cwd}${request.cwd.endsWith('/') ? '' : '/'}${directory}`
-    const candidate = `${root}${root.endsWith('/') ? '' : '/'}${program}`
-    try {
-      return execLinuxFile(candidate, argv, request.env, internals, request.control)
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-      if (code === 'EACCES') {
-        permissionFailure ??= error as Error
-        continue
-      }
-      if (code === 'ENOENT' || code === 'ENOTDIR') continue
-      throw error
-    }
-  }
-  throw permissionFailure ?? linuxPathNotFoundError(program)
-}
-
-function runLinux(
-  locator: string,
-  argv: string[],
-  host: RunnerHost,
-  internals: SpawnRunnerInternals,
-): void {
-  const files = linuxLaunchFilesFromLocator(locator)
-  let request: ReturnType<typeof consumeLinuxLaunchRequest>
-  try {
-    request = consumeLinuxLaunchRequest(files.requestPath)
-  } catch (error) {
-    writeLinuxStartupError(files, { type: 'error', error: serializeRunnerError(error) })
-    host.exitCode = 127
-    return
-  }
-  try {
-    host.chdir(request.cwd)
-    execLinuxTarget({ ...request, cwd: host.cwd() }, argv, internals)
-  } catch (error) {
-    writeLinuxStartupError(files, {
-      type: 'error',
-      error: asSpawnError(error, argv[0] as string),
-    })
-    host.exitCode = 127
-  }
-}
 
 function sendMessage(host: RunnerHost, result: WindowsRunnerResult): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -458,7 +368,7 @@ export async function runSpawnRunner(
     await new WindowsJobRunner(targetArgv, host, internals).run()
     return
   }
-  runLinux(selection, targetArgv, host, internals)
+  throw new Error(`unsupported runner selection: ${selection}`)
 }
 
 /**
@@ -477,14 +387,6 @@ export async function reportSpawnRunnerFailure(
     host.exitCode = 127
     if (host.connected) host.disconnect()
     return
-  }
-  if (selection !== undefined) {
-    try {
-      const files: LinuxLaunchFiles = linuxLaunchFilesFromLocator(selection)
-      writeLinuxStartupError(files, { type: 'error', error: serializeRunnerError(error) })
-    } catch {
-      // The parent will report an unconsumed request or missing runner result.
-    }
   }
   host.exitCode = 127
 }

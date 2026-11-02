@@ -11,7 +11,6 @@ import { pipeline } from 'node:stream/promises'
 import extractZip from 'extract-zip'
 import neo4j from 'neo4j-driver'
 import type { Session } from 'neo4j-driver'
-import { x as extractTar } from 'tar'
 import { acquireFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { findJavaHome } from './runtime-layout.ts'
 import {
@@ -47,7 +46,7 @@ interface CredentialRecord {
 interface JavaArchive {
   url: string
   checksum: string
-  archive: 'zip' | 'tar.gz'
+  archive: 'zip'
 }
 
 /** Minimal child process contract used by lifecycle tests and the real process launcher. */
@@ -378,36 +377,26 @@ async function installRuntimeAssets(
     const neo4jChecksum = await fetchChecksum(asset.neo4jChecksumUrl, asset.neo4jArchive, signal, fetcher)
     await downloadVerifiedArchive(asset.neo4jUrl, neo4jChecksum, neo4jArchivePath, signal, fetcher)
     const javaArchive = await resolveJavaArchive(asset, signal, fetcher)
-    javaArchivePath = join(stage, javaArchive.archive === 'zip' ? 'java.zip' : 'java.tar.gz')
+    javaArchivePath = join(stage, 'java.zip')
     await downloadVerifiedArchive(javaArchive.url, javaArchive.checksum, javaArchivePath, signal, fetcher)
 
     const stagedNeo4j = join(stage, 'neo4j')
     const stagedJava = join(stage, 'java')
-    if (asset.platform === 'win32') {
-      const extracted = join(stage, 'neo4j-extract')
-      await extractZip(neo4jArchivePath, { dir: extracted })
-      await rename(join(extracted, `neo4j-community-${NEO4J_VERSION}`), stagedNeo4j)
-      const javaExtract = join(stage, 'java-extract')
-      await extractZip(javaArchivePath, { dir: javaExtract })
-      const javaRoot = await findJavaHome(javaExtract, true)
-      await rename(javaRoot, stagedJava)
-    } else {
-      await mkdir(stagedNeo4j, { recursive: true, mode: PRIVATE_DIRECTORY_MODE })
-      await extractTar({ file: neo4jArchivePath, cwd: stagedNeo4j, strip: 1, strict: true })
-      const javaExtract = join(stage, 'java-extract')
-      await mkdir(javaExtract, { recursive: true, mode: PRIVATE_DIRECTORY_MODE })
-      await extractTar({ file: javaArchivePath, cwd: javaExtract, strip: 1, strict: true })
-      const javaRoot = await findJavaHome(javaExtract, false)
-      await rename(javaRoot, stagedJava)
-    }
+    const extracted = join(stage, 'neo4j-extract')
+    await extractZip(neo4jArchivePath, { dir: extracted })
+    await rename(join(extracted, `neo4j-community-${NEO4J_VERSION}`), stagedNeo4j)
+    const javaExtract = join(stage, 'java-extract')
+    await extractZip(javaArchivePath, { dir: javaExtract })
+    const javaRoot = await findJavaHome(javaExtract, true)
+    await rename(javaRoot, stagedJava)
     await rm(neo4jArchivePath, { force: true })
     await rm(javaArchivePath, { force: true })
     const manifest = neo4jRuntimeManifest(asset.platform, asset.architecture)
     await writeFileAtomic(join(stage, RUNTIME_MANIFEST_NAME), `${JSON.stringify(manifest)}\n`, { mode: PRIVATE_FILE_MODE })
     await assertRealDirectory(stagedNeo4j)
     await assertRealDirectory(stagedJava)
-    await assertRegularFile(join(stagedNeo4j, 'bin', asset.platform === 'win32' ? 'neo4j.bat' : 'neo4j'))
-    await assertRegularFile(join(stagedJava, 'bin', asset.platform === 'win32' ? 'java.exe' : 'java'))
+    await assertRegularFile(join(stagedNeo4j, 'bin', 'neo4j.bat'))
+    await assertRegularFile(join(stagedJava, 'bin', 'java.exe'))
 
     await removeOwnedDirectory(destination, parent)
     await rename(stage, destination)
@@ -430,30 +419,23 @@ async function resolveJavaArchive(asset: Neo4jPlatformAsset, signal: AbortSignal
   const binary: unknown = Array.isArray(binaries) && binaries.length === 1 ? binaries[0] : undefined
   const packageAsset = isRecord(binary) ? binary.package : undefined
   if (metadata.release_name !== JRE_RELEASE || !isRecord(binary) || binary.image_type !== 'jre'
-    || binary.os !== adoptiumOs(asset.platform) || binary.architecture !== adoptiumArchitecture(asset.architecture)
+    || binary.os !== 'windows' || binary.architecture !== 'x64'
     || !isRecord(packageAsset) || typeof packageAsset.link !== 'string' || typeof packageAsset.name !== 'string'
     || typeof packageAsset.checksum !== 'string' || !SHA256_PATTERN.test(packageAsset.checksum)) {
     throw new Error('Adoptium returned an asset that does not match the pinned Java runtime.')
   }
   const url = new URL(packageAsset.link)
   if (url.protocol !== 'https:' || url.hostname !== 'github.com') throw new Error('Adoptium returned a non-official Java archive URL.')
-  if (!packageAsset.name.endsWith('.zip') && !packageAsset.name.endsWith('.tar.gz')) {
+  if (!packageAsset.name.endsWith('.zip')) {
     throw new Error('Adoptium returned an unsupported Java archive format.')
   }
   return {
     url: url.href,
     checksum: packageAsset.checksum,
-    archive: packageAsset.name.endsWith('.zip') ? 'zip' : 'tar.gz',
+    archive: 'zip',
   }
 }
 
-function adoptiumOs(platform: Neo4jPlatformAsset['platform']): string {
-  return platform === 'win32' ? 'windows' : platform === 'darwin' ? 'mac' : 'linux'
-}
-
-function adoptiumArchitecture(architecture: Neo4jPlatformAsset['architecture']): string {
-  return architecture === 'arm64' ? 'aarch64' : 'x64'
-}
 
 async function fetchChecksum(url: string, filename: string, signal: AbortSignal, fetcher: typeof fetch): Promise<string> {
   const response = await fetcher(url, { signal, redirect: 'error', headers: { Range: 'bytes=0-' } })

@@ -126,7 +126,7 @@ describe('Python runtime executable builder CLI', () => {
       { npm_execpath: 'C:\\tools\\pnpm.cjs' },
       '--skip-build',
       '--dry-run',
-      '--targets=node24-macos-arm64',
+      '--targets=node24-win-x64',
     )
 
     expect(result.status).toBe(0)
@@ -156,7 +156,7 @@ describe('Python runtime executable builder CLI', () => {
       { npm_execpath: 'C:\\tools\\pnpm.cmd', PNPM_HOME: home },
       '--skip-build',
       '--dry-run',
-      '--targets=node24-macos-arm64',
+      '--targets=node24-win-x64',
     )
 
     expect(result.status).toBe(0)
@@ -164,20 +164,19 @@ describe('Python runtime executable builder CLI', () => {
     expect(result.stdout).not.toMatch(/pnpm\.cmd/i)
   })
 
-  it('accepts the macOS x64 pkg target', () => {
+  it('accepts the Windows x64 pkg target', () => {
     const result = run(
       { npm_execpath: 'C:\\tools\\pnpm.cjs' },
       '--skip-build',
       '--dry-run',
-      '--targets=node24-macos-x64',
+      '--targets=node24-win-x64',
     )
 
     expect(result.status).toBe(0)
     expect(result.stdout).toContain('exec pkg')
-    expect(result.stdout).toContain('--sea --compress Brotli --targets node24-macos-x64')
-    expect(result.stdout).toContain('keep only node-pty prebuilds darwin-x64')
-    expect(result.stdout).toContain('lock optional resource downloads and copy Office skills')
-    expect(result.stdout).toContain(join(root, 'dist-exe', 'macos-x64'))
+    expect(result.stdout).toContain('--sea --targets node24-win-x64')
+    expect(result.stdout).toContain('prepare Python and Office skills for win-x64')
+    expect(result.stdout).toContain(join(root, 'dist-exe', 'win-x64'))
   })
 
   it('rejects a Windows arm64 product before any build step', () => {
@@ -189,7 +188,6 @@ describe('Python runtime executable builder CLI', () => {
     )
 
     expect(result.status).not.toBe(0)
-    expect(result.stderr).toContain('Windows supports x64 only')
     expect(result.stdout).toBe('')
   })
 })

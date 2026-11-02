@@ -1,5 +1,14 @@
 import type { DesktopAutoUpdateTarget } from './desktop-auto-update-environment.mjs'
 
+/** Resolve the Desktop build root inside the repository. */
+export function resolveDesktopBuildRoot(env?: NodeJS.ProcessEnv, repositoryRoot?: string): string
+
+/** Default resolved Desktop build root. */
+export const DESKTOP_BUILD_ROOT: string
+
+/** Resolve the target-directory layout selected by a packaging environment. */
+export function resolveDesktopBuildLayout(env?: NodeJS.ProcessEnv): 'standard' | 'compact'
+
 /** Mutable target directories plus shared download and package caches. */
 export interface DesktopTargetBuildPaths {
   readonly root: string
@@ -14,7 +23,6 @@ export interface DesktopTargetBuildPaths {
   readonly electron: string
   readonly packedDsh: string
   readonly packedVendor: string
-  readonly packedLandlock: string
   readonly downloads: string
   readonly pnpmStore: string
 }
@@ -35,10 +43,12 @@ export function resolveDesktopBuildTarget(
 /**
  * Return the mutable preparation and artifact directories owned by one release target.
  * @param target - Supported Desktop target name.
+ * @param layout - Target directory layout.
+ * @param buildRoot - Resolved build root.
  * @param environment - Packaging environment with an optional absolute cache directory.
  * @returns Target paths plus shared download and package caches.
  */
-export function desktopTargetBuildPaths(target: DesktopAutoUpdateTarget, environment?: NodeJS.ProcessEnv): DesktopTargetBuildPaths
+export function desktopTargetBuildPaths(target: DesktopAutoUpdateTarget, layout?: 'standard' | 'compact', buildRoot?: string, environment?: NodeJS.ProcessEnv): DesktopTargetBuildPaths
 
 /**
  * Return the platform and architecture of the payload one release target prepares.
@@ -47,8 +57,8 @@ export function desktopTargetBuildPaths(target: DesktopAutoUpdateTarget, environ
  * @returns Platform and architecture of the prepared payload.
  */
 export function desktopTargetPlatform(target: DesktopAutoUpdateTarget): {
-  readonly platform: 'darwin' | 'win32'
-  readonly arch: 'arm64' | 'x64'
+  readonly platform: 'win32'
+  readonly arch: 'x64'
 }
 
 /**

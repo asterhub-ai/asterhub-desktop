@@ -8,7 +8,7 @@ import { execa } from 'execa'
 import { expect, it } from 'vitest'
 
 const require = createRequire(import.meta.url)
-const hasDisplay = process.platform !== 'linux' || Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY)
+const hasDisplay = true
 
 it.skipIf(!hasDisplay)('decrypts an OS-encrypted account grant after Electron restarts', { timeout: 90_000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'asterhub-cipher-'))

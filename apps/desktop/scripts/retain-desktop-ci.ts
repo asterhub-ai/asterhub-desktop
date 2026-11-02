@@ -34,15 +34,12 @@ export function desktopReleasesRoot(env: NodeJS.ProcessEnv): string {
  */
 export async function retainDesktopCi(env: NodeJS.ProcessEnv, appRoot = resolve(import.meta.dirname, '..')): Promise<string> {
   const target = resolveDesktopBuildTarget(env)
-  const windows = target === 'win-x64'
-  const platform = windows ? 'win32' : 'darwin'
+  const platform = 'win32'
   const settings = loadDesktopPackageEnvironment(platform, env, appRoot, { unsigned: true })
   const preset = settings.DSH_PACKAGING_PRESET
   if (preset !== 'test' && preset !== 'production') throw new Error('desktop retention: a machine preset is required')
-  if (windows && !['signed', 'unsigned'].includes(env.PACKAGE_SIGNING ?? '')) throw new Error('desktop retention: invalid signing selection')
-  if (!windows && !['true', 'false'].includes(env.PACKAGE_SKIP_NOTARIZATION ?? '')) throw new Error('desktop retention: invalid notarization selection')
-  const qualification = windows ? (env.PACKAGE_SIGNING === 'signed' ? 'signed' : 'unsigned')
-    : (env.PACKAGE_SKIP_NOTARIZATION === 'true' ? 'unnotarized' : 'notarized')
+  if (!['signed', 'unsigned'].includes(env.PACKAGE_SIGNING ?? '')) throw new Error('desktop retention: invalid signing selection')
+  const qualification = env.PACKAGE_SIGNING === 'signed' ? 'signed' : 'unsigned'
   const product: { version: string } = JSON.parse(await readFile(join(appRoot, 'package.json'), 'utf8'))
   const version = validateDesktopBuildVersion(required(env, 'PACKAGE_VERSION'), product.version)
   const source: DesktopRetainedSource = {
@@ -56,14 +53,14 @@ export async function retainDesktopCi(env: NodeJS.ProcessEnv, appRoot = resolve(
   }
   const paths = desktopTargetBuildPaths(target)
   // The CLI's checkout owns these paths; alternate app roots are used by fixtures.
-  const mode = qualification === 'unsigned' ? 'unsigned-artifacts' : qualification === 'unnotarized' ? 'unnotarized-artifacts' : 'artifacts'
+  const mode = qualification === 'unsigned' ? 'unsigned-artifacts' : 'artifacts'
   const artifacts = appRoot === resolve(import.meta.dirname, '..')
     ? join(paths.root, mode) : join(appRoot, '.desktop-build', 'targets', target, mode)
-  const base = `asterhub-${version}-${windows ? 'win-x64' : target}`
-  const debugSuffix = qualification === 'unnotarized' ? '-unnotarized' : qualification === 'unsigned' ? '-unsigned' : ''
-  const names = windows ? [`${base}${debugSuffix}.exe`] : [`${base}${debugSuffix}.dmg`, `${base}${debugSuffix}.zip`]
-  if (qualification === 'signed' || qualification === 'notarized') {
-    names.push(`${base}.${windows ? 'exe' : 'zip'}.blockmap`, desktopBuildRecordFilename(target), desktopUpdateMetadataFilename(version, platform, source.channel))
+  const base = `asterhub-${version}-win-x64`
+  const debugSuffix = qualification === 'unsigned' ? '-unsigned' : ''
+  const names = [`${base}${debugSuffix}.exe`]
+  if (qualification === 'signed') {
+    names.push(`${base}.exe.blockmap`, desktopBuildRecordFilename(target), desktopUpdateMetadataFilename(version, platform, source.channel))
   }
   const retained = await retainDesktopRelease(desktopReleasesRoot(env), source, names.map(name => join(artifacts, name)))
   if (env.GITHUB_OUTPUT) await appendFile(env.GITHUB_OUTPUT, `directory=${retained}\n`)

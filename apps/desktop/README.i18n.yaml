@@ -15,17 +15,17 @@
   en: 127ea90553cb6af7
   zh: 7b1c5aec8558c684
 /asterhub-desktop/application-overview:
-  en: b80b272e645d7359
-  zh: c5c1145841a423d8
+  en: f76473e925050143
+  zh: 6b62e8f3307c529e
 /asterhub-desktop/terminal-command:
   en: 5f2d25a1d8472647
   zh: 2acb5c5d7d1917e2
 /asterhub-desktop/closing-the-window-and-quitting:
-  en: d3757c2069bcc7fd
-  zh: b423f5672f00e605
+  en: 2839ce1c26cdd904
+  zh: 7a4605731a0af211
 /asterhub-desktop/key-technical-decisions:
-  en: 3724c53da4f7647b
-  zh: 76ae549d43c99bb4
+  en: 343f0fb60e32d799
+  zh: 0906f782240104b0
 /asterhub-desktop/key-technical-decisions/bundled-workspace-dependencies:
   en: 3368ff9b955ada69
   zh: e9209ef6ad4fd305
@@ -33,47 +33,59 @@
   en: 372297005b57a08b
   zh: 074a635ac17e4362
 /asterhub-desktop/installation-ownership:
-  en: 160b500cdcd6a39a
-  zh: 6c267f1762ec3689
+  en: 72c4a156950723ee
+  zh: 2ec5bccef3aaa9b5
 /asterhub-desktop/installation-ownership/runtime-and-plugin-activation:
-  en: 4951cd3ee659eb33
-  zh: 96bdd6358dad587a
+  en: 5321f3b7f5086983
+  zh: db2a376925713039
 /asterhub-desktop/installation-ownership/host-environment:
-  en: 98cf848762482d48
-  zh: 74f9100a39ec8c2f
+  en: 39a687a035bc7983
+  zh: cfd48ddef0e967e6
 /asterhub-desktop/develop:
-  en: faf7676ba18bbf2f
-  zh: f1d7b75ad348c548
+  en: 715eb59126bf4288
+  zh: 10506d013d727c4c
 /asterhub-desktop/develop/startup-onboarding:
   en: df5546e9017ce06c
   zh: 629210c9f47d0ac0
 /asterhub-desktop/develop/welcome-window-appearance:
-  en: 617a89aeb28131b9
-  zh: 4d84bd5d86501c86
+  en: fdbe2407596ab5f0
+  zh: bfd0a2d02f0b70f4
 /asterhub-desktop/package:
-  en: ac31ebdd9de54f34
-  zh: 921e534d5c4b3a16
-/asterhub-desktop/windows-installer-interface:
-  en: 9b90a2651a6d2b52
-  zh: 86d4d9c4358aad80
+  en: 4cd8a8da6977928d
+  zh: 9f624855a2edac37
+/asterhub-desktop/package/release-versions:
+  en: 67de8de23f921680
+  zh: ac004196d6d61d11
+/asterhub-desktop/package/runtime-file-selection:
+  en: 2e3abd087a722bd7
+  zh: d2007d4a8fce9fe9
+/asterhub-desktop/package/unsigned-windows-test-installer:
+  en: b7c260d519369a05
+  zh: 41a43129590f09ac
+/asterhub-desktop/package/windows-installer-interface:
+  en: 74859844e1bb040d
+  zh: 92c3f1a8b9acf301
+/asterhub-desktop/package/windows-ev-signing:
+  en: 4d8cbd40a962cc9e
+  zh: 3ef6408490c4880f
 /asterhub-desktop/updates:
-  en: 67bf0a18faa7aa76
-  zh: 782e14ce62bb939f
+  en: a13ce0f7d4381884
+  zh: 2f8a3b0ec827b07b
 /asterhub-desktop/updates/local-desktop-settings:
   en: 2e57457c44c85b5f
   zh: 5b8510a3dc4c6c9d
 /asterhub-desktop/updates/mandatory-update-policy:
-  en: 182a9c6705213e13
-  zh: 681762f83490f4c6
+  en: f8fdee1545db49ff
+  zh: 07be8008826e1876
 /asterhub-desktop/updates/local-updater-qualification:
-  en: 7886087465fa5903
-  zh: ef2d92fb9ae4fd68
+  en: 34c86d8063104c6c
+  zh: 32fd13409b3818e1
 /asterhub-desktop/low-level-development-overrides:
   en: 8264b135871e8978
   zh: 0939aafb1b2961fc
 /asterhub-desktop/known-limitations:
-  en: 379a8e645b09e93a
-  zh: 70d0717381d4aa38
+  en: e5622ad4c4b1ede6
+  zh: 254fe07ce6787f48
 /asterhub-desktop/dev-note:
   en: 8e26b460ba31f21b
   zh: fbcd0307b3867125

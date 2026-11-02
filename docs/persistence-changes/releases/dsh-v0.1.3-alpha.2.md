@@ -62,12 +62,12 @@ changes:
 
 <!-- persistence-release-changes:start -->
 
-Detected 2 changed roots and 2 structural differences. The review requirement below is calculated using current rules for comparison only; it does not assert historical compliance, migration correctness, or runtime compatibility.
+Detected 2 changed roots and 2 structural differences. The minimum below is calculated using current rules for comparison only; it does not assert historical compliance, migration correctness, or runtime compatibility.
 
-| Path | Change | Review requirement |
+| Path | Change | Current minimum |
 |---|---|---|
-| `event:feedback/message-delete` | `root-added` | `not-required` |
-| `event:feedback/message-put` | `root-added` | `not-required` |
+| `event:feedback/message-delete` | `root-added` | `same-version` |
+| `event:feedback/message-put` | `root-added` | `same-version` |
 
 <!-- persistence-release-changes:end -->
 

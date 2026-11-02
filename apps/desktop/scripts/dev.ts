@@ -7,15 +7,14 @@ import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { DESKTOP_HOST_PROTOCOL_VERSION } from '../src/host-protocol.ts'
 import type { DesktopRelease } from '../src/release.ts'
-import { developmentRuntimeDirectory, resolveDesktopBuildTarget } from './desktop-build-paths.mjs'
+import { DESKTOP_BUILD_ROOT, developmentRuntimeDirectory, resolveDesktopBuildTarget } from './desktop-build-paths.mjs'
+import { resolveDevelopmentHome } from '../../../scripts/development-home.mjs'
 import { prepareDevelopmentProject } from './development-project.ts'
-import { prepareDevelopmentApp } from './development-app.ts'
 import { preparePrimaryRuntime } from './prepare-primary-runtime.ts'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
 const REPOSITORY_ROOT = resolve(APP_ROOT, '..', '..')
-const BUILD_ROOT = join(APP_ROOT, '.desktop-build')
-const DEVELOPMENT_ROOT = join(BUILD_ROOT, 'development')
+const DEVELOPMENT_ROOT = join(DESKTOP_BUILD_ROOT, 'development')
 
 interface PackageManifest {
   readonly version?: string
@@ -63,7 +62,7 @@ async function launchElectron(): Promise<void> {
   const mainPort = debugPort('DSH_DESKTOP_MAIN_INSPECT_PORT', 9229)
   const rendererPort = debugPort('DSH_DESKTOP_RENDERER_DEBUG_PORT', 9222)
   const hostPort = debugPort('DSH_DESKTOP_HOST_INSPECT_PORT', 9230)
-  const home = resolve(process.env.DSH_HOME ?? join(DEVELOPMENT_ROOT, 'home'))
+  const home = resolveDevelopmentHome({ defaultHome: join(DEVELOPMENT_ROOT, 'home'), env: process.env })
   const userData = resolve(process.env.DSH_DESKTOP_USER_DATA_DIR ?? join(DEVELOPMENT_ROOT, 'electron-user-data'))
   const environment: NodeJS.ProcessEnv = {
     ...process.env,
@@ -76,11 +75,8 @@ async function launchElectron(): Promise<void> {
   console.log(`desktop development: DSH_HOME=${home}`)
   console.log(`desktop development: userData=${userData}`)
   console.log(`desktop development: inspectors main=${String(mainPort)}, renderer=${String(rendererPort)}, host=${String(hostPort)}`)
-  if (process.platform === 'darwin') {
-    const executable = prepareDevelopmentApp({ electron, appRoot: APP_ROOT, directory: DEVELOPMENT_ROOT, home, userData,
-      mainPort, rendererPort, hostPort, openDevtools: environment.DSH_DESKTOP_OPEN_DEVTOOLS! })
-    await run(executable, [], APP_ROOT, environment)
-    return
+  if (process.platform !== 'win32') {
+    throw new Error('desktop development: Windows is the only supported desktop platform')
   }
   await run(electron, [
     `--inspect=127.0.0.1:${String(mainPort)}`,
@@ -93,7 +89,7 @@ async function launchElectron(): Promise<void> {
 async function main(): Promise<void> {
   const { values } = parseArgs({ options: { 'skip-build': { type: 'boolean', default: false } } })
   if (!values['skip-build']) {
-    await runPackageScript('build:artifacts', REPOSITORY_ROOT)
+    await runPackageScript('build', REPOSITORY_ROOT)
     await runPackageScript('build', APP_ROOT)
   }
   for (const path of [
@@ -102,7 +98,7 @@ async function main(): Promise<void> {
   ]) {
     if (!existsSync(path)) throw new Error(`desktop development: missing built artifact ${path}`)
   }
-  const version = packageVersion(join(APP_ROOT, 'package.json'), 'desktop package')
+  const version = packageVersion(join(REPOSITORY_ROOT, 'package.json'), 'root dsh package')
   const pnpmVersion = packageVersion(join(APP_ROOT, 'node_modules', 'pnpm', 'package.json'), 'pnpm package')
   const release: DesktopRelease = {
     schemaVersion: 1,

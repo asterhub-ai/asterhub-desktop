@@ -110,18 +110,18 @@ describe.skipIf(!existsSync(builtHost))('built Desktop welcome flow', () => {
         },
         // This suite assembles a synthetic project on hosts that prepare no Desktop target, and
         // nothing it exercises compares the descriptor's platform/arch outside packaging.
-        target: 'mac-x64',
+        target: 'win-x64',
       })
       cpSync(join(repository, 'packages/skill/skill-office/assets'), join(root, 'runtime/office-skills'), { recursive: true })
       const nodeBin = join(root, 'runtime/primary-runtime/dependencies/node/bin')
       mkdirSync(nodeBin, { recursive: true })
-      cpSync(process.execPath, join(nodeBin, process.platform === 'win32' ? 'node.exe' : 'node'))
+      cpSync(process.execPath, join(nodeBin, 'node.exe'))
       const paths = resolveDesktopPaths(home)
       const manager = new DesktopProjectManager(paths, {
         dsh: project,
       })
       await manager.applyRelease()
-      writeFileSync(join(paths.profile, 'cordis.patch.yml'), `- id: webserver\n  config:\n    host: 127.0.0.1\n    port: 0\n- id: deepseek-account\n  config:\n${process.platform === 'linux' ? '    desktopPlatform: darwin\n' : ''}    platformOrigin: ${platform.origin}\n    allowLoopbackHttp: true\n    requestHeaders:\n      Cookie: test_gate=synthetic\n`)
+      writeFileSync(join(paths.profile, 'cordis.patch.yml'), `- id: webserver\n  config:\n    host: 127.0.0.1\n    port: 0\n- id: deepseek-account\n  config:\n    platformOrigin: ${platform.origin}\n    allowLoopbackHttp: true\n    requestHeaders:\n      Cookie: test_gate=synthetic\n`)
       let backend: DesktopWelcomeBackend
       let hostOrigin = ''
       const restart = async (): Promise<void> => {

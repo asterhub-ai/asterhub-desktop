@@ -48,8 +48,7 @@ async function fixture(
   await writeFile(join(repositoryRoot, 'package.json'), `${JSON.stringify({ version: dshVersion })}\n`)
   await writeFile(join(appRoot, 'package.json'), `${JSON.stringify({ version })}\n`)
 
-  const [os, arch] = target.split('-') as ['mac' | 'win', 'arm64' | 'x64']
-  const base = `asterhub-${version}-${os}-${arch}`
+  const base = `asterhub-${version}-win-x64`
   const origin = environment === 'test'
     ? TEST_ORIGIN
     : 'https://asterhub.xapi.fans'
@@ -60,33 +59,19 @@ async function fixture(
     environment,
     publicUrl: `${origin}/dsh-desk/${environment === 'test' ? `${RELEASE_ID}/` : ''}feeds/${target}/`,
   })}\n`)
-
-  if (os === 'mac') {
-    const zip = 'signed macOS ZIP fixture'
-    await writeFile(join(artifactsRoot, `${base}.zip`), zip)
-    await writeFile(join(artifactsRoot, `${base}.zip.blockmap`), 'blockmap')
-    await writeFile(join(artifactsRoot, `${base}.dmg`), 'notarized DMG fixture')
-    await writeFile(join(artifactsRoot, desktopUpdateMetadataFilename(version, 'darwin')), `${JSON.stringify({
-      version,
-      path: `${base}.zip`,
-      files: [{ url: `${base}.zip`, size: Buffer.byteLength(zip), sha512: digest(zip) }],
-    })}\n`)
-  }
-  else {
-    const executable = 'signed NSIS executable fixture'
-    await writeFile(join(artifactsRoot, `${base}.exe`), executable)
-    const info = await createBlockmap(join(artifactsRoot, `${base}.exe`), {},
-      { info: { emitArtifactBuildCompleted: async () => {} } }, `${base}.exe`)
-    expect(Object.hasOwn(info, 'blockMapSize')).toBe(false)
-    await writeFile(join(artifactsRoot, desktopUpdateMetadataFilename(version, 'win32')), `${JSON.stringify({
-      version,
-      path: `${base}.exe`,
-      files: [{
-        url: `${base}.exe`,
-        ...info,
-      }],
-    })}\n`)
-  }
+  const executable = 'signed NSIS executable fixture'
+  await writeFile(join(artifactsRoot, `${base}.exe`), executable)
+  const info = await createBlockmap(join(artifactsRoot, `${base}.exe`), {},
+    { info: { emitArtifactBuildCompleted: async () => {} } }, `${base}.exe`)
+  expect(Object.hasOwn(info, 'blockMapSize')).toBe(false)
+  await writeFile(join(artifactsRoot, desktopUpdateMetadataFilename(version, 'win32')), `${JSON.stringify({
+    version,
+    path: `${base}.exe`,
+    files: [{
+      url: `${base}.exe`,
+      ...info,
+    }],
+  })}\n`)
   return {
     appRoot,
     artifactsRoot,
@@ -113,15 +98,15 @@ afterEach(async () => {
 
 describe('desktop upload plan', () => {
   it('accepts a Desktop release version independent of the DSH runtime version', async () => {
-    const paths = await fixture('mac-x64', '0.21.0', 'test', '0.2.0-rc.3')
-    const plan = await createDesktopUploadPlan('mac-x64', paths)
+    const paths = await fixture('win-x64', '0.21.0', 'test', '0.2.0-rc.3')
+    const plan = await createDesktopUploadPlan('win-x64', paths)
     expect(plan).toMatchObject({ version: '0.21.0', environment: 'test' })
   })
 
   it('uploads only the selected latest installer to each deployment using the existing COS transport', async () => {
     const published = []
     for (const environment of ['production', 'test'] as const) {
-      for (const target of ['mac-arm64', 'mac-x64', 'win-x64'] as const) {
+      for (const target of ['win-x64'] as const) {
         const paths = await fixture(target, '1.2.3', environment)
         const plan = await createDesktopUploadPlan(target, { ...paths, latest: true })
         const loopback = await startCosLoopback()
@@ -196,28 +181,8 @@ describe('desktop upload plan', () => {
     expect(plan.artifacts.every(artifact => !('cacheControl' in artifact))).toBe(true)
   })
 
-  it('validates macOS artifacts and puts channel metadata last', async () => {
-    const paths = await fixture('mac-arm64')
-    const plan = await createDesktopUploadPlan('mac-arm64', paths)
-    expect(plan).toMatchObject({
-      environment: 'test',
-      version: '1.2.3',
-      publicUrl: `https://desktop-updates.example.com/dsh-desk/${RELEASE_ID}/feeds/mac-arm64/`,
-      bucket: TEST_BUCKET,
-    })
-    expect(plan.artifacts.map(artifact => artifact.filename)).toEqual([
-      'asterhub-1.2.3-mac-arm64.dmg',
-      'asterhub-1.2.3-mac-arm64.zip',
-      'asterhub-1.2.3-mac-arm64.zip.blockmap',
-      'nightly-mac.yml',
-      'latest-mac.yml',
-    ])
-    expect(plan.artifacts.at(-1)).toMatchObject({
-      channelMetadata: true,
-    })
-  })
 
-  it.each(['mac-arm64', 'mac-x64', 'win-x64'] as const)('publishes every %s object and YAML reference inside the test release directory', async (target) => {
+  it.each(['win-x64'] as const)('publishes every %s object and YAML reference inside the test release directory', async (target) => {
     const paths = await fixture(target)
     const plan = await createDesktopUploadPlan(target, paths)
     const prefix = `dsh-desk/${RELEASE_ID}`
@@ -236,23 +201,22 @@ describe('desktop upload plan', () => {
   })
 
   it('rejects a changed or missing release ID before uploading a completed package', async () => {
-    const paths = await fixture('mac-arm64')
-    await expect(createDesktopUploadPlan('mac-arm64', {
+    const paths = await fixture('win-x64')
+    await expect(createDesktopUploadPlan('win-x64', {
       ...paths, environment: { ...paths.environment, DOWNLOAD_TEST_RELEASE_ID: 'a'.repeat(32) },
     })).rejects.toThrow(/completion record/u)
-    await expect(createDesktopUploadPlan('mac-arm64', {
+    await expect(createDesktopUploadPlan('win-x64', {
       ...paths, environment: { ...paths.environment, DOWNLOAD_TEST_RELEASE_ID: undefined },
     })).rejects.toThrow(/DOWNLOAD_TEST_RELEASE_ID/u)
   })
 
   it('uploads the prerelease channel metadata emitted by electron-builder', async () => {
-    const paths = await fixture('mac-arm64', '1.2.3-alpha.4')
-    const plan = await createDesktopUploadPlan('mac-arm64', paths)
+    const paths = await fixture('win-x64', '1.2.3-alpha.4')
+    const plan = await createDesktopUploadPlan('win-x64', paths)
     expect(plan.artifacts.map(artifact => artifact.filename)).toEqual([
-      'asterhub-1.2.3-alpha.4-mac-arm64.dmg',
-      'asterhub-1.2.3-alpha.4-mac-arm64.zip',
-      'asterhub-1.2.3-alpha.4-mac-arm64.zip.blockmap',
-      'nightly-mac.yml',
+      'asterhub-1.2.3-alpha.4-win-x64.exe',
+      'asterhub-1.2.3-alpha.4-win-x64.exe.blockmap',
+      'nightly.yml',
     ])
   })
 
@@ -280,12 +244,12 @@ describe('desktop upload plan', () => {
   })
 
   it('rejects a completion record for a different Desktop version or deployment', async () => {
-    const paths = await fixture('mac-x64')
+    const paths = await fixture('win-x64')
     await writeFile(join(paths.appRoot, 'package.json'), '{"version":"1.2.4"}\n')
-    await expect(createDesktopUploadPlan('mac-x64', paths)).rejects.toThrow(/completion record.*1\.2\.4/u)
+    await expect(createDesktopUploadPlan('win-x64', paths)).rejects.toThrow(/completion record.*1\.2\.4/u)
 
-    const productionPaths = await fixture('mac-x64', '1.2.3', 'production')
-    await expect(createDesktopUploadPlan('mac-x64', {
+    const productionPaths = await fixture('win-x64', '1.2.3', 'production')
+    await expect(createDesktopUploadPlan('win-x64', {
       ...productionPaths,
       environment: {
         DSH_DESKTOP_AUTO_UPDATE_ENV: 'test',
@@ -297,34 +261,34 @@ describe('desktop upload plan', () => {
   })
 
   it('validates retained builds against their original product version after the checkout advances', async () => {
-    const paths = await fixture('mac-arm64', '1.2.3')
+    const paths = await fixture('win-x64', '1.2.3')
     await writeFile(join(paths.appRoot, 'package.json'), '{"version":"2.0.0"}\n')
-    await expect(createDesktopUploadPlan('mac-arm64', paths)).rejects.toThrow(/completion record/u)
-    const plan = await createDesktopUploadPlan('mac-arm64', { ...paths, packagedProductVersion: '1.2.3' })
+    await expect(createDesktopUploadPlan('win-x64', paths)).rejects.toThrow(/completion record/u)
+    const plan = await createDesktopUploadPlan('win-x64', { ...paths, packagedProductVersion: '1.2.3' })
     expect(plan.version).toBe('1.2.3')
-    await expect(createDesktopUploadPlan('mac-arm64', { ...paths, packagedProductVersion: '1.2.4' }))
+    await expect(createDesktopUploadPlan('win-x64', { ...paths, packagedProductVersion: '1.2.4' }))
       .rejects.toThrow(/completion record/u)
-    await writeFile(join(paths.artifactsRoot, 'asterhub-1.2.3-mac-arm64.zip'), 'tampered')
-    await expect(createDesktopUploadPlan('mac-arm64', { ...paths, packagedProductVersion: '1.2.3' }))
+    await writeFile(join(paths.artifactsRoot, 'asterhub-1.2.3-win-x64.exe'), 'tampered')
+    await expect(createDesktopUploadPlan('win-x64', { ...paths, packagedProductVersion: '1.2.3' }))
       .rejects.toThrow(/size.*metadata/u)
   })
 
   it('rejects stale architecture metadata and modified updater bytes', async () => {
-    const paths = await fixture('mac-arm64')
-    const metadataPath = join(paths.artifactsRoot, 'nightly-mac.yml')
-    const zipPath = join(paths.artifactsRoot, 'asterhub-1.2.3-mac-arm64.zip')
-    await writeFile(zipPath, 'modified')
-    await expect(createDesktopUploadPlan('mac-arm64', paths)).rejects.toThrow(/size.*metadata/u)
+    const paths = await fixture('win-x64')
+    const metadataPath = join(paths.artifactsRoot, 'nightly.yml')
+    const exePath = join(paths.artifactsRoot, 'asterhub-1.2.3-win-x64.exe')
+    await writeFile(exePath, 'modified')
+    await expect(createDesktopUploadPlan('win-x64', paths)).rejects.toThrow(/size.*metadata/u)
 
-    const x64 = 'wrong architecture'
+    const arm64 = 'wrong architecture'
     await writeFile(metadataPath, `${JSON.stringify({
       version: '1.2.3',
       files: [{
-        url: 'asterhub-1.2.3-mac-x64.zip',
-        size: Buffer.byteLength(x64),
-        sha512: digest(x64),
+        url: 'asterhub-1.2.3-win-arm64.exe',
+        size: Buffer.byteLength(arm64),
+        sha512: digest(arm64),
       }],
     })}\n`)
-    await expect(createDesktopUploadPlan('mac-arm64', paths)).rejects.toThrow(/mac-arm64\.zip/u)
+    await expect(createDesktopUploadPlan('win-x64', paths)).rejects.toThrow(/win-x64\.exe/u)
   })
 })

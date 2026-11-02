@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-tool-subagent-control` adds the global control tools for continuable children: `send_message` steers between a direct parent and child, `interrupt_agent` stops a child's current turn while keeping its inbox and descendants intact, and `list_agents` (from the separately loadable `list-agents` plugin) lists continuable children by durable id and label. Parents and continuable children inherit the same `send_message` definition and ordering, so model communication adds no child-only tool schema. No tool's presence decides whether a delegation tool starts continuable work.
+`dsh-tool-subagent-control` adds the global control tools for continuable children: `send_message` steers between a direct parent and child, `interrupt_agent` stops a child's current turn while keeping its inbox and descendants intact, and `list_agents` lists continuable children by durable id and label. Parents and continuable children inherit the same `send_message` definition and ordering, so model communication adds no child-only tool schema. No tool's presence decides whether a delegation tool starts continuable work.
 
 ## Table of Contents
 
@@ -25,11 +25,11 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount this package in any composition with continuable children the model should message, interrupt, or list. The root plugin needs only the subagent service; the list tool is a separate plugin a deployment can omit.
+Mount this package in any composition with continuable children the model should message, interrupt, or list.
 
 ### Minimal configuration
 
-Load the subagent service, a backend, the delegation tool, and this package. Adding the separate list plugin exposes all three tools:
+Load the subagent service, a backend, the delegation tool, and this package:
 
 ```yaml
 - name: '@deepseek-ai/dsh-subagent'
@@ -39,10 +39,9 @@ Load the subagent service, a backend, the delegation tool, and this package. Add
     provider: spawn
     backgroundMode: continuable
 - name: '@deepseek-ai/dsh-tool-subagent-control'
-- name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
 ```
 
-This package takes no configuration: the root plugin provides `send_message` and `interrupt_agent`, and the list plugin provides `list_agents`.
+This package takes no configuration and provides `send_message`, `interrupt_agent`, and `list_agents`.
 
 ### send_message
 

@@ -1,6 +1,5 @@
 /** Resolve the Host account's Documents directory for first-use Workspace creation. */
 
-import { homedir } from 'node:os'
 import { posix, win32 } from 'node:path'
 import { runNativeCommand, type NativeCommandRunner } from '@deepseek-ai/dsh-native-command'
 import { DEFAULT_WORKSPACE_DIRECTORY } from './default-workspace.ts'
@@ -47,11 +46,6 @@ export async function defaultWorkspaceDirectory(
     const run = internals.run ?? runNativeCommand
     let stdout: string
     switch (platform) {
-      case 'darwin':
-        ({ stdout } = await run('osascript', [
-          '-e', 'POSIX path of (path to documents folder from user domain without folder creation)',
-        ], signal, 'hidden'))
-        break
       case 'win32':
         ({ stdout } = await run('powershell.exe', [
           '-NoLogo', '-NoProfile', '-NonInteractive', '-Command',
@@ -60,15 +54,12 @@ export async function defaultWorkspaceDirectory(
           + '[Environment+SpecialFolderOption]::DoNotVerify)',
         ], signal, 'hidden'))
         break
-      case 'linux':
-        ({ stdout } = await run('xdg-user-dir', ['DOCUMENTS'], signal, 'hidden'))
-        break
       default:
         throw new Error(`system Documents directory is unavailable on ${platform}`)
     }
     directory = stdout.replace(/[\r\n]+$/, '')
     // XDG reports the home directory when this user directory is disabled.
-    if (directory === '' || (platform === 'linux' && paths.normalize(directory) === (internals.home ?? homedir()))) {
+    if (directory === '') {
       throw new Error('system Documents directory is unavailable')
     }
   }

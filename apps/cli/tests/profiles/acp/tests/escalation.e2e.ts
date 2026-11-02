@@ -1,4 +1,3 @@
-import { spawnSync } from 'node:child_process'
 import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -13,7 +12,6 @@ import {
   type AgentUnderTest,
   type LaunchedAcpTestAgent,
 } from '@deepseek-ai/dsh-session-snapshot'
-import { bwrapProfileArgs } from '@deepseek-ai/dsh-sandbox-local/src/profiles.ts'
 import { cleanupAcpExampleTest } from './cleanup.ts'
 
 /**
@@ -40,19 +38,8 @@ const AGENT: AgentUnderTest = {
   tsconfigPath: fileURLToPath(new URL('../../../../../../tsconfig.json', import.meta.url)),
 }
 
-// A usable confining runner, probed the same way the executor suites do:
-// bwrap on Linux, Seatbelt's sandbox-exec on macOS. Without one the strict
-// attempt would fail closed (SANDBOX_UNAVAILABLE) instead of producing the
-// denial this flow starts from.
-const hasBwrap = spawnSync('bwrap', [...bwrapProfileArgs({ mode: 'read-only', workspaceRoot: '/' }), '--', 'true'], {
-  timeout: 5_000,
-  stdio: 'ignore',
-}).status === 0
-const hasSeatbelt = process.platform === 'darwin' && spawnSync('sandbox-exec', ['-p', '(version 1)(allow default)', 'true'], {
-  timeout: 5_000,
-  stdio: 'ignore',
-}).status === 0
-const hasRunner = hasBwrap || hasSeatbelt
+// On Windows, the windows-acl runner is available.
+const hasRunner = process.platform === 'win32'
 
 const STANDARD_EXECUTION_UPDATES = new Set([
   'agent_message_chunk',

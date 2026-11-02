@@ -2,7 +2,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { cpSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync, type Dirent } from 'node:fs'
 import { cp } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -160,7 +160,7 @@ export async function unpackPrimaryRuntimeWheel(archive: string, destination: st
  */
 export function prunePnpmForeignNativePackages(pnpm: string, platform: NodeJS.Platform, arch: NodeJS.Architecture): void {
   const modules = join(pnpm, 'dist', 'node_modules')
-  const directories = (parent: string): string[] => readdirSync(parent, { withFileTypes: true })
+  const directories = (parent: string): string[] => (readdirSync(parent, { withFileTypes: true }) as Dirent[])
     .filter(entry => entry.isDirectory() && entry.name !== '.bin').map(entry => join(parent, entry.name))
   for (const directory of directories(modules).flatMap(entry => basename(entry).startsWith('@') ? directories(entry) : [entry])) {
     const { os, cpu } = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as { os?: unknown; cpu?: unknown }
@@ -212,6 +212,7 @@ export interface PreparePrimaryRuntimeOptions {
 export async function preparePrimaryRuntime(options: PreparePrimaryRuntimeOptions): Promise<void> {
   const { target } = options
   const paths = { runtime: resolve(options.output), downloads: resolve(options.cache) }
+  const artifact = lock.targets[target]
   mkdirSync(paths.runtime, { recursive: true })
   mkdirSync(paths.downloads, { recursive: true })
   const staging = mkdtempSync(join(tmpdir(), 'dsh-primary-'))
@@ -219,29 +220,29 @@ export async function preparePrimaryRuntime(options: PreparePrimaryRuntimeOption
     const output = join(staging, 'payload')
     const dependencies = join(output, 'dependencies')
     mkdirSync(dependencies, { recursive: true })
-    const platform = target === 'win-x64' ? 'win32' : target.startsWith('linux-') ? 'linux' : 'darwin'
-    const arch = target.endsWith('-arm64') ? 'arm64' : 'x64'
     let pnpmVersion: string | undefined
     if (!options.pythonOnly) {
-      const node = join(dependencies, 'node')
-      await downloadNodeRuntime(target, node, paths.downloads)
-      mkdirSync(join(node, 'node_modules'))
-      writeFileSync(join(node, 'node_modules', 'README.txt'), 'Reserved for bundled Node packages. pnpm uses its default installation directories.\n')
-      if (options.pnpmArchive !== undefined) {
-        pnpmVersion = options.pnpmArchive.version
-        await downloadRuntimeNpmPackage(options.pnpmArchive, join(dependencies, 'pnpm'), paths.downloads)
-      } else {
-        const pnpmManifest = createRequire(import.meta.url).resolve('pnpm')
-        pnpmVersion = (JSON.parse(readFileSync(pnpmManifest, 'utf8')) as { version: string }).version
-        await cp(dirname(pnpmManifest), join(dependencies, 'pnpm'), { recursive: true, dereference: true })
-      }
-      prunePnpmForeignNativePackages(join(dependencies, 'pnpm'), platform, arch)
+      const nodeFilename = `node-v${lock.nodeVersion}-${artifact.nodeArchive}`
+      const nodeArchive = await downloadPrimaryRuntimeAsset(`https://nodejs.org/dist/v${lock.nodeVersion}/${nodeFilename}`, artifact.nodeSha256, paths.downloads)
+      const unpackedNode = join(staging, 'node')
+      mkdirSync(unpackedNode)
+      await extractZip(nodeArchive, { dir: unpackedNode })
+      const nodeSource = join(unpackedNode, nodeFilename.replace(/\.zip$/u, ''))
+      mkdirSync(join(dependencies, 'node', 'bin'), { recursive: true })
+      mkdirSync(join(dependencies, 'node', 'node_modules'))
+      writeFileSync(join(dependencies, 'node', 'node_modules', 'README.txt'), 'Reserved for bundled Node packages. pnpm uses its default installation directories.\n')
+      cpSync(join(nodeSource, 'node.exe'), join(dependencies, 'node', 'bin', 'node.exe'))
+      cpSync(join(nodeSource, 'LICENSE'), join(dependencies, 'node', 'LICENSE'))
+      const require = createRequire(import.meta.url)
+      const pnpmManifest = require.resolve('pnpm')
+      pnpmVersion = (JSON.parse(readFileSync(pnpmManifest, 'utf8')) as { version: string }).version
+      await cp(dirname(pnpmManifest), join(dependencies, 'pnpm'), { recursive: true, dereference: true })
     }
     await extractTar({ file: await pythonArchive(target, paths.downloads), cwd: dependencies })
     const manifest: PrimaryRuntimeManifest = {
       desktopVersion: options.version,
-      platform,
-      arch,
+      platform: 'win32',
+      arch: 'x64',
       payloadDigest: primaryRuntimePayloadDigest(target, lock, pnpmVersion),
       python: lock.pythonVersion,
       ...(pnpmVersion === undefined ? {} : { node: lock.nodeVersion, pnpm: pnpmVersion }),
@@ -276,20 +277,10 @@ export function smokePrimaryRuntime(root: string, environment: NodeJS.ProcessEnv
   if (manifest.platform !== process.platform || manifest.arch !== process.arch) return
   if (Object.keys(manifest.pythonPackages).length === 0) throw new Error('primary runtime: missing Python distribution versions; prepare the payload before running its smoke checks.')
   const entries = workspaceDependencyPaths(root, manifest)
-  if (manifest.platform !== 'win32') {
-    const interpreter = `python${manifest.python.split('.').slice(0, 2).join('.')}`
-    for (const name of ['python', 'python3']) {
-      const path = join(dirname(entries.python), name)
-      if (!lstatSync(path).isSymbolicLink() || readlinkSync(path) !== interpreter) {
-        throw new Error(`primary runtime: Python commands must be relative aliases of ${interpreter}`)
-      }
-    }
-    if (!lstatSync(join(dirname(entries.python), interpreter)).isFile()) throw new Error('primary runtime: versioned Python must be a regular file')
-  }
   const options = { stdio: 'inherit', timeout: 120_000, env: environment } as const
   execFileSync(entries.python, ['-I', '-B', '-c', 'import decimal, xml.parsers.expat, lzma, uuid, numpy, pandas; assert numpy.arange(4).sum() == 6; assert pandas.DataFrame({"n": [1, 2]}).n.sum() == 3'], options)
   execFileSync(entries.python, ['-I', '-B', join(import.meta.dirname, 'smoke.py'), JSON.stringify(manifest.pythonPackages),
-    manifest.python], options)
+    manifest.python, join(dirname(root), 'office-skills', 'scripts', 'check_office.py')], options)
   execFileSync(entries.python, ['-I', '-B', '-m', 'pip', 'check'], options)
   if (entries.node !== undefined) execFileSync(entries.node, ['-e', `if (process.versions.node !== ${JSON.stringify(manifest.node)}) process.exit(1)`], options)
   if (entries.pnpm !== undefined && entries.node !== undefined) execFileSync(entries.node, [entries.pnpm, '--version'], options)

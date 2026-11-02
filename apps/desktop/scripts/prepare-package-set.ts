@@ -35,6 +35,12 @@ const REPOSITORY_ROOT = resolve(APP_ROOT, '..', '..')
 const REQUIRED_DEPENDENCY_SECTIONS = ['dependencies', 'peerDependencies'] as const
 const OPTIONAL_DEPENDENCY_SECTION = 'optionalDependencies'
 
+/** Platform and architecture of an installer payload. */
+export interface DesktopPackageTarget {
+  readonly platform: string
+  readonly arch: string
+}
+
 /** Packed package information needed to form the local Desktop closure. */
 export interface PackedDesktopPackage {
   readonly tarball: string
@@ -70,7 +76,7 @@ function dependencyNames(manifest: Readonly<Record<string, unknown>>, section: s
  */
 export function selectDesktopPackageClosure(
   available: ReadonlyMap<string, PackedDesktopPackage>,
-  target: ReturnType<typeof desktopTargetPlatform>,
+  target: DesktopPackageTarget,
 ): PackedDesktopPackage[] {
   const workspace = yaml.load(readFileSync(join(REPOSITORY_ROOT, 'pnpm-workspace.yaml'), 'utf8')) as { packages: string[] }
   const workspaceNames = new Set(globSync(workspace.packages.map(pattern => `${pattern}/package.json`), { cwd: REPOSITORY_ROOT })
@@ -185,7 +191,6 @@ function main(): void {
   const defaultInputs = [
     buildPaths.packedDsh,
     buildPaths.packedVendor,
-    buildPaths.packedLandlock,
   ]
   const { values } = parseArgs({
     options: { from: { type: 'string', multiple: true }, out: { type: 'string' } },

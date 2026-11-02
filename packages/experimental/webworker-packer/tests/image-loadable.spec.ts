@@ -37,8 +37,6 @@ const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url))
 
 /** A leaf workspace package: real build output, no dependencies to drag in. */
 const SUBJECT = '@deepseek-ai/dsh-timeout'
-const LANDLOCK = '@deepseek-ai/node-addon-system'
-const LANDLOCK_ENTRY = `${LANDLOCK}/landlock-run`
 const PLUGIN_INVENTORY = '@deepseek-ai/dsh-plugin-package-inventory-deepseek'
 const WEB_SERVER = '@deepseek-ai/dsh-host-webserver'
 
@@ -95,7 +93,6 @@ const subjectBuilt = [
   'vendor/loader/lib/index.js',
   'packages/host/webserver/lib/index.js',
   'packages/llm/plugin-package-inventory-deepseek/lib/index.js',
-  'native/system/packages/entry/lib/index.js',
   'packages/preset/agent-preset-registry/lib/typert.host.js',
   'packages/preset/agent-preset-registry/lib/typert.remote-client.js',
 ].every(path => existsSync(join(repoRoot, path)))
@@ -108,15 +105,6 @@ const packed = (): ReturnType<typeof packVfsImage> => memo ??= packVfsImage({
   resolveFrom: repoRoot,
   // Synthetic roster: nothing boots the worker assembly, so its default
   // image entries must not be demanded of this one-package closure.
-  entries: [],
-})
-
-let landlockMemo: ReturnType<typeof packVfsImage> | undefined
-const packedLandlock = (): ReturnType<typeof packVfsImage> => landlockMemo ??= packVfsImage({
-  profile: 'landlock-package-check',
-  roster: [LANDLOCK],
-  workspaces,
-  resolveFrom: repoRoot,
   entries: [],
 })
 
@@ -242,41 +230,6 @@ const archive = async (): Promise<Uint8Array> =>
     expect(typeof webserver.WebServer).toBe('function')
   })
 
-  it('runs the unchanged Landlock entry package over the Worker platform executable', async () => {
-    const result = packedLandlock()
-    expect(workspaces.has(LANDLOCK)).toBe(true)
-    expect(result.packages.has(LANDLOCK)).toBe(true)
-    expect(result.missing).toEqual([])
-    expect(Object.hasOwn(result.files, `node_modules/${LANDLOCK}/lib/index.js`)).toBe(true)
-    expect(createNodeBuiltins()[LANDLOCK_ENTRY]).toBeUndefined()
-
-    const vfs = loadVfsImage(await inflateImage(result.image, 'the packed Landlock package'), DEFAULT_ROOT)
-    const loader = new WorkerModuleLoader({
-      vfs,
-      root: DEFAULT_ROOT,
-      staticModules: createNodeBuiltins(),
-      staticModulePrefixes: REPLACED_PREFIXES,
-    })
-    setActiveVfs(vfs)
-    setActiveModuleLoader(loader)
-    const landlock = loader.requireFrom(`${DEFAULT_ROOT}/workspace`)(LANDLOCK_ENTRY) as {
-      LAUNCHER_BIN: string
-      LAUNCHER_FAILURE_EXIT: number
-      launcherPath(): string
-      grantArgs(grants: { readOnly?: readonly string[]; readWrite?: readonly string[] }): string[]
-      probe(): string
-    }
-
-    expect(landlock.LAUNCHER_BIN).toBe('landlock-run')
-    expect(landlock.LAUNCHER_FAILURE_EXIT).toBe(125)
-    expect(landlock.grantArgs({ readOnly: ['/'], readWrite: ['/tmp'] })).toEqual([
-      '--ro', '/', '--rw', '/tmp',
-    ])
-    expect(landlock.launcherPath()).toBe(
-      `${DEFAULT_ROOT}/node_modules/${LANDLOCK}/node_modules/${LANDLOCK}-${process.platform}-${process.arch}/bin/landlock-run`,
-    )
-    expect(landlock.probe()).toBe('full')
-  })
 
   it('prepares the unchanged plugin-package inventory through Worker createRequire paths', async () => {
     const result = packedPluginInventory()

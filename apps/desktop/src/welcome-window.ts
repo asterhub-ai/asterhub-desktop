@@ -13,7 +13,7 @@ import { WELCOME_IPC, type WelcomeOperations } from './welcome-api.ts'
  * @param locale - shell-owned localized copy.
  * @returns sandboxed window options with a locale-only preload.
  */
-export function welcomeWindowOptions(platform: NodeJS.Platform, locale: DesktopLocale): BrowserWindowConstructorOptions {
+export function welcomeWindowOptions(locale: DesktopLocale): BrowserWindowConstructorOptions {
   return {
     width: 600,
     height: 700,
@@ -24,18 +24,10 @@ export function welcomeWindowOptions(platform: NodeJS.Platform, locale: DesktopL
     fullscreenable: false,
     show: false,
     title: locale.messages.welcomeTitle,
-    backgroundColor: platform === 'darwin' || platform === 'win32' ? '#00000000' : '#FFFFFF',
-    ...(platform === 'darwin' ? {
-      titleBarStyle: 'hidden',
-      trafficLightPosition: { x: 21, y: 21 },
-      vibrancy: 'menu',
-      visualEffectState: 'active',
-    } as const : {}),
-    ...(platform === 'win32' ? {
-      titleBarStyle: 'hidden',
-      titleBarOverlay: { color: '#00000000', symbolColor: '#0F1115', height: 42 },
-      backgroundMaterial: 'acrylic',
-    } as const : {}),
+    backgroundColor: '#00000000',
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#00000000', symbolColor: '#0F1115', height: 42 },
+    backgroundMaterial: 'acrylic',
     webPreferences: {
       preload: fileURLToPath(new URL('./preload-welcome.cjs', import.meta.url)),
       additionalArguments: [`--dsh-welcome-locale=${locale.id}`],
@@ -57,7 +49,7 @@ let disposeActiveHandlers: (() => void) | undefined
  * @returns the visible window; a failed load destroys it before rejecting.
  */
 export async function openWelcomeWindow(locale: DesktopLocale, operations: WelcomeOperations): Promise<BrowserWindow> {
-  const options = welcomeWindowOptions(process.platform, locale)
+  const options = welcomeWindowOptions(locale)
   const window = new BrowserWindow(options)
   disposeActiveHandlers?.()
   let active = true

@@ -40,11 +40,6 @@
     "expected": "Look up the catalog, offer exactly one matching tool-worktree card, explain its actual scope, and do not enable or edit files before the user acts."
   },
   {
-    "id": "team",
-    "prompt": "我希望多个智能体能分工、互相沟通，还能在一个共享任务看板上协调进度。",
-    "expected": "Look up the catalog, offer exactly one matching agent-team-profile card, explain its actual scope, and do not enable or edit files before the user acts."
-  },
-  {
     "id": "auto_review",
     "prompt": "DSH 每次工具调用都让我确认很打断思路，能让模型先根据我的授权判断是否放行吗？",
     "expected": "Look up the catalog, offer exactly one matching auto-review card, explain its actual scope, and do not enable or edit files before the user acts."

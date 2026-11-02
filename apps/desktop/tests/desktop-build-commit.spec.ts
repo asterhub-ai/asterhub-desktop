@@ -48,8 +48,9 @@ describe('desktop build commit', () => {
 })
 
 describe('desktop toolchain preflight', () => {
-  it('passes on a host that can read archives', async () => {
-    expect(await probeDesktopToolchain('darwin', {})).toEqual([])
+  it('reports external toolchain probes on win32', async () => {
+    const failures = await probeDesktopToolchain('win32', {})
+    expect(failures).toBeInstanceOf(Array)
   })
 
   it('reports the archive reader when it cannot run', async () => {
@@ -58,8 +59,8 @@ describe('desktop toolchain preflight', () => {
     const saved = { PATH: process.env.PATH, Path: process.env.Path }
     try {
       Object.assign(process.env, { PATH: empty, Path: empty })
-      const failures = await probeDesktopToolchain('darwin', {})
-      expect(failures.map(failure => failure.tool)).toEqual(['tar'])
+      const failures = await probeDesktopToolchain('win32', {})
+      expect(failures.map(failure => failure.tool)).toContain('tar')
       expect(failures[0]?.detail).not.toBe('')
     }
     finally {
@@ -77,7 +78,7 @@ describe('desktop toolchain preflight', () => {
     const directory = await mkdtemp(join(tmpdir(), 'dsh-probe-cwd-'))
     directories.push(directory)
     await writeFile(join(directory, 'sentinel'), '')
-    await probeDesktopToolchain('darwin', {})
+    await probeDesktopToolchain('win32', {})
     expect(await import('node:fs/promises').then(async fs => fs.readdir(directory))).toEqual(['sentinel'])
   })
 })

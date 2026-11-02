@@ -149,7 +149,7 @@ export class DesktopUpdateDialog {
   private owned(event: IpcMainInvokeEvent): void {
     const surface = this.view
     if (surface === undefined || event.sender !== surface.webContents
-      || event.senderFrame !== surface.webContents.mainFrame || event.senderFrame.url !== page) {
+      || event.senderFrame === null || event.senderFrame !== surface.webContents.mainFrame || event.senderFrame.url !== page) {
       throw new Error('desktop update: rejected unowned dialog renderer')
     }
   }

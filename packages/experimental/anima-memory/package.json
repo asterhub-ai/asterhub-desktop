@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-anima-memory",
   "description": "Built-in local evidence-backed Anima memory",
-  "version": "0.2.0-rc.3",
+  "version": "0.2.2-alpha.2",
   "publishConfig": {
     "access": "public"
   },
@@ -37,7 +37,6 @@
     "@deepseek-ai/anima-memory": "workspace:~",
     "neo4j-driver": "6.2.0",
     "extract-zip": "^2.0.1",
-    "tar": "^7.5.7",
     "json-canonicalize": "3.0.1"
   },
   "peerDependencies": {

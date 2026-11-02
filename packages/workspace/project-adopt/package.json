@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-project-adopt",
   "description": "One-shot adoption of project-local Sessions discovered beneath a registered Workspace root",
-  "version": "0.2.1-rc.3",
+  "version": "0.2.2-alpha.2",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",

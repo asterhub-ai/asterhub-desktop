@@ -1,10 +1,9 @@
 import { EventEmitter } from 'node:events'
 import { createHash } from 'node:crypto'
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { c as createTar } from 'tar'
 import { acquireFileLock } from '@deepseek-ai/dsh-atomic-write'
 import {
   JRE_RELEASE,
@@ -30,10 +29,9 @@ async function fixture() {
   const runtimeRoot = join(root, 'runtime')
   await mkdir(join(runtimeRoot, 'neo4j', 'bin'), { recursive: true })
   await mkdir(join(runtimeRoot, 'java', 'bin'), { recursive: true })
-  const windows = process.platform === 'win32'
-  await writeFile(join(runtimeRoot, 'neo4j', 'bin', windows ? 'neo4j.bat' : 'neo4j'), '')
-  await writeFile(join(runtimeRoot, 'java', 'bin', windows ? 'java.exe' : 'java'), '')
-  await writeFile(join(runtimeRoot, RUNTIME_MANIFEST_NAME), JSON.stringify(neo4jRuntimeManifest(process.platform, process.arch)))
+  await writeFile(join(runtimeRoot, 'neo4j', 'bin', 'neo4j.bat'), '')
+  await writeFile(join(runtimeRoot, 'java', 'bin', 'java.exe'), '')
+  await writeFile(join(runtimeRoot, RUNTIME_MANIFEST_NAME), JSON.stringify(neo4jRuntimeManifest('win32', 'x64')))
   return { dataRoot, runtimeRoot }
 }
 
@@ -88,26 +86,17 @@ describe('Anima managed Neo4j runtime', () => {
   it('prepares verified runtime archives from the version endpoint binaries array', async () => {
     const root = await mkdtemp(join(tmpdir(), 'anima-runtime-install-'))
     roots.push(root)
-    const source = join(root, 'source')
-    await mkdir(join(source, 'neo4j', 'bin'), { recursive: true })
-    await mkdir(join(source, 'java', 'bin'), { recursive: true })
-    await writeFile(join(source, 'neo4j', 'bin', 'neo4j'), 'neo4j fixture')
-    await writeFile(join(source, 'java', 'bin', 'java'), 'java fixture')
-    const archive = async (name: string) => {
-      const file = join(root, `${name}.tar.gz`)
-      await createTar({ file, cwd: source, gzip: true }, [name])
-      return new Uint8Array(await readFile(file))
-    }
-    const neo4jArchive = await archive('neo4j')
-    const javaArchive = await archive('java')
+    const fixturesDir = resolve(import.meta.dirname, 'fixtures')
+    const neo4jArchive = await readFile(join(fixturesDir, 'neo4j-windows.zip'))
+    const javaArchive = await readFile(join(fixturesDir, 'java-windows.zip'))
     const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
-    const asset = neo4jPlatformAsset('linux', 'x64')
-    const javaUrl = 'https://github.com/adoptium/temurin21-binaries/releases/download/fixture/java.tar.gz'
+    const asset = neo4jPlatformAsset('win32', 'x64')
+    const javaUrl = 'https://github.com/adoptium/temurin21-binaries/releases/download/fixture/java.zip'
     const fetcher = vi.fn<typeof fetch>(async (input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
       if (url === asset.javaMetadataUrl) return Response.json([{ release_name: JRE_RELEASE, binaries: [{
-        os: 'linux', architecture: 'x64', image_type: 'jre',
-        package: { link: javaUrl, name: 'java.tar.gz', checksum: digest(javaArchive) },
+        os: 'windows', architecture: 'x64', image_type: 'jre',
+        package: { link: javaUrl, name: 'java.zip', checksum: digest(javaArchive) },
       }] }])
       expect(new Headers(init?.headers).get('Range')).toBe('bytes=0-')
       if (url === asset.neo4jChecksumUrl) return new Response(digest(neo4jArchive))
@@ -116,23 +105,26 @@ describe('Anima managed Neo4j runtime', () => {
       throw new Error(`Unexpected runtime URL: ${url}`)
     })
     const destination = join(root, 'installed')
-    await prepareNeo4jRuntime({ platform: 'linux', architecture: 'x64', destination, fetch: fetcher })
-    await expect(verifyNeo4jRuntime(destination, 'linux', 'x64')).resolves.toBeUndefined()
-    expect(await readFile(join(destination, 'java', 'bin', 'java'), 'utf8')).toBe('java fixture')
+    await prepareNeo4jRuntime({ platform: 'win32', architecture: 'x64', destination, fetch: fetcher })
+    await expect(verifyNeo4jRuntime(destination, 'win32', 'x64')).resolves.toBeUndefined()
+    expect(await readFile(join(destination, 'java', 'bin', 'java.exe'), 'utf8')).toBe('java exe fixture')
+    expect(await readFile(join(destination, 'neo4j', 'bin', 'neo4j.bat'), 'utf8')).toBe('neo4j bat fixture')
     expect(fetcher).toHaveBeenCalledTimes(4)
   })
 
-  it('uses the pinned Neo4j and JRE releases with official per-platform archive URLs', () => {
+  it('uses the pinned Neo4j and JRE releases with official Windows archive URLs', () => {
     const windows = neo4jPlatformAsset('win32', 'x64')
-    const linux = neo4jPlatformAsset('linux', 'arm64')
     expect(NEO4J_VERSION).toBe('5.26.32')
     expect(JRE_RELEASE).toBe('jdk-21.0.12.1+1')
     expect(windows.neo4jUrl).toBe(`https://dist.neo4j.org/neo4j-community-${NEO4J_VERSION}-windows.zip`)
     expect(windows.neo4jChecksumUrl).toBe(`${windows.neo4jUrl}.sha256`)
-    expect(linux.neo4jUrl).toBe(`https://dist.neo4j.org/neo4j-community-${NEO4J_VERSION}-unix.tar.gz`)
-    expect(linux.javaMetadataUrl).toContain('architecture=aarch64')
-    expect(() => neo4jPlatformAsset('freebsd', 'x64')).toThrow(/no pinned Neo4j runtime/u)
+    expect(windows.javaMetadataUrl).toContain('os=windows')
+    expect(windows.javaMetadataUrl).toContain('architecture=x64')
+    expect(() => neo4jPlatformAsset('darwin', 'x64')).toThrow(/no pinned Neo4j runtime/u)
+    expect(() => neo4jPlatformAsset('linux', 'x64')).toThrow(/no pinned Neo4j runtime/u)
+    expect(() => neo4jPlatformAsset('win32', 'arm64')).toThrow(/no pinned Neo4j runtime/u)
   })
+
 
   it('fails closed when a supplied packaged runtime is incomplete instead of downloading at first launch', async () => {
     const { dataRoot, runtimeRoot } = await fixture()
@@ -155,7 +147,7 @@ describe('Anima managed Neo4j runtime', () => {
     let processEnvironment: NodeJS.ProcessEnv = {}
     let seenConnection: { uri: string; username: string; password: string; database: string } | undefined
     const installRuntime = vi.fn()
-    await expect(verifyNeo4jRuntime(runtimeRoot, process.platform, process.arch)).resolves.toBeUndefined()
+    await expect(verifyNeo4jRuntime(runtimeRoot, 'win32', 'x64')).resolves.toBeUndefined()
     const managed = await ensureNeo4j({
       dataRoot,
       runtimeRoot,
@@ -286,15 +278,4 @@ describe('Anima managed Neo4j runtime', () => {
     expect(children.length).toBeGreaterThan(1)
   })
 
-  it('uses the configured data root as a private local store on POSIX', async () => {
-    if (process.platform === 'win32') return
-    const { dataRoot, runtimeRoot } = await fixture()
-    await ensureNeo4j({
-      dataRoot,
-      runtimeRoot,
-      dependencies: { spawn: fakeSpawn([]), terminate: terminateFake, probe: async () => true },
-    }).then(instance => instance.close())
-    const mode = (await stat(dataRoot)).mode
-    expect(mode & 0o077).toBe(0)
-  })
 })

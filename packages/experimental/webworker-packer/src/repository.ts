@@ -25,7 +25,7 @@ export { packPreviewFixture } from './preview.ts'
  * package family contributes its unchanged JavaScript entry from `native/`;
  * examples and python never occur on a roster's dependency chain.
  */
-const WORKSPACE_SCAN_ROOTS = ['vendor', 'packages', 'native/system/packages', 'apps']
+const WORKSPACE_SCAN_ROOTS = ['vendor', 'packages', 'apps']
 
 /** The `dsh` installation package: its manifest anchors bundle resolution, as the launcher's does. */
 const CLI_PACKAGE = 'apps/cli'

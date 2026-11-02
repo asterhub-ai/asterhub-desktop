@@ -9,17 +9,14 @@ import { prerelease } from 'semver'
 import type { DesktopPackageTargetName } from './package-target.ts'
 import {
   desktopBuildRecordFilename,
-  desktopLatestInstallerFilename,
   desktopUpdateMetadataFilename,
   resolveDesktopUploadConfig,
 } from './desktop-auto-update-environment.mjs'
-import { desktopTargetBuildPaths } from './desktop-build-paths.mjs'
+import { desktopTargetBuildPaths, resolveDesktopBuildLayout, resolveDesktopBuildRoot } from './desktop-build-paths.mjs'
 import { validateDesktopBuildVersion } from './desktop-build-version.mjs'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
 const TARGETS = {
-  'mac-arm64': { platform: 'darwin', arch: 'arm64', os: 'mac' },
-  'mac-x64': { platform: 'darwin', arch: 'x64', os: 'mac' },
   'win-x64': { platform: 'win32', arch: 'x64', os: 'win' },
 } as const satisfies Record<DesktopPackageTargetName, {
   readonly platform: NodeJS.Platform
@@ -187,7 +184,9 @@ export async function createDesktopUploadPlan(
   }
   const environment = options.environment ?? process.env
   const appRoot = options.appRoot ?? APP_ROOT
-  const artifactsRoot = options.artifactsRoot ?? desktopTargetBuildPaths(targetName).artifacts
+  const artifactsRoot = options.artifactsRoot ?? desktopTargetBuildPaths(
+    targetName, resolveDesktopBuildLayout(environment), resolveDesktopBuildRoot(environment), environment,
+  ).artifacts
   const desktopVersion = options.packagedProductVersion ?? await manifestVersion(join(appRoot, 'package.json'), 'desktop package')
   const update = resolveDesktopUploadConfig(environment, target.platform, target.arch)
   const buildRecord = await jsonFile(
@@ -232,33 +231,20 @@ export async function createDesktopUploadPlan(
   }
 
   const base = `asterhub-${buildVersion}-${target.os}-${target.arch}`
-  const updaterExtension = target.platform === 'darwin' ? 'zip' : 'exe'
+  const updaterExtension = 'exe'
   const updaterInfo = updateFileInfo(metadata.files[0], `${metadataFilename}.files[0]`, `${base}.${updaterExtension}`)
   const updaterPath = await verifyChecksummedArtifact(artifactsRoot, updaterInfo)
   const artifacts: DesktopUploadArtifact[] = []
   const binaryPrefix = update.binaryKeyPrefix
-  let installerArtifact: DesktopUploadArtifact
 
-  if (target.platform === 'darwin') {
-    const dmgPath = await requireArtifact(artifactsRoot, `${base}.dmg`)
-    const blockmapPath = await requireArtifact(artifactsRoot, `${base}.zip.blockmap`)
-    installerArtifact = uploadArtifact(dmgPath, binaryPrefix, 'application/x-apple-diskimage')
-    artifacts.push(
-      installerArtifact,
-      uploadArtifact(updaterPath, binaryPrefix, 'application/zip'),
-      uploadArtifact(blockmapPath, binaryPrefix, 'application/octet-stream'),
-    )
-  }
-  else {
-    const blockmapPath = await requireArtifact(artifactsRoot, `${base}.exe.blockmap`)
-    installerArtifact = uploadArtifact(
-      updaterPath,
-      binaryPrefix,
-      'application/vnd.microsoft.portable-executable',
-    )
-    artifacts.push(installerArtifact)
-    artifacts.push(uploadArtifact(blockmapPath, binaryPrefix, 'application/octet-stream'))
-  }
+  const blockmapPath = await requireArtifact(artifactsRoot, `${base}.exe.blockmap`)
+  const installerArtifact: DesktopUploadArtifact = uploadArtifact(
+    updaterPath,
+    binaryPrefix,
+    'application/vnd.microsoft.portable-executable',
+  )
+  artifacts.push(installerArtifact)
+  artifacts.push(uploadArtifact(blockmapPath, binaryPrefix, 'application/octet-stream'))
 
   const payloadUrl = `${update.origin}/${binaryPrefix}/${updaterInfo.filename}`
   const published = {
@@ -275,7 +261,7 @@ export async function createDesktopUploadPlan(
     const stableFilename = metadataFilename.replace('nightly', 'latest')
     artifacts.push({ ...channelArtifact, filename: stableFilename, key: `${update.keyPrefix}/${stableFilename}` })
   }
-  const latestFilename = desktopLatestInstallerFilename(targetName)
+  const latestFilename = `dsh-latest-windows-${target.arch}.exe`
   const latestKey = `desktop/${latestFilename}`
   return {
     environment: update.environment,

@@ -131,10 +131,6 @@ runner 的受监督启动和恢复见 [Windows runner 机器准备](../windows-s
 
 三个平台的表单均依次展示源码、环境、升级通道、版本模式、手动版本号、测试 release ID 和压缩等级，默认值一致。macOS 公证选项和 Windows 签名、缓存测量、独立构建目录选项位于公共字段之后。
 
-运行 `node apps/desktop/scripts/setup-macos-packaging.mjs "$HOME/dsh-ci"` 创建私有 `runner/`、`packaging/{presets,secrets,certificates}` 和 `cache/macos-signatures` 目录，不覆盖已有文件；追加 `--check` 仅检查。在 checkout 外填写 [preset](../config/macos-packaging/test.env.example) 和[签名](../config/macos-packaging/macos-signing.env.example)模板，将秘密和证书文件权限设为 `0600`。`DSH_PACKAGING_CONFIG_DIR` 指定 `packaging` 的绝对目录，`DSH_PACKAGING_PRESET` 选择其中的 preset；缺少文件立即失败，不回退到 `.env.macos`。Mac 签名和仅准备构建读取 `secrets/macos-signing.env`，相对凭据路径以该文件所在目录为基准。公开 preset 拒绝签名凭据，签名文件不能覆盖公开配置。本地未签名 Mac 构建保留无需配置的行为。
-
-运行 `bash apps/desktop/scripts/start-macos-packaging-runner.sh "$HOME/dsh-ci/runner" "$HOME/dsh-ci/packaging" <absolute-node-24-bin-directory> --check` 检查宿主工具和配置文件。脚本同时选择当前 Xcode 及其 macOS SDK，并编译小型链接探针。注册后省略 `--check`，清理继承环境并在前台启动 runner，存活期间阻止空闲睡眠。安装下方服务前，先用 Ctrl-C 停止。runner 拥有 `_work` 下的源码目录，与日常开发分开。该账户可读取签名文件，因此只执行可信代码。沿用现有公证代理恢复规则；强制终止后，先检查保留的恢复记录再构建。新建模板将 `DSH_DESKTOP_MACOS_SIGNATURE_CACHE_DIR` 设为 checkout 外 `cache/macos-signatures` 的绝对路径。已有部署重新运行 setup 后，在各 preset 中补上该字段；已有文件保持不变。这样可跨干净检出保留签名；缓存验证和容量限制见 [macOS 签名](#macos-release-signing)。
-
 
 无论是否公证，ZIP 都使用同一压缩配置；App 只组装一次，再分别生成 DMG 和 ZIP，确保 ZIP 设置不改变 DMG 压缩。工作流选项 `skip_notarization` 默认为 `false`；对应 CLI 参数是 `--skip-notarization`。该模式保留 Developer ID 签名、DMG 签名验证和打包运行时验证，跳过 Apple 公证和 stapling，不要求 Apple 公证凭据。DMG／ZIP 文件名带 `-unnotarized`，存放于 `.desktop-build/targets/<target>/unnotarized-artifacts/`，上传产物标为 `unnotarized-debug`。这些产物仅供内部调试：Gatekeeper 可能阻止下载副本运行，不能视为可分发包或用于更新发布。该模式不写入发布完成记录，不能与未签名、Windows 或仅准备构建组合。
 

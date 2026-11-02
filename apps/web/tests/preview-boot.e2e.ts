@@ -705,20 +705,14 @@ async function toggleOptionalBundles(page: Page): Promise<void> {
   })
   expect(result.optional.map(entry => entry.name).sort()).toEqual([...OPTIONAL_BUNDLES].sort())
   expect(result.optional.filter(entry => entry.enabled || entry.availability !== 'installation')).toEqual([])
-  expect(result.optional.filter(entry => entry.error !== null)).toEqual([
-    expect.objectContaining({ name: '@deepseek-ai/dsh-cua-bundle', error: { code: 'unsupported-platform' } }),
-  ])
+  expect(result.optional.filter(entry => entry.error !== null)).toEqual([])
   // Metadata resolves through the Worker's Node internal modules: every optional bundle shows its title and icon.
   expect(result.optional.filter(entry => entry.metaError !== null || entry.title !== 'object' || entry.icon !== 'string')).toEqual([])
   expect(result.inventoryErrors).toEqual([])
   console.info(`preview boot: optional bundle toggles ${JSON.stringify(result.toggles.map(({ name, enable, disable, error }) => ({ name, enable, disable, error })))}`)
-  expect(result.toggles.find(toggle => toggle.name === '@deepseek-ai/dsh-cua-bundle')).toMatchObject({
-    enable: 'failed', disable: 'applied', error: { code: 'unsupported-platform' },
-    changed: 0, inactive: [], restored: true,
-  })
   // The packed worker composition excludes LiveShare from its generic toggles; plugin-manager.e2e.ts
   // covers that bundle's enable/disable path in the ordinary Web scaffold.
-  const supported = result.toggles.filter(toggle => toggle.name !== '@deepseek-ai/dsh-cua-bundle')
+  const supported = result.toggles
   expect(supported.filter(toggle => toggle.enable !== 'applied' || toggle.disable !== 'applied')
     .map(({ name, enable, disable }) => ({ name, enable, disable }))).toEqual([])
   // Each bundle changes Loader rows, every enabled row it changes runs, and switching it off restores the prior rows.

@@ -16,7 +16,7 @@ export interface DesktopUpdateOverlay {
   loadURL(url: string): Promise<void>
 }
 
-type UpdateOwner = Pick<BrowserWindow, 'getContentBounds' | 'isDestroyed' | 'isFocused'>
+export type UpdateOwner = Pick<BrowserWindow, 'getContentBounds' | 'isDestroyed' | 'isFocused'>
   & Pick<EventEmitter, 'on' | 'once' | 'off'> & {
     readonly webContents: Pick<EventEmitter, 'prependListener' | 'off'> & Pick<WebContents, 'focus'>
     readonly contentView: Pick<View, 'addChildView' | 'removeChildView'>
@@ -27,7 +27,7 @@ export class DesktopUpdateOverlays {
   private readonly inputs = new WeakMap<object, { revision: number; active: number; readonly blocked: boolean }>()
 
   /** @param parent - Product window. @returns Blocking state and attachment/release revision. */
-  input(parent: Pick<BrowserWindow, 'isDestroyed'>): { readonly revision: number; readonly blocked: boolean } {
+  input(parent: { isDestroyed(): boolean }): { readonly revision: number; readonly blocked: boolean } {
     const state = this.inputs.get(parent)
     return { revision: state?.revision ?? 0, blocked: state?.blocked ?? false }
   }
@@ -37,7 +37,7 @@ export class DesktopUpdateOverlays {
    * @param preload - Isolated shell preload.
    * @returns Document attached inside the owner, without showing or activating a native window.
    */
-  create(parent: UpdateOwner, preload: string): DesktopUpdateOverlay {
+  create(parent: UpdateOwner, preload: string, _title?: string): DesktopUpdateOverlay {
     const view = new WebContentsView({ webPreferences: {
       preload, contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true,
     } })

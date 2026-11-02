@@ -2,6 +2,12 @@
 
 AsterHub is a desktop AI workbench using Cordis plugins. The desktop hosts the Web UI; never describe the product as a Web workbench. Read [architecture](docs/architecture.md) before changing `packages/`; follow [documentation rules](docs/AGENTS.md).
 
+## Fork maintenance scope
+
+AsterHub owns its self-developed code and necessary upstream modifications. Run focused verification for those changes and their affected integration paths; do not independently test or repair unchanged DSH upstream features. Leave upstream-only bugs to DeepSeek unless an adopted AsterHub capability requires a necessary modification. Agent Teams is not an adopted capability; keep its experimental packages, product entries, and dedicated verification out of the fork. Ordinary Subagent delegation remains supported.
+
+AsterHub currently supports Windows only. Remove Linux/macOS-exclusive host implementations, packaging/release targets, and dedicated verification; do not track upstream work for those platforms. Keep platform-neutral dependencies and Windows-required behavior, including Git Bash and remote SSH operations; a Windows client accessing a remote POSIX host does not imply Linux product support.
+
 ## Pre-stable APIs and released Session data
 
 Public APIs are pre-stable; update every consumer. Follow [version/status](docs/session-format-status.md) and [type acknowledgements](docs/cookbook/reviewing-persistence-type-changes.md). [Adjacent migrations](.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.md) may add version-named successors; never move, overwrite, or delete committed generations. Predecessors imply neither fallback nor downgrade support. SQLite uses monotonic `SCHEMA_VERSION`.
@@ -71,7 +77,6 @@ packages/    @deepseek-ai/dsh-<pkg> workspaces at packages/<group>/<pkg>/
   runtime-diagnostics/  runtime invariants
   util/                 zero-dependency utilities
 python/      Python SDK/runtime (python/README.md)
-native/      @deepseek-ai/node-addon-system source (native/README.md)
 benchmarks/  performance gates
 .agents/     Agent workflows/notes
 docs/        Documentation (docs/AGENTS.md)
@@ -97,7 +102,6 @@ pnpm run lint
 pnpm run duplication    # cross-file TypeScript clone detection
 pnpm run build          # tsc emits lib/types, tsdown bundles runtime
 pnpm run hygiene        # publint + workspace/package/dependency checks + NodeNext consumer check
-pnpm run check:windows-wine  # ONLY when diagnosing a known Windows failure (needs wine); CI owns this signal
 pnpm run doc-sync       # documentation gates (scripts/run-gates.ts)
 pnpm run test:docs      # quick documentation checks (no build; doc-quick aggregate)
 pnpm run website:build  # VitePress build (doubles as dead-link check)

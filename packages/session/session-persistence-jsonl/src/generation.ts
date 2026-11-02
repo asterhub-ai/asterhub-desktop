@@ -652,17 +652,6 @@ function assertGenerationPaths(
   return logSuffix(compression)
 }
 
-async function syncDirectory(path: string, internals: JsonlGenerationInternals): Promise<void> {
-  /* v8 ignore next -- Windows namespace operations request write-through directly. */
-  if (internals.platform === 'win32') return
-  const handle = await internals.fs.open(path, 'r')
-  try {
-    await handle.sync()
-  } finally {
-    await handle.close()
-  }
-}
-
 interface StreamedMigrationStage {
   readonly path: string
   readonly bytes: number
@@ -830,16 +819,16 @@ async function publishCurrentExclusive(
       throw error
     }
   }
-  try {
-    await internals.fs.link(staged, currentPath)
-  } catch (error) {
-    /* v8 ignore else -- a non-collision filesystem error propagates unchanged. */
-    if (isEEXIST(error)) return false
-    /* v8 ignore next -- the filesystem error is already complete. */
-    throw error
+  if (process.title === 'dsh-webworker') {
+    try {
+      await internals.fs.link(staged, currentPath)
+    } catch (error) {
+      if (isEEXIST(error)) return false
+      throw error
+    }
+    return true
   }
-  await syncDirectory(dirname(currentPath), internals)
-  return true
+  throw new Error(`session generation publication is unsupported on ${internals.platform}`)
 }
 
 function asError(error: unknown): Error {

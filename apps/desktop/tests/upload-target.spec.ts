@@ -81,12 +81,12 @@ describe('cache-only submission command', () => {
   })
 
   it('submits a purge without reading or uploading an installer', async () => {
-    await uploadDesktopTarget(['--latest', '--purge-only', 'mac-arm64'])
+    await uploadDesktopTarget(['--latest', '--purge-only', 'win-x64'])
     expect(createDesktopUploadPlan).not.toHaveBeenCalled()
     expect(uploadDesktopRelease).not.toHaveBeenCalled()
     expect(tagDesktopRelease).not.toHaveBeenCalled()
     expect(purgeDesktopInstaller).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
-      publicUrl: 'https://asterhub.xapi.fans/desktop/dsh-latest-macos-arm64.dmg',
+      publicUrl: 'https://asterhub.xapi.fans/desktop/dsh-latest-windows-x64.exe',
     }))
   })
 
@@ -99,11 +99,11 @@ describe('cache-only submission command', () => {
   it('reports a completed upload when refresh fails, without tagging or repeating the upload', async () => {
     const output = vi.spyOn(process.stdout, 'write').mockReturnValue(true)
     vi.mocked(createDesktopUploadPlan).mockResolvedValue({
-      environment: 'production', target: 'mac-arm64', version: '1.2.3', publicUrl: 'https://example.com/new-prefix/installer.dmg',
+      environment: 'production', target: 'win-x64', version: '1.2.3', publicUrl: 'https://example.com/new-prefix/installer.exe',
       bucket: 'fixture-bucket', secretIdEnvName: 'DOWNLOAD_PROD_COS_SECRET_ID', secretKeyEnvName: 'DOWNLOAD_PROD_COS_SECRET_KEY', artifacts: [],
     })
     vi.mocked(purgeDesktopInstaller).mockRejectedValue(new DesktopPurgeError('desktop purge: submission not confirmed'))
-    await expect(uploadDesktopTarget(['mac-arm64', '--latest'])).rejects.toThrow('desktop purge: submission not confirmed')
+    await expect(uploadDesktopTarget(['win-x64', '--latest'])).rejects.toThrow('desktop purge: submission not confirmed')
     expect(output).toHaveBeenCalledWith('desktop upload: installer uploaded; submitting cache purge.\n')
     expect(uploadDesktopRelease).toHaveBeenCalledOnce()
     expect(purgeDesktopInstaller).toHaveBeenCalledOnce()
@@ -120,7 +120,7 @@ describe('cache-only submission command', () => {
     vi.stubEnv('DOWNLOAD_PROD_COS_SECRET_KEY', 'injected-key')
     try {
       vi.mocked(purgeDesktopInstaller).mockRejectedValue(new DesktopPurgeError('desktop purge: safe recovery message'))
-      await runDesktopUploadCommand(['mac-arm64', '--latest', '--purge-only', ...launcher ? ['--credential-launcher', '--environment', 'production', '--bucket', 'fixture-bucket'] : []])
+      await runDesktopUploadCommand(['win-x64', '--latest', '--purge-only', ...launcher ? ['--credential-launcher', '--environment', 'production', '--bucket', 'fixture-bucket'] : []])
       expect(launcher ? stdout : stderr).toHaveBeenCalledExactlyOnceWith('desktop purge: safe recovery message\n')
       expect(launcher ? stderr : stdout).not.toHaveBeenCalled()
       expect(process.exitCode).toBe(1)

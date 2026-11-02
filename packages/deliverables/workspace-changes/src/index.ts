@@ -8,7 +8,7 @@
  * service until the Session is disposed. Outside a git repository, or without
  * git, the summary lists file-tool edits only.
  */
-import { homedir, tmpdir } from 'node:os'
+import { tmpdir } from 'node:os'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-agent'
@@ -62,27 +62,17 @@ function eligible(session: Session): string | undefined {
 }
 
 /**
- * Resolve the git executable once. On macOS the Xcode stub at `/usr/bin/git`
- * opens an installer dialog instead of running, so it counts as absent until
- * developer tools are selected.
+ * Resolve the git executable once.
  * @param ctx - subprocess capability.
  * @param signal - plugin lifetime.
  * @returns the executable path, or null when git is unavailable.
  */
 async function resolveGit(ctx: Context, signal: AbortSignal): Promise<string | null> {
-  let executable: string
   try {
-    executable = await ctx.subprocess.resolveExecutable('git', undefined, signal)
+    return await ctx.subprocess.resolveExecutable('git', undefined, signal)
   } catch {
     return null
   }
-  if (process.platform !== 'darwin' || executable !== '/usr/bin/git') return executable
-  const probe = ctx.subprocess.spawn({
-    argv: ['/usr/bin/xcode-select', '-p'], cwd: homedir(),
-    stdio: { stdin: 'ignore', stdout: { maxBytes: 4096 }, stderr: { maxBytes: 4096 } }, graceMs: 1_000, signal,
-  })
-  const outcome = await probe.done.catch(() => ({ exitCode: null }))
-  return outcome.exitCode === 0 ? executable : null
 }
 
 /**

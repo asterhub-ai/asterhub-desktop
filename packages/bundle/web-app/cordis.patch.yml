@@ -104,6 +104,13 @@
     - id: workspace-files
       name: '@deepseek-ai/dsh-api-workspace-files'
 
+    # The Schedule service owns the task store and delivers each due occurrence
+    # as a follow-up in its original Session. The clock reading and the four
+    # reminder tools belong to the `standard`, `cordis`, and `ptc` presets,
+    # which declare them in their own scope.
+    - id: schedule
+      name: '@deepseek-ai/dsh-schedule'
+
     # Configuration-surface reads and writes over Typert Remote. Each method
     # reports an actionable error when its settings-domain provider is absent.
     - id: ui-settings-account
@@ -353,7 +360,11 @@
     - id: ui-jobs
       name: '@deepseek-ai/dsh-client-ui-jobs'
 
-    # Goal surface: GoalBar in the input dock over the goal session projection.
+    # Task management and Session reminder catalog over the Host Schedule
+    # service mounted above.
+    - id: ui-schedule
+      name: '@deepseek-ai/dsh-client-ui-schedule'
+
     - id: ui-goal
       name: '@deepseek-ai/dsh-client-ui-goal'
 
@@ -500,9 +511,6 @@
 - id: tool-subagent-control
   disabled: true
 
-- id: tool-subagent-list-agents
-  disabled: true
-
 - id: tool-subagent
   disabled: true
 
@@ -513,12 +521,6 @@
   disabled: true
 
 - id: tool-workflow
-  disabled: true
-
-# `base` ships this row disabled; the preset-plane gate reads declared row ids
-# without regard to `disabled`, so this row must stay to keep `tool-ralph` off
-# the host plane and out of collision with every preset's row.
-- id: tool-ralph
   disabled: true
 
 - id: agent-instructions

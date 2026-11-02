@@ -160,7 +160,7 @@ export function apply(ctx: Context, config: Config): void {
   const iconOf = (app: OpenInAppApp, resolved: OpenInAppResolvedLaunch): Promise<OpenInAppIcon | null> => {
     let cached = icons.get(app.id)
     if (cached === undefined) {
-      cached = extractAppIcon(app, resolved, config.iconTimeoutMs, catalogInternals())
+      cached = extractAppIcon(resolved, config.iconTimeoutMs, catalogInternals())
       icons.set(app.id, cached)
     }
     return cached

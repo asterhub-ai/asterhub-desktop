@@ -10,7 +10,7 @@ import type { IPtyForkOptions, IWindowsPtyForkOptions } from 'node-pty'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import type { SubprocessSpawnSpec, SubprocessTerminalHandle, SubprocessTerminalSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { childEnv } from '../src/spawn.ts'
-import { LinuxScopeNotStartedError, signalLinuxDirectProcess } from '../src/linux-scope.ts'
+
 
 function mockWin32ForIsolatedRuntime(): void {
   vi.doMock('@deepseek-ai/dsh-win32-process', () => ({
@@ -464,10 +464,7 @@ describe('LocalSubprocessRuntime', () => {
       ...await importOriginal<typeof import('../src/process-inspector.ts')>(),
       createProcessInspector: () => inspector,
     }))
-    vi.doMock('../src/linux-scope.ts', async importOriginal => ({
-      ...await importOriginal<typeof import('../src/linux-scope.ts')>(),
-      probeLinuxNative: () => undefined,
-    }))
+
     try {
       const { default: IsolatedLocalSubprocessRuntime } = await import('../src/index.ts')
       const ctx = new Context()
@@ -484,7 +481,6 @@ describe('LocalSubprocessRuntime', () => {
     } finally {
       unmockLazyRequireForIsolatedRuntime()
       vi.doUnmock('../src/process-inspector.ts')
-      vi.doUnmock('../src/linux-scope.ts')
       unmockWin32ForIsolatedRuntime()
       vi.resetModules()
     }
@@ -550,278 +546,6 @@ describe('LocalSubprocessRuntime', () => {
     }
   })
 
-  it('wraps Linux terminals in the selected scope and binds owner liveness', async () => {
-    let exitListener: ((event: { exitCode: number; signal?: number }) => void) | undefined
-    let launcherRunning: (() => boolean) | undefined
-    let launcherSignal: ((signal: 'SIGTERM' | 'SIGKILL') => boolean) | undefined
-    let launcherSettlement: Promise<unknown> | undefined
-    const directProbe = vi.spyOn(process, 'kill').mockImplementation((_pid, signal) => {
-      if (signal === 0) return true
-      throw Object.assign(new Error('denied'), { code: 'EPERM' })
-    })
-    const terminalKill = vi.fn(() => {})
-    const terminal = {
-      pid: 123,
-      onData: () => ({ dispose: () => {} }),
-      onExit: (listener: (event: { exitCode: number; signal?: number }) => void) => {
-        exitListener = listener
-        return { dispose: () => {} }
-      },
-      write: () => {},
-      kill: terminalKill,
-    }
-    const nodePtySpawn = vi.fn(() => terminal)
-    const owner = {
-      signal: vi.fn(),
-      waitForExit: vi.fn(async () => {}),
-      terminateForHostExit: vi.fn(),
-    }
-    const launcherStates: boolean[] = []
-    const bindOwner = vi.fn((direct: { running(): boolean; signal(signal: 'SIGTERM' | 'SIGKILL'): boolean; settled: Promise<unknown> }) => {
-      launcherRunning = () => direct.running()
-      launcherSignal = signal => direct.signal(signal)
-      launcherSettlement = direct.settled
-      launcherStates.push(direct.running())
-      return owner
-    })
-    const prepareLinuxTerminalScope = vi.fn(() => ({
-      command: '/usr/bin/systemd-run',
-      args: ['--user', '--scope', '--quiet', '--collect', '--', '/usr/bin/node', '/runner.js', '--', 'shell', '--literal'],
-      cwd: '/bootstrap',
-      env: { BOOTSTRAP: 'yes' },
-      bindOwner,
-      resolveOutcome: (outcome: unknown) => outcome,
-      cleanup: vi.fn(),
-    }))
-    const probeLinuxNative = vi.fn(() => ['--expand-environment=no'])
-    const inspector = {
-      foregroundPgid: () => undefined,
-      isStdinWaiting: () => false,
-      snapshot: () => ({
-        tree: () => [{ pid: 123, started: 'shell' }],
-        session: () => [],
-        alive: () => false,
-      }),
-      isAlive: () => false,
-      signalGroup: () => {},
-      signalProcess: () => {},
-    }
-
-    vi.resetModules()
-    mockWin32ForIsolatedRuntime()
-    mockNodePtyForIsolatedRuntime(nodePtySpawn)
-    vi.doMock('../src/linux-scope.ts', () => ({
-      confirmLinuxManager: vi.fn(() => true),
-      LinuxScopeNotStartedError,
-      linuxManagerListener: vi.fn(() => undefined),
-      systemdRunIdentity: vi.fn(() => 'launcher'),
-      signalLinuxDirectProcess,
-      launchLinuxScope: vi.fn(),
-      prepareLinuxTerminalScope,
-      probeLinuxNative,
-    }))
-    let fiber: { dispose(): Promise<void> } | undefined
-    try {
-      const { default: IsolatedLocalSubprocessRuntime } = await import('../src/index.ts')
-      const ctx = new Context()
-      fiber = await ctx.plugin(IsolatedLocalSubprocessRuntime)
-      const runtime = ctx.subprocess as InstanceType<typeof IsolatedLocalSubprocessRuntime>
-      runtime.internals = { platform: 'linux' }
-      runtime.terminalInspector = inspector
-
-      const targetCwd = process.cwd()
-      const handle = await runtime.spawnTerminal({
-        argv: ['shell', '--literal'],
-        cwd: targetCwd,
-        rows: 24,
-        cols: 80,
-        terminalType: 'dumb',
-        graceMs: 10,
-        env: { PWD: '/stale-parent-cwd', TERM: 'xterm-256color', TARGET_VALUE: 'preserved' },
-      })
-
-      expect(probeLinuxNative).toHaveBeenCalledOnce()
-      expect(prepareLinuxTerminalScope).toHaveBeenCalledWith(
-        expect.objectContaining({ argv: ['shell', '--literal'] }),
-        expect.objectContaining({ PWD: targetCwd, TERM: 'dumb', TARGET_VALUE: 'preserved' }),
-        ['--expand-environment=no'],
-      )
-      expect(nodePtySpawn).toHaveBeenCalledWith(
-        '/usr/bin/systemd-run',
-        ['--user', '--scope', '--quiet', '--collect', '--', '/usr/bin/node', '/runner.js', '--', 'shell', '--literal'],
-        expect.objectContaining({ rows: 24, cols: 80, cwd: '/bootstrap', env: { BOOTSTRAP: 'yes' } }),
-      )
-      expect(bindOwner).toHaveBeenCalledOnce()
-      expect(launcherStates).toEqual([true])
-      expect(launcherRunning?.()).toBe(true)
-      expect(launcherSignal?.('SIGTERM')).toBe(false)
-      expect(terminalKill).not.toHaveBeenCalled()
-      directProbe.mockImplementationOnce(() => true)
-      expect(launcherSignal?.('SIGKILL')).toBe(true)
-      directProbe.mockImplementation(() => { throw Object.assign(new Error('absent'), { code: 'ESRCH' }) })
-      expect(launcherSignal?.('SIGKILL')).toBe(true)
-      expect(directProbe.mock.calls).toEqual([
-        [123, 'SIGTERM'], [123, 0], [123, 'SIGKILL'], [123, 'SIGKILL'], [123, 0],
-      ])
-      let directSettled = false
-      void launcherSettlement?.then(() => { directSettled = true })
-      await new Promise<void>(resolve => setImmediate(resolve))
-      expect(directSettled).toBe(false)
-
-      exitListener?.({ exitCode: 0 })
-      expect(launcherRunning?.()).toBe(false)
-      await launcherSettlement
-      expect(directSettled).toBe(true)
-      await handle.done
-      await new Promise(resolve => setImmediate(resolve))
-      expect(owner.signal).toHaveBeenCalledExactlyOnceWith('SIGTERM')
-      expect(owner.waitForExit).toHaveBeenCalledOnce()
-    } finally {
-      await fiber?.dispose()
-      directProbe.mockRestore()
-      unmockLazyRequireForIsolatedRuntime()
-      vi.doUnmock('../src/linux-scope.ts')
-      unmockWin32ForIsolatedRuntime()
-      vi.resetModules()
-    }
-  })
-
-  it('probes Linux again after a terminal scope never starts its target', async () => {
-    const exits: Array<(event: { exitCode: number; signal?: number }) => void> = []
-    const nodePtySpawn = vi.fn((_file: string, _args: readonly string[], _options: unknown) => ({
-      pid: 123,
-      onData: () => ({ dispose: () => {} }),
-      onExit: (listener: (event: { exitCode: number; signal?: number }) => void) => {
-        exits.push(listener)
-        return { dispose: () => {} }
-      },
-      write: () => {},
-      kill: () => {},
-    }))
-    const prepareLinuxTerminalScope = vi.fn(() => ({
-      command: '/usr/bin/systemd-run',
-      args: ['--user', '--scope'],
-      cwd: '/bootstrap',
-      env: {},
-      bindOwner: () => ({ signal: vi.fn(), waitForExit: vi.fn(async () => {}), terminateForHostExit: vi.fn() }),
-      resolveOutcome: () => { throw new LinuxScopeNotStartedError('terminal scope never started') },
-      cleanup: vi.fn(),
-    }))
-    const probeLinuxNative = vi.fn<() => string[] | undefined>()
-      .mockReturnValueOnce([])
-      .mockReturnValueOnce(undefined)
-
-    vi.resetModules()
-    mockWin32ForIsolatedRuntime()
-    mockNodePtyForIsolatedRuntime(nodePtySpawn)
-    vi.doMock('../src/linux-scope.ts', () => ({
-      confirmLinuxManager: vi.fn(() => true),
-      LinuxScopeNotStartedError,
-      linuxManagerListener: vi.fn(() => undefined),
-      signalLinuxDirectProcess,
-      systemdRunIdentity: vi.fn(() => 'launcher'),
-      launchLinuxScope: vi.fn(),
-      prepareLinuxTerminalScope,
-      probeLinuxNative,
-    }))
-    let fiber: { dispose(): Promise<void> } | undefined
-    try {
-      const { default: IsolatedLocalSubprocessRuntime } = await import('../src/index.ts')
-      const ctx = new Context()
-      vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
-      fiber = await ctx.plugin(IsolatedLocalSubprocessRuntime)
-      const runtime = ctx.subprocess as InstanceType<typeof IsolatedLocalSubprocessRuntime>
-      runtime.internals = { platform: 'linux' }
-      runtime.terminalInspector = {
-        foregroundPgid: () => undefined,
-        isStdinWaiting: () => false,
-        snapshot: () => ({ tree: () => [], session: () => [], alive: () => false }),
-        isAlive: () => false,
-        signalGroup: () => {},
-        signalProcess: () => {},
-      }
-      const terminalSpec = { argv: ['shell'], cwd: process.cwd(), rows: 24, cols: 80, terminalType: 'dumb', graceMs: 10 }
-
-      const scoped = await runtime.spawnTerminal(terminalSpec)
-      exits[0]?.({ exitCode: 1 })
-      await expect(scoped.done).rejects.toBeInstanceOf(LinuxScopeNotStartedError)
-      await new Promise(resolve => setImmediate(resolve))
-      const direct = await runtime.spawnTerminal(terminalSpec)
-
-      expect(probeLinuxNative).toHaveBeenCalledTimes(2)
-      expect(prepareLinuxTerminalScope).toHaveBeenCalledOnce()
-      expect(nodePtySpawn.mock.calls.map(([file]) => file)).toEqual(['/usr/bin/systemd-run', 'shell'])
-      exits[1]?.({ exitCode: 0 })
-      await direct.done
-    } finally {
-      await fiber?.dispose()
-      unmockLazyRequireForIsolatedRuntime()
-      vi.doUnmock('../src/linux-scope.ts')
-      unmockWin32ForIsolatedRuntime()
-      vi.resetModules()
-    }
-  })
-
-  it('cleans the Linux terminal launch protocol when node-pty throws synchronously', async () => {
-    const launchFailure = new Error('node-pty launch failed')
-    const cleanup = vi.fn()
-    const nodePtySpawn = vi.fn(() => { throw launchFailure })
-    const prepareLinuxTerminalScope = vi.fn(() => ({
-      command: '/usr/bin/systemd-run',
-      args: ['--user', '--scope', '--', 'shell'],
-      cwd: '/bootstrap',
-      env: { BOOTSTRAP: 'yes' },
-      bindOwner: vi.fn(),
-      resolveOutcome: (outcome: unknown) => outcome,
-      cleanup,
-    }))
-    const inspector = {
-      foregroundPgid: () => undefined,
-      isStdinWaiting: () => false,
-      snapshot: () => ({
-        tree: () => [{ pid: 123, started: 'shell' }],
-        session: () => [],
-        alive: () => false,
-      }),
-      isAlive: () => false,
-      signalGroup: () => {},
-      signalProcess: () => {},
-    }
-
-    vi.resetModules()
-    mockWin32ForIsolatedRuntime()
-    mockNodePtyForIsolatedRuntime(nodePtySpawn)
-    vi.doMock('../src/linux-scope.ts', () => ({
-      confirmLinuxManager: vi.fn(() => true),
-      LinuxScopeNotStartedError,
-      linuxManagerListener: vi.fn(() => undefined),
-      systemdRunIdentity: vi.fn(() => 'launcher'),
-      signalLinuxDirectProcess,
-      launchLinuxScope: vi.fn(),
-      prepareLinuxTerminalScope,
-      probeLinuxNative: () => ['--expand-environment=no'],
-    }))
-    let fiber: { dispose(): Promise<void> } | undefined
-    try {
-      const { default: IsolatedLocalSubprocessRuntime } = await import('../src/index.ts')
-      const ctx = new Context()
-      fiber = await ctx.plugin(IsolatedLocalSubprocessRuntime)
-      const runtime = ctx.subprocess as InstanceType<typeof IsolatedLocalSubprocessRuntime>
-      runtime.internals = { platform: 'linux' }
-      runtime.terminalInspector = inspector
-
-      await expect(runtime.spawnTerminal({
-        argv: ['shell'], cwd: process.cwd(), rows: 24, cols: 80, terminalType: 'dumb', graceMs: 10,
-      })).rejects.toBe(launchFailure)
-      expect(cleanup).toHaveBeenCalledOnce()
-    } finally {
-      await fiber?.dispose()
-      unmockLazyRequireForIsolatedRuntime()
-      vi.doUnmock('../src/linux-scope.ts')
-      unmockWin32ForIsolatedRuntime()
-      vi.resetModules()
-    }
-  })
 
   it('retains a terminal whose automatic cleanup fails', async () => {
     let exitListener: ((event: { exitCode: number; signal?: number }) => void) | undefined
@@ -964,32 +688,18 @@ describe('LocalSubprocessRuntime', () => {
     }
   })
 
-  it('probes Linux native support once, confirms the user manager and rechecks the Windows Job per spawn, and prepares storage before launch', async () => {
-    const linuxLaunch = { kind: 'linux' }
+  it('rechecks native prerequisites for every eligible spawn and prepares storage before launch', async () => {
     const windowsLaunch = { kind: 'windows' }
-    const launchLinuxScope = vi.fn(() => linuxLaunch)
     const launchWindowsJob = vi.fn(() => windowsLaunch)
-    const probeLinuxNative = vi.fn((): string[] => [])
-    const confirmLinuxManager = vi.fn()
-      .mockReturnValueOnce(true)
-      .mockReturnValueOnce(true)
-      .mockReturnValueOnce(false)
     const probeWindowsJob = vi.fn(() => true)
     const prepareManagedProcessBinding = vi.fn(() => ({ spillDir: '/tmp/dsh-test-spill' }))
-    const handles = [true, false, false, false].map((failFirstWait) => {
-      let waits = 0
-      return {
-        collected: {},
-        done: Promise.resolve({ exitCode: 0, signal: null }),
-        terminate: vi.fn(),
-        terminateForHostExit: vi.fn(),
-        waitForExit: vi.fn(async () => {
-          waits += 1
-          if (failFirstWait && waits === 1) throw new Error('release observation failed')
-          return true
-        }),
-      }
-    })
+    const handles = [{
+      collected: {},
+      done: Promise.resolve({ exitCode: 0, signal: null }),
+      terminate: vi.fn(),
+      terminateForHostExit: vi.fn(),
+      waitForExit: vi.fn(async () => true),
+    }]
     const bindManagedProcess = vi.fn((_spec: unknown, _launch: unknown, _binding: unknown) => {
       const handle = handles.shift()
       if (handle === undefined) throw new Error('missing fake handle')
@@ -1005,16 +715,7 @@ describe('LocalSubprocessRuntime', () => {
 
     vi.resetModules()
     mockWin32ForIsolatedRuntime()
-    vi.doMock('../src/linux-scope.ts', () => ({
-      confirmLinuxManager,
-      LinuxScopeNotStartedError,
-      linuxManagerListener: vi.fn(() => undefined),
-      systemdRunIdentity: vi.fn(() => 'launcher'),
-      signalLinuxDirectProcess,
-      launchLinuxScope,
-      prepareLinuxTerminalScope: vi.fn(),
-      probeLinuxNative,
-    }))
+
     vi.doMock('../src/windows-job.ts', () => ({ launchWindowsJob, probeWindowsJob }))
     vi.doMock('../src/spawn.ts', async importOriginal => ({
       ...await importOriginal<typeof import('../src/spawn.ts')>(),
@@ -1027,28 +728,6 @@ describe('LocalSubprocessRuntime', () => {
     const fibers: Array<{ dispose(): Promise<void> }> = []
     try {
       const { default: IsolatedLocalSubprocessRuntime } = await import('../src/index.ts')
-      const linuxContext = new Context()
-      const warn = vi.spyOn(linuxContext.logger, 'warn').mockImplementation(() => {})
-      const linuxFiber = await linuxContext.plugin(IsolatedLocalSubprocessRuntime)
-      fibers.push(linuxFiber)
-      const linuxRuntime = linuxContext.subprocess as InstanceType<typeof IsolatedLocalSubprocessRuntime>
-      linuxRuntime.internals = { platform: 'linux' }
-      const preparationFailure = new Error('spill directory unavailable')
-      prepareManagedProcessBinding.mockImplementationOnce(() => { throw preparationFailure })
-      expect(() => linuxRuntime.spawn(spec('true'))).toThrow(preparationFailure)
-      expect(launchLinuxScope).not.toHaveBeenCalled()
-      await linuxRuntime.spawn(spec('true')).done
-      await new Promise(resolve => setImmediate(resolve))
-      await linuxRuntime.spawn(spec('true')).done
-      await new Promise(resolve => setImmediate(resolve))
-      expect(probeLinuxNative).toHaveBeenCalledOnce()
-      expect(confirmLinuxManager).toHaveBeenCalledTimes(2)
-      expect(launchLinuxScope).toHaveBeenCalledTimes(2)
-      expect(launchLinuxScope).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), [])
-      await linuxRuntime.spawn(spec('true')).done
-      expect(confirmLinuxManager).toHaveBeenCalledTimes(3)
-      expect(spawnSubprocess).toHaveBeenCalledOnce()
-      expect(warn).toHaveBeenCalledOnce()
 
       const windowsContext = new Context()
       const windowsFiber = await windowsContext.plugin(IsolatedLocalSubprocessRuntime)
@@ -1062,16 +741,13 @@ describe('LocalSubprocessRuntime', () => {
       expect(probeWindowsJob).toHaveBeenCalledTimes(2)
       expect(launchWindowsJob).toHaveBeenCalledTimes(2)
       expect(bindManagedProcess.mock.calls.map(([, launch]) => launch)).toEqual([
-        linuxLaunch,
-        linuxLaunch,
         windowsLaunch,
         windowsLaunch,
       ])
-      expect(prepareManagedProcessBinding).toHaveBeenCalledTimes(5)
-      expect(spawnSubprocess).toHaveBeenCalledOnce()
+      expect(prepareManagedProcessBinding).toHaveBeenCalledTimes(1)
+      expect(spawnSubprocess).not.toHaveBeenCalled()
     } finally {
       for (const fiber of fibers.reverse()) await fiber.dispose()
-      vi.doUnmock('../src/linux-scope.ts')
       vi.doUnmock('../src/windows-job.ts')
       vi.doUnmock('../src/spawn.ts')
       vi.doUnmock('../src/output.ts')
@@ -1080,96 +756,7 @@ describe('LocalSubprocessRuntime', () => {
     }
   })
 
-  it('routes Linux scope decisions into launches and probes again after a scope never starts', async () => {
-    const probeLinuxNative = vi.fn<() => string[] | undefined>()
-      .mockReturnValueOnce([])
-      .mockReturnValueOnce(undefined)
-    const launchLinuxScope = vi.fn((_spec: unknown, _env: unknown, _literalArgv: readonly string[]) => ({ kind: 'linux' }))
-    const scopeOutcomes: Array<PromiseWithResolvers<{ exitCode: number; signal: null }>> = []
-    const fakeHandle = (done: Promise<{ exitCode: number; signal: null }>) => ({
-      collected: {},
-      done,
-      terminate: vi.fn(),
-      terminateForHostExit: vi.fn(),
-      waitForExit: vi.fn(async () => true),
-    })
-    const bindManagedProcess = vi.fn(() => {
-      const outcome = Promise.withResolvers<{ exitCode: number; signal: null }>()
-      scopeOutcomes.push(outcome)
-      return fakeHandle(outcome.promise)
-    })
-    const spawnSubprocess = vi.fn(() => fakeHandle(Promise.resolve({ exitCode: 0, signal: null })))
-
-    vi.resetModules()
-    mockWin32ForIsolatedRuntime()
-    vi.doMock('../src/linux-scope.ts', () => ({
-      confirmLinuxManager: vi.fn(() => true),
-      LinuxScopeNotStartedError,
-      linuxManagerListener: vi.fn(() => undefined),
-      signalLinuxDirectProcess,
-      systemdRunIdentity: vi.fn(() => 'launcher'),
-      launchLinuxScope,
-      prepareLinuxTerminalScope: vi.fn(),
-      probeLinuxNative,
-    }))
-    vi.doMock('../src/spawn.ts', async importOriginal => ({
-      ...await importOriginal<typeof import('../src/spawn.ts')>(),
-      bindManagedProcess,
-      spawnSubprocess,
-    }))
-    vi.doMock('../src/output.ts', async importOriginal => ({
-      ...await importOriginal<typeof import('../src/output.ts')>(),
-      prepareManagedProcessBinding: vi.fn(() => ({ spillDir: '/tmp/dsh-test-spill' })),
-    }))
-    let fiber: { dispose(): Promise<void> } | undefined
-    try {
-      const { default: IsolatedLocalSubprocessRuntime } = await import('../src/index.ts')
-      const ctx = new Context()
-      vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
-      const debug = vi.spyOn(ctx.logger, 'debug').mockImplementation(() => {})
-      fiber = await ctx.plugin(IsolatedLocalSubprocessRuntime)
-      const runtime = ctx.subprocess as InstanceType<typeof IsolatedLocalSubprocessRuntime>
-      runtime.internals = { platform: 'linux' }
-      const settle = () => new Promise(resolve => setImmediate(resolve))
-
-      runtime.spawn(spec('true'))
-      runtime.spawn(spec('true'))
-      scopeOutcomes[0]?.reject(new Error('scope target failed after starting'))
-      await settle()
-      runtime.spawn(spec('true'))
-      scopeOutcomes[1]?.reject(new LinuxScopeNotStartedError('scope never started'))
-      await settle()
-      runtime.spawn(spec('true'))
-      // A launch from the superseded probe keeps the newer verdict.
-      scopeOutcomes[2]?.reject(new LinuxScopeNotStartedError('superseded launch'))
-      await settle()
-      runtime.spawn(spec('true'))
-
-      expect(probeLinuxNative).toHaveBeenCalledTimes(2)
-      expect(launchLinuxScope.mock.calls.map(([, , literalArgv]) => literalArgv)).toEqual([[], [], []])
-      expect(spawnSubprocess).toHaveBeenCalledTimes(2)
-      expect(debug.mock.calls.map(([message]) => String(message)).filter(message => message.startsWith('linux native'))).toEqual([
-        'linux native containment: scope (probe-available, probed after first)',
-        'linux native containment: scope (manager-confirmed)',
-        'linux native containment: scope (manager-confirmed)',
-        'linux native containment: fallback (probe-unavailable, probed after scope-not-started)',
-        'linux native containment: fallback (no-listener)',
-      ])
-    } finally {
-      for (const outcome of scopeOutcomes) outcome.resolve({ exitCode: 0, signal: null })
-      await fiber?.dispose()
-      vi.doUnmock('../src/linux-scope.ts')
-      vi.doUnmock('../src/spawn.ts')
-      vi.doUnmock('../src/output.ts')
-      unmockWin32ForIsolatedRuntime()
-      vi.resetModules()
-    }
-  })
-
-  it('keeps a failed Linux native probe while no new user-manager listener appears and rechecks the Windows Job', async () => {
-    const probeLinuxNative = vi.fn(() => undefined)
-    const confirmLinuxManager = vi.fn(() => true)
-    const linuxManagerListener = vi.fn(() => undefined)
+  it('selects windows-job or fallback mode based on probe results', async () => {
     const probeWindowsJob = vi.fn()
       .mockReturnValueOnce(false)
       .mockReturnValueOnce(true)
@@ -1177,36 +764,11 @@ describe('LocalSubprocessRuntime', () => {
 
     vi.resetModules()
     mockWin32ForIsolatedRuntime()
-    vi.doMock('../src/linux-scope.ts', () => ({
-      confirmLinuxManager,
-      LinuxScopeNotStartedError,
-      linuxManagerListener,
-      signalLinuxDirectProcess,
-      systemdRunIdentity: vi.fn(() => 'launcher'),
-      launchLinuxScope: vi.fn(),
-      prepareLinuxTerminalScope: vi.fn(),
-      probeLinuxNative,
-    }))
+
     vi.doMock('../src/windows-job.ts', () => ({ launchWindowsJob: vi.fn(), probeWindowsJob }))
     const fibers: Array<{ dispose(): Promise<void> }> = []
     try {
       const { default: IsolatedLocalSubprocessRuntime } = await import('../src/index.ts')
-      const linuxContext = new Context()
-      vi.spyOn(linuxContext.logger, 'warn').mockImplementation(() => {})
-      const linuxFiber = await linuxContext.plugin(IsolatedLocalSubprocessRuntime)
-      fibers.push(linuxFiber)
-      const linuxRuntime = linuxContext.subprocess as InstanceType<typeof IsolatedLocalSubprocessRuntime>
-      linuxRuntime.internals = { platform: 'linux' }
-      const linuxSelect = (linuxRuntime as unknown as {
-        selectContainmentMode(kind: 'ordinary' | 'terminal'): 'linux-scope' | 'windows-job' | 'fallback'
-      }).selectContainmentMode.bind(linuxRuntime)
-
-      expect(linuxSelect('ordinary')).toBe('fallback')
-      expect(linuxSelect('terminal')).toBe('fallback')
-      expect(linuxSelect('ordinary')).toBe('fallback')
-      expect(probeLinuxNative).toHaveBeenCalledOnce()
-      expect(confirmLinuxManager).not.toHaveBeenCalled()
-      expect(linuxManagerListener).toHaveBeenCalledTimes(3)
 
       const windowsContext = new Context()
       vi.spyOn(windowsContext.logger, 'warn').mockImplementation(() => {})
@@ -1215,7 +777,7 @@ describe('LocalSubprocessRuntime', () => {
       const windowsRuntime = windowsContext.subprocess as InstanceType<typeof IsolatedLocalSubprocessRuntime>
       windowsRuntime.internals = { platform: 'win32' }
       const windowsSelect = (windowsRuntime as unknown as {
-        selectContainmentMode(kind: 'ordinary' | 'terminal'): 'linux-scope' | 'windows-job' | 'fallback'
+        selectContainmentMode(kind: 'ordinary' | 'terminal'): 'windows-job' | 'fallback'
       }).selectContainmentMode.bind(windowsRuntime)
 
       expect(windowsSelect('ordinary')).toBe('fallback')
@@ -1224,7 +786,6 @@ describe('LocalSubprocessRuntime', () => {
       expect(probeWindowsJob).toHaveBeenCalledTimes(3)
     } finally {
       for (const fiber of fibers.reverse()) await fiber.dispose()
-      vi.doUnmock('../src/linux-scope.ts')
       vi.doUnmock('../src/windows-job.ts')
       unmockWin32ForIsolatedRuntime()
       vi.resetModules()

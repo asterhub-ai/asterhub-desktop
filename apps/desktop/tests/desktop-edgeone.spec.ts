@@ -7,7 +7,7 @@ const environment = {
   DOWNLOAD_PROD_COS_SECRET_ID: 'fixture-secret-id', DOWNLOAD_PROD_COS_SECRET_KEY: 'fixture-secret-key',
   DOWNLOAD_PROD_EO_ZONE_ID: 'zone-fixture',
 }
-const config = resolveDesktopPurgeConfig(environment, 'mac-arm64')
+const config = resolveDesktopPurgeConfig(environment, 'win-x64')
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -19,14 +19,13 @@ describe('production EdgeOne configuration', () => {
     [{ DOWNLOAD_PROD_EO_ZONE_ID: 'invalid' }, /must name one EO zone/u],
     [{ DOWNLOAD_PROD_COS_SECRET_KEY: '' }, /DOWNLOAD_PROD_COS_SECRET_KEY/u],
   ] as const)('rejects invalid settings %j', (patch, message) => {
-    expect(() => resolveDesktopPurgeConfig({ ...environment, ...patch }, 'mac-arm64')).toThrow(message)
+    expect(() => resolveDesktopPurgeConfig({ ...environment, ...patch }, 'win-x64')).toThrow(message)
   })
 
   it('uses the upload plan URL verbatim and derives only cache-only destinations', () => {
-    const url = 'https://download.deepseek.com/changed/installer.dmg'
-    expect(resolveDesktopPurgeConfig(environment, 'mac-arm64', url).publicUrl).toBe(url)
+    const url = 'https://download.deepseek.com/changed/installer.exe'
+    expect(resolveDesktopPurgeConfig(environment, 'win-x64', url).publicUrl).toBe(url)
     expect(resolveDesktopPurgeConfig(environment, 'win-x64').publicUrl).toBe('https://asterhub.xapi.fans/desktop/dsh-latest-windows-x64.exe')
-    expect(resolveDesktopPurgeConfig(environment, 'mac-x64').publicUrl).toBe('https://asterhub.xapi.fans/desktop/dsh-latest-macos-x64.dmg')
   })
 })
 

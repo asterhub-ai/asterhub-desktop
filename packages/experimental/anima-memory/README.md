@@ -148,7 +148,7 @@ Recall content affects model cache reuse when its graph results change. The mode
 These limits define when Anima does not meet a deployment's graph or memory requirements.
 
 - **Local graph only** — this composition stores data under the desktop Host's `dataRoot`; it does not provide cloud synchronization.
-- **Installer qualification remains platform-specific** — Windows x64 runtime preparation and local write/restart persistence have been validated with Neo4j `5.26.32` and Temurin JRE `21.0.12.1+1`. A complete signed Desktop installer and the macOS runtimes have not been validated here. Runtime downloads occur on the release build machine; installed Desktop applications require the bundled files and never download replacements.
+- **Installer qualification remains platform-specific** — Windows x64 runtime preparation and local write/restart persistence have been validated with Neo4j `5.26.32` and Temurin JRE `21.0.12.1+1`. Runtime downloads occur on the release build machine; installed Desktop applications require the bundled files and never download replacements.
 - **Neo4j Community Edition licensing** — the bundled database is GPLv3; Desktop distribution must preserve its notices and meet the applicable corresponding-source requirements.
 - **Session history remains source evidence** — memory expiry, suspension, and revocation affect graph results; they do not delete or rewrite the original Session log.
 

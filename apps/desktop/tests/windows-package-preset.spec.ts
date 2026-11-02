@@ -104,7 +104,8 @@ it('cache maintenance reaches cache path validation without a signing file', asy
   })
 })
 
-it.each(['win32', 'darwin'] as const)('applies an explicit test channel override on %s without changing the preset file', async (platform) => {
+it('applies an explicit test channel override on win32 without changing the preset file', async () => {
+  const platform = 'win32'
   await withPreset(async (root) => {
     const path = join(root, 'presets/test.env')
     const original = 'a'.repeat(32)

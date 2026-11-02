@@ -74,13 +74,13 @@ describe('master-only platform scheduling', () => {
     expect(evaluateCondition(workflow('ci.yml').jobs['all-checks-passed']!.if as string, true, ['success'])).toBe(false)
   })
 
-  it('keeps the required Python PR verdict and its two x64 targets in CI Python', () => {
-    const pr = workflow('ci-python.yml')
+  it('keeps Windows x64 runtime in required PR CI', () => {
+    const pr = workflow('ci.yml')
     expect(Object.keys(pr.on)).toEqual(['pull_request'])
     expect(pr.jobs['python-runtime']).toMatchObject({
       if: "github.event_name == 'pull_request'",
       uses: runtimeBuilder,
-      with: { ci: true, targets: 'node24-linux-x64,node24-win-x64' },
+      with: { ci: true, targets: 'node24-win-x64' },
     })
     expect(pr.jobs.windows).toBeUndefined()
     expect(JSON.stringify(pr.jobs)).not.toMatch(/wine-windows-gates|check:windows-wine/)
@@ -97,53 +97,26 @@ describe('master-only platform scheduling', () => {
     }
   })
 
-  it('runs all three deferred carriers on master pushes with fail-loud API credentials', () => {
+  it('runs native Windows standby drill on master pushes', () => {
     const master = workflow('ci-master.yml')
     expect(master.on.push).toEqual({ branches: ['master'] })
     expect(Object.keys(master.on).sort()).toEqual(['push', 'workflow_dispatch'])
-    const runtime = master.jobs['python-runtime']!
-    expect(runtime).toMatchObject({
+    const serialWindows = master.jobs['serial-windows']!
+    expect(serialWindows).toMatchObject({
       if: masterPush,
-      uses: runtimeBuilder,
-      with: { ci: true, targets: 'node24-linux-arm64,node24-macos-arm64,node24-macos-x64' },
-      secrets: { DEEPSEEK_API_KEY_EXTERNAL: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}' },
+      'runs-on': ['self-hosted', 'dsh-win-ci', 'windows'],
     })
-    expect(runtime.needs).toBeUndefined()
-    expect(runtime['continue-on-error']).toBeUndefined()
-    const builder = workflow('build-exe-for-python-sdk.yml')
-    expect(builder.concurrency?.['cancel-in-progress']).toBe(
-      '${{ !inputs.release }}',
-    )
-    const build = builder.jobs.build!
-    const preflight = build.steps!.find(step => step.name === 'Preflight installed-wheel real API test (POSIX)')!
-    expect(preflight.if).toContain('inputs.ci')
-    expect(preflight.if).toContain("github.event_name != 'pull_request'")
-    expect(preflight.if).toContain('github.event.pull_request.head.repo.fork')
-    expect(preflight.if).toContain("github.event.pull_request.user.login == 'dependabot[bot]'")
-    expect(preflight.run).toContain('exit 1')
-  })
+    expect(commands(serialWindows).some(cmd => cmd.includes('check:ci:windows-complete'))).toBe(true)
+    expect(master.jobs.windows).toBeUndefined()
+    expect(master.jobs['serial-linux-selfhosted']).toBeUndefined()
+    expect(master.jobs['serial-macos']).toBeUndefined()
 
-  it('runs Wine once on hosted master CI and seeds its own apt cache', () => {
-    const master = workflow('ci-master.yml')
-    const wine = master.jobs.windows!
-    expect(wine).toMatchObject({ if: masterPush, 'runs-on': 'ubuntu-latest' })
-    expect(wine.needs).toBeUndefined()
-    expect(wine['continue-on-error']).toBeUndefined()
-    expect(master.jobs['wine-apt-cache']).toBeUndefined()
-    expect(Object.values(master.jobs).flatMap(commands).filter(command => command.includes('wine-windows-gates.sh')))
-      .toEqual(['bash scripts/wine-windows-gates.sh'])
-    expect(wine.steps).toContainEqual(expect.objectContaining({
-      uses: 'actions/cache@v6.1.0', with: { path: '~/wine-debs', key: '${{ steps.wine-cache-key.outputs.key }}' },
-    }))
-    expect(commands(wine).join('\n')).toContain('--download-only wine')
-    expect(wine.steps).toContainEqual(expect.objectContaining({ name: 'Shut down wineserver', if: 'always()' }))
+
     // Graph construction needs a pnpm entrypoint but never launches it.
     const previous = process.env.npm_execpath
     process.env.npm_execpath = '/test/pnpm.cjs'
     try {
-      for (const mode of ['ci-linux-primary', 'ci-windows-complete'] as const) {
-        expect(gatesForMode(mode).map(gate => gate.displayCommand).join('\n')).not.toMatch(/wine/i)
-      }
+      expect(gatesForMode('ci-windows-complete').map(gate => gate.displayCommand).join('\n')).not.toMatch(/wine/i)
     } finally {
       if (previous === undefined) Reflect.deleteProperty(process.env, 'npm_execpath')
       else process.env.npm_execpath = previous
@@ -151,13 +124,13 @@ describe('master-only platform scheduling', () => {
     expect(process.env.npm_execpath).toBe(previous)
   })
 
-  it('retains the complete release matrix independently of CI scheduling', () => {
+  it('retains the Windows release target in the Python release workflow', () => {
     const release = workflow('python-release.yml')
     const calls = Object.values(release.jobs).filter(job => job.uses === runtimeBuilder)
     expect(calls).toHaveLength(1)
     expect(calls[0]!.with).toMatchObject({
       release: true,
-      targets: 'node24-linux-x64,node24-linux-arm64,node24-macos-arm64,node24-macos-x64,node24-win-x64',
+      targets: 'node24-win-x64',
     })
   })
 })

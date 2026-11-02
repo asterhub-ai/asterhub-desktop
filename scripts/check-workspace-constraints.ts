@@ -34,8 +34,6 @@ const root = resolve(import.meta.dirname, '..')
 const workspaceGlobs = [
   { dir: 'vendor', depth: 1 },
   { dir: 'packages', depth: 2 },
-  { dir: 'native', depth: 1 },
-  { dir: 'native/system/packages', depth: 1 },
   { dir: 'apps', depth: 1 },
 ] as const
 const vendoredPackages = new Set([
@@ -49,17 +47,8 @@ const vendoredPackages = new Set([
   '@deepseek-ai/cordis-plugin-hmr',
   '@deepseek-ai/cordis-plugin-logger-console',
 ])
-const publicNativePackages = new Set([
-  '@deepseek-ai/node-addon-system',
-  '@deepseek-ai/node-addon-system-darwin-arm64',
-  '@deepseek-ai/node-addon-system-darwin-x64',
-  '@deepseek-ai/node-addon-system-linux-arm64',
-  '@deepseek-ai/node-addon-system-linux-x64',
-])
 /** Deliberate source payloads whose exact bytes are part of the package's audit surface. */
-const publicationSourceAllowlist: Readonly<Record<string, readonly string[]>> = {
-  '@deepseek-ai/node-addon-system': ['src/main.c', 'src/flock.c'],
-}
+const publicationSourceAllowlist: Readonly<Record<string, readonly string[]>> = {}
 /** Public source home recorded in maintained package manifests. */
 const publishedRepositoryUrl = 'git+https://github.com/deepseek-ai/deepseek-harness.git'
 /** Packages that participate in the experimental policy. */
@@ -126,8 +115,6 @@ function readJson(path: string): PackageManifest {
 
 const rootManifest = readJson(join(root, 'package.json'))
 const repositoryVersion = rootManifest.version
-const nativeWorkspaceManifest = readJson(join(root, 'native/system/package.json'))
-const nativeVersion = nativeWorkspaceManifest.version
 
 /** Repo-relative dirs holding a package.json, walked to the configured depth. */
 function packageDirs(base: string, depth: number): string[] {
@@ -191,7 +178,6 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-experimental-subagent-oar': ['LICENSE-OAR'],
   // CUA publishes its client API and attributed native source for local macOS builds.
   '@deepseek-ai/dsh-cua': ['lib/remote-types.js', 'lib/api.js', 'lib/bridge.js', 'lib/native-client.js', 'lib/protocol.js'],
-  '@deepseek-ai/dsh-experimental-cua-macos': ['native/bin', 'native/Package.swift', 'native/Sources', 'native/tests/swift', 'native/tests/test_swift.py', 'native/LICENSE.cua-driver', 'native/upstream.json', 'native/README.md', 'native/README.zh.md', 'native/protocol.schema.json'],
   '@deepseek-ai/dsh-webhook-github': ['examples/github-review/cordis.yml', 'examples/github-review/github-ready-review-rule.mjs'],
   // Liveshare publishes its built Relay gateway entry and the shared runtime
   // chunk that entry imports, plus the declaration-plane entry and its chunk.
@@ -247,12 +233,6 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-skill-badge': ['assets'],
   '@deepseek-ai/dsh-skill-office': ['assets'],
   '@deepseek-ai/dsh-subprocess': ['lib/control.js'],
-  // SSH launches a private helper and shares wire definitions and TLS setup
-  // between that helper and the connection owner.
-  '@deepseek-ai/dsh-ssh': [
-    'lib/helper.js', 'lib/protocol.js', 'lib/schemas.js',
-    'lib/protocol-*.js', 'lib/schemas-*.js', 'lib/stream-security-*.js',
-  ],
   // Ordinary native containment ships a path-loaded runner and its shared
   // runner chunk beside the existing node-pty permission repair.
   '@deepseek-ai/dsh-subprocess-local': [
@@ -468,9 +448,13 @@ function isReleaseMemberDirectory(dir: string): boolean {
  *
  * The dsh release sequence publishes packages/ and apps/ members and every
  * private dsh package on one shared version, written by `release:dsh` and
- * shared with the workspace root. This name test is that boundary: it covers
- * the family wherever the manifest lives, so apps/ members cannot drift with
- * only the release lane noticing.
+ * shared with the workspace root.
+ *
+ * `apps/desktop` is excluded: it maintains an independent product version
+ * (e.g. 0.21.3) read by electron-builder for desktop packaging, installer
+ * artifact naming, and update feeds, while its bundled runtime retains the
+ * monorepo DSH version.
+ *
  * @param manifest - the workspace package manifest.
  * @param expected - the version every dsh-family manifest must carry (the root's).
  * @returns one violation naming the manifest and the expected version, or
@@ -479,6 +463,7 @@ function isReleaseMemberDirectory(dir: string): boolean {
 export function checkDshFamilyVersion(manifest: PackageManifest, expected: string | undefined): string | undefined {
   const name = manifest.name
   if (name !== '@deepseek-ai/dsh' && name?.startsWith('@deepseek-ai/dsh-') !== true) return undefined
+  if (name === '@deepseek-ai/dsh-desktop') return undefined
   if (manifest.version !== expected) {
     return `${name}: package.json version must match root version ${expected ?? '(missing)'}`
   }
@@ -495,25 +480,7 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
   const label = manifest.name ?? dir
   const familyVersionError = checkDshFamilyVersion(manifest, repositoryVersion)
   if (familyVersionError !== undefined) errors.push(familyVersionError)
-  const isNativePackageDir = dir.startsWith('native/system/packages/')
-  const isPublicNativePackage = isNativePackageDir
-    && manifest.name !== undefined
-    && publicNativePackages.has(manifest.name)
-
-  if (isPublicNativePackage) {
-    if (manifest.private === true) {
-      errors.push(`${label}: published Landlock package must not set "private": true`)
-    }
-    if (manifest.publishConfig?.access !== 'public') {
-      errors.push(`${label}: published Landlock package must set publishConfig.access to "public"`)
-    }
-    const expectedDirectory = dir
-    if (manifest.repository?.type !== 'git'
-      || manifest.repository.url !== publishedRepositoryUrl
-      || manifest.repository.directory !== expectedDirectory) {
-      errors.push(`${label}: published Landlock package repository must use ${publishedRepositoryUrl} with directory ${expectedDirectory}`)
-    }
-  } else if (isReleaseMemberDirectory(dir)) {
+  if (isReleaseMemberDirectory(dir)) {
     // Release members state that they are publishable: npm refuses a private
     // package, and the repository field is how a consumer finds the source of
     // the package it installed.
@@ -557,15 +524,6 @@ export function checkWorkspaceManifest({ dir, manifest }: WorkspaceManifest): st
       errors.push(`${label}: app package has no publication files policy`)
     } else if (!sameStringList(manifest.files, expectedFiles)) {
       errors.push(`${label}: package.json files must be ${JSON.stringify(expectedFiles)}`)
-    }
-  }
-
-  if (isNativePackageDir) {
-    if (!isPublicNativePackage) {
-      errors.push(`${label}: unexpected package in the public Landlock package family`)
-    }
-    if (manifest.version !== nativeVersion) {
-      errors.push(`${label}: package.json version must match native workspace version ${nativeVersion ?? '(missing)'}`)
     }
   }
 
@@ -690,8 +648,7 @@ export function checkExperimentalDependencyIsolation(
  */
 export function checkWorkspaceProtocol(manifests: readonly WorkspaceManifest[]): string[] {
   const members = new Set(manifests.map(entry => entry.manifest.name).filter(name => name !== undefined))
-  const vendors = new Set(manifests.filter(entry => entry.dir.startsWith('vendor/')
-    || entry.dir === 'native/system' || entry.dir.startsWith('native/system/packages/')).map(entry => entry.manifest.name))
+  const vendors = new Set(manifests.filter(entry => entry.dir.startsWith('vendor/')).map(entry => entry.manifest.name))
   const errors: string[] = []
   for (const { dir, manifest } of manifests) {
     for (const section of dependencySections) {

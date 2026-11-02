@@ -16,8 +16,6 @@ const WORKSPACE_MANIFEST_GLOBS = [
   'apps/*/package.json',
   'packages/*/*/package.json',
   'vendor/*/package.json',
-  'native/system/package.json',
-  'native/system/packages/*/package.json',
 ]
 const INSTALLED_MANIFEST_GLOBS = [
   'node_modules/.pnpm/*/node_modules/*/package.json',

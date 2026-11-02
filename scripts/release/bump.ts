@@ -245,6 +245,11 @@ function rootVersion(root: string): string {
 /**
  * Discover private package and application manifests that share the dsh version
  * without joining its publish set.
+ *
+ * apps/desktop is intentionally omitted: it maintains an independent desktop
+ * product version (e.g. 0.21.3) consumed by electron-builder for packaging and
+ * update feeds, and must not be overwritten by the monorepo-wide dsh release sequence.
+ *
  * @param root - repository root.
  * @returns Private workspace manifests sorted by path.
  */
@@ -253,6 +258,7 @@ function privateDshVersions(root: string): PrivateDshVersion[] {
     .map(path => path.replaceAll('\\', '/'))
     .sort()
     .flatMap((manifestPath) => {
+      if (manifestPath === 'apps/desktop/package.json') return []
       const parsed: unknown = JSON.parse(readFileSync(join(root, manifestPath), 'utf8'))
       if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
         throw new Error(`${manifestPath} is not a JSON object`)

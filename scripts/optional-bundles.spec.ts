@@ -8,8 +8,8 @@ import { describe, expect, it, onTestFinished } from 'vitest'
 import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import { loadOverlayPatches } from '../packages/boot/app-boot/src/index.ts'
 import { readPluginMeta } from '../packages/boot/app-boot/src/package-meta.ts'
-import { bundlePatchPaths, composeEntries, initProfile, readProfileManifest } from '../packages/boot/app-boot/src/profile.ts'
-import { OPTIONAL_BUNDLES, PROFILE_TEMPLATES } from '../packages/util/official-bundles/src/bundles.ts'
+import { bundlePatchPaths, composeEntries, initProfile, PROFILE_TEMPLATES, readProfileManifest } from '../packages/boot/app-boot/src/profile.ts'
+import { OPTIONAL_BUNDLES } from '../packages/util/official-bundles/src/bundles.ts'
 import type { DshBundleManifest } from '../packages/util/package-manifest/src/types.ts'
 import { createPluginProfile } from '../apps/desktop/src/project-manager.ts'
 
@@ -92,10 +92,7 @@ describe.each(['web', 'desktop'] as const)('%s optional bundle overrides', (surf
 })
 
 describe('optional bundles', () => {
-  it('admits Computer Use only on macOS Hosts', () => {
-    expect(bundles.get('@deepseek-ai/dsh-cua-bundle')?.manifest.dsh?.bundle?.platforms).toEqual(['darwin'])
-  })
-  const shipped = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'].map(name => bundle(name).patches)
+  const shipped = PROFILE_TEMPLATES.web!.bundles.map(name => bundle(name).patches)
 
   it('ships at least one bundle switched off', () => {
     expect(OPTIONAL_BUNDLES.length).toBeGreaterThan(0)

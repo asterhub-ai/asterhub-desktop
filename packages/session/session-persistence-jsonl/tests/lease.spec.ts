@@ -84,22 +84,6 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   }
 })
 
-vi.mock('@deepseek-ai/node-addon-system/flock', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@deepseek-ai/node-addon-system/flock')>()
-  return {
-    tryLockExclusive: async (fd: number): Promise<void> => {
-      if (refuse.flock) {
-        refuse.flock = false
-        throw Object.assign(new Error('EACCES: injected flock refusal'), { code: 'EACCES' })
-      }
-      if (refuse.flockBusy) {
-        refuse.flockBusy = false
-        throw Object.assign(new Error('EWOULDBLOCK: injected contention'), { code: 'EWOULDBLOCK' })
-      }
-      return actual.tryLockExclusive(fd)
-    },
-  }
-})
 
 const dirs: string[] = []
 const contexts: Context[] = []
@@ -190,21 +174,6 @@ describe('cross-process write lock', () => {
     await reopened.close()
   })
 
-  it.skipIf(process.platform === 'win32')('removing the lock file forfeits a wedged holder: a fresh inode admits a successor', async () => {
-    const root = await freshRoot()
-    const first = await mount(root)
-    const second = await mount(root)
-    const wedged = await first.create(meta('wedged'))
-    await wedged.append([...EVENTS])
-
-    // The documented escape hatch for a live-but-stuck holder: deleting the
-    // lock file orphans the held inode, and a successor locks the fresh one.
-    await rm(lockPath(root, 'wedged'))
-    const successor = await second.open(SessionId('wedged'), 'write')
-    await successor.append([{ type: 'turn/start', seq: SessionSeq(2), time: 3, data: { turn: 2 } }])
-    await successor.close()
-    await wedged.close()
-  })
 
   it('write-opening an absent session leaves no lock residue', async () => {
     const root = await freshRoot()
@@ -260,90 +229,6 @@ describe('cross-process write lock', () => {
     await creator.flush()
     await expect(second.open(SessionId('flush-lock'), 'write')).rejects.toBeInstanceOf(SessionAlreadyOwnedError)
     await creator.close()
-  })
-
-  it.skipIf(process.platform === 'win32')('surfaces a filesystem refusal opening the lock file', async () => {
-    const root = await freshRoot()
-    const backend = await mount(root)
-    const writer = await backend.create(meta('open-blocked'))
-    await writer.append([...EVENTS])
-    await writer.close()
-
-    refuse.lockOpen = true
-    await expect(backend.open(SessionId('open-blocked'), 'write')).rejects.toThrow(/EACCES/)
-  })
-
-  it.skipIf(process.platform === 'win32')('surfaces a non-contention flock failure', async () => {
-    const root = await freshRoot()
-    const backend = await mount(root)
-    const writer = await backend.create(meta('flock-blocked'))
-    await writer.append([...EVENTS])
-    await writer.close()
-
-    refuse.flock = true
-    await expect(backend.open(SessionId('flock-blocked'), 'write')).rejects.toThrow(/EACCES/)
-  })
-
-  it.skipIf(process.platform === 'win32')('maps the EWOULDBLOCK contention spelling to already-owned', async () => {
-    const root = await freshRoot()
-    const backend = await mount(root)
-    const writer = await backend.create(meta('win-contended'))
-    await writer.append([...EVENTS])
-    await writer.close()
-
-    // Some libcs spell flock(2) contention EWOULDBLOCK rather than EAGAIN.
-    refuse.flockBusy = true
-    await expect(backend.open(SessionId('win-contended'), 'write')).rejects.toBeInstanceOf(SessionAlreadyOwnedError)
-  })
-
-  it.skipIf(process.platform === 'win32')('surfaces a lock-path stat refusal from the inode verification', async () => {
-    const root = await freshRoot()
-    const backend = await mount(root)
-    const writer = await backend.create(meta('stat-blocked'))
-    await writer.append([...EVENTS])
-    await writer.close()
-
-    refuse.lockStat = true
-    await expect(backend.open(SessionId('stat-blocked'), 'write')).rejects.toThrow(/EACCES/)
-  })
-
-  it.skipIf(process.platform === 'win32')('retries when the locked inode is no longer the lock path, and wins on a stable pass', async () => {
-    const root = await freshRoot()
-    const backend = await mount(root)
-    const writer = await backend.create(meta('churned'))
-    await writer.append([...EVENTS])
-    await writer.close()
-
-    // One churn (unlink+recreate under the verify stat) orphans the first
-    // locked inode; the retry locks the fresh file and verifies clean.
-    refuse.swapLockOnStat = 1
-    const reopened = await backend.open(SessionId('churned'), 'write')
-    await reopened.append([{ type: 'turn/start', seq: SessionSeq(2), time: 3, data: { turn: 2 } }])
-    await reopened.close()
-  })
-
-  it.skipIf(process.platform === 'win32')('retries when the lock path vanishes under the verify read', async () => {
-    const root = await freshRoot()
-    const backend = await mount(root)
-    const writer = await backend.create(meta('vanished'))
-    await writer.append([...EVENTS])
-    await writer.close()
-
-    refuse.dropLockOnStat = true
-    const reopened = await backend.open(SessionId('vanished'), 'write')
-    await reopened.close()
-  })
-
-  it.skipIf(process.platform === 'win32')('gives up as already-owned when the lock path never stabilizes', async () => {
-    const root = await freshRoot()
-    const backend = await mount(root)
-    const writer = await backend.create(meta('unstable'))
-    await writer.append([...EVENTS])
-    await writer.close()
-
-    // Churn on every attempt: the bounded retry refuses rather than spinning.
-    refuse.swapLockOnStat = 3
-    await expect(backend.open(SessionId('unstable'), 'write')).rejects.toBeInstanceOf(SessionAlreadyOwnedError)
   })
 
   it('a failing lock release still frees the in-process claim on close', async () => {
@@ -402,22 +287,46 @@ describe('cross-process write lock', () => {
     const reopened = await backend.open(SessionId('drain-and-release-fail'), 'write')
     await reopened.close()
   })
+  it('enforces in-process mutual exclusion in the dsh-webworker runtime', async () => {
+    const originalTitle = process.title
+    const originalPlatform = process.platform
+    try {
+      Object.defineProperty(process, 'title', { value: 'dsh-webworker', configurable: true })
+      Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
+      const root = await freshRoot()
+      const dir = join(root, 'worker-session')
+      const first = await SessionWriteLease.acquire(dir, SessionId('worker-session'))
+      await expect(SessionWriteLease.acquire(dir, SessionId('worker-session'))).rejects.toBeInstanceOf(SessionAlreadyOwnedError)
 
-  it.skipIf(process.platform === 'win32')('release is idempotent and never removes the lock file', async () => {
-    const root = await freshRoot()
-    const dir = join(root, 'solo')
-    const lease = await SessionWriteLease.acquire(dir, SessionId('solo'))
-    await lease.release()
-    await lease.release()
-    // The file survives every release, keeping the stable inode later
-    // lockers verify against; the kernel lock died with the descriptor.
-    expect(existsSync(join(dir, LOCK))).toBe(true)
-    const successor = await SessionWriteLease.acquire(dir, SessionId('solo'))
-    await successor.release()
-    expect(existsSync(join(dir, LOCK))).toBe(true)
+      // An independent session directory acquires without contention
+      const otherDir = join(root, 'worker-session-2')
+      const other = await SessionWriteLease.acquire(otherDir, SessionId('worker-session-2'))
+      await other.release()
+
+      // Releasing allows a successor to acquire
+      await first.release()
+      const successor = await SessionWriteLease.acquire(dir, SessionId('worker-session'))
+      await successor.release()
+    } finally {
+      Object.defineProperty(process, 'title', { value: originalTitle, configurable: true })
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
+    }
   })
 
-
+  it('fails closed on unsupported non-Windows hosts when not in dsh-webworker', async () => {
+    const originalTitle = process.title
+    const originalPlatform = process.platform
+    try {
+      Object.defineProperty(process, 'title', { value: 'node', configurable: true })
+      Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
+      const root = await freshRoot()
+      await expect(SessionWriteLease.acquire(join(root, 'unsupported'), SessionId('unsupported')))
+        .rejects.toThrow('session write lease is unsupported on darwin')
+    } finally {
+      Object.defineProperty(process, 'title', { value: originalTitle, configurable: true })
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
+    }
+  })
   it('keeps distinct sessions independently lockable', async () => {
     const root = await freshRoot()
     const backend = await mount(root)

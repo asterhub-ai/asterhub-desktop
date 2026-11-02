@@ -106,7 +106,7 @@ export async function createPackedInstallation(temporaryPrefix: string, extraPac
   }
   const packages = new Map<string, WorkspacePackage>()
   for (const path of globSync([
-    'apps/*/package.json', 'packages/*/*/package.json', 'vendor/*/package.json', 'native/system/packages/*/package.json',
+    'apps/*/package.json', 'packages/*/*/package.json', 'vendor/*/package.json',
   ], { cwd: root })) {
     const manifest = JSON.parse(await readFile(join(root, path), 'utf8')) as Record<string, unknown>
     if (typeof manifest.name !== 'string') throw new Error(`${path} has no package name`)
@@ -119,8 +119,7 @@ export async function createPackedInstallation(temporaryPrefix: string, extraPac
   // These idle-profile tests create no Session or confined process. The native
   // platform packages load lazily for those operations and have separate smokes.
   const supportsIdleProfile = (member: WorkspacePackage) => (
-    !member.name.startsWith('@deepseek-ai/node-addon-system-')
-    && (!Array.isArray(member.manifest.os) || member.manifest.os.includes(process.platform))
+    (!Array.isArray(member.manifest.os) || member.manifest.os.includes(process.platform))
     && (!Array.isArray(member.manifest.cpu) || member.manifest.cpu.includes(process.arch))
   )
   const runtimeMembers = closure.filter(supportsIdleProfile)

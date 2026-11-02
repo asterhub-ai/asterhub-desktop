@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-tool-subagent-control` 为可继续子级添加全局控制工具：`send_message` 在直接父级与子级之间进行 steering（中途引导），`interrupt_agent` 停止子级当前轮次但保留其收件箱与后代，`list_agents`（来自可单独加载的 `list-agents` 插件）按持久化 ID 与标签列出可继续子级。父级与可继续子级继承相同的 `send_message` 定义和顺序，因此模型通信不会增加子级专属工具 schema。是否加载这些工具不会决定委派工具是否启动可继续工作。
+`dsh-tool-subagent-control` 为可继续子级添加全局控制工具：`send_message` 在直接父级与子级之间进行 steering（中途引导），`interrupt_agent` 停止子级当前轮次但保留其收件箱与后代，`list_agents` 按持久化 ID 与标签列出可继续子级。父级与可继续子级继承相同的 `send_message` 定义和顺序，因此模型通信不会增加子级专属工具 schema。是否加载这些工具不会决定委派工具是否启动可继续工作。
 
 ## 目录
 
@@ -25,11 +25,11 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-在模型需要对可继续子级发消息、中断或列出的任何组合中挂载本包。根插件只需要 subagent 服务；列表工具是独立插件，部署方可以省略。
+在模型需要对可继续子级发消息、中断或列出的任何组合中挂载本包。
 
 ### 最小配置
 
-先加载 subagent 服务、一个后端、委派工具与本包。加上独立的列表插件即可公开全部三个工具：
+先加载 subagent 服务、一个后端、委派工具与本包：
 
 ```yaml
 - name: '@deepseek-ai/dsh-subagent'
@@ -39,10 +39,9 @@ kind: "package-reference"
     provider: spawn
     backgroundMode: continuable
 - name: '@deepseek-ai/dsh-tool-subagent-control'
-- name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
 ```
 
-本包不接收任何配置：根插件提供 `send_message` 与 `interrupt_agent`，列表插件提供 `list_agents`。
+本包不接收任何配置，并提供 `send_message`、`interrupt_agent` 和 `list_agents`。
 
 ### send_message
 

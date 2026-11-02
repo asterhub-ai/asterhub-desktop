@@ -12,7 +12,7 @@ import { desktopReleaseTag, tagDesktopRelease } from './desktop-release-tag.ts'
 import { uploadDesktopRelease } from './desktop-upload-run.ts'
 import { DesktopPurgeError, purgeDesktopInstaller, resolveDesktopPurgeConfig } from './desktop-edgeone.ts'
 
-const SUPPORTED_TARGETS = new Set<DesktopPackageTargetName>(['mac-arm64', 'mac-x64', 'win-x64'])
+const SUPPORTED_TARGETS = new Set<DesktopPackageTargetName>(['win-x64'])
 
 function targetName(value: string): DesktopPackageTargetName {
   if (!SUPPORTED_TARGETS.has(value as DesktopPackageTargetName)) {
@@ -83,12 +83,7 @@ export async function uploadDesktopTarget(args: string[]): Promise<void> {
   if (values['purge-only'] && !values.latest) {
     throw new DesktopUploadUsageError('desktop upload: --purge-only requires --latest')
   }
-  let fileEnvironment: NodeJS.ProcessEnv
-  try {
-    fileEnvironment = loadDesktopPackageEnvironment(desktopTargetPlatform(name).platform)
-  } catch (error) {
-    throw new DesktopUploadUsageError('Cannot load target dotenv; check the target dotenv file and release settings.')
-  }
+  const fileEnvironment = loadDesktopPackageEnvironment('win32')
   const launcher = values['credential-launcher'] === true
   if (launcher ? values.environment === undefined || values.bucket === undefined
     : values.environment !== undefined || values.bucket !== undefined) {

@@ -202,7 +202,7 @@ export class DesktopMandatoryUpdateWindow {
     }
     if (this.window === undefined) {
       const parent = this.options.parent()
-      if (parent === undefined || parent.isDestroyed()) return
+      if (parent === undefined) return
       const window = this.options.overlays.create(parent, this.options.preload)
       this.window = window
       this.surfaceParent = parent
@@ -399,13 +399,14 @@ export class DesktopMandatoryUpdateWindow {
     if (this.embedded) {
       const parent = this.options.parent()
       if (parent === undefined || parent.isDestroyed() || event.sender !== parent.webContents
-        || event.senderFrame !== parent.webContents.mainFrame) {
+        || event.senderFrame === null || event.senderFrame !== parent.webContents.mainFrame) {
         throw new Error('desktop policy: rejected unowned renderer')
       }
       assertDesktopSender(event, ['app'])
       return
     }
-    if (event.sender !== this.window?.webContents || event.senderFrame !== this.window.webContents.mainFrame
+    if (this.window === undefined || event.sender !== this.window.webContents
+      || event.senderFrame === null || event.senderFrame !== this.window.webContents.mainFrame
       || event.senderFrame.url !== page) throw new Error('desktop policy: rejected unowned renderer')
   }
 }

@@ -32,7 +32,6 @@ it.each(Object.entries(lock.targets))('records every locked wheel distribution a
 it('keeps a target payload identity independent of other target archives', () => {
   const changed = structuredClone(lock)
   changed.targets['win-x64'].wheels[0]!.sha256 = 'a'.repeat(64)
-  expect(primaryRuntimePayloadDigest('mac-arm64', changed, '11.7.0')).toBe(primaryRuntimePayloadDigest('mac-arm64', lock, '11.7.0'))
   expect(primaryRuntimePayloadDigest('win-x64', changed, '11.7.0')).not.toBe(primaryRuntimePayloadDigest('win-x64', lock, '11.7.0'))
 })
 
@@ -40,10 +39,10 @@ it('invalidates payload identity for shared wheels, package versions and package
   const wheel = structuredClone(lock), distribution = structuredClone(lock)
   wheel.wheels[0]!.sha256 = 'a'.repeat(64)
   distribution.pythonPackages['python-docx'] = '1.2.1'
-  const original = primaryRuntimePayloadDigest('mac-arm64', lock, '11.7.0')
-  expect(primaryRuntimePayloadDigest('mac-arm64', wheel, '11.7.0')).not.toBe(original)
-  expect(primaryRuntimePayloadDigest('mac-arm64', distribution, '11.7.0')).not.toBe(original)
-  expect(primaryRuntimePayloadDigest('mac-arm64', lock, '11.7.1')).not.toBe(original)
+  const original = primaryRuntimePayloadDigest('win-x64', lock, '11.7.0')
+  expect(primaryRuntimePayloadDigest('win-x64', wheel, '11.7.0')).not.toBe(original)
+  expect(primaryRuntimePayloadDigest('win-x64', distribution, '11.7.0')).not.toBe(original)
+  expect(primaryRuntimePayloadDigest('win-x64', lock, '11.7.1')).not.toBe(original)
 })
 
 it('reports missing distribution metadata before trying to execute a stale native payload', async () => {
@@ -153,7 +152,7 @@ it('copies complete Office resources outside the application archive and removes
 })
 
 it('gives Python-only payloads a distinct identity', () => {
-  expect(primaryRuntimePayloadDigest('linux-x64', lock, undefined)).not.toBe(primaryRuntimePayloadDigest('linux-x64', lock, '11.7.0'))
+  expect(primaryRuntimePayloadDigest('win-x64', lock, undefined)).not.toBe(primaryRuntimePayloadDigest('win-x64', lock, '11.7.0'))
 })
 
 it('keeps carrier pnpm versions aligned with the shared payload build', () => {

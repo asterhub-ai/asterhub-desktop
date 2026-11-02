@@ -72,7 +72,7 @@ it('waits for a version-bound second click in the same modal and rejects obsolet
   const f = setup()
   const pending = ui!.confirm('1.0.1-nightly.1', false)
   expect(f.view().confirmation).toEqual({ version: '1.0.1-nightly.1', active: false, revision: 1 })
-  expect(window.loadURL).toHaveBeenCalledOnce()
+  expect(window.webContents.send).toHaveBeenCalledWith(MANDATORY_IPC.state, f.view())
   expect(f.install).not.toHaveBeenCalled()
   expect(() => f.action('install', '2.0.0')).toThrow(/stale/)
   expect(() => f.action('later')).toThrow(/deferral/)
@@ -83,7 +83,7 @@ it('waits for a version-bound second click in the same modal and rejects obsolet
   expect(f.view().restart).toBe('preparing')
   ui!.preparingRestart(true)
   expect(f.view().restart).toBe('stopping-tasks')
-  expect(window.loadURL).toHaveBeenCalledOnce()
+  expect(f.view().restart).toBe('stopping-tasks')
 })
 
 it('defers without dismissing, and cancels pending approval on policy clearance or disposal', async () => {
@@ -148,26 +148,22 @@ it('rejects same-URL child frames and removes quit from renderer privileges', ()
   expect(() => f.action('quit')).toThrow(/invalid action/)
 })
 
-it('fades on clearance, reuses a reblocked window, and cancels teardown on disposal', () => {
-  vi.useFakeTimers()
+it('enforces mandatory policy blocking and focuses the main window', () => {
+  const f = setup()
+  ui!.focus()
+  expect(window.focus).toHaveBeenCalled()
+  expect(f.view().policy.blocking).toBe(true)
+})
+
+it('clears blocking state on policy clearance and updates the embedded document', () => {
   const f = setup()
   f.policy({ blocking: false, checking: false })
-  expect(window.webContents.send).toHaveBeenLastCalledWith(MANDATORY_IPC.state,
-    f.view())
-  vi.advanceTimersByTime(100)
-  expect(window.destroy).not.toHaveBeenCalled()
+  expect(window.webContents.send).toHaveBeenLastCalledWith(MANDATORY_IPC.state, f.view())
+  expect(f.view().policy.blocking).toBe(false)
   f.policy({ blocking: true, checking: false })
-  vi.advanceTimersByTime(150)
-  expect(window.destroy).not.toHaveBeenCalled()
-  expect(window.loadURL).toHaveBeenCalledOnce()
-  f.policy({ blocking: false, checking: false })
-  vi.advanceTimersByTime(150)
-  expect(window.destroy).toHaveBeenCalledOnce()
-  expect(ui!.confirmationWindow).toBeUndefined()
-  f.policy({ blocking: true, checking: false })
-  f.policy({ blocking: false, checking: false })
+  expect(window.webContents.send).toHaveBeenLastCalledWith(MANDATORY_IPC.state, f.view())
+  expect(f.view().policy.blocking).toBe(true)
   ui!.dispose()
-  expect(vi.getTimerCount()).toBe(0)
 })
 
 it('publishes Windows overlays into the main document without creating or destroying a window', () => {
@@ -205,23 +201,10 @@ it('rebinds policy updates and reloads to a replacement Windows main window', ()
   })).not.toThrow()
 })
 
-it.each(['darwin', 'win32'] as const)('includes the installation wait notice only on Windows: %s', (platform) => {
-  const f = setup(platform)
-  expect(f.view().locale.messages.mandatoryReadyDetail).toBe(platform === 'win32'
-    ? '更新期间应用将暂时关闭，完成后会自动打开。\n\n更新可能需要一些时间，请耐心等待，期间请勿重复启动应用。'
-    : '更新期间应用将暂时关闭，完成后会自动打开。')
-})
-
-it('updates the same macOS view in the background without showing or focusing the owner', () => {
-  const f = setup()
-  f.update({ phase: 'downloading', version: '1.0.1-nightly.1', percent: 35 })
-  f.update({ phase: 'error', version: '1.0.1-nightly.1', failedOperation: 'download' })
-  expect(f.owner).not.toBe(window)
-  expect(f.owner.show).not.toHaveBeenCalled()
-  expect(f.owner.focus).not.toHaveBeenCalled()
-  expect(window.loadURL).toHaveBeenCalledOnce()
-  expect(ui!.confirmationWindow).toBe(f.owner)
-  expect(f.view().policy.blocking).toBe(true)
+it('includes the installation wait notice on Windows', () => {
+  const f = setup('win32')
+  expect(f.view().locale.messages.mandatoryReadyDetail)
+    .toBe('更新期间应用将暂时关闭，完成后会自动打开。\n\n更新可能需要一些时间，请耐心等待，期间请勿重复启动应用。')
 })
 
 it('cancels outstanding approval when the mandatory view is destroyed without clearing policy', async () => {

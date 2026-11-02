@@ -18,9 +18,7 @@ if (isSea()) {
 
 const selectorName = 'DSH_SUBPROCESS_RUNNER'
 const selection = process.env[selectorName]
-const aclRunner = process.platform === 'win32'
-  ? fileURLToPath(import.meta.resolve('@deepseek-ai/dsh-sandbox-windows-acl/runner'))
-  : undefined
+const aclRunner = fileURLToPath(import.meta.resolve('@deepseek-ai/dsh-sandbox-windows-acl/runner'))
 
 if (aclRunner !== undefined && process.argv[2] === aclRunner) {
   process.argv.splice(1, 1)
@@ -31,7 +29,7 @@ if (aclRunner !== undefined && process.argv[2] === aclRunner) {
 } else if (selection === undefined) {
   if (isSea()) {
     // Carrier default stays separate so process/home environment and profile patches can override it.
-    const platform = process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'win' : process.platform
+    const platform = 'win'
     process.env.DSH_BUNDLED_PRIMARY_RUNTIME = join(dirname(process.execPath), `${platform}-${process.arch}`, 'primary-runtime')
   }
   const { runCli } = await import('@deepseek-ai/dsh/lib/bin.js')

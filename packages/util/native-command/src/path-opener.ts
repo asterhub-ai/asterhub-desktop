@@ -33,17 +33,6 @@ export interface PathOpenerInternals {
 /** Documents a browser renders, as opposed to ones an editor merely edits. */
 const BROWSER_DOCUMENTS = new Set(['.html', '.htm', '.xhtml', '.svg'])
 
-/**
- * The macOS bundle registered for `https` — the default browser, as
- * LaunchServices records it. The nested version dict is stripped first
- * because it carries its own `LSHandlerRoleAll`.
- */
-function macBundleForHttps(plist: string): string | undefined {
-  const stripped = plist.replace(/LSHandlerPreferredVersions\s*=\s*\{[^}]*\};/g, '')
-  const block = /\{[^{}]*LSHandlerURLScheme\s*=\s*"?https"?;[^{}]*\}/.exec(stripped)?.[0]
-  if (block === undefined) return undefined
-  return /LSHandlerRoleAll\s*=\s*"?([\w.-]+)"?;/.exec(block)?.[1]
-}
 
 /**
  * Open one browser-renderable document with the default browser.
@@ -54,21 +43,6 @@ async function openInBrowser(
   path: string, signal: AbortSignal, platform: NodeJS.Platform,
   run: PathOpenerRunner, env: NodeJS.ProcessEnv,
 ): Promise<boolean> {
-  if (platform === 'darwin') {
-    let bundle: string | undefined
-    try {
-      const { stdout } = await run(
-        'defaults', ['read', 'com.apple.LaunchServices/com.apple.launchservices.secure'], signal, 'hidden')
-      bundle = macBundleForHttps(stdout)
-    } catch {
-      // No LaunchServices record (a fresh account never changed a default):
-      // the content-type handler is then the system's own choice anyway.
-      return false
-    }
-    if (bundle === undefined) return false
-    await run('open', ['-b', bundle, path], signal, 'hidden')
-    return true
-  }
   if (platform === 'linux') {
     // $BROWSER is the portable convention; desktop-entry resolution through
     // xdg-settings needs a launcher this package has no business shipping.
@@ -179,10 +153,6 @@ async function openNativePathWithIntent(
   if (!wsl && intent === 'default' && BROWSER_DOCUMENTS.has(extname(path).toLowerCase())
     && await openInBrowser(path, signal, platform, run, env)) return
 
-  if (platform === 'darwin') {
-    await run('open', intent === 'text-editor' ? ['-t', path] : [path], signal, 'hidden')
-    return
-  }
 
   if (platform === 'win32') {
     await openWindowsPath(path, signal, run)
@@ -214,7 +184,7 @@ async function openNativePathWithIntent(
  */
 export function canOpenNativePath(internals: PathOpenerInternals = {}): boolean {
   const platform = internals.platform ?? process.platform
-  if (platform === 'darwin' || platform === 'win32') return true
+  if (platform === 'win32') return true
   if (platform !== 'linux') return false
   const env = internals.env ?? process.env
   return isWsl(internals) || present(env.DISPLAY) || present(env.WAYLAND_DISPLAY)
@@ -273,7 +243,6 @@ export type NativeFileManager = 'finder' | 'explorer' | 'directory'
  */
 export function nativeFileManager(internals: PathOpenerInternals = {}): NativeFileManager | null {
   const platform = internals.platform ?? process.platform
-  if (platform === 'darwin') return 'finder'
   if (platform === 'win32' || (platform === 'linux' && isWsl(internals))) return 'explorer'
   return platform === 'linux' ? 'directory' : null
 }
@@ -292,10 +261,6 @@ export async function revealNativePath(
   const platform = internals.platform ?? process.platform
   const run = internals.run ?? runNativeCommand
   const manager = nativeFileManager({ ...internals, platform })
-  if (manager === 'finder') {
-    await run('open', ['-R', path], signal, 'hidden')
-    return
-  }
   if (manager === 'explorer') {
     let windowsPath = path
     if (platform === 'linux') {

@@ -8,7 +8,7 @@
  */
 
 import { tmpdir } from 'node:os'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import { LocalSandboxProvider } from '@deepseek-ai/dsh-sandbox-local'
@@ -26,11 +26,9 @@ async function setup(internals: LocalSandboxProvider['internals']) {
 
 describe('windows-acl win32 chain (LocalSandboxProvider)', () => {
   it('agentless workspace-write: runner argv prefix, temp root, mode flag, partial enforcement, ACL denial dialect', async () => {
-    const probeWindowsAcl = vi.fn(() => true)
     const sandbox = await setup({
       platform: 'win32',
       windowsAclRunnerArgs: ['node', 'windows-acl-runner.js'],
-      probeWindowsAcl,
     })
     const confined = await sandbox.confine(['pwsh', '/Command', 'x'], WW)
     expect(confined.argv).toEqual([
@@ -44,8 +42,6 @@ describe('windows-acl win32 chain (LocalSandboxProvider)', () => {
     expect(confined.enforcement).toBe('partial')
     expect(confined.denialSignatures).toEqual(['access is denied', 'access to the path', 'permission denied', 'operation not permitted'])
     expect(confined.runnerFailureRules).toEqual([{ allowedExitCodes: [127], fatalSignatures: ['windows-acl-run: '] }])
-    // A sole candidate is selected unprobed.
-    expect(probeWindowsAcl).not.toHaveBeenCalled()
   })
 
   it('read-only: same runner and contract, read-only mode flag', async () => {

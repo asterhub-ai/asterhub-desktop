@@ -17,9 +17,6 @@ async function main() {
   const ctx = new Context()
   try {
     if (!safeStorage.isEncryptionAvailable()) throw new Error('OS encryption unavailable')
-    if (process.platform === 'linux' && ['basic_text', 'unknown'].includes(safeStorage.getSelectedStorageBackend())) {
-      throw new Error('OS password manager unavailable')
-    }
     ctx.provide('credentialCipher', {
       encrypt: async value => safeStorage.encryptString(value).toString('base64'),
       decrypt: async value => safeStorage.decryptString(Buffer.from(value, 'base64')),

@@ -24,7 +24,6 @@ import type { BoundProcessOwner, ManagedProcessLaunch } from './managed-owner.ts
 import { waitWithAbort } from './managed-owner.ts'
 import { controlEnvironment, controlPipe } from './control-spawn.ts'
 import { SUBPROCESS_CONTROL_FD } from '@deepseek-ai/dsh-subprocess/control'
-import { linuxProcessGroupHasLiveMembers } from './process-inspector.ts'
 import { OutputCollector, prepareManagedProcessBinding, type SpillFailureReporter } from './output.ts'
 
 type SpawnProcess = (
@@ -65,8 +64,6 @@ export interface SpawnInternals {
   taskkill?: (pid: number) => void
   /** Host platform override for signalling decisions. */
   platform?: NodeJS.Platform
-  /** Linux process-group member probe (defaults to `/proc` inspection). */
-  linuxProcessGroupHasLiveMembers?: (processGroupId: number) => boolean | undefined
 }
 
 /**
@@ -204,32 +201,13 @@ function fallbackOwner(
   pid: number | undefined,
   child: ChildProcess,
   taskkill: (pid: number) => void,
-  linuxGroupHasLiveMembers: (processGroupId: number) => boolean | undefined,
-  direct: Promise<SubprocessOutcome>,
 ): BoundProcessOwner {
   let stopped = false
-  let directSettled = false
   let observation: Promise<void> | undefined
-  void direct.then(
-    () => { directSettled = true },
-    () => { directSettled = true },
-  )
 
   const alive = (): boolean => {
     if (stopped || pid === undefined) return false
-    if (platform === 'win32') return child.exitCode === null && child.signalCode === null
-    try {
-      process.kill(-pid, 0)
-      if (directSettled && platform === 'linux' && linuxGroupHasLiveMembers(pid) === false) return false
-      return true
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-      if (code === 'ESRCH') return false
-      /* v8 ignore start -- EPERM and non-POSIX negative-pid failures are platform defenses. */
-      if (code === 'EPERM') return true
-      return child.exitCode === null && child.signalCode === null
-      /* v8 ignore stop */
-    }
+    return child.exitCode === null && child.signalCode === null
   }
 
   return {
@@ -478,8 +456,6 @@ export function spawnSubprocess(spec: SubprocessSpawnSpec, internals: SpawnInter
     pid,
     child,
     internals.taskkill ?? taskkillProcessTree,
-    internals.linuxProcessGroupHasLiveMembers ?? linuxProcessGroupHasLiveMembers,
-    direct,
   )
   return bindManagedProcess(spec, {
     stdin: child.stdin,

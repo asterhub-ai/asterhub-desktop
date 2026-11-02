@@ -5,7 +5,6 @@
  * dependency graphs, scheduler environment, and process diagnostics.
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { readdirSync, readFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 import { resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
@@ -18,7 +17,6 @@ import { pnpmInvocation } from './pnpm-invocation.ts'
 /** A named aggregate exposed by the gate runner. */
 export type Mode =
   | 'ci-primary'
-  | 'ci-linux-primary'
   | 'ci-static'
   | 'ci-lint-contracts-ready'
   | 'ci-coverage'
@@ -154,7 +152,6 @@ export function cliGateOptions(failFast: boolean): RunGatesOptions {
 function parseMode(raw: string | undefined): Mode {
   switch (raw) {
     case 'ci-primary':
-    case 'ci-linux-primary':
     case 'ci-static':
     case 'ci-lint-contracts-ready':
     case 'ci-coverage':
@@ -175,7 +172,7 @@ function parseMode(raw: string | undefined): Mode {
       return raw
     default:
       throw new Error(
-        `run-gates: expected mode ci-primary | ci-linux-primary | ci-static | ci-lint-contracts-ready | ci-coverage | ci-unit | ci-bench | ci-snapshot | ci-artifacts | ci-consumers | ci-windows-blocking | ci-windows-complete | ci-windows-observational-ready | node-compat | check-all | hygiene | doc-sync | doc-quick | i18n, got ${JSON.stringify(raw)}.`,
+        `run-gates: expected mode ci-primary | ci-static | ci-lint-contracts-ready | ci-coverage | ci-unit | ci-bench | ci-snapshot | ci-artifacts | ci-consumers | ci-windows-blocking | ci-windows-complete | ci-windows-observational-ready | node-compat | check-all | hygiene | doc-sync | doc-quick | i18n, got ${JSON.stringify(raw)}.`,
       )
   }
 }
@@ -309,8 +306,7 @@ export function gatesForMode(selected: Mode): Gate[] {
   switch (selected) {
     case 'ci-primary':
       return ciPrimaryGates()
-    case 'ci-linux-primary':
-      return [...ciPrimaryGates(), webSnapshotGate(['build'])]
+
     case 'ci-static':
       return ciStaticGates({ ownsBuild: false })
     case 'ci-lint-contracts-ready':
@@ -431,7 +427,7 @@ function ciPrimaryGates(): Gate[] {
     pnpmScript('typecheck', 'typecheck:contracts-ready', { needs: ['typert-contracts'] }),
     lintGate({ needs: ['typert-contracts'] }),
     pnpmScript('duplication', 'duplication'),
-    ...coverageGates(),
+    ...coverageGates('linux'),
     ...nodeCompatSmokeGates(),
     snapshotGate(),
     ...docSyncLeafGates({
@@ -728,9 +724,8 @@ function coverageGates(platform: NodeJS.Platform = process.platform): Gate[] {
       streamOutput: true,
     })
   return [
-    pnpmScript('native-system', 'build:native-system'),
     ...electron,
-    { ...instrumented, needs: ['native-system', ...electron.map(gate => gate.id)] },
+    { ...instrumented, needs: [...(instrumented.needs ?? []), ...electron.map(gate => gate.id)] },
     pnpmExec('coverage-exempt-heavy', [
       'vitest',
       'run',
@@ -738,7 +733,6 @@ function coverageGates(platform: NodeJS.Platform = process.platform): Gate[] {
       ...workers.exempt,
     ], {
       label: 'test:coverage-exempt-heavy',
-      needs: ['native-system'],
     }),
   ]
 }
@@ -751,10 +745,8 @@ function coverageGates(platform: NodeJS.Platform = process.platform): Gate[] {
 // per-file timestamps for a 15–30 minute run.
 function ciUnitGates(): Gate[] {
   return [
-    pnpmScript('native-system', 'build:native-system'),
     pnpmExec('unit', ['vitest', 'run'], {
       label: 'test',
-      needs: ['native-system'],
       streamOutput: true,
     }),
   ]
@@ -914,7 +906,6 @@ function builtBinSmokeGate(needs: string[] = ['build']): Gate {
     'packages/subagent/subagent-codex/tests/loader-composition.e2e.ts',
     'packages/subagent/subagent-claude-code/tests/loader-composition.e2e.ts',
     'packages/api/remotes/tests/built-lib.e2e.ts',
-    'packages/experimental/agent-team/tests/built-lib.e2e.ts',
     // Built execution consumers: the only automated proof that package-name
     // imports reach their lib/ entrypoints under plain Node. The e2e lane runs
     // unbuilt, so these files self-skip there.
@@ -1403,21 +1394,6 @@ export async function runGate(gate: Gate, signal?: AbortSignal): Promise<GateRes
   return result
 }
 
-/**
- * Parse the state, parent, and process-group fields from a `/proc/<pid>/stat`
- * line. The comm field may contain spaces and parentheses, so the state starts
- * after the last closing parenthesis.
- * @param stat - one `/proc/<pid>/stat` line.
- * @returns state, parent pid, and process-group pid; undefined when truncated.
- */
-function procStatFields(stat: string): { state: string; ppid: number; pgrp: number } | undefined {
-  const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
-  const state = fields[0]
-  const ppid = fields[1]
-  const pgrp = fields[2]
-  if (state === undefined || ppid === undefined || pgrp === undefined) return undefined
-  return { state, ppid: Number(ppid), pgrp: Number(pgrp) }
-}
 
 /**
  * Whether one process is still executing. Zombies (state `Z`) do not count:
@@ -1427,14 +1403,6 @@ function procStatFields(stat: string): { state: string; ppid: number; pgrp: numb
  * @param pid - the process to probe.
  */
 function processAlive(pid: number): boolean {
-  if (process.platform === 'linux') {
-    try {
-      const parsed = procStatFields(readFileSync(`/proc/${pid}/stat`, 'utf8'))
-      return parsed !== undefined && parsed.state !== 'Z'
-    } catch {
-      return false
-    }
-  }
   try {
     process.kill(pid, 0)
     return true
@@ -1454,28 +1422,6 @@ function processAlive(pid: number): boolean {
  */
 function groupAlive(pid: number | undefined): boolean {
   if (pid === undefined || pid <= 0) return false
-  if (process.platform === 'linux') {
-    try {
-      process.kill(-pid, 0)
-    } catch {
-      // ESRCH: the group has no entries at all.
-      return false
-    }
-    try {
-      for (const entry of readdirSync('/proc')) {
-        if (!/^\d+$/.test(entry)) continue
-        try {
-          const parsed = procStatFields(readFileSync(`/proc/${entry}/stat`, 'utf8'))
-          if (parsed !== undefined && parsed.pgrp === pid && parsed.state !== 'Z') return true
-        } catch {
-          // The process exited mid-scan; it is not a live member.
-        }
-      }
-      return false
-    } catch {
-      return false
-    }
-  }
   try {
     process.kill(-pid, 0)
     return true
@@ -1498,23 +1444,6 @@ function groupAlive(pid: number | undefined): boolean {
  */
 function descendantPids(root: number): number[] {
   if (root <= 0) return []
-  if (process.platform === 'linux') {
-    const rows: Array<[number, number]> = []
-    try {
-      for (const entry of readdirSync('/proc')) {
-        if (!/^\d+$/.test(entry)) continue
-        try {
-          const parsed = procStatFields(readFileSync(`/proc/${entry}/stat`, 'utf8'))
-          if (parsed !== undefined) rows.push([Number(entry), parsed.ppid])
-        } catch {
-          // The process exited mid-scan; skip it.
-        }
-      }
-    } catch {
-      return []
-    }
-    return collectDescendants(root, rows)
-  }
   let ps: { error?: Error; stdout: string }
   if (process.platform === 'win32') {
     // taskkill /T covers the tree only while the root is alive; once the
@@ -1559,11 +1488,8 @@ function processTableArgs(platform: 'win32' | 'posix'): string[] {
  * enumeration failure.
  */
 function descendantPidsAsync(root: number, platform: NodeJS.Platform): { promise: Promise<number[]>; cancel: () => void } {
-  if (root <= 0 || platform === 'linux') {
-    // The /proc walk is synchronous inside the async wrapper so the sampler
-    // keeps the same contract on every platform; /proc reads are fast and
-    // need no subprocess, and a completed enumeration needs no cancellation.
-    return { promise: Promise.resolve(descendantPids(root)), cancel: () => {} }
+  if (root <= 0) {
+    return { promise: Promise.resolve([]), cancel: () => {} }
   }
   const [command, args] = platform === 'win32'
     ? ['powershell', processTableArgs('win32')]

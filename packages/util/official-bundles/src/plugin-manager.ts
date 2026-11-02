@@ -36,7 +36,6 @@ export const HIDDEN_BUNDLES: ReadonlySet<string> = new Set([
  * this list, decides whether a bundle appears on the main list.
  */
 export const EXTENSION_BUNDLES: readonly string[] = [
-  '@deepseek-ai/dsh-experimental-agent-team-profile',
   '@deepseek-ai/dsh-experimental-voice-input-bundle',
   '@deepseek-ai/dsh-experimental-plugin-market-bundle',
   '@deepseek-ai/dsh-experimental-auto-review',
@@ -49,7 +48,6 @@ export const EXTENSION_BUNDLES: readonly string[] = [
 export const MORE_BUNDLES: readonly string[] = [
   '@deepseek-ai/dsh-personalized-recommendations',
   '@deepseek-ai/dsh-experimental-inspector-profile',
-  '@deepseek-ai/dsh-cua-bundle',
   '@deepseek-ai/dsh-experimental-tool-worktree',
   '@deepseek-ai/dsh-experimental-cot-translation-bundle',
   '@deepseek-ai/dsh-experimental-session-search',
@@ -63,8 +61,6 @@ export const MORE_BUNDLES: readonly string[] = [
 /** Official bundles the plugin manager marks with the Experimental badge. */
 export const EXPERIMENTAL_BUNDLES: ReadonlySet<string> = new Set([
   '@deepseek-ai/dsh-personalized-recommendations',
-  '@deepseek-ai/dsh-cua-bundle',
-  '@deepseek-ai/dsh-experimental-agent-team-profile',
   '@deepseek-ai/dsh-experimental-voice-input-bundle',
   '@deepseek-ai/dsh-experimental-auto-review',
   '@deepseek-ai/dsh-experimental-inspector-profile',

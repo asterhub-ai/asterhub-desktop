@@ -59,11 +59,11 @@ changes:
 
 <!-- persistence-release-changes:start -->
 
-Detected 1 changed root and 1 structural difference. The review requirement below is calculated using current rules for comparison only; it does not assert historical compliance, migration correctness, or runtime compatibility.
+Detected 1 changed root and 1 structural difference. The minimum below is calculated using current rules for comparison only; it does not assert historical compliance, migration correctness, or runtime compatibility.
 
-| Path | Change | Review requirement |
+| Path | Change | Current minimum |
 |---|---|---|
-| `event:assistant/chunk.data.chunk.replayState` | `type-changed` | `review-required` |
+| `event:assistant/chunk.data.chunk.replayState` | `type-changed` | `version-bump` |
 
 <!-- persistence-release-changes:end -->
 

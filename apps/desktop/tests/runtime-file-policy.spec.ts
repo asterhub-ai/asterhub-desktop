@@ -84,78 +84,11 @@ it('applies package-specific rules inside scoped and nested dependency container
   expect(desktopRuntimeFileExclusion('outer/fs-ext/build/Release/fs_ext.lib', windows, 'win32-x64')).toBeUndefined()
 })
 
-it('retains native prebuilds for the selected macOS architecture', () => {
-  const mac = { platform: 'darwin' as const, arch: 'arm64' }
-  expect(desktopRuntimeFileExclusion('node-pty/prebuilds/darwin-arm64/pty.node', mac, 'darwin-arm64')).toBeUndefined()
-  expect(desktopRuntimeFileExclusion('node-pty/prebuilds/darwin-x64/pty.node', mac, 'darwin-arm64')).toBeDefined()
-  expect(desktopRuntimeFileExclusion('node-pty/prebuilds/win32-x64/conpty.node', mac, 'darwin-arm64')).toBeDefined()
-})
-
-it.each([
-  ['darwin', 'arm64'], ['darwin', 'x64'],
-  ['linux', 'arm64'], ['linux', 'x64'],
-  ['win32', 'arm64'], ['win32', 'x64'],
-] as const)('copies ConPTY sources only for Windows targets (%s/%s)', (platform, arch) => {
-  const root = mkdtempSync(join(tmpdir(), 'desktop-conpty-policy-'))
-  try {
-    const source = join(root, 'source')
-    const output = join(root, 'output')
-    const prefixes = ['', '@example/outer/node_modules/']
-    const conpty = ['arm64', 'x64'].flatMap(cpu => ['conpty.dll', 'OpenConsole.exe'].map(
-      file => `node-pty/third_party/conpty/1.25.260303002/win10-${cpu}/${file}`,
-    ))
-    const native = platform === 'win32'
-      ? ['conpty.node', 'conpty_console_list.node', 'conpty/conpty.dll', 'conpty/OpenConsole.exe']
-      : ['pty.node', 'spawn-helper']
-    const retained = [
-      ...native.map(file => `node-pty/prebuilds/${platform}-${arch}/${file}`),
-      ...native.map(file => `node-pty/build/Release/${file}`),
-      'node-pty/lib/index.js', 'node-pty/LICENSE',
-      'node-pty/third_party/conpty-notes/README.md', 'node-pty/third_party/conpty.dll',
-      'other/third_party/conpty/conpty.dll',
-    ]
-    for (const prefix of prefixes) {
-      for (const path of [...conpty, ...retained]) {
-        mkdirSync(join(source, prefix, path, '..'), { recursive: true })
-        writeFileSync(join(source, prefix, path), `payload:${prefix}${path}`)
-      }
-    }
-    cpSync(source, output, {
-      recursive: true, dereference: true,
-      filter: (path) => {
-        const entry = relative(source, path)
-        return desktopRuntimeFileExclusion(
-          platform === 'win32' ? entry.replaceAll('/', '\\') : entry,
-          { platform, arch }, `${platform}-${arch}`,
-        ) === undefined
-      },
-    })
-    for (const prefix of prefixes) {
-      expect(existsSync(join(output, prefix, 'node-pty/third_party/conpty'))).toBe(platform === 'win32')
-      for (const path of conpty) {
-        expect(existsSync(join(output, prefix, path)), `${prefix}${path}`).toBe(platform === 'win32')
-      }
-      for (const path of [...retained, ...(platform === 'win32' ? conpty : [])]) {
-        expect(readFileSync(join(output, prefix, path), 'utf8')).toBe(`payload:${prefix}${path}`)
-      }
-      for (const path of conpty) {
-        expect(readFileSync(join(source, prefix, path), 'utf8')).toBe(`payload:${prefix}${path}`)
-      }
-    }
-  } finally {
-    rmSync(root, { recursive: true, force: true })
-  }
-})
-
-it.each([
-  ['linux', 'x64', 'linux-x64'],
-  ['linux', 'arm64', 'wasm'],
-  ['freebsd', 'x64', 'wasm'],
-] as const)('retains only the selected Office engine for %s/%s', (platform, arch, engine) => {
-  for (const candidate of ['linux-x64', 'darwin-arm64', 'wasm']) {
+it('retains only the selected Office engine for Windows', () => {
+  for (const candidate of ['win32-x64', 'wasm']) {
     const omitted = desktopRuntimeFileExclusion(
-      `@deepseek-ai/libreoffice-kit-${candidate}/prebuilds.json`, { platform, arch }, engine,
+      `@deepseek-ai/libreoffice-kit-${candidate}/prebuilds.json`, windows, 'win32-x64',
     )
-    expect(omitted === undefined).toBe(candidate === engine)
+    expect(omitted === undefined).toBe(candidate === 'win32-x64')
   }
 })
