@@ -17,6 +17,8 @@ function unusedHook(): never {
 const globalProps = {
   usePanelInfo: unusedHook, useSessions: unusedHook, useSessionStatus: unusedHook,
   useSessionRetainInfo: unusedHook, useSessionAccess: unusedHook,
+  useRemoteAccess: unusedHook, useWorkspaces: unusedHook,
+  useResource: unusedHook, useWorkspaceAccess: unusedHook,
 }
 
 describe.each([
