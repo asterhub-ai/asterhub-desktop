@@ -338,6 +338,10 @@
           "prompt": {
             "type": "string",
             "description": "The complete, self-contained task for the subagent. It does not share this conversation's context, so include everything it needs."
+          },
+          "run_in_background": {
+            "type": "boolean",
+            "description": "Defaults to true. Set false only when your next action depends on the result."
           }
         },
         "required": [

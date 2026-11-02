@@ -1,0 +1,8 @@
+# These authored turns explicitly request run_in_background.
+- id: tool-subagent
+  config:
+    provider: spawn
+    toolName: subagent
+    backgroundMode: continuable
+    enableRunInBackground: true
+    maxDepth: 1

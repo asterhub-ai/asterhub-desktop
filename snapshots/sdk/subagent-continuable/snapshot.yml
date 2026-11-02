@@ -4,6 +4,9 @@ profile: sdk
 composition: subagent-durability-failure
 recording: authored
 header:
-  class: subagent-durability-failure
+  class: subagent-continuable
+  pin: true
+  systemPromptSource: session/text-turn
+  toolSchemasSource: sdk/subagent-send-message
   childSystemPrompts: [1]
   childToolSchemas: [1]

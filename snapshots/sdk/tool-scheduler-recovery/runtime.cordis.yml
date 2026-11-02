@@ -1,3 +1,7 @@
 - insert:
     - id: scheduler-failure-fixture
       name: './scheduler-failure.mjs'
+
+# Scheduler transport recovery does not cover the deployment skill catalog.
+- id: asterhub-skills
+  disabled: true
