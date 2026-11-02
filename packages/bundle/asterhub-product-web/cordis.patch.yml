@@ -4,6 +4,10 @@
 - id: attachment-local
   config:
     projectLocal: true
+# AsterHub signs in through the fork account service below; the upstream
+# official-account UI mounted by dsh-web-app stays out of the product.
+- id: ui-settings-account
+  disabled: true
 - insert:
     - id: agent-preset-registry
       name: '@deepseek-ai/dsh-agent-preset-registry'
@@ -61,3 +65,14 @@
       config:
         authBaseUrl: 'https://xapi.fans/api/v1'
         groupId: 6
+- insert:
+    # AsterHub account surfaces over the fork account service mounted above:
+    # sign-in launcher, balance and recharge section, and the token usage
+    # section. Ported from the pre-merge ui-settings-account client.
+    - id: ui-asterhub-account
+      name: '@deepseek-ai/dsh-client-ui-asterhub-account'
+    # Curated plugin catalog tab over the signature-verified curatedCatalog
+    # remote; restores the pre-merge embedded curated section as a plugins.tab
+    # contributor.
+    - id: ui-asterhub-catalog
+      name: '@deepseek-ai/dsh-client-ui-asterhub-catalog'

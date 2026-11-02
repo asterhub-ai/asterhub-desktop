@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/client/ui-asterhub-account/README.md
+/:
+  en: ee3f4e3486782f97
+  zh: 73bbf9303995f1e2
+/deepseek-ai-dsh-client-ui-asterhub-account:
+  en: 0ef1fc19d6e791ec
+  zh: 4820b003cb6083dd
+/deepseek-ai-dsh-client-ui-asterhub-account/summary:
+  en: d17010a0afd5d27e
+  zh: 8958afd6d79da364
+/deepseek-ai-dsh-client-ui-asterhub-account/table-of-contents:
+  en: d32a3f9a2f3d30d7
+  zh: ebb79216b795fe82
+/deepseek-ai-dsh-client-ui-asterhub-account/use-this-package:
+  en: db7e82aeddaff971
+  zh: 8586541afa6ea450
+/deepseek-ai-dsh-client-ui-asterhub-account/use-this-package/account-surfaces:
+  en: 0b997aa6123c4013
+  zh: a4740b64661fb93d
+/deepseek-ai-dsh-client-ui-asterhub-account/use-this-package/desktop-menu:
+  en: d3a96d984e952d14
+  zh: 156b4c3d00bf7b96
+/deepseek-ai-dsh-client-ui-asterhub-account/further-exploration:
+  en: fa4c8e9d3d67d2f4
+  zh: bda1bf2d34dad140
+/deepseek-ai-dsh-client-ui-asterhub-account/known-limitations-and-deferred-work:
+  en: 1e1ccdf8f22bfe5d
+  zh: 96f28dcd5e11f9f5
+/deepseek-ai-dsh-client-ui-asterhub-account/known-limitations-and-deferred-work/dev-note:
+  en: 0d6237166dc51e2d
+  zh: ba9f4d323ecfdec8

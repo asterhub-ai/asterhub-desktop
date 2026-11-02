@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/client/ui-asterhub-catalog/README.md
+/:
+  en: 21ff12edc7cfb869
+  zh: f5503e9376dc9546
+/deepseek-ai-dsh-client-ui-asterhub-catalog:
+  en: 26038c6873e58af8
+  zh: e110f4a000e5a790
+/deepseek-ai-dsh-client-ui-asterhub-catalog/summary:
+  en: 2dbe4cc37c3a802e
+  zh: 2f195ba47dfad345
+/deepseek-ai-dsh-client-ui-asterhub-catalog/behavior:
+  en: 3a869423f4151b93
+  zh: 03973d5d152dc468
