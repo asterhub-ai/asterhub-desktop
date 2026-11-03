@@ -1,382 +1,1575 @@
-/** AsterHub project status snapshot. Update evidence-backed state here; no network or secrets. */
+/** AsterHub project status snapshot v2. Evidence-backed; no network or secrets. */
 window.ASTERHUB_STATUS = {
-  meta: {
-    title: 'AsterHub · 项目现状',
-    date: '2026-11-03',
-    productVersion: '0.21.3（源码；未发布）',
-    frameworkVersion: '0.2.2-alpha.2',
-    upstreamBaseline: '2026-11-02 实时核对：DSH upstream/master ce7073d512；本仓吸收基线 dsh-v0.2.2-alpha.2 / f3803c9697，后续差距 351 提交。上游 master 根版本仍为 0.2.2-alpha.2，另有 dsh-v0.2.1-rc.5 发布线；不按日期降级、不自动全量吸收。',
-    phase: '合并后计划重排 · Windows 产品验收优先 · 上游差异择需吸收',
-    verdict: 'master 已推送至 origin，源码及看板提交 073e499589 已核对远端；干净工作树 pre-push 类型门 5/5。Desktop 进程和测试会话已启动，原生窗口视觉交互未验；历史持久化记录与 V4 静态门仍冲突。',
-    summary: '产品版本独立于 DSH；当前运行时使用 V4，不要求旧测试数据迁移。已恢复普通 Subagent，不采用 Agent Teams；仅 Windows 产品维护，保留 Git Bash 和远端 SSH。后续优先真实桌面采纳、Anima/项目本地持久化、普通子代理及发布链，按产品影响选择性评估上游差距。',
-    scope: '这是人工核对的离线快照，不是实时 CI、线上监控或自动同步任务系统。',
-    source: '交接文档.md',
-    branch: 'master（合并 aba7f481a8、看板 073e499589 已推送；仅保留 master 本地分支；同步工作树保留为 detached）',
-    mainBranch: 'master',
-    paused: '未签名、未发布。原有六文件逐字节保留，备份及保护性 stash 留存；私人配置未读取。Desktop 冒烟设置隔离 DSH_HOME 与 Electron userData，但生成工作区指向默认 Documents 目录，实际影响未核实；本次仅终止所属进程树。',
+  "meta": {
+    "title": "AsterHub · 项目现状",
+    "date": "2026-11-04",
+    "productVersion": "0.21.3（源码；未发布）",
+    "frameworkVersion": "0.2.2-alpha.2（已吸收）；上游最新 0.2.2-alpha.3",
+    "upstreamBaseline": "本仓已吸收内容基线 dsh-v0.2.2-alpha.2 / f3803c9697（2026-10-28）；上游 upstream/master = 8bd073392e（2026-11-03 15:27，PR #7798，根版本 0.2.2-alpha.3，tag dsh-v0.2.2-alpha.3）。差距 f3803c9697..8bd073392e 共 1017 提交（689 非合并 + 328 合并）。注意：git 拓扑上 master 与上游的 merge-base 是 dsh-v0.2.0-rc.2（639ed01539），f3803c9697 为内容吸收基线而非 git 祖先。用户已于 2026-11-03 勾选：采纳 10 / 延后 1 / 拒绝 10（见 upstreamDecisions）；不追提交数。",
+    "phase": "保绿基线 · 按用户勾选分波吸收上游 · 插件化 · 多 Agent 并行窄切片",
+    "verdict": "上游 alpha.3（差 1017 提交）已由用户勾选：采纳 10、延后 1、拒绝 10。先保绿 + 只读预检，再按 2a→2d 波次吸收；Schedule 直接替换自研 Automation（最后做，不迁移数据，删除已授权；上游缺失能力由你选保留/放弃）；Agent Teams 与 Subagent 重构不跟。",
+    "summary": "战略：保自研采用路径可用；自研尽量插件化；上游只收用户勾选、对自研/Windows 采用路径有必要价值的项，默认不吸收；仅 Windows 产品维护。多 Agent（OMP/ZCode/Codex）靠 claim 互斥 + 窄切片并行。",
+    "scope": "人工核对离线快照，非实时 CI/监控。占用与断点以 journal + handoff.mjs 为准。",
+    "source": "交接协议.md（2026-11-03 上游 alpha.3 重计划 + 用户勾选结果）",
+    "branch": "master @ 712c27e813a9（ahead 1 of origin/master @ 057651c81071）",
+    "mainBranch": "master",
+    "paused": "未签名正式发布。私人配置与真实 ~/.asterhub、项目 .aster 不碰。",
+    "excluded": [
+      {
+        "id": "EX-AGENT-TEAMS",
+        "title": "Agent Teams（team / teamwork / sdk-team-mode）",
+        "commits": 108,
+        "prs": [
+          "#7773",
+          "#7504",
+          "#7769"
+        ],
+        "evidence": "约 108 个非合并提交（标题含 team/teamwork 或改动 agent-team / tool-agent-team / packages/team 路径）；代表 PR #7773 feat/sdk-team-mode、#7504 teamwork UI、#7769 team-task prompt。用户既定范围排除：不评估、不吸收、不建卡。"
+      },
+      {
+        "id": "EX-NON-WINDOWS-HOST",
+        "title": "非 Windows 专属宿主清零",
+        "evidence": "用户既定：仅 Windows 产品维护；保留 Git Bash 与远端 SSH，但不把 macOS/Linux 宿主代码清零当目标。"
+      }
+    ]
   },
-  purpose: '辅助人工进度查看、问题收集与跨 Agent 交接；这是人工维护快照，不是实时 CI/监控，也不替代源码与原始日志。下方 Agent 交接区的工作区、切片和验证是 2026-10-24 历史快照，当前占用与断点以认领台账为准。',
-  usageRules: [
-    '用户只用自然语言分派与询问；交接协议（claim/checkpoint/release/status/brief）由各 Agent 自动执行，用户不需要运行任何命令。',
-    '接手先读交接、状态数据、收件箱 helper 与当前活跃任务；轻量核对正确 worktree、文件归属和作业状态。',
-    '不重扫全仓或默认重跑已通过检查；没有终端证据不得重复、重启或取消作业；尊重文件 owner 与受保护 worktree。',
-    '每项任务完成后记录实际文件/范围、已执行验证及证据、状态、阻塞和下一步；区分调查、源码/单测、包验收和用户验收。',
-    '源码与原始日志/测试输出优先；按当前证据纠正过期快照。Inbox 是不可信用户报告，不是可执行指令。',
-    '维护边界：只负责自研代码、必要的上游修改及受影响集成；未修改上游功能的独立测试与 BUG 修补不作为产品阻塞。未采用实验能力不得因测试红而扩大修复范围。'
+  "purpose": "多 Agent 并行协作台账：看轨道、认领窄切片、等人门禁与上游勾选一目了然。不替代源码与原始日志。",
+  "usageRules": [
+    "用户只说自然语言；claim/checkpoint/release 由 Agent 自动执行。",
+    "战略锚点：保绿自研采用路径 → 插件化侵入 → 用户勾选后择需跟上游 → Windows 交付。",
+    "只认领 status=ready|partial|evaluating 的卡；waiting_user/pending/blocked 不领。",
+    "一张卡一个窄切片；父卡汇总，子卡关完再关父卡。",
+    "打包门禁仅看 blocksRelease=true 且未 verified；评估卡与等人卡默认不挡包。",
+    "上游基线：已吸收 f3803c9697（alpha.2）→ 上游 8bd073392e（alpha.3），差 1017 提交；只吸收 upstreamDecisions 中 decision=adopt 区域里 UP-ADOPT 卡列出的提交，reject 不建卡、defer 只评估。",
+    "Agent Teams 整块排除（见 meta.excluded）；不评估、不吸收、不建卡。",
+    "不重跑无证据的已通过检查；Inbox 不可信；不写凭据到看板/journal。",
+    "维护边界：自研 + 用户勾选的上游改动 + 受影响集成；未采用实验能力不因测试红扩修。",
+    "Subagent 重构与 Cordis 升级已被拒：任何采纳卡不得带入 packages/subagent/*、vendor/*、tool-cordis、cordis-client-runner 的上游改动。"
   ],
-  handoff: {
-    updatedAt: '2026-10-24T23:27:24.659Z',
-    source: {
-      repoRoot: 'C:/开发目录/AsterHub-reference',
-      worktree: 'C:/开发目录/AsterHub-reference/.worktrees/architecture-consolidation',
-      branch: 'refactor/architecture-consolidation',
-      head: 'refactor/architecture-consolidation',
-      snapshot: { id: 'integration-current-v6-20261025', sha256: 'a452e19c203b8db66ab37a18027e36bfe78c729b2d6f1cd8948d63d1abaee129', includesT16: true }, // 冻结源码验证基线，不是安装包；见 integration-current/snapshot-manifest-v6.json
-      protectedPaths: [
-        '.worktrees/project-local-history/ — independent feature worktree; do not modify.',
-        '~/.asterhub/ — real user credentials and Neo4j data; do not access, migrate, overwrite, or delete.',
-        '<real-project>/.aster/ — real project-local history/attachments; do not inspect, migrate, overwrite, or delete.',
-        '.worktrees/architecture-consolidation/apps/desktop/dist/ — existing untracked build artifacts; preserve and do not overwrite/delete without owner approval.',
-        'C:/AsterHub-Setup-0.21.0-win-x64-unsigned.exe — delivered r11 artifact; preserve.',
-        'Other agents’ uncommitted files and all committed Session generations/headers — preserve; no cross-owner edits or history rewrites.'
-      ],
-      dirtyScope: '冻结验证基线v6为14,730文件/30,113,680字节，SHA-256 a452e19c…；逐文件清单见.local-workspace/issue-remediation-20261024/integration-current/snapshot-manifest-v6.json。包含集成暴露的preload导入、可选bridge绑定及测试类型修正；不是编辑树实时镜像，也不是安装包。v2/v3/v5失败证据保留；旧v4/r11安装包不覆盖新修复。Git status不单独证明作者或归属。'
-    },
-    readOrder: [
-      '项目现状/交接文档.md',
-      '项目现状/status-data.js',
-      'node 项目现状/handoff.mjs status（并行占用与断点总览；接手具体任务跑 node 项目现状/handoff.mjs brief <task>，规则见 项目现状/交接协议.md；由 Agent 自动执行，用户只用自然语言）',
-      'node 项目现状/read-issue-inbox.mjs（每次状态更新前运行）',
-      '.local-workspace/issue-remediation-20261024/progress.md',
-      '对应 job state、allocation stdout/stderr 与本次原始测试输出'
-    ],
-    activeSlices: [
+  "board": {
+    "version": 2,
+    "tracks": [
       {
-        owner: 'PackageAcceptanceOwner',
-        scope: '两个 source-v2 打包尝试均终态失败且不构成验收；已准备 corrected Electron Node-mode targeted smoke，对现成 pre-T16 artifact 检查临时目录修复；之后仅做一个 T16-inclusive no-skip full package 与精确安装验收。',
-        files: [
-          '.worktrees/architecture-consolidation/apps/desktop/tests/fixtures/runtime-payload-smoke.mjs',
-          '.worktrees/architecture-consolidation/apps/desktop/src/node-environment.ts',
-          '.local-workspace/issue-remediation-20261024/package-runtime-probe.mjs',
-          '.local-workspace/issue-remediation-20261024/runtime-payload-smoke.nomad',
-          '.local-workspace/issue-remediation-20261024/runtime-payload-smoke-node-mode.nomad',
-          '.worktrees/architecture-consolidation/.local-workspace/architecture-consolidation/nomad/execution/installer-acceptance.nomad'
-        ],
-        jobs: [
-          { id: 'asterhub-remediation-installer-imac-1792796824798', allocation: 'd13f0a39-bcf5-a00b-45b3-9650e186060f', status: 'terminal failed / exit 1: source archive lacked .git metadata; no package build accepted', evidence: '.local-workspace/issue-remediation-20261024/current-package-job.json' },
-          { id: 'asterhub-remediation-installer-imac-1792797050149', allocation: '9b9d9bad-d6ba-8a45-8ebe-7f53d81f0101', status: 'terminal failed: installer generated, final packaged smoke ENOENT under read-only app.asar; artifact not accepted', evidence: '.local-workspace/issue-remediation-20261024/asterhub-remediation-installer-imac-1792797050149/9b9d9bad-d6ba-8a45-8ebe-7f53d81f0101-stderr.log' },
-          { id: 'asterhub-runtime-payload-smoke-imac-20261024-0010', allocation: 'cf37b345-dc0d-e26b-a023-bf66f730a631', status: 'terminal after scoped stop, terminal exit 1; invalid Node-mode invocation launched UI instead of fixture; not acceptance', evidence: '.local-workspace/issue-remediation-20261024/asterhub-runtime-payload-smoke-imac-20261024-0010/state.json' }
-        ],
-        allocations: [
-          { id: 'd13f0a39-bcf5-a00b-45b3-9650e186060f', status: 'failed / exit 1' },
-          { id: '9b9d9bad-d6ba-8a45-8ebe-7f53d81f0101', status: 'failed / exit 1' },
-          { id: 'cf37b345-dc0d-e26b-a023-bf66f730a631', status: 'complete after desired stop; task terminal exit 1' }
-        ],
-        monitor: 'Blocking-query observation for the first scoped smoke reached deadline; job was stopped and terminal snapshot captured in state.json.',
-        waitFor: 'Validate and submit new scoped smoke with ELECTRON_RUN_AS_NODE=1 (as desktopNodeEnvironment requires); then preserve this invalid attempt and continue only on fresh job.',
-        evidence: '.local-workspace/issue-remediation-20261024/current-package-job.json; .local-workspace/issue-remediation-20261024/asterhub-runtime-payload-smoke-imac-20261024-0010/state.json; terminal package stderr log'
+        "id": "WAIT",
+        "title": "等待门禁",
+        "desc": "仅用户动作或明确授权；Agent 不领"
       },
       {
-        owner: 'WorkspaceHistoryRepair',
-        scope: 'T16 源码与回归已报告完成；待新 T16 候选做支持 profile 的真实组合 smoke。',
-        files: [
-          '.worktrees/architecture-consolidation/packages/workspace/workspace/src/index.ts',
-          '.worktrees/architecture-consolidation/packages/api/workspace-controller/src/commands.ts',
-          '.worktrees/architecture-consolidation/packages/client/ui-workspace/src/client/index.ts'
-        ],
-        jobs: [],
-        allocations: [],
-        monitor: '无 active T16 smoke allocation。',
-        waitFor: 'PackageAcceptanceOwner 提供 T16-inclusive compiled artifact；临时 overlay 已移除。',
-        evidence: '项目现状/交接文档.md#5.6'
+        "id": "KEEP",
+        "title": "自研保绿",
+        "desc": "当前采用路径回归与冒烟"
       },
       {
-        owner: 'W7ExecutionOwner',
-        scope: 'T05 有效 baseline capture；此前三次尝试均在 capture 前失败，safe.directory 守卫已改为进程级。',
-        files: ['.local-workspace/issue-remediation-20261024/freeze-baseline-v3.py'],
-        jobs: [
-          { id: 'asterhub-w7-profile-capture-imac-20261024-1792797934030', status: 'failed：Windows tar symlink target' },
-          { id: 'asterhub-w7-profile-capture-imac-20261024-1792799855012', status: 'failed：残留 PAX linkpath' },
-          { id: 'asterhub-w7-profile-capture-imac-20261024-1792799917264', status: 'failed：LocalSystem safe.directory guard' }
-        ],
-        allocations: [
-          { id: '68d3e9ea-df71-b207-4bfa-9e3c2f297364', status: 'terminal failed before capture' },
-          { id: 'e40f70ee-d6bf-121e-419c-847782f45090', status: 'terminal failed before capture' },
-          { id: '4edbd3e6-a30e-7089-7168-fe708a2c8544', status: 'terminal failed before capture' }
-        ],
-        monitor: '无 active capture allocation；旧失败均保留。',
-        waitFor: 'PackageAcceptanceOwner 报告 targeted smoke 终态后，再提交新的 5000MHz/6144MiB retry。',
-        evidence: '.local-workspace/issue-remediation-20261024/asterhub-w7-profile-capture-imac-20261024-1792799917264/'
+        "id": "PLUGIN",
+        "title": "插件化",
+        "desc": "把核心侵入迁到插件/扩展缝"
       },
       {
-        owner: 'IssueSubmissionUI',
-        scope: '只维护状态看板的跨 Agent handoff 展示；看板不属于 AsterHub 产品任务。',
-        files: ['项目现状/index.html', '项目现状/handoff-view.js'],
-        jobs: [],
-        allocations: [],
-        monitor: '无 job。',
-        waitFor: '渲染本 handoff/purpose/usageRules 数据；不改 status-data 或交接 Markdown。',
-        evidence: '项目现状/index.html'
+        "id": "UP",
+        "title": "上游跟进",
+        "desc": "用户已勾选：采纳 10 / 延后 1 / 拒绝 10；按波次吸收"
+      },
+      {
+        "id": "SHIP",
+        "title": "交付",
+        "desc": "精确候选安装包与发布授权"
       }
     ],
-    recentFiles: {
-      confirmedRound: [
-        { files: [
-          '.worktrees/architecture-consolidation/packages/workspace/workspace/src/index.ts',
-          '.worktrees/architecture-consolidation/packages/client/ui-workspace/src/client/index.ts',
-          '.worktrees/architecture-consolidation/packages/workspace/workspace/tests/workspace.spec.ts',
-          '.worktrees/architecture-consolidation/packages/api/workspace-controller/tests/workspace-controller.host.spec.ts',
-          '.worktrees/architecture-consolidation/packages/client/ui-workspace/tests/apply.client.spec.ts',
-          '.worktrees/architecture-consolidation/packages/workspace/workspace/README.md',
-          '.worktrees/architecture-consolidation/packages/workspace/workspace/README.zh.md'
-        ], owner: 'WorkspaceHistoryRepair', evidence: '项目现状/交接文档.md#5.6', note: 'T16 source/test/readme change set, independently reviewed; build/profile smoke pending.' },
-        { files: [
-          '.worktrees/architecture-consolidation/apps/desktop/tests/fixtures/runtime-payload-smoke.mjs',
-          '.worktrees/architecture-consolidation/apps/desktop/src/node-environment.ts',
-          '.local-workspace/issue-remediation-20261024/runtime-payload-smoke.nomad',
-          '.local-workspace/issue-remediation-20261024/runtime-payload-smoke-node-mode.nomad',
-          '.local-workspace/issue-remediation-20261024/current-package-job.json',
-          '.local-workspace/issue-remediation-20261024/asterhub-runtime-payload-smoke-imac-20261024-0010/state.json'
-        ], owner: 'PackageAcceptanceOwner', evidence: '.local-workspace/issue-remediation-20261024/asterhub-runtime-payload-smoke-imac-20261024-0010/state.json', note: 'Read-only ASAR scratch fixed to tmpdir; first scoped test invocation was invalid because Electron Node mode was omitted and was stopped with exit 1; corrected template now sets ELECTRON_RUN_AS_NODE=1.' },
-        { files: ['项目现状/status-data.js', '项目现状/交接文档.md'], owner: 'PackageAcceptanceOwner', evidence: '项目现状/status-data.js; 项目现状/交接文档.md', note: 'T03 preserved, T16 recorded, cross-agent handoff added; no T17 product task.' },
-        { files: ['项目现状/index.html', '项目现状/issue-submission.js', '项目现状/read-issue-inbox.mjs', '项目现状/问题提交记录.jsonl', '项目现状/handoff-view.js'], owner: 'IssueSubmissionUI / IssueInboxWorkflow', evidence: '项目现状/read-issue-inbox.mjs', note: 'auxiliary status-view/intake tooling only, explicitly outside AsterHub product scope.' }
-      ],
-      historicalPreexisting: [
-        { files: [
-          '.worktrees/architecture-consolidation/apps/desktop/README.md',
-          '.worktrees/architecture-consolidation/apps/desktop/README.zh.md',
-          '.worktrees/architecture-consolidation/apps/desktop/scripts/prepare-dsh.ts',
-          '.worktrees/architecture-consolidation/apps/desktop/scripts/prepare-runtime.ts',
-          '.worktrees/architecture-consolidation/apps/desktop/src/browser-automation-protocol.ts',
-          '.worktrees/architecture-consolidation/apps/desktop/src/browser-guests.ts',
-          '.worktrees/architecture-consolidation/apps/desktop/src/ipc.ts',
-          '.worktrees/architecture-consolidation/apps/desktop/src/main.ts',
-          '.worktrees/architecture-consolidation/apps/desktop/src/preload-app.ts',
-          '.worktrees/architecture-consolidation/apps/desktop/tests/browser-automation-tabs.spec.ts',
-          '.worktrees/architecture-consolidation/apps/desktop/tests/preload-app.spec.ts',
-          '.worktrees/architecture-consolidation/packages/account/account-sub2api/README.md',
-          '.worktrees/architecture-consolidation/packages/account/account-sub2api/README.zh.md',
-          '.worktrees/architecture-consolidation/packages/account/account-sub2api/src/index.ts',
-          '.worktrees/architecture-consolidation/packages/browser-use/browser-use-desktop/README.md',
-          '.worktrees/architecture-consolidation/packages/browser-use/browser-use-desktop/README.zh.md',
-          '.worktrees/architecture-consolidation/packages/browser-use/browser-use-desktop/src/index.ts',
-          '.worktrees/architecture-consolidation/packages/browser-use/browser-use-desktop/src/protocol.ts',
-          '.worktrees/architecture-consolidation/packages/bundle/asterhub-desktop-native/cordis.patch.yml',
-          '.worktrees/architecture-consolidation/packages/bundle/asterhub-desktop-native/package.json',
-          '.worktrees/architecture-consolidation/packages/bundle/base/cordis.patch.yml',
-          '.worktrees/architecture-consolidation/packages/client/ui-settings-general/src/client/CurrentVersionRow.tsx',
-          '.worktrees/architecture-consolidation/packages/client/ui-settings-general/src/client/index.ts',
-          '.worktrees/architecture-consolidation/packages/client/ui-settings-general/tests/apply.client.spec.ts',
-          '.worktrees/architecture-consolidation/packages/client/ui-settings-general/tests/components.client.spec.tsx',
-          '.worktrees/architecture-consolidation/packages/client/ui-sidebar-browser/src/client/electron/automation.ts',
-          '.worktrees/architecture-consolidation/packages/client/ui-sidebar-browser/tests/automation.client.spec.ts',
-          '.worktrees/architecture-consolidation/packages/context/anima-memory/README.md',
-          '.worktrees/architecture-consolidation/packages/context/anima-memory/README.zh.md',
-          '.worktrees/architecture-consolidation/packages/context/anima-memory/src/host.ts',
-          '.worktrees/architecture-consolidation/packages/context/anima-memory/tests/host.spec.ts',
-          '.worktrees/architecture-consolidation/packages/core/session/README.i18n.yaml',
-          '.worktrees/architecture-consolidation/packages/core/session/README.md',
-          '.worktrees/architecture-consolidation/packages/core/session/README.zh.md',
-          '.worktrees/architecture-consolidation/packages/core/session/tsdown.config.ts',
-          '.worktrees/architecture-consolidation/packages/credentials/credentials-local/README.md',
-          '.worktrees/architecture-consolidation/packages/credentials/credentials-local/README.zh.md',
-          '.worktrees/architecture-consolidation/packages/credentials/credentials-local/src/index.ts',
-          '.worktrees/architecture-consolidation/packages/credentials/credentials-local/tests/encrypted.spec.ts',
-          '.worktrees/architecture-consolidation/pnpm-lock.yaml'
-        ], owner: '历史 T01–T15 改动；各文件原作者未从 status 推断', evidence: '.local-workspace/issue-remediation-20261024/current-source-v2.json', note: '这些路径已在 pre-T16 source-v2 快照内；不是本轮 T16/ASAR 修复。' }
-      ],
-      unknown: [
-        { files: ['.worktrees/architecture-consolidation/apps/desktop/dist/', '.worktrees/architecture-consolidation/packages/account/account-sub2api/tests/failure-mapping.spec.ts'], owner: '尚未记录', evidence: 'git status inventory captured in this handoff; current source attribution not independently confirmed', note: '保留，不因状态输出推断 owner 或删除。' },
-        { files: ['root worktree README changes, packages/client/ui-workspace/src/client/index.ts, packages/workspace/workspace/README.zh.md, scripts/gen-cordis-catalog.ts'], owner: '尚未记录', evidence: 'root git status inventory captured in this handoff', note: '与 architecture-consolidation linked worktree 分开核对；不覆盖。' }
+    "statuses": [
+      "ready",
+      "partial",
+      "evaluating",
+      "waiting_user",
+      "blocked",
+      "pending",
+      "verified"
+    ],
+    "parallelHint": "第 1 波（现在并行，文件面不重叠）：KEEP-SMOKE-WINDOWS + KEEP-SUBAGENT-PATH + PLUGIN-INVENTORY；只读准备卡 UP-PREFLIGHT-PICKLIST、UP-UI-SELFDEV-AUDIT、UP-SCHEDULE-REPLACE-PLAN、UP-SESSION-FIX-REVIEW 可同时领。第 2 波（须第 1 波 KEEP 绿 + PREFLIGHT 完成）：2a 低风险并行 WINDOWS-CLI / LLM-DEEPSEEK / DESKTOP-SETTINGS / PLUGIN-DIAG / SANDBOX → 2b 串行 MENU-FILES → SIDEBAR-PINS →（TRAJECTORY ∥ RENDER）→ 2c FORGE ∥ SDK-PYTHON → 2d SCHEDULE 直接替换（你对功能对照清单里上游缺失项选完保留/放弃后）+ RETIRE-SELFDEV 删除自研（已授权，随替换执行）。第 3 波：KEEP-POST-ADOPT 回归 → SHIP-CANDIDATE。"
+  },
+  "handoff": {
+    "updatedAt": "2026-11-03T15:03:17.616Z",
+    "note": "activeSlices 历史快照已废弃；当前占用只看 journal claim。",
+    "source": {
+      "repoRoot": "Z:/dev/AsterHub",
+      "worktree": "Z:/dev/AsterHub",
+      "branch": "master",
+      "head": "057651c810",
+      "protectedPaths": [
+        "~/.asterhub/ — 真实凭据与数据；禁止读写删。",
+        "<real-project>/.aster/ — 真实项目本地历史；禁止迁移覆盖。",
+        "其它 Agent 未提交文件 — 无 overlap claim 不得改。",
+        "BaiduSyncdisk — 成品不写这里；成品进 Google Drive GrokBot/编程牛马。"
       ]
     },
-    latestVerification: [
-      { owner: 'OMP-Main', command: 'T09 evidence correction: alloc 6b9ef21b-9c34-2159-9d58-8c38cb91fa8c', result: '仅首轮Desktop自动登录及绑定合成Key的对话有分项证据；外层env-login-result为false，未执行重启阶段，不能宣称重启保持通过；未泄露sentinel的断言限已检查文件，不宣称全部凭据安全验收。', evidence: '.local-workspace/t09-evidence/desktop-automation-5800/6b9ef21b-9c34-2159-9d58-8c38cb91fa8c/first-driver-result.json; env-login-result.json' },
-      { owner: 'OMP-Main', command: 'T09 evidence correction: alloc 84b9f30b-9a64-7bc7-4b47-9d775ce94bd9', result: '创建每日/每周、时区/行高、暂停恢复及运行历史成功状态可见；整体passed=false：历史显示会话不可用，查看正文未通过，删除和重载检查未执行。不得再称能力全集或0秒完成结算；activeRunId清除需单独核实。旧bundle与当前源存在差异，需当前完整构建复验，global:true假说未由RED证明。', evidence: '.local-workspace/t09-evidence/desktop-automation-5800/84b9f30b-9a64-7bc7-4b47-9d775ce94bd9/automation-summary.json' },
-      { owner: 'OMP-Main', command: 'catalog reset RED/GREEN; targeted 5800 plugin build; actual Desktop 4b58642f', result: '修复新发现的重连后定时任务列表永久loading：先注册身份reset再订阅目录，reset清空可复用inFlight。行为RED实际records=[]/loading；GREEN该包4文件26项通过；5800定向tsc/tsdown exit0，client.js SHA7abf48ab…，Main未改。真实Desktop列表ready并成功创建每日任务，验证原先60秒仍loading的路径恢复；独立review无Critical/Important。整套自动化脚本仍在补每周/运行/删除，不以此关闭T09。', evidence: '.local-workspace/t09-evidence/desktop-automation-5800/catalog-fix-build-result.json; 4b58642f-b1a2-0901-079e-0ff420228460/automation-summary.json' },
-      { owner: 'OMP-Main', command: '5800: asterhub-desktop-acceptance-5800-1792902030255', result: 'T12分项通过：未主动展开侧栏，真实Host/Main/Renderer/Guest执行open→tabs→close→tabs，tab2/gen1关闭后列表0。main.js前后均为原构建46b036b9…；仅Main原生选目录dialog用临时替身，未替换IPC handler/guard。T16历史正文显示，原884字节种子为24,488字节日志精确前缀、旧header.cwd保留；实际pwsh省略workdir，但5800 Nomad服务令牌缺logon SID，restricted-token sandbox拒绝执行，marker缺失。因此整个job failed/exit1、passed=false；不将T12分项通过称整job通过。合成账号/模型上游，不是在线认证或原生目录对话框验收。', evidence: '.local-workspace/issue-remediation-20261024/desktop-acceptance-5800/73bb8b0a-b166-9ba6-5f81-e54111321e49/acceptance-result.json; mock-events.json; session.v5.jsonl.zstd' },
-      { owner: 'OMP-Main', command: '5800: asterhub-desktop-acceptance-5800-1792899975388', result: '部分通过，撤回整体闭环表述：真实Desktop历史导入、列表及正文显示，884字节种子保持为19,295字节日志前缀；browser_open与browser_tabs成功。模型/认证为合成上游，目录选择使用验收后门，右侧栏预先手动展开。未调用browser_close；Desktop续聊marker为proofCreated:false。因此不证明关闭标签、默认折叠状态或续聊新cwd。alloc 2f3c1843-8f58-4945-38ec-947bd582456e exit0不等于所有验收通过。', evidence: '.local-workspace/issue-remediation-20261024/desktop-acceptance-5800/t12-t16-final-summary.json; t16-desktop-2f3c.v5.jsonl.zstd' },
-      { owner: 'OMP-Main', command: '5800: asterhub-desktop-automation-5800-1792901146164', result: '真实Desktop创建每日09:30 Asia/Tokyo任务，列表长标题行114px且scrollHeight=clientHeight；点击删除后立即移除。仅此子集通过，未证明重载后删除、每周、立即运行、运行历史、环境登录或teardown。合成账号/模型上游，非在线认证验收。', evidence: '.local-workspace/t09-evidence/desktop-automation-5800/4a372d6a-d246-0657-ef30-a2f911e38959/automation-summary.json; 01-task-created.png; 02-task-deleted.png' },
-      { owner: 'OMP-Main', command: '5800: pnpm run build; pnpm --filter @deepseek-ai/dsh-desktop run prepare:primary-runtime; pnpm run start:desktop', result: '当前源码快照4b401bc0…在5800完成开发构建及主运行时准备，两阶段真实exit0；353项Client产物，Office往返检查通过。构建alloc0cd41655-8ec9-298e-e715-cab2915456c1外层因CLI清单路径误写而exit1，实际bin.js产物已核实，不冒称整job通过。未重建，复用相同产物并恢复已验证Electron44.7运行时后，支持启动入口真实到达AsterHub本地构建登录界面，约5秒从splash进入登录表单；Host inspector存在，renderer启用sandbox，未提交账号。启动观察alloc751c1ded-778d-12c3-f129-9f32d6f8d85e complete/exit0。未打包，不代表T12/T16功能验收通过。', evidence: '.local-workspace/issue-remediation-20261024/desktop-dev-build-5800/source-current.json; job-0120-result.json; launch-observe-result.json; 751c1ded-778d-12c3-f129-9f32d6f8d85e-run_local_launch_result_json; 751c1ded-778d-12c3-f129-9f32d6f8d85e-run_local_launch_renderer_png' },
-      { owner: 'OMP-Main', command: 'Nomad: asterhub-source-validation-{code,docs}-r1792887073092-20261025', result: 'v6同一快照a452e19c…通过：5800/code alloc 92f2ef42-c588-4bab-9cbd-55cb63aed4c0，typecheck/build:lib:client/39文件1147项回归全部exit0；imac/docs alloc 70f7779a-a525-058f-d932-7da14267bd6a，test:docs exit0；两作业install及实际pnpm11.7.0预检exit0，终态complete/exit0且节点匹配。两节点执行时间重叠。仅为源码集成门禁通过，不替代T12/T16 Desktop端到端验收；未打包。', evidence: '.local-workspace/issue-remediation-20261024/integration-current/jobs-state-v6.json; jobs-submission-v6.json; snapshot-manifest-v6.json; terminal/*-r1792887073092-20261025/' },
-      { owner: 'OMP-Main', command: 'Nomad historical v2/v3/v5 integration attempts', result: '保留真实失败：v2 typecheck导入错误及docs禁用术语；v3/v5后续Client可选bridge闭包、品牌ID、mock类型与不完整fixture错误。均已最小修正并由v6同快照门禁验证；各次未运行阶段不得计通过。', evidence: '.local-workspace/issue-remediation-20261024/integration-current/jobs-state-current.json; jobs-state-v3.json; jobs-state-v5.json; original-result-recovery.json' },
-      { owner: 'PackageAcceptanceOwner', command: 'nomad job status -json asterhub-remediation-installer-imac-1792796824798; nomad alloc status 9b9d9bad-d6ba-8a45-8ebe-7f53d81f0101', result: 'both old source-v2 package jobs terminal failed: allocation d13f0a39-bcf5-a00b-45b3-9650e186060f exit 1 for missing .git metadata; allocation 9b9d9bad-d6ba-8a45-8ebe-7f53d81f0101 exit 1 for scratch under read-only app.asar.', evidence: 'terminal Nomad CLI output; .local-workspace/issue-remediation-20261024/asterhub-remediation-installer-imac-1792797050149/9b9d9bad-d6ba-8a45-8ebe-7f53d81f0101-stderr.log' },
-      { owner: 'IssueSubmissionUI', command: 'isolated Edge file:// handoff view smoke at 1440/768/375px', result: 'agent-reported no overflow/runtime errors; 77 evidence/path links local; T17 absent; copy success announced but clipboard byte readback unverified; forced rejection showed full selected fallback.', evidence: 'screenshots: C:/Users/朱子凌/AppData/Local/Temp/asterhub-handoff-smoke-ZtiExk/screenshots/agent-handoff-{1440,768,375}.png' },
-      { owner: 'PackageAcceptanceOwner', command: 'nomad job status -json asterhub-runtime-payload-smoke-imac-20261024-0010', result: 'first attempt reached terminal only after scoped stop; client status complete but DesiredStatus stop and terminal task ExitCode 1, so this is not a smoke pass. Stdout showed packaged UI startup because the invocation omitted ELECTRON_RUN_AS_NODE=1; source helper requires it.', evidence: '.local-workspace/issue-remediation-20261024/asterhub-runtime-payload-smoke-imac-20261024-0010/state.json; apps/desktop/src/node-environment.ts' },
-      { owner: 'PackageAcceptanceOwner', command: 'node --check 项目现状/status-data.js; node --check .local-workspace/issue-remediation-20261024/package-runtime-probe.mjs', result: 'pass after final handoff snapshot update; vm schema inspection showed 16 tasks T01-T16, T03 verified, and the declared inbox triage counts.', evidence: '本轮工具输出；无单独日志文件。' },
-      { owner: 'WorkspaceHistoryRepair', command: 'T16 focused regressions; packages/client/ui-workspace/tests/apply.client.spec.ts full suite', result: 'agent-reported 5 focused cases and 19 suite cases passed; supported-profile smoke pending', evidence: '项目现状/交接文档.md#5.6' },
-      { owner: 'PackageAcceptanceOwner', command: 'Review proven installer-acceptance.nomad and package-runtime-probe.mjs', result: 'acceptance harness prepared by reuse: isolated LocalSystem install/exe/desktop+Start-menu shortcuts/registry/synchronous owned-path uninstall; Electron Main probe requires safeStorage, checks package version and Desktop provider modules, then migrates+restarts synthetic plaintext credential. Neither has run against current candidate.', evidence: '.worktrees/architecture-consolidation/.local-workspace/architecture-consolidation/nomad/execution/installer-acceptance.nomad; .local-workspace/issue-remediation-20261024/package-runtime-probe.mjs' },
-      { owner: 'PackageAcceptanceOwner', command: 'nomad node status -verbose b6569af5-d5c1-d149-9706-679be5dd4ad7', result: 'imac ready/raw_exec healthy; last observed allocation reservations 0, host memory 9.3GiB/16GiB; this is a point-in-time snapshot only', evidence: 'current execution tool output; no persisted report' }
+    "readOrder": [
+      "项目现状/交接协议.md",
+      "项目现状/status-data.js",
+      "项目现状/上游差距清单.html（upstreamDecisions · 已决定）",
+      "node 项目现状/handoff.mjs status",
+      "node 项目现状/handoff.mjs brief <task>",
+      "node 项目现状/read-issue-inbox.mjs"
     ],
-    nextActions: [
-      'Mislaunched first smoke attempt (job asterhub-runtime-payload-smoke-imac-20261024-0010) reached terminal after scoped stop; preserve it as an invalid attempt and do not reuse it as a pass.',
-      'Corrected targeted Node-mode payload smoke with ELECTRON_RUN_AS_NODE=1 passed on the pre-T16 candidate (alloc 86aa03c9-fecb-d9ff-1743-13a3f065a612, exit 0); keep that result scoped to the old candidate, not package acceptance.',
-      'First invalid attempt evidence is preserved alongside the passing corrected smoke; no further targeted smoke is required before v4 real-machine acceptance.',
-      '旧v4安装包（SHA-256 88A897CC...，源码归档9602d25c...）已通过构建、Electron Main探针、隔离安装/卸载、快捷方式与注册表检查；这些包级结果不覆盖当前源码。旧v4的T12 browser_open仍失败，T16当前源码Desktop验收未完成。',
-      'Electron Main safeStorage/version/provider probe and exact installer install/uninstall already passed on v4 (.local-workspace/issue-remediation-20261024/v4-installer-acceptance-result.json); remaining real-machine desktop capability acceptance still pending.',
+    "doNot": [
+      "不认领 waiting_user / pending / blocked。",
+      "不评估、不吸收、不为 Agent Teams（team / teamwork / sdk-team-mode）建卡；排除清单见 meta.excluded。",
+      "upstreamDecisions 中 decision=reject 的区域不建卡、不吸收；defer 只评估不吸收；adopt 只按 UP-ADOPT 卡列出的提交挑。",
+      "不把评估候选写成已证实缺陷。",
+      "不因上游原样测试红扩大修复。",
+      "不自动全量吸收上游、不追提交数清零。",
+      "不未授权签名/发布/推送生产通道。",
+      "不读写私人凭据与真实 .aster 数据。",
+      "不在用户电脑开启额外流量转发。",
+      "不带入上游 packages/subagent/*、packages/team、ui-agent-team、vendor/*（Cordis）、apply_patch 改动；不 cherry-pick 发布提交 1c78d475bf。",
+      "自研 asterhub-automation / ui-asterhub-automation 删除已获授权（2026-11-03 23:27），但只能在认领 UP-ADOPT-SCHEDULE / UP-SCHEDULE-RETIRE-SELFDEV 时执行，不得在其它卡里顺手删。"
     ],
-    doNot: [
-      '未获明确授权不得再次合并、推送、签名或发布。',
-      'No final packaging while fix-required tasks remain unclaimed or incomplete, unless the user explicitly requests it (run handoff.mjs status and record evidence first).',
-      'No real user project, session, credential or desktop-data operations.',
-      'Never rewrite immutable SessionHeader.cwd or session generations.',
-      'T03 login/model manual pass is confirmed; do not retest or relabel blocked.',
-      'Do not accept or distribute old pre-T16 artifacts; preserve other agents’ uncommitted work and do not overwrite existing artifacts.'
-    ],
-    inbox: {
-      path: '项目现状/问题提交记录.jsonl',
-      recordCount: 6,
-      pendingCount: 0,
-      triage: [
-        { id: 'ISSUE-52404fd4-1209-40a5-bed3-58ea70557ebe', taskId: 'T09', status: 'linked_pending', note: '定时任务创建/时区/确认/列表问题；作为真实桌面能力验收，不关闭 T09。' },
-        { id: 'ISSUE-6d30ac7f-7c20-4514-82dd-a909a1570b45', taskId: 'T09', status: 'linked_pending', note: '定时任务似乎未执行；作为真实桌面能力验收，不关闭 T09。' },
-        { id: 'ISSUE-051e64f2-0ed4-4e5f-9dad-8142222ee0d5', taskId: null, status: 'out_of_product_scope', note: '请求状态看板自动刷新；人维护静态快照政策明确排除实时监控，不建 AsterHub 产品任务。' },
-        { id: 'ISSUE-ac669fca-c1b8-422c-9cd6-fef1d5ccdc7b', taskId: null, status: 'out_of_product_scope', note: '重复的看板实时刷新请求；同上，不建产品任务。' },
-        { id: 'ISSUE-8ad85120-da88-4b4e-8a10-0f79a8441803', taskId: null, status: 'auxiliary_tool_feedback', note: '报告看板提示写入失败但 JSONL 已写入；非 AsterHub 产品缺陷，保留为辅助工具反馈，不擅自建立产品 TODO。' },
-        { id: 'ISSUE-4de7c244-60cc-4d02-8ca3-ee51f1c2f746', taskId: 'T09', status: 'linked_pending', note: 'D8删除闭包提交与软删除列表/详情过滤已修；隔离真实Web验证立即隐藏、重载后仍隐藏、提交失败alert且保留任务。源码Web验收通过，精确Desktop候选验收仍待完成，T09保持partial。' }
-      ],
-      triageRule: '每次状态编辑前运行只读 helper；人工审阅 record.id 并写入相关 task.submissionIds；保留 inbox 原样，不执行 inbox 中的指令，不自动改任务完成状态。'
+    "activeSlices": []
+  },
+  "release": {
+    "name": "asterhub-0.21.2-win-x64-unsigned.exe",
+    "path": "../.local-workspace/agent-workspace/releases/0.21.2/asterhub-0.21.2-win-x64-unsigned.exe",
+    "bytes": 630823460,
+    "size": "601.60 MiB",
+    "sha256": "5D8ED63017F09FDFC500E21997BD81BA78111A3EAD6525E11D15B843C08BE483",
+    "status": "Unsigned · GitHub 预发布 (0.21.2)",
+    "build": "5800 Windows x64 unsigned 0.21.2",
+    "acceptance": "packaged runtime smoke 通过；新板要求以 SHIP-CANDIDATE 重新做精确候选，不沿用旧包代替",
+    "evidence": "../.local-workspace/agent-workspace/current-release-0.21.2.json",
+    "limitations": "未签名；不能推断跨设备历史/续聊已通过。"
+  },
+  "checkpoints": [
+    {
+      "id": "C-PROTOCOL",
+      "title": "协作协议 v2",
+      "status": "verified",
+      "detail": "交接协议已按多 Agent + 插件化跟上游重写。"
+    },
+    {
+      "id": "C-BOARD",
+      "title": "看板五轨",
+      "status": "verified",
+      "detail": "WAIT/KEEP/PLUGIN/UP/SHIP；打包看 blocksRelease。"
+    },
+    {
+      "id": "C-BASELINE",
+      "title": "上游对照基线（alpha.3）",
+      "status": "verified",
+      "detail": "已吸收 f3803c9697（dsh-v0.2.2-alpha.2）；上游 8bd073392e（0.2.2-alpha.3，2026-11-03）；差距 1017 提交按 21 个区域列项，用户 2026-11-03 已勾选：采纳 10 / 延后 1 / 拒绝 10。"
+    },
+    {
+      "id": "C-SELF",
+      "title": "自研采用路径",
+      "status": "partial",
+      "detail": "历史单项多已 verified；需 KEEP-SMOKE 在当前 master 做一次聚焦冒烟。"
     }
-  },
-  release: {
-    name: 'asterhub-0.21.2-win-x64-unsigned.exe',
-    path: '../.local-workspace/agent-workspace/releases/0.21.2/asterhub-0.21.2-win-x64-unsigned.exe',
-    bytes: 630823460,
-    size: '601.60 MiB',
-    sha256: '5D8ED63017F09FDFC500E21997BD81BA78111A3EAD6525E11D15B843C08BE483',
-    status: 'Unsigned · GitHub 预发布 (0.21.2)',
-    build: '5800 Windows x64 unsigned 0.21.2',
-    acceptance: 'packaged runtime smoke 通过；交互安装、升级及真实跨设备历史会话验收未完成',
-    evidence: '../.local-workspace/agent-workspace/current-release-0.21.2.json',
-    limitations: '未签名；0.21.2 包含会话归属与侧边栏展开调整，但不能由合成测试推断真实跨设备历史列表或续聊已通过。Release：https://github.com/asterhub-ai/asterhub-desktop/releases/tag/desktop-v0.21.2-unsigned'
-  },
-  checkpoints: [
-    { title: '最终产物已生成', status: 'verified', label: 'unsigned 预发布', detail: '0.21.2 构建完成，Nomad 作业退出码 0；完整 packaged smoke 通过，GitHub SHA-256 与本地一致。' },
-    { title: '打包运行时 smoke', status: 'verified', label: '限定项目通过', detail: '新包的原生组件、Office 转 PDF、workspace inspect 和 Session 创建通过；不代表完整交互安装或 T16 Shell 沙箱手测通过。' },
-    { title: '隔离安装与卸载', status: 'partial', label: '新包待验', detail: '旧 v4 的隔离安装、快捷方式、注册表和卸载已验证；不能套用于新发布的精确安装包。' },
-    { title: '历史包源码标识', status: 'verified', label: '仅对应旧v4', detail: '旧v4源码归档SHA-256为9602D25C...，不是当前集成快照；不宣称包含后续全部修复。当前源码及门禁见handoff.snapshot与latestVerification。' },
-    { title: '保留旧数据升级', status: 'verified', label: '真机探针通过', detail: '探针级升级验证通过（凭据迁移）：真实 Electron Main safeStorage 运行时探针中受控明文转加密迁移及重启读回全绿，不泄露凭据；完整升级验收未做。' },
-    { title: '完整账号与模型流程', status: 'verified', label: '历史用户实测通过', detail: '用户明确确认 T03 完整登录与模型流程手动测试通过；新发布的精确安装包不据此自动通过。' }
   ],
-  stages: [
-    { id: 'W0', title: '冻结基线与验收定义', status: 'verified', label: '定义已建立', detail: '90 项验收定义、差异分类和冻结数据已建立；不是 90 项功能已通过。', evidence: '../.local-workspace/worktree-preservation/architecture-consolidation/.superpowers/sdd/项目架构收拢重构实施计划/progress.md' },
-    { id: 'W1', title: '会话 V4 与历史记录', status: 'verified', label: 'V4 运行时 · 持久化记录门八门全绿', detail: '当前 writer 为 V4；开发数据无需旧版本兼容。已提交历史记录保留（release 档案 prose 原样）；V4/V5 历史记录与静态格式门的冲突已于 2026-11-03 按 PERSISTENCE-RECORD-GATES 授权方案处理完毕，八门全绿并补记 Agent Teams 移除的持久化差异。' },
-    { id: 'W2', title: 'Office 权限与运行', status: 'partial', label: '受控验证', detail: 'GenOffice .2 和实际受控运行已有记录；Desktop、真实用户 token 与完整安装体验仍有缺口。' },
-    { id: 'W3', title: '产品组合收拢', status: 'partial', label: '主要实现已提交', detail: '共享产品、产品 Web、桌面 native 三层组合已实现；全 profile 产品等价未统一验收。' },
-    { id: 'W4', title: '项目资源接口', status: 'partial', label: '接口已实现', detail: 'SessionCwd 和项目 resolver 生命周期已实现；所有消费者最终组合覆盖须按快照确认。' },
-    { id: 'W5', title: 'cwd 与附件消费者', status: 'partial', label: '多批定向验证', detail: '子代理、工具、附件与项目作用域已切换；不能用 837 项子代理测试代替全部资源验收。' },
-    { id: 'W6', title: '受控模型路由', status: 'partial', label: '策略已实现', detail: '应用持有 provider、入口与凭据策略，用户选目录模型；真实模型请求另行验收。' },
-    { id: 'W7', title: '身份与提示词等价', status: 'verified', label: '已核验证据', detail: '已在 Nomad 隔离环境完整捕获 冻结基线与候选快照 共 4 次实际 Web profile 预传输请求；工具列表（4/4）、人格设定、用户输入与系统指令 100% 字节级一致，双向复现与候选比对均为 true。', evidence: '../.local-workspace/issue-remediation-20261024/W7-parity-evidence.json' },
-    { id: 'W8', title: '插件信任与安装', status: 'verified', label: '本地限定通过', detail: '本地 HTTPS、签名目录、真实安装/禁用/卸载已验证；不等于生产目录验收。', evidence: '../.local-workspace/worktree-preservation/architecture-consolidation/.local-workspace/architecture-consolidation/reports/W8-local-catalog-proof.txt' },
-    { id: 'W9', title: '最终质量与功能汇总', status: 'issue', label: '未确认整体通过', detail: '保留候选 contracts failed 与 consumers observation-deadline；局部通过不能拼接成全绿。', evidence: '../.local-workspace/worktree-preservation/architecture-consolidation/.local-workspace/architecture-consolidation/candidate-verification-1792733517/execution-results.json' },
-    { id: 'W10', title: '精确产物与安装', status: 'partial', label: '新包 smoke 通过 · 安装待验', detail: '新 unsigned 包的 packaged runtime smoke 与远端哈希核验通过；精确安装、完整升级与交互桌面验收未做。旧包验收不能替代新包。' },
-    { id: 'W11', title: '主线集成与交付收口', status: 'partial', label: '已合并 · 0.21.2预发布', detail: '会话归属与侧栏展开调整已合并推送至 master，pre-push 门禁通过；5800 打包与 runtime smoke 通过（退出码 0）；GitHub Release desktop-v0.21.2-unsigned 已发布且资产哈希一致。' },
-    { id: 'W12', title: '上游基线合并与后续差距', status: 'partial', label: '合并完成 · 351提交按产品价值筛选', detail: 'master合并包含aba7f481a8；本仓吸收基线f3803c9697 / DSH 0.2.2-alpha.2，对照实时upstream/master ce7073d512，相差351提交。未自动吸收后续提交；T29按Windows支持、自研与必要集成筛选。产品桌面验收及持久化记录门另行跟踪。' }
+  "stages": [
+    {
+      "id": "U0",
+      "title": "基线与协作面",
+      "status": "verified",
+      "label": "协议与看板已切 v2",
+      "detail": "战略锚点、状态机、打包门禁已写入协议；旧 W 战役仅作历史。"
+    },
+    {
+      "id": "U1",
+      "title": "自研保绿",
+      "status": "partial",
+      "label": "吸收前先做聚焦冒烟",
+      "detail": "Subagent/Anima/Automation/Browser/账户 UI 等历史证据在；KEEP-SMOKE 在任何上游吸收前复验，作为绿基线。"
+    },
+    {
+      "id": "U2",
+      "title": "插件化债务",
+      "status": "pending",
+      "label": "待盘点",
+      "detail": "先 PLUGIN-INVENTORY，再按侵入面分批迁出核心。"
+    },
+    {
+      "id": "U3",
+      "title": "上游差距清单",
+      "status": "verified",
+      "label": "已勾选",
+      "detail": "用户 2026-11-03 已勾选：采纳 10、延后 1（会话修复）、拒绝 10；Agent Teams 排除。决定见 upstreamDecisions。"
+    },
+    {
+      "id": "U4",
+      "title": "定向吸收",
+      "status": "pending",
+      "label": "采纳卡已开 · 等第 1 波绿",
+      "detail": "已为采纳区域开 UP-ADOPT-* 卡（2a 低风险 → 2b UI 防覆盖 → 2c Forge/SDK → 2d Schedule 直接替换自研（删除已授权））；前置只读卡 PREFLIGHT / UI-SELFDEV-AUDIT / SCHEDULE-REPLACE-PLAN 可先做。"
+    },
+    {
+      "id": "U5",
+      "title": "Windows 交付",
+      "status": "partial",
+      "label": "排在吸收与回归之后",
+      "detail": "SHIP-CANDIDATE 在已选上游吸收 + KEEP 回归绿之后做；含安装/运行时/更新；签名发布另授权。"
+    }
   ],
-  tasks: [
-    { id: 'AUX-AGENT-TEAM-REMOVAL', title: '移除未采用的实验性 Agent Teams', category: '维护范围', priority: 'P1', status: 'verified', label: 'deb7cd4733 已随主线整合保留', detail: '四个Agent Teams专属包及入口/依赖/专属验收已删除；普通Subagent保留。原删除批次聚焦309过/5跳及profile启动证据保留；本次不重复检查，不将这些结果当作新master桌面验收。', acceptance: '后续定向吸收上游时不重新引入Agent Teams；普通Subagent继续由T17验收。', source: '../docs/upgrade-guide/v0.2.0-rc.3/agent-team-removal/guide.zh.md' },
-    { id: 'AUX-UPSTREAM-SCOPE-AUDIT-20261101', title: '重定界上游遗留失败与产品阻塞', category: '维护范围', priority: 'P0', status: 'verified', label: '维护责任已定界 · 排除不等于通过', detail: '历史44项失败已分类，3项上游语料与2项未采用场景不独立清零；SDK cwd修复c024dd3b2d已进入合并，主树合并整备由已完成T17e记录。未决普通子代理与自研采用路径继续由T17/T17b跟踪；ACP上游必红推断已撤回。', acceptance: '责任边界与必要产品验收并存；不以历史全量失败清零阻断合并，不将未知项自动豁免。', source: '交接文档.md' },
-    { id: 'BUG-SDK-PERSONA-CWD', title: '产品 Persona 后缀引用未注册的 cwd 变量', category: '产品缺陷', priority: 'P0', status: 'verified', label: 'c024dd3b2d 已合入主线 · 历史23项回归通过', detail: '同步分支修复working-directory组装中缺失的cwd变量，保留显式变量优先、目录变更/恢复、Session header不变；历史23/23回归、包级tsc及2目录真实源码冒烟通过。修复已随aba7f481a8合入master；未重录四个历史SDK场景，不将合并当成当前桌面模型请求通过。', acceptance: '修复与已有证据保留；新master实际采用路径继续由T17/T28验证，不重复修复或空置Persona后缀。', source: '../.local-workspace/sdk-cwd/verification.json' },
-    { id: 'AUX-WINDOWS-ONLY-CUTOVER', title: 'Windows-only 维护范围', category: '维护范围', priority: 'P1', status: 'partial', label: '主线已合并 · 剩余入口待核查', detail: '本地合并移除多项 Linux/macOS 专属路径与 Agent Teams 活动入口；隔离构建和聚焦测试通过。远端 SSH、Git Bash 等 Windows 必要能力保留；尚未证明所有残留均已穷尽。', acceptance: '只核查影响产品的非 Windows 宿主入口，保留通用依赖与远端 POSIX 能力；不以原样上游测试清零为目标。', source: '../docs/upgrade-guide/v0.2.0-rc.3/windows-platform-exclusive/guide.zh.md' },
-    { id: 'AUX-WINDOWS-PRIMARY-RUNTIME-SMOKE', title: 'Windows Desktop 原生窗口与项目隔离验收', category: '实机验收', priority: 'P0', status: 'verified', label: '隔离桌面验收通过 · 期间发现自研UI回归并转出', detail: '2026-11-03本地交互桌面完成两轮隔离启动：窗口枚举与PrintWindow按窗捕获可用（全屏CopyFromScreen因Rover会话1处于断开而不可用，CUA broker未注入，均只影响取证方式不影响验收）。独立home/userData/project/agents-home全隔离；第二轮经home/profiles/desktop/cordis.patch.yml（Host实际profile目录，argv[3]）将默认工作区定向到隔离home/Documents。真实~/.asterhub与~/.agents两轮零触碰（基线+复核比对）。首轮patch注错位置（dev project目录非读取路径）向dev工作区写入1个session文件（Documents/deepseek-harness下session-441a917c，dev自生成目录非用户数据），如实记录不回删。原生窗口截图、Host Session创建、workspace.json落点、进程命令行均有证据；登录后流程与打包安装不在本卡范围。', acceptance: '窗口/Session/隔离证据保留在证据目录；登录后UI与真实模型续聊归T28；打包安装归T22。', source: '../.local-workspace/primary-runtime-smoke-20261102' },
-    { id: 'AUX-UI-RESTORE-20261103', title: '恢复合并丢失的自研账户与精选目录UI', category: '产品缺陷', priority: 'P0', status: 'verified', label: '已合并推送 51e00e5754 · 设置精选布局已恢复 · 登录后数据流待真实账号验收', detail: '用户实测报告界面变回DSH官方样子。取证定位四项回归：①ui-settings-account被上游0.2.2重写为官方Platform账户（remote.account），sub2api客户端零消费者，更多菜单登录=官方登录；②Token/积分用量页（UsageSection）整文件删除替换为Platform外链，账户section改官方credential-stored才注册；③精选目录随插件页重写丢失，替代品ui-plugin-market（发现tab）未挂载任何profile，而Host侧curatedCatalog remote与签名验签完好（plugin-manager/src/index.ts:1272、默认xapi.fans目录:525）；④合并冲突解决误删asterhub-product-web的ui-settings-account挂载行。恢复全部走插件路径不动上游源码：新建ui-asterhub-account（登录门/余额充值/Token用量section，移植自8ad09c5993，41项测试通过，section id asterhub-account/asterhub-usage不撞官方id）与ui-asterhub-catalog（精选插件tab，消费curatedCatalog/installCuratedBundle，方法面零差异）；asterhub-product-web patch挂载两者并禁用官方账户UI；根tsconfig.client.json补引用。合并master c7e1c593d5后pre-push类型门曾拦下测试桩缺GlobalStandardProps四成员（useRemoteAccess/useWorkspaces/useResource/useWorkspaceAccess），补齐671d7de6ea后类型门5/5通过并推送，ls-remote核对远端=671d7de6ea；分支已删。隔离桌面实测：AsterHub登录门渲染、已安装|精选插件双tab渲染且旧文案逐字出现（未登录时显示暂时不可用属预期）、官方登录入口消失、workspace隔离落点正确。机制结论：界面=bundle挂载+ctx.slots插槽自注册，机制完好。【2026-11-03补】用户指明旧布局策略=设置内也有精选安装入口、不要原版内置插件页：ui-asterhub-catalog 增注册 settings.plugins.tab（同组件同Remote），patch 禁用上游 ui-settings-plugin-inventory 清单页签，ui-settings-plugins locale 八语言恢复旧精选文案（必要fork增量，导航重回「精选插件」），隔离桌面实测设置页=AsterHub精选插件+两张卡片+安装按钮（51e00e5754）。【同日续】用户确认模型只走自有账号体系：patch 禁用 ui-settings-models（上游模型设置页+DeepSeek官方登录引导一并下架；输入框模型选择 ui-model-selection 不受影响，实测账户模型菜单9项完好），设置导航现为 通用设置|账户|精选插件|用量统计|Agent预设|记忆系统（e00f1aec06）。', acceptance: '登录后余额/用量/精选安装的数据流验收可用T28测试账号或用户真实账号；official账户UI去留已按禁用落地，回退改一行patch即可。', source: '../.local-workspace/primary-runtime-smoke-20261102' },
-    { id: 'AUX-WINDOWS-BUILD-ORPHANS', title: '清理 Windows 收口遗漏的构建测试残留', category: '构建与环境', priority: 'P1', status: 'verified', label: '聚焦修复通过 · 合并构建证据见 T17e', detail: 'Windows收口遗漏的runner测试与CI矩阵修正已有e2e 2/2、矩阵1/1证据。随后隔离合并树构建7/7及类型门5/5由T17e记录，不再将T17e列作待合并阻塞；主树受保护漂移继续保留。', acceptance: '原修复证据有效；不将隔离构建当成脏主树或Desktop UI全绿。', source: '../packages/subprocess/subprocess-local/tests/spawn-runner-built.e2e.ts' },
-    { id: 'T01', title: '修正设置中的当前版本来源', category: '产品缺陷', priority: 'P1', status: 'verified', label: '已修复验证', detail: '已在 dshDesktop 载体注入真实 Electron 安装版本（app.getVersion()）；ui-settings-general 的 CurrentVersionRow 优先使用注入的 installedVersion（如 0.21.0），通用 Web 保持回退至 DSH_CLIENT_VERSION；组件与注入测试通过。', acceptance: '设置、关于与更新元数据对应实际安装版本；不写死 0.21.0，不批量改内部包版本。', source: '../.worktrees/architecture-consolidation/packages/client/ui-settings-general/src/client/CurrentVersionRow.tsx' },
-    { id: 'T02', title: '确定旧凭据安全迁移方案', category: '升级与数据', priority: 'P0', status: 'verified', label: '已修复验证', detail: '已在 credentials-local 实现安全受控迁移（migratePlaintext 仅 Desktop 开启）：启动时在文件锁下重读并预校验平铺及 version-1 明文，加密并解密验证无误后原子写入 0600 密文；写入或加密失败完全保留原明文；热重载保持拒绝明文降级。单元与回归测试 72 passed。', acceptance: '保留凭据值，失败不覆盖原文件；真实安装包启动仍需打包后在测试机验证。', source: '../.worktrees/architecture-consolidation/packages/credentials/credentials-local/src/index.ts' },
-    { id: 'T03', title: '补验精确安装包完整登录与模型流程', category: '实机验收', priority: 'P0', status: 'verified', label: '用户实测通过', detail: '用户本轮明确反馈 T03 手动测试通过，完整登录与模型流程已按用户实测关闭；此前网络阻塞不再作为本项当前状态。正在构建的新候选仍需独立验收。', acceptance: '用户已确认本项手动测试通过；不将该结果自动迁移到后续新候选。' },
-    { id: 'T04', title: '区分认证错误的实际失败环节', category: '产品缺陷', priority: 'P1', status: 'verified', label: '已修复验证', detail: 'account-sub2api 已区分连接超时、连接拒绝、权限拒绝、上游故障、非法响应及本地凭据保存失败；检查不泄露密码/Token/堆栈，定向回归5通过。', acceptance: '保留安全的阶段诊断，不盲目增加重试、超时或中继；T03用户已确认登录与模型流程通过，新候选另验。', source: '../.worktrees/architecture-consolidation/packages/account/account-sub2api/src/index.ts' },
-    { id: 'T05', title: '补齐 W7 有效基线对照证据', category: '证据收口', priority: 'P0', status: 'verified', label: '已修复验证', detail: '已在 Nomad 隔离环境通过实际 Web profile 完整获取基线与候选快照 共 4 次预传输请求；工具（4/4）、人格、输入及指令在归一化控制 CWD 与检出根后 100% 字节级一致，双向复现一致性均为 true。', acceptance: '提供准确 baseline/candidate 输入、实际比较输出、重复运行及请求范围；验证通过。', source: '../.local-workspace/issue-remediation-20261024/W7-parity-evidence.json' },
-    { id: 'T06', title: '核实 W9 最终候选门禁终态', category: '证据收口', priority: 'P0', status: 'verified', label: '归档快照门禁已核实', detail: '归档快照 c2db13de7e01 的保留日志：consumer-tests 340文件通过/4跳过，12034用例通过/44跳过；desktop-paths 4文件33用例通过；oxlint 5256文件90规则0警告0错误。result.json记录Host构建及上述阶段exit 0；远端alloc查询现返回404，证据依赖保留日志与结果文件。后续定时任务等新修复不自动继承该快照的通过结论；历史failed/observation-deadline保留。', acceptance: '保留旧失败与新快照证据的区别；新源码修改执行相关检查，不将归档结果称为当前树全门禁通过。', source: '../.local-workspace/worktree-preservation/architecture-consolidation/.local-workspace/architecture-consolidation/t06-lint-consumers-20261024/result.json' },
-    { id: 'T07', title: '定位真实 Electron OS 加密 e2e 退出', category: '验证故障', priority: 'P1', status: 'verified', label: '环境根因已定性', detail: '已定性 0x80000003 退出码：底层崩溃签名为 base/message_loop/message_pump_win.cc:98 Failed to create message-only Window: 拒绝访问(0x5)，系由于本机云电脑管控/进程守卫拦截 Chromium 默认沙盒窗口创建所致，非产品与 credential-storage 缺陷；在禁用沙盒或 Node 模式下 Electron 正常运行。符合“区分运行环境与产品失败”验收标准。', acceptance: '区分运行环境与产品失败；不能由本机失败推断用户网络故障。定性证据已落盘。', source: '项目现状/journal/T07.jsonl' },
-    { id: 'T08', title: '核对对外品牌与 crash 应用名', category: '产品缺陷', priority: 'P2', status: 'verified', label: '已修复验证', detail: '在 apps/desktop/src/main.ts 的 persistCrashReport 中显式指定 product name 为 AsterHub，不再输出内部包名 @deepseek-ai/dsh-desktop，且不破坏 Electron 默认 userData 路径计算。', acceptance: '对外显示 AsterHub，保留内部协议标识和第三方版权。', source: '../.worktrees/architecture-consolidation/apps/desktop/src/main.ts' },
-    { id: 'T09', title: '完成其余真实桌面能力验收', category: '实机验收', priority: 'P1', status: 'verified', label: '实机闭环通过（沙箱留手测）', detail: '5800真实Desktop定时任务自动化17项全部通过（每日/每周创建、时区自适应、行高展开、暂停恢复、运行历史跳转、正文、activeRunId清零、点击删除、持久化墓碑及重载后列表为空，前后Main/client SHA不变）。环境登录与重启持久化闭环通过（job 1793030513814，alloc 5f31647a）：UI登录、凭据OS加密保存、正常退出重启后凭据解密恢复、模型选择绑定及合成Key认证发信两轮均pass（exit 0）。host-process cipher底层错误已暴露保护。Shell沙箱按用户要求留手测。', acceptance: '实际UI与持久化断言均需成立；自动化及环境登录重启均已闭环验证。Shell沙箱留用户手测。不合并、不打包、不push。', source: '../.local-workspace/t09-evidence/T09-current-desktop-acceptance.json', submissionIds: ['ISSUE-52404fd4-1209-40a5-bed3-58ea70557ebe', 'ISSUE-6d30ac7f-7c20-4514-82dd-a909a1570b45', 'ISSUE-4de7c244-60cc-4d02-8ca3-ee51f1c2f746'] },
-    { id: 'T10', title: '核对 GenOffice 候选与精选目录版本', category: '分发与发布', priority: 'P1', status: 'verified', label: '资质已核验', detail: '已核对目录 revision 5 (.1 / dsh 0.1.6-alpha.2，2026-10-29 到期) 与源码 .2 (dsh 0.2.0-rc.3 / session-root.mjs 动态项目解析 3/3 passed)；通过 run-local-catalog-proof.mjs 验证本地 HTTPS 签名目录安装与防篡改机制（exit 0）。确认发版前使用离线私钥签名发布 revision 6 且不覆盖既有 .1。', acceptance: '按正规签名/revision 更新且不覆盖既有 .1；线上版本和兼容性已建立核对依据。', source: '../.local-workspace/issue-remediation-20261024/T10-catalog-qualification.json' },
-    { id: 'T11', title: '确认重构集成、签名及发布条件', category: '分发与发布', priority: 'P0', status: 'verified', label: '条件已明确', detail: '已全面梳理重构分支合并门禁 (oxlint/140列/双语对齐/typecheck)、SafeNet eToken 硬件 EV 代码签名环境规范及正式发布上线条件；形成严格的发布前置检查清单。恪守未获用户明确授权不得自动合并、推送、签名或发布的红线。', acceptance: '所有必要验收收口并获得用户授权后再合并/签名/发布，检查清单已收录。', source: '../.local-workspace/issue-remediation-20261024/T11-release-readiness-checklist.json' },
-    { id: 'T12', title: '排查 browser_open 失败及空标签列表', category: '手动测试', priority: 'P0', status: 'verified', label: 'Desktop打开/列举/关闭闭环通过', detail: '5800真实Desktop开发构建，未主动展开侧栏，Host工具经Main guard与Renderer/Guest打开本地页，tabs确认tab2/gen1，close同一target，最终tabs为0。目录选择使用临时dialog替身，模型/认证为合成上游；未替换浏览器IPC/guard，main.js前后原SHA256一致。本轮不验证在线模型或原生目录对话框。', acceptance: '73bb8b0a运行T12各结果断言通过；组合job因T16沙箱阻塞exit1，不称整job通过。精确安装包不自动继承开发构建结论。', source: '../packages/client/ui-sidebar-browser/src/client/electron/automation.ts' },
-    { id: 'T13', title: '核实 Computer Use 能力的实现与集成', category: '手动测试', priority: '待定', status: 'verified', label: '已装配集成', detail: '已在 packages/bundle/asterhub-desktop-native/cordis.patch.yml 与 package.json 中完整挂载 @deepseek-ai/dsh-computer-use 与 @deepseek-ai/dsh-experimental-computer-use-cua-driver-native，并更新 pnpm-lock.yaml；桌面已拥有原生 Computer Use provider。', acceptance: '已完成官方 provider 依赖与 patch 装配，通过依赖锁文件校验。实机调用需依赖系统级无障碍/输入授权。', source: '../.worktrees/architecture-consolidation/packages/bundle/asterhub-desktop-native/cordis.patch.yml' },
-    { id: 'T14', title: '排查手动打开浏览器后的无效标签列表结果', category: '手动测试', priority: '待定', status: 'verified', label: '已修复验证', detail: '原表 #3：apps/desktop/src/browser-guests.ts 中过滤未完成导航的 about:blank# 访客，仅将合规 HTTP(S) 标签页纳入 Session 清单，满足下游 wire validator；回归测试通过（12 passed）。', acceptance: '验证列表读取的实际返回及调用链；协议与列表过滤已修复。', source: '../.worktrees/architecture-consolidation/apps/desktop/src/browser-guests.ts' },
-    { id: 'T15', title: '排查 Anima 反思读取与记忆保存失败', category: '手动测试', priority: 'P0', status: 'verified', label: '真实反思闭环通过 · 调度未测', detail: '5800真实Desktop全链路通过（最终run作业asterhub-t15-real-reflection-5800-1793055800046，alloc ff3deb95，构建1038包含当前修复源码）：采纳synthetic-project后活动会话正确绑定项目（BUG-ADOPT修复端到端实证）；新会话cwd=synthetic-project；模型真实读t15-fixture.txt并正确解答规则题；独立verifier对持久会话日志（132事件/64帧）判定全绿——实际read与预期内容关联、memory save written关联runId、非空反思关联runId、review/reflection请求=sub2api/gemini-3.8-flash-tiered。边界：daily/weekly调度未测；反思UI计数观察false但verifier以durable事件为准；验收流程修复三个基建缺陷（阶段包装器误报、readyHoldHours未赋值、种子布局过时）并暴露导入路径拒绝扁平布局的产品问题（见T16台账，合并门需决策）。', acceptance: '先核对最新失败会话与模型路由，禁止重复投递或把旧e1bc的反思证据记作本次通过；只认实际read、memory UID、同模型8192预算review/reflection及非空反思。daily/weekly调度未测，凭据不入日志、文档或Git。', source: '../.local-workspace/t15-online-acceptance/_1038c-verify-result.json' },
-    { id: 'T16', title: '旧双账本修复线（已由 T28 取代）', category: '项目历史', priority: 'P2', status: 'verified', label: '修复线终止 · 产品验收转 T28', detail: '用户已叫停双账本补丁路线；本卡仅表示不再执行该路线，不表示便携会话或旧数据兼容已验收。', acceptance: '后续实际产品验收只在 T28 记录；旧测试数据无需迁移。', source: '交接文档.md' },
-    { id: 'T28', title: '便携工作区采纳与 Desktop 续聊', category: '项目历史', priority: 'P0', status: 'partial', label: '真实界面验收核心项通过（2026-11-03）· 采纳UI手动验收与目录重签待用户', detail: '【2026-11-03真实桌面验收】隔离home+测试账号（用户2026-10-31授权）经CDP只读+定点交互完成：登录门/登录成功、账户数据流（余额18085.60/充值/兑换/退出）、Token用量页（累计5,122请求/638M tok/3014.40积分三窗口）、精选目录链路、续聊探针（选v4-flash-0731-oc后真实模型回复ok，12秒44.7K tok，会话头token统计实时渲染）、三轮启动持久化（强杀后登录态/工作区/会话/回复全存活）。采纳流程Desktop-UI驱动受CDP工具限制未走通（crumb编辑区contenteditable+目录树无法被CDP完成目录选择，file input仅接受文件）——非产品缺陷，profile级采纳已有t28-profile-import-smoke两连绿历史证据。精选目录"暂时不可用"的根因=xapi.fans目录信封2026-10-29T06:33已过期（签名验证通过、时间窗校验正确拒绝）；用户确认旧离线私钥已随服务器迁移丢失，信任链已重建（d0a595c862）：新Ed25519密钥对（私钥在C:/Users/Rover/.asterhub-catalog/，仓库与服务器之外）、新公钥进Desktop Host、目录重签revision 7（90天窗口，GenOffice 0.11.0-asterhub.2+Aster IM 4.32.0）并已部署新服务器，隔离桌面实测精选页渲染两张真实卡片与安装按钮。', acceptance: '剩余一项用户动作：①Desktop内手动完成一次添加工作区采纳（原生picker 30秒操作）验证分组；精选目录已全链恢复无需再验；已安装客户端需等下次安装包发版才带新公钥（当前装着的0.21.x仍拒新目录）。续聊/持久化/账户/用量已按真实桌面关闭，不再重验。', source: '../.local-workspace/primary-runtime-smoke-20261102' },
-    { id: 'BUG-ADOPT-WORKSPACE-SWITCH', title: '采纳工作区后活动会话未切换到被采纳项目', category: '产品缺陷', priority: 'P1', status: 'verified', label: 'Desktop端到端已验证', detail: 'connectWorkspace在工作区快照尚未刷新时订阅等待新工作区出现。真实Desktop T15重投证明采纳synthetic-project后活动会话切换成功并在该项目创建会话；聚焦回归2文件74项通过。', acceptance: '采纳已有项目后活动会话绑定项目路径；工作区列表刷新竞态有回归覆盖。', source: '../.worktrees/architecture-consolidation/packages/client/ui-workspace/src/client/navigation.ts' },
-    { id: 'BUG-IMPORT-FLAT-LAYOUT-REJECT', title: '导入路径拒绝扁平布局历史会话且无迁移', category: '产品缺陷', priority: 'P1', status: 'verified', label: '迁移实现与回归通过', detail: 'list()遇到无法解读的扁平会话文件时，按header的Session id、cwd与格式版本迁移到projectKey(cwd)/encodedId/规范generation路径；open()的root编码检查和定向查找复用迁移。迁移不改日志字节；格式/压缩不匹配、header身份不一致或目标冲突时拒绝且不覆盖源。并发list对同一源路径共享single-flight。JSONL persistence全套191项回归通过。', acceptance: '未压缩与Zstandard扁平会话在list/open路径迁移成功；目标冲突保留源与目标；日志字节不变。', source: '../.worktrees/architecture-consolidation/packages/session/session-persistence-jsonl/src/index.ts' },
-    { id: 'BUG-ANIMA-CONTINUED-IMPORT-SAVE', title: '续聊导入历史会话时 Anima 记忆保存按旧 cwd 解析失败', category: '产品缺陷', priority: 'P2', status: 'verified', label: 'SessionCwd动态解析已验证', detail: 'Anima capture facts使用ctx.sessionCwd.resolve(session.header)派生项目身份；未注册Session仍使用header cwd，resolver错误显式传播。聚焦capture/host 9项测试通过，相关包typecheck与lint通过。', acceptance: '续聊导入且旧cwd不存在时，Anima capture身份使用当前注册项目路径；未注册归属仍使用header cwd。', source: '../.worktrees/architecture-consolidation/packages/context/anima-memory/src/host.ts' },
-    { id: 'BUG-SCHEDULE-BACKEND', title: '调度执行 teardown flush 抛错导致假阳性与挂起风险', category: '产品缺陷', priority: 'P1', status: 'verified', label: 'RED/GREEN 核验通过', detail: '【2026-10-31 OMP-SCHEDBACKEND 核验收口】修复内容：execution.ts 错误 teardown 的 sessions.flush 加 try/catch 保护（warn 降级不逃逸），handle 创建（ctx.agents.create/resume）移入 try 内先于可失败步骤，settle 后 activeRunId 清空；execution.spec.ts 删除冗余 toBeDefined 假阳性断言，新增 D1 teardown 回归（flush 两次尝试断言 + terminal blocked/execution_failed + activeRunId 清空）。核验：修复前源码（f3d2a68544）catch 块 flush 抛错直接逃逸 → 新回归必然 RED；当前树（147214305b，未改动）GREEN 实测 execution.spec 3/3、整包 asterhub-automation 31/31。smoke 证据 .local-workspace/t09-evidence/T09-schedule-backend-smoke-evidence.json（D1 inject/D2 创建/D1 成功执行/D1 错误 teardown/D7 detach 全过，ALL_CHECKS_PASSED，controlled-fixture 离线）。注意：smoke 脚本 schedule-backend-smoke.mjs 引用 .worktrees/architecture-consolidation 旧路径已失效（该树仅剩 node_modules），主树有等价测试文件，重跑需改路径。', acceptance: 'teardown flush 抛错时 executeRun 返回终态不挂起；handle 创建后进入 catch 路径有回归覆盖；activeRunId 释放有断言。', source: 'packages/schedule/asterhub-automation/src/execution.ts' },
-    { id: 'BUG-SCHEDULE-DELETE-UIFILTER', title: '软删除任务行在正常筛选与刷新后仍暴露于列表', category: '产品缺陷', priority: 'P1', status: 'verified', label: '组件回归+真实Web验证通过', detail: '【2026-10-31 OMP-SCHEDDELFILTER 核验收口】修复内容：AutomationPanel rows 过滤器对 deletedAt!==null 一律剔除（All/enabled/paused 三态均覆盖），selected detail 仅在 deletedAt===null 时保留，catalog 刷新后软删除行驱逐选中详情。核验：①组件回归 AutomationPanel.client.spec（hides deleted records in every normal filter and drops a selected detail after catalog refresh，含三态过滤+选中驱逐断言）当前树 30/30 全绿；②真实 Web 验证（run-1792834920307，源 Web profile+合成 DSH_HOME+fixture 账号）：deleteWithoutConfirmation rowVisibleInList=false 且 persistedDeletedAt 落盘、reload 后 rowVisibleInList=false、commitFailure（gateway/internal）后任务保留且并发暂停可见、51 条 RPC 全 ok；③源码 AutomationPanel.tsx:148/167 过滤逻辑在位。注意：list RPC 响应仍含软删除行（listResponseIncludesSoftDeleted=true）——这是有意设计（UI 过滤而非服务端过滤），D3 后端未动。', acceptance: '软删除行在 All/enabled/paused 全部筛选与刷新/重载后不出现；选中详情在行被软删除后驱逐；删除失败有 alert 且任务保留。', source: 'packages/client/ui-asterhub-automation/src/client/AutomationPanel.tsx' },
-    { id: 'BUG-BROWSER-CLIENT-TYPES', title: '浏览器客户端类型修正后缺最终 TypeScript 集成验证', category: '产品缺陷', priority: 'P2', status: 'verified', label: '最终集成验证通过', detail: '【2026-10-31 OMP-BROWSERCT 核验收口】v5 改动（desktop cancel listener 绑定保留可空语义、SessionId/TabId 品牌化 fixture、SidebarRightOpenTab 完整对象）已提交主树（db0e54c20f→147214305b）。最终验证：ui-sidebar-browser 包 tsc 0 错（包内全部文件含 v5 触及的 index.ts 与 apply.client.spec.ts）；13 测试文件 56/56 全绿（含 apply.client.spec）。跨包 33 错全部位于 packages/api/session-controller src（modelSelection 投影等）——主树 stale pre-f380 状态，属 T17 域（f380 修复已在 upstream-sync-021 工作树完成待合并），与 v5 改动无关（v5 仅触及 ui-sidebar-browser 两文件）。原 architecture-consolidation 工作树改动已由主树提交保全。', acceptance: 'v5 触及文件通过包级 typecheck 与聚焦测试；跨包错误经定界确认为既有 stale 状态而非 v5 引入。', source: 'packages/client/ui-sidebar-browser/src/client/index.ts' },
-    { id: 'BUG-AUTOMATION-MOCK-TYPES', title: 'Automation 测试 mock 缺类型契约（SessionListState/选择器）', category: '产品缺陷', priority: 'P2', status: 'verified', label: '包级全绿 · 已提交', detail: '【2026-10-31 OMP-MOCKTYPES 核验收口】修复内容：新增 src/client/session-navigation.ts（openAutomationSession 助手，打开未缓存历史会话前先刷新会话列表，刷新后仍缺则报错）并从 index 导出；测试 mock 改为 SessionListState 支撑的 ObservableSnapshot（含 subscribe 实现）与类型化 useSessions 选择器。核验：改动已提交主树（147214305b）；ui-asterhub-automation 包 tsc 0 错、5 测试文件 30/30 全绿；README.md/README.zh.md 均已覆盖"先刷新再打开历史会话"行为（35 行/43 行）。root strict client tsc 曾被用户叫停，未重跑；跨包 session-controller stale 错误属 T17 域。', acceptance: '测试 mock 满足类型契约不依赖 client-store；包级 typecheck 与聚焦测试通过；行为有双语文档。', source: 'packages/client/ui-asterhub-automation/src/client/session-navigation.ts' },
-    { id: 'T17', title: '普通 Subagent 与工具执行产品集成总验收', category: '产品主线', priority: 'P0', status: 'partial', label: '实现合并 · 聚合子代理产品路径验收', detail: 'master已包含executor与普通Subagent集成及陈旧list-agents挂载移除。T17b负责保留世代重放/必要信号；本卡只收口Windows采用路径的端到端生命周期，不重复运行子卡测试或原样上游全套快照。Agent Teams已排除，普通Subagent仍是产品能力。', acceptance: '在Windows实际产品组合验证创建/激活、双向消息与结果、终止及资源释放；记录具体profile和证据；不修改已提交Session世代。', source: '交接文档.md' },
-    { id: 'T17a', title: 'Windows 留存失败责任索引（44 项）', category: '上游同步', priority: 'P1', status: 'partial', label: '已重定界 · 非全量清零门禁', detail: '【2026-11-01 静态审查；非本轮重跑】ade1c7611f 的 snap-win11.log 保留 44 failed/125 passed/20 skipped。逐项清单见交接：3 项上游语料不一致、2 项未采用实验场景（team-targets、Stagehand）、7 项自研补丁/特色差异（其中 cwd 变量错误4项）、11 项普通子代理/调度运行信号根因未定、16 项 Windows 夹具/路径信号、5 项环境差异信号（仅 pty-tools 有既有豁免）。分类不等于测试通过；不能把全部21个Windows相关信号自动豁免。原 ACP 三项“上游自身必红”说法撤回：实际涉及 mode120000 链接在 Windows 的检出形态。普通 list_agents/send_message/继承场景不是 Agent Teams，保留。', acceptance: '按自研/必要修改与产品采用路径筛选聚焦验收；未知根因保留；不 refresh 未查明行为，不要求全量上游快照清零。', source: '../.local-workspace/t17a/snap-win11.log' },
-    { id: 'T17b', title: '普通 Subagent 世代保全与必要集成信号', category: '上游同步', priority: 'P0', status: 'partial', label: '六项真实重放通过 · 三项历史差异未解决', detail: '按世代保留修复后，Windows SDK真实重放6/6、corpus规则3/3通过；修复提交daf44b89c7以c024dd3b2d为父，已提交v4录制保持原始字节。list-agents、depth-two、parallel仍有旧录制差异；不覆盖历史或宣称通过。两个未装配的dsh-sdk专属provider场景不单独验收。', acceptance: '保留上述原始录制与6/6、3/3证据；仅当差异影响Windows实际采用的普通Subagent路径时追加有针对性的产品验收；不要求旧夹具全绿。', source: '../.local-workspace/t17b/generation-preserving-replay.log' },
-    { id: 'T17c', title: 'ACP 上游独立验收债登记', category: '上游同步', priority: 'P2', status: 'verified', label: '责任登记完成 · 非产品独立阻塞 · 非测试通过', detail: '【2026-11-01】撤销旧“1可修+3上游必红”结论。最新留存 ACP 6 项=cancel/escalation-approved/fs-escalation-approved/fs-same-mode 提示词链接差异4、image-compaction ACL技能注入1、fixtures末尾换行断言1。上游链接为 mode120000，Windows 检出文本可能产生假信号，不能据此断言官方运行必红；旧 UNKNOWN_TOOL 不属于最新6项，不重复追修。ACP 专用协议与原样上游夹具不单独验收/修补；若自研调用确实受影响，转必要集成聚焦处理。', acceptance: '本卡按维护责任登记关闭，不代表ACP测试通过或产品移除了ACP；不再以专用夹具清零阻断桌面产品。', source: '../.local-workspace/t17a/snap-win11.log' },
-    { id: 'T17d', title: '四规则清理波次 2（fork 独有包）', category: '上游同步', priority: 'P2', status: 'partial', label: '非阻塞维护计划 · 不扩大为上游重构', detail: '【2026-11-01】保留用户四规则方向，仅针对自研/必要修改：anima-memory、asterhub-automation、subagent-in-process-driver、web-search-searxng 等。没有已证实的产品失败时，不因“尚未逐包清理”阻断合并与验收；不重构原样上游包，不为风格清理默认重跑全量测试。发现真实自研缺陷另记具体证据与聚焦验收。', acceptance: '按实际变更检查四规则，清理不改变产品行为；未执行的可选维护不记已完成。', source: '../AGENTS.md' },
-    { id: 'T17e', title: '主树一致性与合并整备', category: '上游同步', priority: 'P1', status: 'verified', label: '本地合并完成 · 隔离树构建验证', detail: 'master 快进到 aba7f481a8；合并工作树构建 7/7、类型门 5/5、提交钩子通过。六个原有工作文件及备份哈希核对一致；主树保留这些未提交内容，未将隔离树检查冒称主树脏工作区全绿。', acceptance: '合并与文件保全完成；可视产品验收和历史记录门由其他卡跟进。', source: '交接文档.md' },
-    { id: 'T18', title: 'V4 会话与 Anima 项目本地持久化端到端验收', category: '产品主线', priority: 'P0', status: 'verified', label: '真实 Desktop 保存/强杀重开/自动召回/检索通过 · 已推送 cbf2b34b01', detail: '【2026-11-03 OMP-T18-RESUME 实测】实际 Desktop tool/result 先复现 turn projection is not registered，再复现 ownership 路径大小写拒绝。修复投影句柄按稳定 Context 保存/读取/释放，Host 使用 realpath(dataRoot) 建立 ownership scope，保留原安全校验。完整回归10文件33项通过；真实Neo4j重启e2e 1/1、Anima包类型和改动源码lint通过。Desktop使用同提交43d3e6cea9的detached树7/7一致构建加两处Anima修复（主树受保护UI漂移未覆盖）：anima_save seq181返回written；强杀Desktop+Host+Java并重开后，自动召回seq197和anima_search结果seq205均返回同一memory UID fbf7007e-0ebe-5af5-a2a9-e81bcd24e435、revision f8a05e0c-c3ad-5197-a82e-475cd92ac287及原测试内容。开发启动器同时修复hoist残桩误识别，原ZIP fixture逐字节迁到新包路径，未改Session历史世代。证据desktop-acceptance.json及desktop-restored.png。', acceptance: '当前Windows Desktop实际profile的agent/pre-step→AnimaHost.search、anima_save真实图写入、强杀后Session/图恢复与同项目检索均通过；既有V4持久化证据保留。修复已随 cbf2b34b01 推送 origin/master；未打包/发布；不将本项延伸为未测试的daily/weekly反思或精确安装包验收。', source: '../.local-workspace/t18-fix-20261103/desktop-acceptance.json' },
-    { id: 'BUG-ASTERHUB-BRAND-20261103', title: '主界面统一AsterHub名称与自有图标', category: '产品缺陷', priority: 'P1', status: 'verified', label: 'Desktop亮暗/展开折叠/欢迎区实测通过 · 已推送 a75d746689', detail: '【2026-11-03 OMP-BRAND】用户要求所有产品名称与图标使用AsterHub自有品牌。产品Web层禁用ui-brand-official，挂载ui-asterhub-brand原子占用sidebar mark/name及conversation hero mark；复用既有AsterHubMark并恢复公开导出，不修改上游generic fallback。默认/local/official构建title统一AsterHub；favicon-dark及4个安装PNG改用既有星形资产，生成器随源图修正且重跑字节稳定。5个完整测试文件40项通过、完整图标e2e3/3（本机Chrome）、一致验收树构建7/7、聚焦类型/lint及4对文档配对通过。真实Desktop展开侧栏24px/欢迎区34px星标、标题、favicon、亮暗可见性通过；Windows折叠按原设计隐藏侧栏品牌，欢迎区仍为自有星标，无DSH品牌残留。全仓文案/Loader/README门仍有未触及文件的既有失败，不冒称全仓绿。', acceptance: '产品Desktop实际DOM与截图核对自有名称/图标、独立渐变ID、亮暗主题及展开折叠；覆盖构建元数据、dev消费者、打包消费者完整文件，保留内部DSH包名/协议与版权。已随 a75d746689 推送 origin/master；未打包发布。', source: '../.local-workspace/t18-fix-20261103/brand/desktop-acceptance.json' },
-    { id: 'T19', title: '会话投影自研消费者集成验收', category: '产品主线', priority: 'P1', status: 'verified', label: '三消费者聚焦121例全绿 · 注册/更新/释放覆盖完毕', detail: '【2026-11-03 OMP-T19-DRIFT】漂移处置完成：registration-reader/type-test 对 HEAD 实跑 11/11 通过并随 2c00678f1e 吸收（readerFor 绑定读取器生命周期与类型契约）；ui-attachment tsconfig 漂移恢复 HEAD（源码仍值导入 dsh-util-file-drag，删除引用会破坏 leaf 构建，属旧中间态残留）；hub.ts、SubagentHeaderLineage.tsx 与 HEAD 逐字一致（CRLF 幻影），session-controller types.ts 已被并行会话吸收。主树自 b10420d4bd..2c00678f1e 起可直接通过 pre-push 类型门。【2026-11-03 Claude-T19-CONSUMERS 实跑验收】三消费者聚焦测试 121例/11文件 全绿：automation（sessionProjections 仅为 required inject 顺序依赖，runtime.spec 挂真实 registry 驱动并释放）；user-approval（projection.spec 10例：注册顺序、长历史折叠、service.dispose 后 checkpoint 无 approvalState、注册失败激活失败、retained reader 零重放）；session-controller list.ts（sessionListMetadata/imageLimits 注册、模型选择更新、每 generation 替换 cut、dispose 注册从 tail 页消失、gateway fiber 卸载移除单元、host-only 不外泄）。无产品代码改动，纯验收。', acceptance: '三消费者注册/更新/释放生命周期聚焦测试已实跑记录（automation 5 spec + approval projection.spec + session-controller 4 spec + registry registration-reader 11例），证据见 .local-workspace/t19-consumers-20261103/evidence.json。', source: '../.local-workspace/t19-consumers-20261103/evidence.json' },
-    { id: 'T20', title: 'Windows 安装包 Node/Python/Office 运行时验收', category: '产品交付', priority: 'P1', status: 'partial', label: '开发运行时通过 · 精确候选验收归 T22', detail: 'Windows开发运行时已有Office文档往返、pip check与Node 24证据；安装包形态尚未验证。此卡只作为T22的运行时子验收，不单独触发重复构建。', acceptance: '随T22同一精确Windows候选验证内置Node/Python/Office启动、文档往返与依赖检查；记录退出码与产物SHA，不以开发模式替代安装包。', source: '交接文档.md' },
-    { id: 'T21', title: '模型目录与搜索接入核验', category: '产品主线', priority: 'P1', status: 'partial', label: '当前产品请求链路待定向核对', detail: 'DSH f380基线已吸收，不能按旧差异表推断当前缺口。与T29a共用模型请求证据：核当前目录模型、冻结provider路由、可用凭据，以及产品实际装配的DeepSeek Search/Fetch。', acceptance: '记录Windows产品组合中当前模型目录/所选provider/实际装配搜索路径的运行结果；只将已证实的采用路径缺陷转为修复，不单独追上游API。', source: '交接文档.md' },
-    { id: 'T22', title: 'Windows 安装、运行时与更新通道交付验收', category: '产品交付', priority: 'P1', status: 'partial', label: '构建已实现 · 精确候选验收待做', detail: '汇总Windows打包、独立产品/DSH版本、安装器、更新通道及T20运行时范围；T23仅作合并记录。开发构建与旧0.21.2/0.21.3留档不能替代最终精确候选。先完成P0必要修复与产品集成，再依授权构建/验收；签名、推送、发布分别需要明确授权。', acceptance: '对获授权的精确Windows候选验证安装/卸载、升级策略与通道、产品版本显示及T20运行时；报告产物SHA与失败范围。不执行未授权的外部发布。', source: '../apps/desktop/README.md' },
-    { id: 'T23', title: '更新通道验收（并入 T22）', category: '产品交付', priority: 'P2', status: 'verified', label: '执行与验收已并入 T22', detail: '本卡只记录任务合并，不代表更新或发布已验证；具体验收和证据由T22承担。', acceptance: 'T22覆盖通道、发布确认和独立产品版本。', source: '../apps/desktop/src/update-channel.ts' },
-    { id: 'T24', title: '必要 Cordis/vendor 改动与自研插件生命周期验收', category: '产品主线', priority: 'P1', status: 'partial', label: '合并已完成 · 本地补丁与自研路径定向核对', detail: '代码及插件组合已合并；版本升级不是自动目标。与T29c共用同一Cordis/vendor差异审查，避免重复盘点。', acceptance: '核对当前vendor基线、本地补丁及实际采用的自研插件配置/热更新/生命周期；只对必要改动运行聚焦验证并记录结论，不升级原样上游包。', source: '../vendor/README.md' },
-    { id: 'PERSISTENCE-RECORD-GATES', title: 'V4 运行时与已提交历史记录静态门冲突定界', category: '构建与环境', priority: 'P0', status: 'verified', label: '八门全绿 · 2026-11-03经授权方案A实施完毕', detail: '2026-11-03经用户授权（「清掉。」）执行方案A：上游逐字复制41个schema快照（8 change+26 release+4 v0-v3+3 README），删除historical-formats/v4.*（V4为当前写入器）、finalized/v5.json（V5已回退且status=4）与3个V5时代无配对记录的孤儿快照；3个fork旧格式快照转换验证后按同规则删除；重新生成catalog并刷新两处生成事实区（fork prose未动，52个release机器块经核实与上游逐字节一致）。新增记录2026-11-03-remove-team-persistence-events闭合8项差异：4个team根移除+4个source联合类型丢失team-message/anima变体（Agent Teams移除与V5回归的持久化补记）。八门全绿：changes(61根21记录)/formats(v0-v4)/releases(26记录25转换)/catalog--check/session-format-catalog--check/doc-refs(4692文件)/双语配对/v3-vocabulary(58名@pin b3961e06a0fb)。job/*与user-questions/canceled为过期生成物误导，现链与当前源一致无需记录。', acceptance: '保留已提交世代（release档案md原样保留）；V4历史目录与旧inventory按授权处理完毕；修复后各受影响完整静态门全数通过。不得以文档配对通过代替持久化门通过。', source: '../.local-workspace/persistence-gate-20261102/evidence.json' },
-    { id: 'T29', title: '筛选 DSH 上游 351 提交中的产品必要差距', category: '上游同步', priority: 'P1', status: 'partial', label: '实时基线已固定 · 子卡按产品价值收敛', detail: '本仓吸收基线f3803c9697（dsh 0.2.2-alpha.2）；实时upstream/master为ce7073d512，同版本号仍相差351提交。子卡仅针对Windows支持及实际采用能力，先核当前等价实现，再决定吸收/排除/延期；T29a与T21共用模型路径，T29b与已有Automation对照，T29c与T24共用vendor审查。不上游全量同步，不按提交数追平。', acceptance: '每个适用候选记录上游提交、本地对应实现/缺口及吸收或排除理由；只有证实产品需要时才新开实现任务并附聚焦验收。', source: '交接文档.md' },
-    { id: 'T29a', title: '评估模型请求头与失败诊断的产品必要性', category: '上游同步', priority: 'P1', status: 'partial', label: '候选变更已定位 · 本地行为需对照', detail: '上游a05a0d02fa允许插件准备pi-ai请求头，d54475a681改进覆盖优先级与安全失败诊断；这些提交缺席不证明本地缺陷。', acceptance: '对照当前模型provider的请求头来源/优先级、凭据边界与失败诊断；只对实际产品差异决定是否吸收，验证凭据不出现在错误输出中。', source: '../packages/llm/llm-pi-ai/' },
-    { id: 'T29b', title: '评估上游 standalone schedule 与自研 Automation 边界', category: '上游同步', priority: 'P1', status: 'partial', label: '候选能力待组合核对 · 不重复装配', detail: '上游341ea6eea4整合standalone tasks与既有WebUI；本仓已有自研Automation/调度，是否存在兼容缺口须根据实际装配与产品任务行为判定。', acceptance: '只核对采用的Windows Desktop/WebUI挂载、持久化和运行冲突；记录已覆盖行为及真实缺口，不引入第二套调度或独立上游测试债。', source: '../apps/desktop/src/project-manager.ts' },
-    { id: 'T29c', title: '评估 Cordis rc.11 与自研插件兼容必要性', category: '上游同步', priority: 'P2', status: 'partial', label: '上游候选版本已定位 · 合并不自动升级', detail: '上游a91a827546升级Cordis Core至4.0.0-rc.11；须与本仓vendor来源及必要补丁一起审查，并与T24共用证据，非自动升级任务。', acceptance: '列明本地Core版本/补丁差异及采用插件可能受影响的API、配置和生命周期；仅在出现必要产品缺口时依vendoring流程升级和定向验证。', source: '../vendor/README.md' },
-    { id: 'T29d', title: '评估 apply_patch 与受控文件变更的采用价值', category: '上游同步', priority: 'P2', status: 'pending', label: '可选候选 · 尚未决定引入', detail: '上游92e8a6f604、9a4e78b469、743d4602e9涉及补丁解析、整补丁预检及受控移动/删除；本地tool-fs仍以read/write/edit/diff为主，UI存在apply_patch分类不代表后端已采用。先完成T17现有工具主线验收；不因上游新增工具自动扩大产品范围。', acceptance: '对照当前tool-fs、fs provider及Windows/远端SSH能力，记录是否需采用、默认开关与兼容代价；若采用另立实现验收，覆盖预检拒绝、部分执行结果和Windows路径，不擅自承诺整批原子回滚。', source: '../packages/fs/tool-fs/src/index.ts' },
-    { id: 'T29e', title: '评估 Windows 桌面菜单与文件操作差距', category: '上游同步', priority: 'P2', status: 'pending', label: '体验候选 · 不作为当前交付阻塞', detail: '上游411f157983、39da0914a9、4108e7fd03、bc705e0ff1涉及扩展菜单、文件定位、Desktop另存为与开发者工具菜单；只筛Windows实际需要的交互。等原生窗口冒烟可验后，与现有产品菜单及文件动作逐项比较，不同步移动端/macOS抽屉。', acceptance: '逐项记已包含/缺口/不采用；仅选择明确产品收益的菜单或文件动作进入实现任务，使用真实Windows窗口和fixture文件验收，不默认搬入整套UI重构。', source: '../apps/desktop/src/' },
-    { id: 'T29f', title: '评估插件安装失败诊断的产品缺口', category: '上游同步', priority: 'P2', status: 'pending', label: '诊断候选 · 与 T24 共用插件证据', detail: '上游9005026ea6、90838b790a、e2025b16b3保留安装步骤/日志并限制失败结论；需对照本仓plugin-manager与已采用安装入口。不是自动升级Cordis的理由，不依赖T29c先升级才能评估。', acceptance: '使用受控失败安装对照实际产品弹窗、步骤与日志保留；只对证实缺失的诊断决定是否吸收，确保无凭据泄露，不改变成功安装语义。', source: '../packages/boot/plugin-manager/' },
-    { id: 'T25', title: '评估 RBAC remote access 与 whenAccess 注册条件', category: '上游同步', priority: 'P2', status: 'verified', label: '评估完成 · 跟随上游', detail: '评估结论（2026-10-28）：跟随上游。上游新增 packages/api/remote-access（d7bd68ee7a）：按 resource kind × role 策略表在 gateway 解析前门控；插件注册新增 whenAccess/whenResourceAccess 条件（09899f3a0f）；连接层删除 OperatorPeer 与隐式 fallback，调用路径必须显式 Peer（2026-10-12 peer-principal 决策）。asterhub 插件若需被非 owner Peer 使用必须声明资源与策略；同步任何触及 gateway/connection 的代码时该重构为必答项，随全量合并落地后为 asterhub 插件补资源与策略声明。', acceptance: '评估结论已落盘（跟随）；插件资源与策略声明补齐随合并后实施。', source: 'upstream/master:packages/api/remote-access' },
-    { id: 'T26', title: '决策实验性能力与静态门策略', category: '上游同步', priority: 'P2', status: 'verified', label: '决策完成 · 跟随上游', detail: '决策记录（2026-10-28，用户拍板）：(2) experimental 重组与 verify-product-use 门——跟随上游门，fork 自有包补分类条目；(3) i18n 八语言门——跟随，fork 自有 UI 文案补语言 metadata；(4) web_fetch 私网放开——跟随上游（改走代理策略与系统解析器）。(1) 实验性插件生态（Claude Code Mods、Git Worktrees、思考翻译、开发者工具包、action-cards 缝 9980af2d48）随合并带入但默认不启用，按产品需要逐个评估开启。', acceptance: '四项决策已记录；静态门与 i18n 策略随合并执行，自有包补条目。', source: 'upstream/master:scripts/product-package-policy.ts' },
-    { id: 'T27', title: '自有特色功能扩展化改造（长期维护路线）', category: '上游同步', priority: 'P2', status: 'partial', label: '路线已定 · 按实际核心侵入逐项推进', detail: '用户方向：降低核心差异，将自研特色放入兼容DSH的独立包、bundle patch或配置层。T28已承担便携工作区路线；Desktop品牌/签名/版本属于产品载体。其余workspace、账户等差异须在每次相关改动或同步时以真实源码判断，旧224冲突清单仅作历史参考，不证明当前差异。', acceptance: '每个实际触及的自研核心差异都有当前源码证据、独立化收益和必要测试；不为达到核心文件数量目标重构原样上游代码，不阻断无关产品交付。', source: '.local-workspace/upstream-sync-021/merge-conflicts-source-only.txt' },
+  "tasks": [
+    {
+      "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
+      "blocksRelease": false,
+      "pluginizable": "n/a",
+      "upstreamRelation": "none",
+      "waitOn": null,
+      "id": "WAIT-AUTH-COMMIT",
+      "title": "授权提交未落盘改动（持久化门/相关）",
+      "track": "WAIT",
+      "category": "等待授权",
+      "priority": "P0",
+      "status": "ready",
+      "label": "已授权提交 · 仅本地，不推送",
+      "detail": "用户于 2026-11-04 明确授权本任务范围内所有本地提交；不包含 push、发布或签名。待提交范围先按当前 git status 核实，禁止夹带无关或未审阅改动。",
+      "acceptance": "用户明确授权后，指定 Agent 提交并按需推送；看板改为 verified。"
+    },
+    {
+      "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
+      "blocksRelease": false,
+      "pluginizable": "n/a",
+      "upstreamRelation": "none",
+      "waitOn": "user",
+      "id": "WAIT-DESKTOP-ADOPT",
+      "title": "Desktop 内手动完成一次工作区采纳",
+      "track": "WAIT",
+      "category": "等待用户",
+      "priority": "P1",
+      "status": "waiting_user",
+      "label": "原生 picker 手测",
+      "detail": "原 T28 剩余用户动作：添加工作区采纳验证分组。续聊/账户等已按真实桌面关闭。",
+      "acceptance": "用户在 Desktop 完成一次采纳并反馈结果；记录后 verified。"
+    },
+    {
+      "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
+      "blocksRelease": false,
+      "pluginizable": "n/a",
+      "upstreamRelation": "none",
+      "waitOn": null,
+      "id": "WAIT-LOGIN-DATAFLOW",
+      "title": "真实账号验收余额/用量/精选数据流",
+      "track": "WAIT",
+      "category": "等待用户",
+      "priority": "P1",
+      "status": "verified",
+      "label": "用户确认通过 · 2026-11-04",
+      "detail": "用户明确确认：本卡要求的余额、用量、精选数据流此前已测试通过、无问题。本会话未重新登录或验证，也未记录凭据；依据用户确认关闭。",
+      "acceptance": "用户确认通过或开出缺陷卡；本卡 verified。"
+    },
+    {
+      "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
+      "blocksRelease": false,
+      "pluginizable": "partial",
+      "upstreamRelation": "none",
+      "waitOn": null,
+      "id": "KEEP-SMOKE-WINDOWS",
+      "title": "当前 master 自研采用路径聚焦冒烟",
+      "track": "KEEP",
+      "category": "保绿",
+      "priority": "P0",
+      "status": "verified",
+      "label": "第 1 波 · 吸收前绿基线",
+      "detail": "在任何上游吸收前，于当前 master 的 Windows Desktop/Web 采用路径冒烟：Anima/项目本地、Automation、Browser 开闭标签、账户/精选 UI 入口（Subagent 见 KEEP-SUBAGENT-PATH）。不重跑上游全量。可拆 AUX 子认领但文件面不重叠。 注意：Automation（自研定时任务）冒烟结果要单独留档，作为 UP-ADOPT-SCHEDULE 替换后的能力对照基线。 2026-11-04 冒烟完成：8/9 路径绿基线成立（证据 .local-workspace/keep-smoke-windows/keep-smoke-summary.md）；Browser 页面加载失败开 BUG-KSW-BROWSER-LOAD-FAIL（blocksRelease）；Automation 列表失败已留档 automation-baseline.md，随替换线消化。 2026-11-04 浏览器路径经 BUG-KSW-BROWSER-LOAD-FAIL 修复后复验转绿（fixture+公网均挂载渲染），9/9 全绿基线成立，本卡 verified。",
+      "acceptance": "每条采用路径有退出码/截图或日志证据，形成「吸收前绿基线」；失败开 BUG-* 且按需 blocksRelease。"
+    },
+    {
+      "source": "KEEP-SMOKE-WINDOWS 冒烟发现（2026-11-04）",
+      "blocksRelease": true,
+      "pluginizable": "n/a",
+      "upstreamRelation": "none",
+      "waitOn": null,
+      "id": "BUG-KSW-BROWSER-LOAD-FAIL",
+      "title": "内置浏览器页面加载失败（吸收前基线冒烟发现）",
+      "track": "KEEP",
+      "category": "保绿",
+      "priority": "P0",
+      "status": "verified",
+      "label": "吸收前基线 · 浏览器加载修复",
+      "detail": "隔离桌面（master 057651c810）内置浏览器对任意 URL 报「页面加载失败」：回环 fixture（curl 200）与 example.com（直连 200）均失败，帧不挂载（webview/canvas=0），排除网络/代理因素。页签机制正常（导航建签、可聚焦、可关闭）。入口要求已挂载会话面（先真实会话再开浏览器），否则抛 sidebarRight: no session surface——验收顺序问题非缺陷。证据 .local-workspace/keep-smoke-windows/evidence-5*.log 与 keep-smoke-summary.md。历史对照：T12 开发构建同类闭环曾通过（2026-10-24），当前 master 失败属回归信号；根因定位与修复在本卡进行。 2026-11-04 已修复：根因=自研离屏镜像提交 a98c04b75e 复用 attached 标志（lease.guest 亦被镜像占用），will-attach-webview 门对每个新 lease 恒拒绝→可见 webview guest 秒销毁报无 code 加载失败（2026-10-08 起可见路径从未工作，T12 只验自动化面故未暴露）。修复=browser-guests.ts 分离 webviewGuest 字段（acquire 置 attached:false、did-attach 绑 webviewGuest 不动镜像、可见 guest 销毁走完整 release 清镜像、open 请求归属检查改 webviewGuest），镜像面 navigate/dispatchInput/tabs 语义不变。回归=新增 will-attach 放行+镜像保留+二次 attach 拒绝测试，browser-automation-tabs.spec.ts 11/11；实机=隔离桌面 fixture 与 example.com 均 webview 挂载标题渲染、开/关标签闭环通过（evidence-7/8b）。源码已随 712c27e813 提交 master（未推送）。",
+      "acceptance": "隔离桌面同一 fixture 加载成功（帧挂载、页面标题渲染）；开/关标签闭环复验通过；KEEP-SMOKE-WINDOWS 浏览器路径转绿后本卡 verified。"
+    },
+    {
+      "source": "KEEP-SUBAGENT-PATH 快照取证（2026-11-04）",
+      "blocksRelease": false,
+      "pluginizable": "n/a",
+      "upstreamRelation": "none",
+      "waitOn": null,
+      "id": "BUG-SESSION-V5-FIXTURE-LOAD",
+      "title": "v5 快照夹具高于目录 currentVersion:4 装载失败（11 个 headless subagent 场景同根因）",
+      "track": "KEEP",
+      "category": "保绿",
+      "priority": "P1",
+      "status": "ready",
+      "label": "吸收前基线 · 会话世代一致性",
+      "detail": "24125f64de（2026-10-19 Session V5）重录 v5 夹具；3ecb694ba4（2026-10-29 checkpoint）按 2026-10-28 用户决策回退 generated.ts 为 currentVersion:4，master writer=SESSION_FORMAT_VERSION=4——产品 writer/reader 自洽于 V4 无数据风险（故 blocksRelease=false），但 11 个 headless subagent 快照场景装载 v5 夹具即抛 SessionFormatUnsupportedMigrationError（v1 夹具对照通过，纯夹具世代问题非运行时逻辑）。涉及已提交世代与持久化类型决策，修复须按 reviewing-persistence-type-changes 流程并经用户决定（目录加 v5 读取/按流程重录夹具/其它），不得擅自改世代常量。证据 .local-workspace/keep-subagent-path/evidence.md。",
+      "acceptance": "11 个 headless subagent 场景快照重放按用户选定方案恢复装载；处置不违反「已提交世代不可动/不覆盖」铁律并留存类型确认。"
+    },
+    {
+      "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
+      "blocksRelease": false,
+      "pluginizable": "partial",
+      "upstreamRelation": "none",
+      "waitOn": null,
+      "id": "KEEP-SUBAGENT-PATH",
+      "title": "普通 Subagent 产品采用路径确认",
+      "track": "KEEP",
+      "category": "保绿",
+      "priority": "P0",
+      "status": "verified",
+      "label": "第 1 波 · 吸收前绿基线",
+      "detail": "只验 Windows 实际创建/激活/双向消息/终止释放；保留世代，不要求旧夹具全绿。上游 Subagent 命名/ID 重构与 Teams 纠缠，本卡证据用于判断是否会被上游动到。 2026-11-04 完成：22 场景快照绿 5/败 17（headless 11 败同根因=v5 夹具 vs 目录 v4，开 BUG-SESSION-V5-FIXTURE-LOAD；sdk 6 败 D 类）+44 文件 831/834 单测（2 败=fork/spawn-in-process capability spec 未同步 src，D 类）。四动作面：创建/激活/双向消息有产品路径绿证据（sdk continuable/inheritance/activation-limit/send-message + headless subagent-multi），终止释放有单测绿证据（dispose/quiescence/abort、parked-wait、external-lifecycle）。证据 .local-workspace/keep-subagent-path/evidence.md。",
+      "acceptance": "采用路径证据齐全；父级 KEEP 冒烟可引用本卡证据。"
+    },
+    {
+      "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
+      "blocksRelease": false,
+      "pluginizable": "partial",
+      "upstreamRelation": "none",
+      "waitOn": null,
+      "id": "KEEP-POST-ADOPT",
+      "title": "上游吸收后自研采用路径回归",
+      "track": "KEEP",
+      "category": "保绿",
+      "priority": "P1",
+      "status": "pending",
+      "label": "第 3 波 · 依赖 UP-ADOPT-*",
+      "detail": "第 2 波全部 UP-ADOPT-*（WINDOWS-CLI、LLM-DEEPSEEK、DESKTOP-SETTINGS、PLUGIN-DIAG、SANDBOX、MENU-FILES、SIDEBAR-UI 三子卡、FORGE、SDK-PYTHON、SCHEDULE）完成后，按 KEEP-SMOKE-WINDOWS / KEEP-SUBAGENT-PATH 同一清单回归，对比吸收前绿基线；Automation 项改为验证上游 Schedule 是否覆盖 UP-SCHEDULE-REPLACE-PLAN 认定的必须能力；额外确认未带入 subagent/team/vendor 改动。",
+      "acceptance": "与吸收前基线逐项对比无回退；回退项开 BUG-* 并 blocksRelease=true。",
+      "dependsOn": [
+        "UP-ADOPT-SCHEDULE",
+        "UP-ADOPT-SIDEBAR-UI",
+        "UP-ADOPT-SDK-PYTHON"
+      ]
+    },
+    {
+      "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
+      "blocksRelease": false,
+      "pluginizable": "yes",
+      "upstreamRelation": "none",
+      "waitOn": null,
+      "id": "PLUGIN-INVENTORY",
+      "title": "盘点自研核心侵入与可插件缝",
+      "track": "PLUGIN",
+      "category": "插件化",
+      "priority": "P1",
+      "status": "verified",
+      "label": "第 1 波 · 产出侵入清单",
+      "detail": "对照 cordis/插件缝与 asterhub-product 等，列出仍在核心/vendor 的自研差异：收益、风险、可否插件化。附带标出与上游差距清单冲突的区域（如 schedule/asterhub-automation、session V4、llm-pi-ai、vendor/cordis），供用户勾选参考。 2026-11-04 完成：30 行侵入清单入库 .local-workspace/plugin-inventory/inventory.md，批次 1 建议 4 项待用户勾选。",
+      "acceptance": "清单入库（交接文档一节或 .local-workspace 报告）：路径、类型、pluginizable=yes|partial|no、建议批次。"
+    },
+    {
+      "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
+      "blocksRelease": false,
+      "pluginizable": "yes",
+      "upstreamRelation": "none",
+      "waitOn": null,
+      "id": "PLUGIN-BATCH-1",
+      "title": "第一批高收益侵入迁出为插件",
+      "track": "PLUGIN",
+      "category": "插件化",
+      "priority": "P1",
+      "status": "pending",
+      "label": "依赖清单",
+      "detail": "按 PLUGIN-INVENTORY 优先级迁第一批；不阻断无关交付。",
+      "acceptance": "迁出有测试/冒烟；核心面减少有 diff 证据。"
+    },
+    {
+      "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
+      "blocksRelease": false,
+      "pluginizable": "n/a",
+      "upstreamRelation": "evaluate",
+      "waitOn": null,
+      "id": "UP-USER-DECIDE",
+      "title": "用户勾选要跟的上游区域（1017 提交）",
+      "track": "UP",
+      "category": "上游同步",
+      "priority": "P0",
+      "status": "verified",
+      "label": "已完成 · 2026-11-03 用户已勾选",
+      "detail": "用户已在「上游差距清单.html」导出决定并贴回（2026-11-03）：采纳 10（WINDOWS-CLI、LLM-DEEPSEEK、DESKTOP-SETTINGS、PLUGIN-DIAG、MENU-FILES、SIDEBAR-UI、FORGE、SCHEDULE、SANDBOX、SDK-PYTHON），延后 1（SESSION-FIX），拒绝 10（WEB-SEARCH、MCP-MANAGER、UPDATE-CHANNELS、AUTH-COOKIE、CORDIS-VENDOR、SUBAGENT-REFACTOR、APPLY-PATCH、PTC、CUA-MACOS、MOBILE）。决定已写回 upstreamDecisions；拒绝项不建卡。因 Subagent 重构被拒，所有采纳卡禁止带入 packages/subagent/*；因 Cordis 被拒，Schedule/Forge/SDK 先查可裁剪性。",
+      "acceptance": "已满足：决定写回 upstreamDecisions；采纳项已生成 UP-ADOPT-* 卡（及前置评估卡），延后项生成 UP-SESSION-FIX-REVIEW。"
+    },
+    {
+      "source": "用户决定 2026-11-03（上游差距清单导出）",
+      "pluginizable": "n/a",
+      "waitOn": null,
+      "track": "UP",
+      "category": "上游同步",
+      "blocksRelease": false,
+      "upstreamRelation": "evaluate",
+      "id": "UP-PREFLIGHT-PICKLIST",
+      "title": "采纳区域提交挑选清单 + Cordis/Subagent 可裁剪性预检（只读）",
+      "priority": "P0",
+      "status": "verified",
+      "label": "第 1 波 · 只读准备 · 已完成 2026-11-04（实勘+汇总+核验入库）",
+      "wave": "1",
+      "detail": "对 10 个采纳区域逐个列出 f3803c9697..upstream/master 中要挑的提交、要剔除的提交与理由。粗扫（2026-11-03，按路径 git log --no-merges）显示路径日志混入大量无关提交：WINDOWS-CLI 46 条（18 条触及 team、12 条触及 subagent）、SIDEBAR-UI 63 条（12 subagent / 21 cordis 相关）、SDK-PYTHON 29 条（10 subagent）、SCHEDULE 11 条（含 b3d4933f39 subagent 归属重构、a91a827546 Cordis Core rc.11 升级）。重点：Schedule、Forge、SDK 是否用到只在新 Cordis（4.0.6-alpha.2 / Loader rc.8 / Include 1.1.1）里才有的 API；包级依赖未变（均为 @deepseek-ai/cordis workspace:~），但需查源码调用。只读，不改代码。",
+      "acceptance": "每个采纳区域一张表：提交 / 处理（挑·剔·手工移植）/ 理由 / 是否触及 subagent·team·vendor；Schedule、Forge、SDK 的 Cordis 依赖结论（可裁剪 / 需手工移植 / 不可裁剪→回报用户）。报告进 .local-workspace，并在各 UP-ADOPT 卡 checkpoint 引用。"
+    },
+    {
+      "source": "用户决定 2026-11-03（上游差距清单导出）",
+      "pluginizable": "partial",
+      "waitOn": null,
+      "track": "UP",
+      "category": "上游同步",
+      "blocksRelease": false,
+      "upstreamRelation": "evaluate",
+      "id": "UP-UI-SELFDEV-AUDIT",
+      "title": "自研 UI 改动清单（MENU-FILES / SIDEBAR-UI 合并前置，只读）",
+      "priority": "P1",
+      "status": "verified",
+      "label": "第 1 波 · 只读准备 · 已完成 2026-11-04",
+      "wave": "1",
+      "detail": "用户要求「防覆盖自研部分」。列出我方在 packages/client/ui-primitives（约 15–18 文件）、ui-sidebar（含 SidebarRoot.tsx）、ui-context-menu、ui-file-actions、ui-sidebar-files、ui-workspace、apps/desktop/src 菜单相关、ui-asterhub-brand / ui-asterhub-account / ui-asterhub-catalog / ui-asterhub-automation 挂载点上的自研改动：文件、行为、对应上游提交冲突点、保护方式（保留我方 / 合并两边 / 改成插件槽）。清单：.local-workspace/up-ui-selfdev-audit/inventory.md。可复用 PLUGIN-INVENTORY 的侵入清单，但本卡只管 UI 面。只读，不改代码。",
+      "acceptance": "清单入库并被 UP-ADOPT-MENU-FILES、UP-ADOPT-SIDEBAR-* 引用；每条自研改动有一条可执行回归检查（截图点位或单测名）。"
+    },
+    {
+      "source": "用户决定 2026-11-03（上游差距清单导出）",
+      "pluginizable": "partial",
+      "waitOn": null,
+      "track": "UP",
+      "category": "上游同步",
+      "blocksRelease": true,
+      "upstreamRelation": "evaluate",
+      "id": "UP-SCHEDULE-REPLACE-PLAN",
+      "title": "自研 Automation 与上游 Schedule 功能对照清单（只读）",
+      "priority": "P0",
+      "status": "verified",
+      "label": "第 1 波 · 只读 · Schedule 替换前置",
+      "wave": "1",
+      "detail": "用户决定（2026-11-03）：Schedule 直接用上游替换自研；自研有不少 BUG，功能一致时优先上游；开发阶段无实际用户，不做数据迁移。 本卡只做功能对照，不写数据迁移方案。对照对象：自研 packages/schedule/asterhub-automation（store/runtime/execution/timing/tools/schema）+ packages/client/ui-asterhub-automation（AutomationPanel/Form/Detail/Toast/会话导航/目录源）与我方对 packages/schedule/schedule 的改动（invariant.ts 等），对比上游 8bd073392e 的 packages/schedule/schedule、tool-schedule、ui-schedule（含 #7567 创建编辑合一、#7702 预填、#7704 定时控件、#6189 独立任务接入 WebUI）。逐项列：能力 / 自研有无 / 上游有无 / 差异说明。另列集成点清单（apps/desktop-host quit-inspection.ts / update-tasks.ts、packages/api/remotes remote-events.ts、account-sub2api types.ts、asterhub-desktop-native bundle、cordis-client-runner slot-catalog.ts、apps/desktop/scripts/prepare-dsh.ts、tsconfig.* / type-equiv manifest / pnpm-lock），标注替换后各自改接上游或直接删除。功能一致的一律以上游为准。只读，不改代码。 2026-11-04 完成：33 行能力对照+11 条待勾选+10 集成点入库 .local-workspace/up-schedule-replace-plan/compare.md，UP-ADOPT-SCHEDULE 待用户对②清单勾选后解锁。 用户已决定（2026-11-04）：全面替换、②清单全放弃，决策记录见 compare.md 用户决定节。",
+      "acceptance": "对照清单入库：① 双方都有的能力（以上游为准，不保留自研实现）；② 上游缺、自研有的能力逐条列出，交用户逐条选「保留（以插件补到上游 Schedule 上）/ 放弃」；③ 集成点改接/删除清单。用户对②给出选择后 UP-ADOPT-SCHEDULE 解锁。"
+    },
+    {
+      "source": "用户决定 2026-11-03（上游差距清单导出）",
+      "pluginizable": "n/a",
+      "waitOn": null,
+      "track": "UP",
+      "category": "上游同步",
+      "blocksRelease": false,
+      "upstreamRelation": "defer",
+      "id": "UP-SESSION-FIX-REVIEW",
+      "title": "会话投影/稳定性修复冲突风险审查（延后项，不吸收）",
+      "priority": "P2",
+      "status": "verified",
+      "label": "延后 · 只评估",
+      "wave": "1",
+      "detail": "用户决定：延后，审查具体冲突风险后再决定。候选提交：eb1713f856（#7754 检查点保留已释放单元）、945006c984（#7587 每事件一帧投影）、#7606、#7570、dffda31215 / e51cb3959f（format v0 迁移）。剔除：b3d4933f39、ad7c75c798、575606a356 等 subagent 相关，db1a3b3754（Cordis Include 1.1.1）。我方 packages/session 与上游同文件 ≥20 个（session-log-deepseek、session-title-llm、session-format-v0-to-v1 等），V4 持久化改动多。只读，不改代码。 2026-11-04 评估完成（.local-workspace/up-session-fix-review/review.md）：6 提交 4 组——#7570 对（dffda31215+e51cb3959f，v0 读取放宽，冲突中，不触格式常量/世代，第一梯队）；#7587（945006c984，一帧投影，冲突中低，客户端 wire 变化需重录快照，第二梯队）；#7754（eb1713f856，硬依赖 #7587 祖先不可独立移植，整链再议）；#7606 对（1abd104891+b46adf9f64 实落 llm-pi-ai，冲突高，暂缓）。吸收约 9-11 处手工合并点、两梯队约 5 处；采纳 #7570/#7754 须重跑持久化八门。推荐采纳 3 提交；改选权在用户。",
+      "acceptance": "逐提交给出：修复价值、与 V4 持久化/持久化八门的冲突点、可独立移植与否、建议（采纳哪几个 / 继续延后）；结论回写看板并由用户在差距清单改选。"
+    },
+    {
+      "source": "用户决定 2026-11-03（上游差距清单导出）",
+      "pluginizable": "n/a",
+      "waitOn": null,
+      "track": "UP",
+      "category": "上游同步",
+      "blocksRelease": false,
+      "upstreamRelation": "absorb",
+      "id": "UP-ADOPT-WINDOWS-CLI",
+      "title": "吸收：Windows CLI 入口与短路径修复",
+      "priority": "P1",
+      "status": "pending",
+      "label": "第 2 波 a · 低风险",
+      "wave": "2a",
+      "dependsOn": [
+        "KEEP-SMOKE-WINDOWS",
+        "UP-PREFLIGHT-PICKLIST"
+      ],
+      "detail": "范围：apps/cli、apps/desktop/config。挑：8632896e84（Windows CLI 别名入口解析）、cbe275fe99、5b6366f5bf、b2a7d2ec95、#7709。路径日志共 46 条，其中 team 测试夹具（agent-team-headless.e2e.ts、team-snapshot.patch.yml 等）、0487699ae4 / 0eb1bb52e2（subagent/team）、6719b28294（MCP）、3859913c68（搜索）一律剔除。我方 apps/cli 与上游同文件 7 个（package.json、web/headless 测试）。共同约束：① 只从 f3803c9697..upstream/master 区间按列出的提交挑选，cherry-pick -x 或手工移植，在独立分支/工作树做，合入 master 与推送需用户授权；② 不带入 packages/subagent/*、ui-subagent（Subagent 重构已拒绝）；③ 不带入 packages/team / ui-agent-team / teamwork（Agent Teams 排除）；④ 不带入 vendor/*、tool-cordis、cordis-client-runner 底座升级（Cordis 已拒绝），依赖新 Cordis API 时停下记录并回 UP-PREFLIGHT-PICKLIST；⑤ 不 cherry-pick 发布提交 1c78d475bf；⑥ 其它已拒绝区域（搜索设置 3859913c68、MCP 6719b28294、更新通道、apply_patch、手机布局、CUA、PTC）的提交一律剔除。 预检报告（2026-11-04）：区域实勘清单 .local-workspace/up-preflight-picklist/A-windows-cli-sandbox.md；汇总、用户决策点与核验差异见同目录 SUMMARY.md，实勘与本卡预填清单不一致时以实勘报告为准。",
+      "acceptance": "Windows 上用 8.3 短路径与别名入口启动 CLI 成功（命令+输出证据）；apps/cli 相关测试绿。共同验收：git diff --stat 证明未触及 packages/subagent/*、packages/team、ui-agent-team、vendor/*；相关包单测绿；Windows Desktop 采用路径冒烟与 KEEP-SMOKE-WINDOWS 绿基线对比无回退；checkpoint 写明实际吸收的提交列表与剔除理由。"
+    },
+    {
+      "source": "用户决定 2026-11-03（上游差距清单导出）",
+      "pluginizable": "n/a",
+      "waitOn": null,
+      "track": "UP",
+      "category": "上游同步",
+      "blocksRelease": false,
+      "upstreamRelation": "absorb",
+      "id": "UP-ADOPT-LLM-DEEPSEEK",
+      "title": "吸收：DeepSeek 请求修复（延迟工具 / 工具历史 / 请求头）",
+      "priority": "P1",
+      "status": "pending",
+      "label": "第 2 波 a · 低风险",
+      "wave": "2a",
+      "dependsOn": [
+        "KEEP-SMOKE-WINDOWS",
+        "UP-PREFLIGHT-PICKLIST"
+      ],
+      "detail": "范围：packages/llm/llm-deepseek、llm、llm-pi-ai、deepseek-llm-api-extensions。挑：624c3e91a9、156dad153d、1f3bc8b22b、be6ed7f0aa、f8217a4fe1、5a17181af2、b46adf9f64、a05a0d02fa（插件预置 pi-ai 请求头；顺带改 tool-cordis/src/api-catalog.ts——用户 2026-11-04 决定整剔，见文末决定注记）、#6958。剔除：a91a827546（Cordis Core rc.11）、b3d4933f39 / 89e2a525aa（subagent）。冲突：与我方同文件 15 个（llm-pi-ai adapter/config/context/index、llm/src/types.ts 等），逐文件手工合并。共同约束：① 只从 f3803c9697..upstream/master 区间按列出的提交挑选，cherry-pick -x 或手工移植，在独立分支/工作树做，合入 master 与推送需用户授权；② 不带入 packages/subagent/*、ui-subagent（Subagent 重构已拒绝）；③ 不带入 packages/team / ui-agent-team / teamwork（Agent Teams 排除）；④ 不带入 vendor/*、tool-cordis、cordis-client-runner 底座升级（Cordis 已拒绝），依赖新 Cordis API 时停下记录并回 UP-PREFLIGHT-PICKLIST；⑤ 不 cherry-pick 发布提交 1c78d475bf；⑥ 其它已拒绝区域（搜索设置 3859913c68、MCP 6719b28294、更新通道、apply_patch、手机布局、CUA、PTC）的提交一律剔除。 预检报告（2026-11-04）：区域实勘清单 .local-workspace/up-preflight-picklist/B-llm-deepseek-plugin-diag.md；汇总、用户决策点与核验差异见同目录 SUMMARY.md，实勘与本卡预填清单不一致时以实勘报告为准。 用户决定（2026-11-04）：d54475a681、a05a0d02fa 整剔，「插件预置请求头」能力不采纳；其余清单不变。",
+      "acceptance": "全延迟工具请求不失败、增删工具后历史重建有单测；真实对话冒烟一次（凭据不落日志）；失败诊断不泄露凭据。共同验收：git diff --stat 证明未触及 packages/subagent/*、packages/team、ui-agent-team、vendor/*；相关包单测绿；Windows Desktop 采用路径冒烟与 KEEP-SMOKE-WINDOWS 绿基线对比无回退；checkpoint 写明实际吸收的提交列表与剔除理由。"
+    },
+    {
+      "source": "用户决定 2026-11-03（上游差距清单导出）",
+      "pluginizable": "n/a",
+      "waitOn": null,
+      "track": "UP",
+      "category": "上游同步",
+      "blocksRelease": false,
+      "upstreamRelation": "absorb",
+      "id": "UP-ADOPT-DESKTOP-SETTINGS",
+      "title": "吸收：Desktop 设置保存与损坏配置恢复",
+      "priority": "P1",
+      "status": "pending",
+      "label": "第 2 波 a · 低风险",
+      "wave": "2a",
+      "dependsOn": [
+        "KEEP-SMOKE-WINDOWS",
+        "UP-PREFLIGHT-PICKLIST"
+      ],
+      "detail": "范围：apps/desktop/src（设置部分）、packages/api/settings-controller、packages/client/ui-settings-general、packages/settings。挑：224fe9a658（已保存/不确定区分）、f578528f1f（无效设置文件恢复引导）、c05a34e153、d7ca2e0ac2、26c077aa5f。剔除：8d0c3b4633（#7695 显示已保存 API Key）及其回滚 06bf7ce024（两者都不挑）；更新通道相关 eb5b32c9c9、0535b85a1d、88b01c24ea、d2bd3f3893、0cf76b9fad、a635d6d908、c0795c003a（UPD-UPDATE-CHANNELS 已拒绝，若与设置修复同提交则只移植设置部分）；Host 认证 Cookie #7663（已拒绝）。冲突：settings-controller / settings 3 个同文件，apps/desktop/src、credentials 有自研改动。共同约束：① 只从 f3803c9697..upstream/master 区间按列出的提交挑选，cherry-pick -x 或手工移植，在独立分支/工作树做，合入 master 与推送需用户授权；② 不带入 packages/subagent/*、ui-subagent（Subagent 重构已拒绝）；③ 不带入 packages/team / ui-agent-team / teamwork（Agent Teams 排除）；④ 不带入 vendor/*、tool-cordis、cordis-client-runner 底座升级（Cordis 已拒绝），依赖新 Cordis API 时停下记录并回 UP-PREFLIGHT-PICKLIST；⑤ 不 cherry-pick 发布提交 1c78d475bf；⑥ 其它已拒绝区域（搜索设置 3859913c68、MCP 6719b28294、更新通道、apply_patch、手机布局、CUA、PTC）的提交一律剔除。 预检报告（2026-11-04）：区域实勘清单 .local-workspace/up-preflight-picklist/C-desktop-settings-schedule.md；汇总、用户决策点与核验差异见同目录 SUMMARY.md，实勘与本卡预填清单不一致时以实勘报告为准。",
+      "acceptance": "用临时 profile（不碰真实 ~/.asterhub）验证：保存设置提示「已保存/不确定」；人为损坏设置文件后出现可操作恢复对话框而非卡死；更新通道 UI/逻辑无变化；自研账户设置页正常。共同验收：git diff --stat 证明未触及 packages/subagent/*、packages/team、ui-agent-team、vendor/*；相关包单测绿；Windows Desktop 采用路径冒烟与 KEEP-SMOKE-WINDOWS 绿基线对比无回退；checkpoint 写明实际吸收的提交列表与剔除理由。"
+    },
+    {
+      "source": "用户决定 2026-11-03（上游差距清单导出）",
+      "pluginizable": "yes",
+      "waitOn": null,
+      "track": "UP",
+      "category": "上游同步",
+      "blocksRelease": false,
+      "upstreamRelation": "absorb",
+      "id": "UP-ADOPT-PLUGIN-DIAG",
+      "title": "吸收：插件安装诊断与容错",
+      "priority": "P1",
+      "status": "pending",
+      "label": "第 2 波 a · 低风险",
+      "wave": "2a",
+      "dependsOn": [
+        "KEEP-SMOKE-WINDOWS",
+        "UP-PREFLIGHT-PICKLIST"
+      ],
+      "detail": "范围：packages/client/ui-plugin-manager、packages/boot/plugin-manager、packages/boot/plugin-market、ui-plugin-market。挑：#7463、#7733、#7602、#7624、8cce23db44 / 51856c3f4f（https 被拒改 SSH 重试）、fd2a512e75（测试夹具）。剔除：d721353f86（归 UP-ADOPT-FORGE）、49e9d42a00（归 UP-ADOPT-MENU-FILES，且触及 subagent）、3b544b0416 / 4247226074（CUA）、5444d2220c / 5f01833f80（手机/浮层）、0eb1bb52e2（team）。冲突：plugin-manager src/index.ts、types.ts 等 5 个同文件。共同约束：① 只从 f3803c9697..upstream/master 区间按列出的提交挑选，cherry-pick -x 或手工移植，在独立分支/工作树做，合入 master 与推送需用户授权；② 不带入 packages/subagent/*、ui-subagent（Subagent 重构已拒绝）；③ 不带入 packages/team / ui-agent-team / teamwork（Agent Teams 排除）；④ 不带入 vendor/*、tool-cordis、cordis-client-runner 底座升级（Cordis 已拒绝），依赖新 Cordis API 时停下记录并回 UP-PREFLIGHT-PICKLIST；⑤ 不 cherry-pick 发布提交 1c78d475bf；⑥ 其它已拒绝区域（搜索设置 3859913c68、MCP 6719b28294、更新通道、apply_patch、手机布局、CUA、PTC）的提交一律剔除。 预检报告（2026-11-04）：区域实勘清单 .local-workspace/up-preflight-picklist/B-llm-deepseek-plugin-diag.md；汇总、用户决策点与核验差异见同目录 SUMMARY.md，实勘与本卡预填清单不一致时以实勘报告为准。",
+      "acceptance": "故意安装一个会失败的插件：对话框保留步骤与完整日志；可选插件损坏时启动不被拖垮；全部自研 asterhub-* 插件仍正常加载。共同验收：git diff --stat 证明未触及 packages/subagent/*、packages/team、ui-agent-team、vendor/*；相关包单测绿；Windows Desktop 采用路径冒烟与 KEEP-SMOKE-WINDOWS 绿基线对比无回退；checkpoint 写明实际吸收的提交列表与剔除理由。"
+    },
+    {
+      "source": "用户决定 2026-11-03（上游差距清单导出）",
+      "pluginizable": "n/a",
+      "waitOn": null,
+      "track": "UP",
+      "category": "上游同步",
+      "blocksRelease": false,
+      "upstreamRelation": "absorb",
+      "id": "UP-ADOPT-SANDBOX",
+      "title": "吸收：沙箱策略上限 / 文件观察策略（不含 apply_patch）",
+      "priority": "P1",
+      "status": "pending",
+      "label": "第 2 波 a · 低风险 · 需拆 apply_patch",
+      "wave": "2a",
+      "dependsOn": [
+        "KEEP-SMOKE-WINDOWS",
+        "UP-PREFLIGHT-PICKLIST"
+      ],
+      "detail": "范围：packages/fs/fs-sandbox、packages/fs/fs-observation-policy、packages/sandbox/*（含 sandbox-windows-acl）。挑：743d4602e9（沙箱护栏 + 删除观察）、8f798da97d（沙箱决策交给 provider）、#7543。风险：本区多数提交与已拒绝的 apply_patch 交织——14d3e53c19、fe5450b152、ea4837abb1、2bd9913e2f、cc2718bede、3def5c9e24 同时开关 apply_patch，只能手工移植其中观察策略/沙箱部分，不新增 packages/fs/fs-patch、不在任何预设里启用 apply_patch。Windows 下是否生效此前未核实。共同约束：① 只从 f3803c9697..upstream/master 区间按列出的提交挑选，cherry-pick -x 或手工移植，在独立分支/工作树做，合入 master 与推送需用户授权；② 不带入 packages/subagent/*、ui-subagent（Subagent 重构已拒绝）；③ 不带入 packages/team / ui-agent-team / teamwork（Agent Teams 排除）；④ 不带入 vendor/*、tool-cordis、cordis-client-runner 底座升级（Cordis 已拒绝），依赖新 Cordis API 时停下记录并回 UP-PREFLIGHT-PICKLIST；⑤ 不 cherry-pick 发布提交 1c78d475bf；⑥ 其它已拒绝区域（搜索设置 3859913c68、MCP 6719b28294、更新通道、apply_patch、手机布局、CUA、PTC）的提交一律剔除。 预检报告（2026-11-04）：区域实勘清单 .local-workspace/up-preflight-picklist/A-windows-cli-sandbox.md；汇总、用户决策点与核验差异见同目录 SUMMARY.md，实勘与本卡预填清单不一致时以实勘报告为准。 用户决定（2026-11-04）：剥离手工移植——移植 743d4602e9 的沙箱护栏/观察策略部分并剥离 patchText/FsDeleteOutcome/fs delete-intent 等 fs-patch 依赖；移植后须 Windows 实测生效，否则放弃并回报用户。",
+      "acceptance": "沙箱/观察策略单测绿；Windows 下 sandbox-windows-acl 行为有实测证据；工具列表证据显示无 apply_patch；observation policy 默认关闭。共同验收：git diff --stat 证明未触及 packages/subagent/*、packages/team、ui-agent-team、vendor/*；相关包单测绿；Windows Desktop 采用路径冒烟与 KEEP-SMOKE-WINDOWS 绿基线对比无回退；checkpoint 写明实际吸收的提交列表与剔除理由。"
+    },
+    {
+      "source": "用户决定 2026-11-03（上游差距清单导出）",
+      "pluginizable": "partial",
+      "waitOn": null,
+      "track": "UP",
+      "category": "上游同步",
+      "blocksRelease": false,
+      "upstreamRelation": "absorb",
+      "id": "UP-ADOPT-MENU-FILES",
+      "title": "吸收：右键菜单与文件操作（防覆盖自研）",
+      "priority": "P2",
+      "status": "pending",
+      "label": "第 2 波 b · 先列自研清单",
+      "wave": "2b",
+      "dependsOn": [
+        "UP-UI-SELFDEV-AUDIT",
+        "KEEP-SMOKE-WINDOWS",
+        "UP-PREFLIGHT-PICKLIST"
+      ],
+      "detail": "用户备注：防覆盖自研部分——开工前必须引用 UP-UI-SELFDEV-AUDIT 的自研改动清单，逐条确认合并方式后再动。范围：packages/client/ui-context-menu、ui-file-actions、ui-open-in-app、ui-sidebar-files、ui-workspace（上游 125 文件）。挑：#6951、#7056、#6759、#7523、2e6370fe1d（按分栏保留文件树）、a7d2b5c214（侧栏/浮窗打开）、9dce789696、49e9d42a00（菜单触发绑定走插槽；触及 subagent 的 hunk 剔除）、39da0914a9、4b11531c86。剔除：788bae3674、a10b6e1270、f130e8b37a 等手机抽屉提交（UPD-MOBILE 已拒绝）；5c2826eae5 及其原提交（composer prefill 已被回滚）。与 SIDEBAR-UI 共用 ui-primitives / ui-sidebar，必须先于 SIDEBAR-UI 串行做。共同约束：① 只从 f3803c9697..upstream/master 区间按列出的提交挑选，cherry-pick -x 或手工移植，在独立分支/工作树做，合入 master 与推送需用户授权；② 不带入 packages/subagent/*、ui-subagent（Subagent 重构已拒绝）；③ 不带入 packages/team / ui-agent-team / teamwork（Agent Teams 排除）；④ 不带入 vendor/*、tool-cordis、cordis-client-runner 底座升级（Cordis 已拒绝），依赖新 Cordis API 时停下记录并回 UP-PREFLIGHT-PICKLIST；⑤ 不 cherry-pick 发布提交 1c78d475bf；⑥ 其它已拒绝区域（搜索设置 3859913c68、MCP 6719b28294、更新通道、apply_patch、手机布局、CUA、PTC）的提交一律剔除。 预检报告（2026-11-04）：区域实勘清单 .local-workspace/up-preflight-picklist/E-menu-files-sidebar-ui.md；汇总、用户决策点与核验差异见同目录 SUMMARY.md，实勘与本卡预填清单不一致时以实勘报告为准。",
+      "acceptance": "自研清单逐项回归通过（品牌/账户/精选/Automation 入口与菜单不丢）；Windows Desktop 右键菜单、文件链接行号跳转、分栏文件树、侧栏/浮窗打开冒烟有截图。共同验收：git diff --stat 证明未触及 packages/subagent/*、packages/team、ui-agent-team、vendor/*；相关包单测绿；Windows Desktop 采用路径冒烟与 KEEP-SMOKE-WINDOWS 绿基线对比无回退；checkpoint 写明实际吸收的提交列表与剔除理由。"
+    },
+    {
+      "source": "用户决定 2026-11-03（上游差距清单导出）",
+      "pluginizable": "partial",
+      "waitOn": null,
+      "track": "UP",
+      "category": "上游同步",
+      "blocksRelease": false,
+      "upstreamRelation": "absorb",
+      "id": "UP-ADOPT-SIDEBAR-UI",
+      "title": "吸收：侧栏与对话阅读体验（父卡 · 汇总门）",
+      "priority": "P2",
+      "status": "pending",
+      "label": "第 2 波 b · 父卡",
+      "wave": "2b",
+      "dependsOn": [
+        "UP-ADOPT-MENU-FILES",
+        "UP-UI-SELFDEV-AUDIT"
+      ],
+      "detail": "用户备注：防覆盖自研部分。路径日志 63 条、上游 119 文件，按语义拆三张子卡：UP-ADOPT-SIDEBAR-PINS、UP-ADOPT-SIDEBAR-TRAJECTORY、UP-ADOPT-SIDEBAR-RENDER；子卡全 verified 后本卡关。重点保护：ui-asterhub-brand 品牌 UI、ui-primitives（我方 18 个同文件，含 src/index.ts）、ui-sidebar/src/client/SidebarRoot.tsx。本卡不直接认领改代码。共同约束：① 只从 f3803c9697..upstream/master 区间按列出的提交挑选，cherry-pick -x 或手工移植，在独立分支/工作树做，合入 master 与推送需用户授权；② 不带入 packages/subagent/*、ui-subagent（Subagent 重构已拒绝）；③ 不带入 packages/team / ui-agent-team / teamwork（Agent Teams 排除）；④ 不带入 vendor/*、tool-cordis、cordis-client-runner 底座升级（Cordis 已拒绝），依赖新 Cordis API 时停下记录并回 UP-PREFLIGHT-PICKLIST；⑤ 不 cherry-pick 发布提交 1c78d475bf；⑥ 其它已拒绝区域（搜索设置 3859913c68、MCP 6719b28294、更新通道、apply_patch、手机布局、CUA、PTC）的提交一律剔除。 预检报告（2026-11-04）：区域实勘清单 .local-workspace/up-preflight-picklist/E-menu-files-sidebar-ui.md；汇总、用户决策点与核验差异见同目录 SUMMARY.md，实勘与本卡预填清单不一致时以实勘报告为准。",
+      "acceptance": "三张子卡 verified；自研 UI 清单整体回归一次无回退。"
+    },
+    {
+      "source": "用户决定 2026-11-03（上游差距清单导出）",
+      "pluginizable": "partial",
+      "waitOn": null,
+      "track": "UP",
+      "category": "上游同步",
+      "blocksRelease": false,
+      "upstreamRelation": "absorb",
+      "id": "UP-ADOPT-SIDEBAR-PINS",
+      "title": "吸收子卡：侧栏固定插件 / 「更多」菜单 / 纵向空间",
+      "priority": "P2",
+      "status": "pending",
+      "label": "第 2 波 b · 子卡",
+      "wave": "2b",
+      "dependsOn": [
+        "UP-ADOPT-MENU-FILES"
+      ],
+      "detail": "范围：packages/client/ui-sidebar。挑：5b559def7c（自定义侧栏插件固定与更多菜单）、24ac78d283、36e66f583e、63026c7a5c（#7337 纵向空间/吸顶）、#7207。冲突：SidebarRoot.tsx 与我方同文件；自研侧栏入口（Automation、账户、精选）必须保留。共同约束：① 只从 f3803c9697..upstream/master 区间按列出的提交挑选，cherry-pick -x 或手工移植，在独立分支/工作树做，合入 master 与推送需用户授权；② 不带入 packages/subagent/*、ui-subagent（Subagent 重构已拒绝）；③ 不带入 packages/team / ui-agent-team / teamwork（Agent Teams 排除）；④ 不带入 vendor/*、tool-cordis、cordis-client-runner 底座升级（Cordis 已拒绝），依赖新 Cordis API 时停下记录并回 UP-PREFLIGHT-PICKLIST；⑤ 不 cherry-pick 发布提交 1c78d475bf；⑥ 其它已拒绝区域（搜索设置 3859913c68、MCP 6719b28294、更新通道、apply_patch、手机布局、CUA、PTC）的提交一律剔除。 预检报告（2026-11-04）：区域实勘清单 .local-workspace/up-preflight-picklist/E-menu-files-sidebar-ui.md；汇总、用户决策点与核验差异见同目录 SUMMARY.md，实勘与本卡预填清单不一致时以实勘报告为准。",
+      "acceptance": "侧栏可固定/取消固定插件，自研入口仍在且顺序合理；截图对比绿基线。共同验收：git diff --stat 证明未触及 packages/subagent/*、packages/team、ui-agent-team、vendor/*；相关包单测绿；Windows Desktop 采用路径冒烟与 KEEP-SMOKE-WINDOWS 绿基线对比无回退；checkpoint 写明实际吸收的提交列表与剔除理由。"
+    },
+    {
+      "source": "用户决定 2026-11-03（上游差距清单导出）",
+      "pluginizable": "n/a",
+      "waitOn": null,
+      "track": "UP",
+      "category": "上游同步",
+      "blocksRelease": false,
+      "upstreamRelation": "absorb",
+      "id": "UP-ADOPT-SIDEBAR-TRAJECTORY",
+      "title": "吸收子卡：工具轨迹折叠 / 失败输出 / 代码高亮",
+      "priority": "P2",
+      "status": "pending",
+      "label": "第 2 波 b · 子卡",
+      "wave": "2b",
+      "dependsOn": [
+        "UP-ADOPT-SIDEBAR-PINS"
+      ],
+      "detail": "范围：packages/client/ui-trajectory。挑：#7490、#7399 及轨迹折叠、失败输出、代码高亮相关提交。注意：d6d6c84803「present applied patch diffs」属于 apply_patch 展示（已拒绝），只在不依赖 apply_patch 时移植通用部分，否则剔除；0eb1bb52e2（team ID 化）剔除。共同约束：① 只从 f3803c9697..upstream/master 区间按列出的提交挑选，cherry-pick -x 或手工移植，在独立分支/工作树做，合入 master 与推送需用户授权；② 不带入 packages/subagent/*、ui-subagent（Subagent 重构已拒绝）；③ 不带入 packages/team / ui-agent-team / teamwork（Agent Teams 排除）；④ 不带入 vendor/*、tool-cordis、cordis-client-runner 底座升级（Cordis 已拒绝），依赖新 Cordis API 时停下记录并回 UP-PREFLIGHT-PICKLIST；⑤ 不 cherry-pick 发布提交 1c78d475bf；⑥ 其它已拒绝区域（搜索设置 3859913c68、MCP 6719b28294、更新通道、apply_patch、手机布局、CUA、PTC）的提交一律剔除。 预检报告（2026-11-04）：区域实勘清单 .local-workspace/up-preflight-picklist/E-menu-files-sidebar-ui.md；汇总、用户决策点与核验差异见同目录 SUMMARY.md，实勘与本卡预填清单不一致时以实勘报告为准。",
+      "acceptance": "轨迹可折叠、失败输出可读、代码高亮在 Windows Desktop 冒烟通过；无 apply_patch 相关 UI。共同验收：git diff --stat 证明未触及 packages/subagent/*、packages/team、ui-agent-team、vendor/*；相关包单测绿；Windows Desktop 采用路径冒烟与 KEEP-SMOKE-WINDOWS 绿基线对比无回退；checkpoint 写明实际吸收的提交列表与剔除理由。"
+    },
+    {
+      "source": "用户决定 2026-11-03（上游差距清单导出）",
+      "pluginizable": "n/a",
+      "waitOn": null,
+      "track": "UP",
+      "category": "上游同步",
+      "blocksRelease": false,
+      "upstreamRelation": "absorb",
+      "id": "UP-ADOPT-SIDEBAR-RENDER",
+      "title": "吸收子卡：KaTeX 复制为 TeX / 流式渲染提速",
+      "priority": "P2",
+      "status": "pending",
+      "label": "第 2 波 b · 子卡",
+      "wave": "2b",
+      "dependsOn": [
+        "UP-ADOPT-SIDEBAR-PINS"
+      ],
+      "detail": "范围：packages/client/ui-conversation、ui-primitives（markdown）。挑：898b2875b3（KaTeX 复制为 TeX）、0039a8879a、#7691（流式渲染）、1d9c0ab757（移除 display-dollar 解析器，需确认不影响我方渲染）。可与 TRAJECTORY 并行（文件面不同），但 ui-primitives 同文件时先 claim 再动。共同约束：① 只从 f3803c9697..upstream/master 区间按列出的提交挑选，cherry-pick -x 或手工移植，在独立分支/工作树做，合入 master 与推送需用户授权；② 不带入 packages/subagent/*、ui-subagent（Subagent 重构已拒绝）；③ 不带入 packages/team / ui-agent-team / teamwork（Agent Teams 排除）；④ 不带入 vendor/*、tool-cordis、cordis-client-runner 底座升级（Cordis 已拒绝），依赖新 Cordis API 时停下记录并回 UP-PREFLIGHT-PICKLIST；⑤ 不 cherry-pick 发布提交 1c78d475bf；⑥ 其它已拒绝区域（搜索设置 3859913c68、MCP 6719b28294、更新通道、apply_patch、手机布局、CUA、PTC）的提交一律剔除。 预检报告（2026-11-04）：区域实勘清单 .local-workspace/up-preflight-picklist/E-menu-files-sidebar-ui.md；汇总、用户决策点与核验差异见同目录 SUMMARY.md，实勘与本卡预填清单不一致时以实勘报告为准。",
+      "acceptance": "公式复制得到 TeX 源；长回复流式渲染无卡顿回退；品牌样式不变。共同验收：git diff --stat 证明未触及 packages/subagent/*、packages/team、ui-agent-team、vendor/*；相关包单测绿；Windows Desktop 采用路径冒烟与 KEEP-SMOKE-WINDOWS 绿基线对比无回退；checkpoint 写明实际吸收的提交列表与剔除理由。"
+    },
+    {
+      "source": "用户决定 2026-11-03（上游差距清单导出）",
+      "pluginizable": "yes",
+      "waitOn": null,
+      "track": "UP",
+      "category": "上游同步",
+      "blocksRelease": false,
+      "upstreamRelation": "absorb",
+      "id": "UP-ADOPT-FORGE",
+      "title": "吸收：Forge 代码评审 / 工作树插件",
+      "priority": "P2",
+      "status": "verified",
+      "label": "第 2 波 c · 已完成 2026-11-04 用户决定放弃整区",
+      "wave": "2c",
+      "dependsOn": [
+        "UP-ADOPT-MENU-FILES",
+        "UP-PREFLIGHT-PICKLIST"
+      ],
+      "detail": "范围：packages/experimental/client-ui-forge、forge、forge-github、forge-session、forge-bundle（上游 105 文件，我方仅 forge/src/index.ts 同文件）。挑：d721353f86（#7721 统一插件入口）、#7619、#7603、#7482、da51975dfb（本地改动与 PR 并列）、1e578f1304（差异顺序同文件树）、相关测试。剔除：eb1713f856（#7754 属会话修复，已延后）、2e6370fe1d（归 MENU-FILES，须其先合）。Cordis：包级依赖未变，需按 UP-PREFLIGHT-PICKLIST 结论确认没用到新 Cordis API。共同约束：① 只从 f3803c9697..upstream/master 区间按列出的提交挑选，cherry-pick -x 或手工移植，在独立分支/工作树做，合入 master 与推送需用户授权；② 不带入 packages/subagent/*、ui-subagent（Subagent 重构已拒绝）；③ 不带入 packages/team / ui-agent-team / teamwork（Agent Teams 排除）；④ 不带入 vendor/*、tool-cordis、cordis-client-runner 底座升级（Cordis 已拒绝），依赖新 Cordis API 时停下记录并回 UP-PREFLIGHT-PICKLIST；⑤ 不 cherry-pick 发布提交 1c78d475bf；⑥ 其它已拒绝区域（搜索设置 3859913c68、MCP 6719b28294、更新通道、apply_patch、手机布局、CUA、PTC）的提交一律剔除。 预检报告（2026-11-04）：区域实勘清单 .local-workspace/up-preflight-picklist/D-forge-sdk-python.md；汇总、用户决策点与核验差异见同目录 SUMMARY.md，实勘与本卡预填清单不一致时以实勘报告为准。 用户决定（2026-11-04）：放弃整区——地基提交触禁区且移植成本最高，产品不做内置 GitHub 评审则无需要；本卡不再认领。",
+      "acceptance": "Forge 插件在 Windows Desktop 可启用；评审与工作树入口合一；PR 检查按需加载；不影响非 Forge 用户启动。共同验收：git diff --stat 证明未触及 packages/subagent/*、packages/team、ui-agent-team、vendor/*；相关包单测绿；Windows Desktop 采用路径冒烟与 KEEP-SMOKE-WINDOWS 绿基线对比无回退；checkpoint 写明实际吸收的提交列表与剔除理由。"
+    },
+    {
+      "source": "用户决定 2026-11-03（上游差距清单导出）",
+      "pluginizable": "n/a",
+      "waitOn": null,
+      "track": "UP",
+      "category": "上游同步",
+      "blocksRelease": false,
+      "upstreamRelation": "absorb",
+      "id": "UP-ADOPT-SDK-PYTHON",
+      "title": "吸收：SDK 原生斜杠命令 / Python 运行时按锁文件部署",
+      "priority": "P2",
+      "status": "pending",
+      "label": "第 2 波 c",
+      "wave": "2c",
+      "dependsOn": [
+        "UP-PREFLIGHT-PICKLIST",
+        "KEEP-SMOKE-WINDOWS"
+      ],
+      "detail": "范围：packages/sdk/*、python/sdk。挑：#6955、#7107、#7689 / #7707（Python 运行时按锁文件部署，影响 Desktop 打包）、74ff76d1ff、917cf6c267、0c78c4c710、1950259ce1、ae334bd17e、1c9490b410。剔除：sdk-team-mode #7773、999f30aae9（subagent 归属错误）、0eb1bb52e2 / 9c406a6325 / 575606a356 等触及 subagent/team 的提交。上游 sdk/server 新增依赖 dsh-commands、dsh-goal（我方已有这两包）。冲突：sdk/server/src/server.ts、python/sdk 的 api.py/client.py/models.py 等 14 个同文件。Cordis：同 PREFLIGHT 结论。共同约束：① 只从 f3803c9697..upstream/master 区间按列出的提交挑选，cherry-pick -x 或手工移植，在独立分支/工作树做，合入 master 与推送需用户授权；② 不带入 packages/subagent/*、ui-subagent（Subagent 重构已拒绝）；③ 不带入 packages/team / ui-agent-team / teamwork（Agent Teams 排除）；④ 不带入 vendor/*、tool-cordis、cordis-client-runner 底座升级（Cordis 已拒绝），依赖新 Cordis API 时停下记录并回 UP-PREFLIGHT-PICKLIST；⑤ 不 cherry-pick 发布提交 1c78d475bf；⑥ 其它已拒绝区域（搜索设置 3859913c68、MCP 6719b28294、更新通道、apply_patch、手机布局、CUA、PTC）的提交一律剔除。 预检报告（2026-11-04）：区域实勘清单 .local-workspace/up-preflight-picklist/D-forge-sdk-python.md；汇总、用户决策点与核验差异见同目录 SUMMARY.md，实勘与本卡预填清单不一致时以实勘报告为准。",
+      "acceptance": "Python SDK 测试绿；Desktop 打包产物里 Python 运行时按锁文件部署（打包前后对比）；SDK 斜杠命令 plan/goal/compact 有单测。共同验收：git diff --stat 证明未触及 packages/subagent/*、packages/team、ui-agent-team、vendor/*；相关包单测绿；Windows Desktop 采用路径冒烟与 KEEP-SMOKE-WINDOWS 绿基线对比无回退；checkpoint 写明实际吸收的提交列表与剔除理由。"
+    },
+    {
+      "source": "用户决定 2026-11-03（上游差距清单导出）",
+      "pluginizable": "partial",
+      "waitOn": null,
+      "track": "UP",
+      "category": "上游同步",
+      "blocksRelease": true,
+      "upstreamRelation": "absorb",
+      "id": "UP-ADOPT-SCHEDULE",
+      "title": "吸收：上游 Schedule 直接替换自研 Automation（含删除自研模块）",
+      "priority": "P1",
+      "status": "pending",
+      "label": "第 2 波 d · 直接替换 · 删除已授权",
+      "wave": "2d",
+      "dependsOn": [
+        "UP-SCHEDULE-REPLACE-PLAN",
+        "UP-ADOPT-SIDEBAR-UI",
+        "UP-ADOPT-SDK-PYTHON",
+        "KEEP-SMOKE-WINDOWS"
+      ],
+      "detail": "用户决定（2026-11-03）：Schedule 直接用上游替换自研；自研有不少 BUG，功能一致时优先上游；开发阶段无实际用户，不做数据迁移。 删除授权：用户 2026-11-03 23:27（UTC+8）已明确授权删除自研定时任务模块；本卡开工时由认领 Agent 执行删除（本次看板更新未删任何代码）。做法：挑 d9ed1e4e28（#7567）、86e2cc8277（#7702）、f07af538f8（#7704）、341ea6eea4（#6189，其 subagent / cordis hunk 剔除或手工移植）；剔除 b3d4933f39（subagent 归属重构）、a91a827546（Cordis 升级）、5f01833f80、a10b6e1270（手机）。packages/schedule/schedule 与上游同文件 10 个以上游为准。按 UP-SCHEDULE-REPLACE-PLAN 的集成点清单把 desktop-host / remotes / account-sub2api / desktop-native bundle / slot-catalog / prepare-dsh 改接上游 Schedule 或去掉引用；用户选「保留」的上游缺失能力以插件补到上游 Schedule 上，选「放弃」的直接丢弃。随后删除自研 packages/schedule/asterhub-automation、packages/client/ui-asterhub-automation（子步骤见 UP-SCHEDULE-RETIRE-SELFDEV）。不做数据迁移、不保留旧任务数据兼容。blocksRelease=true：替换未完成前不得打包。共同约束：① 只从 f3803c9697..upstream/master 区间按列出的提交挑选，cherry-pick -x 或手工移植，在独立分支/工作树做，合入 master 与推送需用户授权；② 不带入 packages/subagent/*、ui-subagent（Subagent 重构已拒绝）；③ 不带入 packages/team / ui-agent-team / teamwork（Agent Teams 排除）；④ 不带入 vendor/*、tool-cordis、cordis-client-runner 底座升级（Cordis 已拒绝），依赖新 Cordis API 时停下记录并回 UP-PREFLIGHT-PICKLIST；⑤ 不 cherry-pick 发布提交 1c78d475bf；⑥ 其它已拒绝区域（搜索设置 3859913c68、MCP 6719b28294、更新通道、apply_patch、手机布局、CUA、PTC）的提交一律剔除。 预检报告（2026-11-04）：区域实勘清单 .local-workspace/up-preflight-picklist/C-desktop-settings-schedule.md；汇总、用户决策点与核验差异见同目录 SUMMARY.md，实勘与本卡预填清单不一致时以实勘报告为准。 用户决定（2026-11-04）：#6189（341ea6eea4，独立任务接入 WebUI）的取舍延后至 UP-SCHEDULE-REPLACE-PLAN 功能对照时随能力清单决定。 用户决定（2026-11-04）：②清单 11 条全部放弃，全面替换为上游 Schedule 原样能力、无插件补回；④集成点「视勾选」项按放弃处理（update-tasks admission lock 删、account-sub2api automationIdentity 删、quit-inspection 改接保留）。解锁条件已满足，执行顺序仍在 2d（2a→2b→2c 完成后）。",
+      "acceptance": "上游 Schedule 在 Windows Desktop 可创建/编辑/预填/按时触发；用户选「保留」的能力全部可用；只有一套调度入口；自研 Automation 包已删除且构建、类型检查、相关测试绿；不要求旧数据迁移。共同验收：git diff --stat 证明未触及 packages/subagent/*、packages/team、ui-agent-team、vendor/*；相关包单测绿；Windows Desktop 采用路径冒烟与 KEEP-SMOKE-WINDOWS 绿基线对比无回退；checkpoint 写明实际吸收的提交列表与剔除理由。"
+    },
+    {
+      "source": "用户决定 2026-11-03（上游差距清单导出）",
+      "pluginizable": "n/a",
+      "waitOn": null,
+      "track": "UP",
+      "category": "上游同步",
+      "blocksRelease": true,
+      "upstreamRelation": "absorb",
+      "id": "UP-SCHEDULE-RETIRE-SELFDEV",
+      "title": "删除自研 asterhub-automation / ui-asterhub-automation（已授权）",
+      "priority": "P1",
+      "status": "pending",
+      "label": "第 2 波 d · 删除已授权 · 随替换执行",
+      "wave": "2d",
+      "dependsOn": [
+        "UP-ADOPT-SCHEDULE"
+      ],
+      "detail": "删除授权：用户 2026-11-03 23:27（UTC+8）已明确授权删除自研定时任务模块。在 UP-ADOPT-SCHEDULE 开工后由同一认领 Agent 执行（本次看板更新未删代码）：删除 packages/schedule/asterhub-automation、packages/client/ui-asterhub-automation，清理 tsconfig.*、pnpm-lock、scripts/type-equiv.manifest.json、asterhub-desktop-native bundle（index.ts、cordis.patch.yml）、desktop-host、remotes、account-sub2api、slot-catalog、prepare-dsh 中的引用。直接替换，不做数据迁移。共同约束：① 只从 f3803c9697..upstream/master 区间按列出的提交挑选，cherry-pick -x 或手工移植，在独立分支/工作树做，合入 master 与推送需用户授权；② 不带入 packages/subagent/*、ui-subagent（Subagent 重构已拒绝）；③ 不带入 packages/team / ui-agent-team / teamwork（Agent Teams 排除）；④ 不带入 vendor/*、tool-cordis、cordis-client-runner 底座升级（Cordis 已拒绝），依赖新 Cordis API 时停下记录并回 UP-PREFLIGHT-PICKLIST；⑤ 不 cherry-pick 发布提交 1c78d475bf；⑥ 其它已拒绝区域（搜索设置 3859913c68、MCP 6719b28294、更新通道、apply_patch、手机布局、CUA、PTC）的提交一律剔除。",
+      "acceptance": "两个自研包及全部引用已删除（git diff --stat 证据）；构建、类型检查、KEEP 冒烟绿；删除在 git 历史中可回滚。"
+    },
+    {
+      "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
+      "blocksRelease": false,
+      "pluginizable": "n/a",
+      "upstreamRelation": "none",
+      "waitOn": null,
+      "id": "SHIP-CANDIDATE",
+      "title": "精确 Windows 候选：安装/运行时/更新",
+      "track": "SHIP",
+      "category": "交付",
+      "priority": "P1",
+      "status": "pending",
+      "label": "第 3 波 · 依赖吸收+回归",
+      "detail": "在第 2 波采纳卡全部 verified 且 KEEP-POST-ADOPT 绿后，对获授权候选验证安装卸载、更新（沿用 AsterHub 自己的 GitHub 预发布通道；上游更新通道切换已拒绝）、版本显示、Node/Python/Office 运行时（Python 按锁文件部署来自 UP-ADOPT-SDK-PYTHON）；记录 SHA 与失败范围。旧 0.21.2 不代替本次。",
+      "acceptance": "证据包完整；失败项单列。签名发布不在本卡。"
+    },
+    {
+      "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
+      "blocksRelease": false,
+      "pluginizable": "n/a",
+      "upstreamRelation": "none",
+      "waitOn": "auth",
+      "id": "SHIP-PUBLISH",
+      "title": "签名与对外发布",
+      "track": "SHIP",
+      "category": "交付",
+      "priority": "P2",
+      "status": "waiting_user",
+      "label": "必须明确授权",
+      "detail": "任何签名、商店/对外通道发布。",
+      "acceptance": "用户书面授权范围 + 执行记录。"
+    },
+    {
+      "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
+      "blocksRelease": false,
+      "pluginizable": "n/a",
+      "upstreamRelation": "none",
+      "waitOn": null,
+      "id": "ARCH-T28",
+      "title": "[归档] 便携工作区采纳与 Desktop 续聊主体",
+      "track": "WAIT",
+      "category": "归档",
+      "priority": "P2",
+      "status": "verified",
+      "label": "主体已验 · 残余见 WAIT-DESKTOP-ADOPT",
+      "detail": "原 T28 产品验收主体已记账；仅余用户 picker。"
+    },
+    {
+      "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
+      "blocksRelease": false,
+      "pluginizable": "n/a",
+      "upstreamRelation": "none",
+      "waitOn": null,
+      "id": "ARCH-T17",
+      "title": "[归档] Subagent 集成总验收战役卡",
+      "track": "KEEP",
+      "category": "归档",
+      "priority": "P2",
+      "status": "verified",
+      "label": "改由 KEEP-SUBAGENT-PATH",
+      "detail": "旧 T17/T17a–e 战役叙事退役；责任索引留 journal。"
+    },
+    {
+      "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
+      "blocksRelease": false,
+      "pluginizable": "n/a",
+      "upstreamRelation": "none",
+      "waitOn": null,
+      "id": "ARCH-T18",
+      "title": "[归档] V4 会话与 Anima 持久化验收",
+      "track": "KEEP",
+      "category": "归档",
+      "priority": "P2",
+      "status": "verified",
+      "label": "已推送验收",
+      "detail": "真实 Desktop 保存/强杀重开等已有证据。"
+    },
+    {
+      "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
+      "blocksRelease": false,
+      "pluginizable": "n/a",
+      "upstreamRelation": "none",
+      "waitOn": null,
+      "id": "ARCH-T19",
+      "title": "[归档] 会话投影消费者验收",
+      "track": "KEEP",
+      "category": "归档",
+      "priority": "P2",
+      "status": "verified",
+      "label": "已关单",
+      "detail": "自研投影消费者聚焦回归曾全绿。"
+    },
+    {
+      "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
+      "blocksRelease": false,
+      "pluginizable": "n/a",
+      "upstreamRelation": "none",
+      "waitOn": null,
+      "id": "ARCH-PERSIST-GATES",
+      "title": "[归档] V4 持久化静态门收口",
+      "track": "KEEP",
+      "category": "归档",
+      "priority": "P2",
+      "status": "verified",
+      "label": "八门绿 · 提交见 WAIT-AUTH-COMMIT",
+      "detail": "方案 A 已执行；是否提交听用户。"
+    },
+    {
+      "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
+      "blocksRelease": false,
+      "pluginizable": "n/a",
+      "upstreamRelation": "none",
+      "waitOn": null,
+      "id": "ARCH-UI-RESTORE",
+      "title": "[归档] 自研账户与精选目录 UI 恢复",
+      "track": "KEEP",
+      "category": "归档",
+      "priority": "P2",
+      "status": "verified",
+      "label": "已恢复",
+      "detail": "fix/restore-fork-ui 路径；真实数据流见 WAIT-LOGIN-DATAFLOW。"
+    },
+    {
+      "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
+      "blocksRelease": false,
+      "pluginizable": "n/a",
+      "upstreamRelation": "none",
+      "waitOn": null,
+      "id": "ARCH-UPSTREAM-AUDIT",
+      "title": "[归档] 上游失败定界 2026-11-01",
+      "track": "UP",
+      "category": "归档",
+      "priority": "P2",
+      "status": "verified",
+      "label": "已定界",
+      "detail": "产品阻塞与范围排除已拆到新轨。"
+    },
+    {
+      "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
+      "blocksRelease": false,
+      "pluginizable": "n/a",
+      "upstreamRelation": "none",
+      "waitOn": null,
+      "id": "ARCH-UP-EVAL-ALPHA2",
+      "title": "[归档] 旧 UP 评估卡（alpha.2 期 348 提交口径）",
+      "track": "UP",
+      "category": "归档",
+      "priority": "P2",
+      "status": "verified",
+      "label": "并入上游差距清单",
+      "detail": "UP-GAP-TRIAGE、UP-HDR-DIAG、UP-SCHEDULE-BOUND、UP-CORDIS、UP-APPLY-PATCH、UP-DESKTOP-MENU、UP-PLUGIN-DIAG 已退役：对应区域改由 upstreamDecisions 列项、用户勾选。旧口径 f3803c9697..ce7073d512 作废（ce7073d512 只是 10-30 的上游中间点）。"
+    }
   ],
-  issues: [
-    { title: '当前版本显示错源', severity: 'P1', status: 'verified', label: '源码已修复', detail: '已在 dshDesktop 载体注入真实 Electron 安装版本，CurrentVersionRow 优先展示安装版本，通用 Web 保持回退。', task: 'T01' },
-    { title: '旧凭据升级阻断启动', severity: 'P0', status: 'verified', label: '源码已修复', detail: '已实现受控原子加密迁移与失败防覆盖保护；待新安装包实机复验。', task: 'T02' },
-    { title: '登录与模型流程补验', severity: 'P1', status: 'verified', label: '用户实测通过', detail: '用户已明确确认 T03 手动测试通过；此前原网络超时作为历史观察保留，不再阻塞本项。', task: 'T03' },
-    { title: 'W7 / W9 汇总与证据不一致', severity: 'P0', status: 'verified', label: 'W7证据已收口', detail: 'W7 提示词对照证据已完整收口并双向验证通过（证据：.local-workspace/issue-remediation-20261024/W7-parity-evidence.json）；W9 门禁由 T06 独立跟踪。', task: 'T05' },
-    { title: 'OS 加密资格测试失败', severity: 'P1', status: 'verified', label: '环境根因已定性', detail: '已定位为云电脑环境进程守卫拦截 Chromium message-only 窗口创建 (0x5)，非产品代码或网络故障。', task: 'T07' },
-    { title: 'browser_open 失败、标签列表为空', severity: 'P0', status: 'verified', label: 'Desktop打开/列举/关闭闭环通过', detail: '未主动展开侧栏，真实open/tabs/close/tabs通过；main.js前后原哈希一致，模型及目录dialog替身范围见T12。', task: 'T12' },
-    { title: 'Computer Use 当前对话无法使用', severity: '待定', status: 'verified', label: '已装配集成', detail: '已在 asterhub-desktop-native 挂载官方原生 Cua Driver provider 并刷新锁文件，填补桌面端装配缺失。', task: 'T13' },
-    { title: '手动打开后 browser_tabs 返回无效结果', severity: '待定', status: 'verified', label: '已修复验证', detail: '已过滤未完成导航的 about:blank 访客，消除下游协议校验失败。', task: 'T14' },
-    { title: 'Anima 反思读取及保存均失败（历史报告）', severity: 'P0', status: 'verified', label: 'T15历史闭环已核验 · 新master另验', detail: 'T15已有指定模型真实保存和非空反思的历史Desktop证据；原“暂停待复验”摘要已过时。新master的项目本地持久化与重开由T18独立验收，daily/weekly调度不冒称通过。', task: 'T15' },
-    { title: '导入旧工作目录后历史会话不可见', severity: 'P0', status: 'partial', label: '修复线已叫停 · 转T28重做', detail: 'T16 四轮修复未根治，双账本架构是根因，用户已拍板叫停修复线并转 T28 重做（上游记录即真值+project-local后端+显式采纳流程，设计已定稿）；0.21.3 安装包留档不发布。', task: 'T28' },
-    { title: '采纳工作区后消息落入旧工作区会话', severity: 'P1', status: 'verified', label: 'Desktop端到端已验证', detail: 'connectWorkspace等待新工作区进入列表后再创建会话；真实Desktop T15重投证实采纳后活动会话绑定目标项目。', task: 'BUG-ADOPT-WORKSPACE-SWITCH' },
-    { title: '导入历史会话无法迁移旧平铺日志', severity: 'P1', status: 'verified', label: 'list/open自动迁移已验证', detail: '支持的平铺JSONL与Zstandard工件在list/open时按header身份迁入projectKey/session目录；冲突拒绝覆盖，durable字节保持。', task: 'BUG-IMPORT-FLAT-LAYOUT-REJECT' },
-    { title: '续聊导入历史会话时Anima记忆保存失败', severity: 'P2', status: 'verified', label: 'SessionCwd路径已验证', detail: 'Anima capture使用SessionCwd解析的当前项目路径；未注册Session使用历史header cwd，resolver错误传播。', task: 'BUG-ANIMA-CONTINUED-IMPORT-SAVE' },
+  "issues": [
+    {
+      "title": "未提交的持久化门改动",
+      "severity": "P0",
+      "status": "waiting_user",
+      "label": "等授权",
+      "detail": "八门已绿，提交/推送未授权。",
+      "task": "WAIT-AUTH-COMMIT"
+    },
+    {
+      "title": "精确安装包尚未按新候选验收",
+      "priority": "P1",
+      "status": "partial",
+      "label": "交付缺口",
+      "detail": "0.21.2 unsigned 不能代替 SHIP-CANDIDATE。",
+      "task": "SHIP-CANDIDATE"
+    },
+    {
+      "title": "Schedule 直接替换自研 Automation",
+      "priority": "P1",
+      "status": "partial",
+      "label": "高风险 · 已授权删除",
+      "detail": "直接用上游 Schedule 替换自研 asterhub-automation（22 文件）+ ui-asterhub-automation（27 文件），功能一致时以上游为准，不做数据迁移；删除已授权（2026-11-03 23:27）。风险在集成点（desktop-host 退出检查/更新任务、remotes、account-sub2api、desktop-native bundle 等）改接，以及上游缺、自研有的能力需你逐条选保留/放弃；#6189 触及 subagent/cordis 要剔除。三张 Schedule 卡 blocksRelease=true，未完成前不打包。",
+      "task": "UP-SCHEDULE-REPLACE-PLAN"
+    },
+    {
+      "title": "沙箱采纳与已拒绝的 apply_patch 交织",
+      "priority": "P2",
+      "status": "partial",
+      "label": "需手工拆分",
+      "detail": "沙箱/观察策略的多个上游提交同时开关 apply_patch（14d3e53c19、fe5450b152、ea4837abb1、2bd9913e2f、cc2718bede），只能手工移植非 apply_patch 部分。",
+      "task": "UP-ADOPT-SANDBOX"
+    },
+    {
+      "title": "采纳区域路径日志混入 subagent/team/Cordis 提交",
+      "priority": "P1",
+      "status": "partial",
+      "label": "挑提交需剔除",
+      "detail": "按路径粗扫：WINDOWS-CLI 46 条中 18 触及 team、12 触及 subagent；SIDEBAR-UI 12 条触及 subagent；SDK-PYTHON 10 条触及 subagent。由 UP-PREFLIGHT-PICKLIST 出挑/剔清单。",
+      "task": "UP-PREFLIGHT-PICKLIST"
+    },
+    {
+      "title": "核心侵入插件化债务未盘点",
+      "priority": "P1",
+      "status": "pending",
+      "label": "长期债",
+      "detail": "不盘点则跟上游成本持续上升。",
+      "task": "PLUGIN-INVENTORY"
+    },
+    {
+      "title": "Subagent 与上游重构/Teams 纠缠",
+      "priority": "P1",
+      "status": "partial",
+      "label": "冲突风险",
+      "detail": "上游约 130 个提交触及 packages/subagent（其中大量与 Teams 交叉）；我方改过 39 个 packages/subagent 文件。不采纳时须防止其它吸收顺带引入。",
+      "task": "KEEP-SUBAGENT-PATH"
+    }
   ],
-  capabilities: [
-    { title: '产品组合', state: '主要实现已提交', detail: 'asterhub-product / product-web / desktop-native 三层归属明确。' },
-    { title: '模型与图像', state: 'T03 用户实测通过', detail: '用户确认完整登录与模型流程通过；受控目录与 Host-only Key 保持，新候选不自动继承验收。' },
-    { title: '项目与历史', state: 'T16修复线叫停 · 转T28重做', detail: '历史列表/正文/原字节前缀曾验证；双账本架构判定为根因并叫停修复线，转 T28 采用上游记录即真值模型重做（设计已定稿，M1–M4 实施中）。' },
-    { title: '本地记忆', state: '真实模型反思闭环通过', detail: 'T15真实Desktop记录证实memory写入written、非空反思及同模型review/reflection；daily/weekly日历调度尚未验收。' },
-    { title: '浏览器 / 语音 / 任务', state: '浏览器与自动化闭环通过', detail: 'browser_open/tabs/close/tabs已验；定时任务配置、启停、历史会话导航、结算、删除墓碑与重载删除保持全过，登录及重启保持闭环通过（exit 0）。Shell沙箱转用户手测，语音不据此确认，见T09/T12。' },
-    { title: 'Computer Use', state: '已装配集成', detail: '已在 asterhub-desktop-native 挂载官方原生 Cua Driver provider 并更新依赖锁文件。实机操作系统权限需桌面端交互授权。' },
-    { title: 'Office / 搜索 / 账户', state: '分项证据', detail: '转换 smoke、本地插件安装与积分 ×100 已有实现；线上鉴权及支付不据此确认。' }
+  "capabilities": [
+    {
+      "title": "产品组合",
+      "state": "已提交",
+      "detail": "asterhub-product / product-web / desktop-native。"
+    },
+    {
+      "title": "普通 Subagent",
+      "state": "待 KEEP 复验",
+      "detail": "已恢复采用；不做 Agent Teams。"
+    },
+    {
+      "title": "Anima / 项目本地",
+      "state": "历史通过 · 待冒烟",
+      "detail": "T15/T18 证据在；纳入 KEEP-SMOKE。"
+    },
+    {
+      "title": "Automation",
+      "state": "历史通过 · 将被上游 Schedule 直接替换",
+      "detail": "用户决定直接用上游 Schedule 替换自研 Automation（不迁移数据，删除已授权）；先 UP-SCHEDULE-REPLACE-PLAN 功能对照，再 UP-ADOPT-SCHEDULE + RETIRE-SELFDEV。"
+    },
+    {
+      "title": "浏览器工具",
+      "state": "历史通过 · 待冒烟",
+      "detail": "open/tabs/close 曾闭环。"
+    },
+    {
+      "title": "账户 / 精选目录 UI",
+      "state": "已恢复 · 待真实账号",
+      "detail": "见 WAIT-LOGIN-DATAFLOW。"
+    }
   ],
-  documents: [
-    { title: '手动测试问题记录表', kind: '用户原始记录', href: '问题记录表.xlsx', detail: '保留原表不改动；编号 #1–#4 对应 T12–T15，已进入本轮优先修复调查，根因未确认。' },
-    { title: '当前项目交接', kind: '当前状态', href: '交接文档.md', detail: '唯一的当前文字交接；源码、验收边界、问题和接手顺序。' },
-    { title: '本轮问题修复实施计划（历史档案）', kind: '历史档案', href: 'archive-20261024/问题修复实施计划.md', detail: '已执行完毕的轮次章程；存留细节已并入交接文档，台账入口见其 §6。' },
-    { title: '架构收拢实施计划（历史档案）', kind: '历史档案', href: 'archive-20261024/项目架构收拢重构实施计划.md', detail: 'W0–W11 设计与验收定义；当前判定见本看板 stages 区，合并硬条件存留见交接文档。' },
-    { title: '架构盘点与收拢建议（历史档案）', kind: '历史档案', href: 'archive-20261024/项目架构盘点与收拢建议.md', detail: '2026-10-22 源码审计参考；建议已映射到已执行的 W1–W8。' },
-    { title: '执行台账', kind: '原始记录', href: '../.local-workspace/worktree-preservation/architecture-consolidation/.superpowers/sdd/项目架构收拢重构实施计划/progress.md', detail: '保留原始执行过程；存在汇总与证据冲突，当前判定见交接。' },
-    { title: '最终交付依据', kind: '产物证据', href: '../.local-workspace/worktree-preservation/architecture-consolidation/.local-workspace/architecture-consolidation/nomad/execution/final-delivery.json', detail: '精确产物哈希、构建作业与隔离安装验收范围。' },
-    { title: 'T28 便携会话重做设计（当前设计）', kind: '当前设计', href: '../.local-workspace/upstream-sync-021/t28-spike-design.md', detail: '便携会话回归上游模型设计定稿：架构对比、机制对照表、M1–M4 里程碑与风险对策。' },
-    { title: '上游合并冲突盘点（0.2.1 基线）', kind: '技术参考', href: '../.local-workspace/upstream-sync-021/merge-conflicts-source-only.txt', detail: '224 个真实源码冲突归因清单，指导 T27 扩展化与全量合并。' },
-    { title: '当前产品模型路由', kind: '源码入口', href: '../packages/bundle/asterhub-product/src/index.ts', detail: '产品冻结路由、目录选择、image 模态及 Host 凭据记录。' },
-    { title: '桌面开发说明', kind: '技术参考', href: '../apps/desktop/README.zh.md', detail: '技术文档仍保留在模块所有者旁，不复制成另一份。' },
-    { title: '架构说明', kind: '技术参考', href: '../docs/architecture.zh.md', detail: '通用运行结构，以主目录源码和 README 交叉确认。' }
+  "documents": [
+    {
+      "title": "上游差距清单（已决定）",
+      "kind": "决策",
+      "href": "./上游差距清单.html",
+      "detail": "2026-11-03 已勾选：采纳 10 / 延后 1 / 拒绝 10；页内可改选后重新导出。"
+    },
+    {
+      "title": "交接协议（v2）",
+      "kind": "规则",
+      "href": "./交接协议.md",
+      "detail": "多 Agent、状态机、打包门禁、五轨。"
+    },
+    {
+      "title": "交接文档",
+      "kind": "叙事",
+      "href": "./交接文档.md",
+      "detail": "只记细节与证据链，不复述看板现值。"
+    },
+    {
+      "title": "Nomad 调度技能",
+      "kind": "技能",
+      "href": "./skills/nomad-dispatch/SKILL.md",
+      "detail": "重活才上集群。"
+    },
+    {
+      "title": "Desktop README",
+      "kind": "技术参考",
+      "href": "../apps/desktop/README.zh.md",
+      "detail": "发布版本约定仍每次打包前确认。"
+    }
   ],
-  next: [
-    '【基线与边界】master 3ada6383e5 已含合并 aba7f481a8；不再执行已完成的 T17e 合并整备。DSH 对照固定 f3803c9697..ce7073d512（351 提交）；不以同版本号推断源码一致，不追求上游全量快照清零。',
-    '【第一批／P0·已完成】AUX-WINDOWS-PRIMARY-RUNTIME-SMOKE已验收通过（窗口/Session/隔离证据齐）；期间发现自研UI四项回归并已按插件路径恢复，fix/restore-fork-ui-20261103=a3ae0caf19。待用户：真实账号登录验收余额/用量/精选数据流，决定fix分支合并与推送。',
-    '【第一批／P0·已完成】PERSISTENCE-RECORD-GATES经用户授权按方案A收口（2026-11-03）：41个上游快照逐字复制、v4.*/v5.json/孤儿快照删除、catalog重生成、T18回归补记为2026-11-03-remove-team-persistence-events，八门全绿；改动未提交，提交与否待用户指示。',
-    '【第二批／产品集成】T18真实Desktop保存、强杀重开、自动召回与检索已验收并随 cbf2b34b01 推送；主界面AsterHub品牌统一随 a75d746689 推送；T17b验普通子代理采用路径，T17汇总而不重复跑；T19 已收口：registration测试随 2c00678f1e 吸收，自研投影消费者（Automation/审批/会话列表）聚焦121例实跑全绿。旧44项只作T17a历史责任索引。',
-    '【第三批／定向上游】T29 按候选子卡给出已包含、需吸收、延后或排除结论；T29a 与 T21 共用模型请求证据，T29b 只比较既有 Automation，T29c 与 T24 共用插件生命周期证据。不把评估候选标成已证实缺陷。',
-    '【第四批／交付】产品必要缺陷与持久化门收口后推进 T22；T20 作为其 Node/Python/Office 子验收，T23 不重复立项。旧 0.21.2 与基于 815a61629a 的留档 0.21.3 均不能代替本次精确候选；签名、发布及推送另需明确授权。',
-    '【后续维护／P2】T27 按实际核心侵入逐包扩展化，T17d 随触及包执行四规则清理；不以零冲突承诺或无产品依据的风格重构阻断交付。保留普通 Subagent、Git Bash 和远端 SSH，排除 Agent Teams 与非 Windows 专属宿主。',
-    '【接手保护】保留现有未提交源码、tsconfig、registration 测试与私人配置；T17a 超时认领不自动接管。历史 T09/T15 用户和实机证据不作当前 master 全量通过证明；不向看板或日志写入凭据。',
-  ]
+  "next": [
+    "【第 1 波·立刻／Agent 并行】KEEP-SMOKE-WINDOWS + KEEP-SUBAGENT-PATH 建吸收前绿基线（Automation 单独留档）；PLUGIN-INVENTORY 出侵入清单。",
+    "【第 1 波·只读准备／Agent 并行】UP-PREFLIGHT-PICKLIST（每区挑/剔提交 + Schedule/Forge/SDK 的 Cordis 可裁剪性）、UP-UI-SELFDEV-AUDIT（自研 UI 防覆盖清单）、UP-SCHEDULE-REPLACE-PLAN（自研 Automation 与上游 Schedule 功能对照，上游缺的能力交你选保留/放弃）、UP-SESSION-FIX-REVIEW（延后项只评估）。",
+    "【第 2 波 a／Agent】低风险采纳：UP-ADOPT-WINDOWS-CLI、LLM-DEEPSEEK、DESKTOP-SETTINGS、PLUGIN-DIAG、SANDBOX（不含 apply_patch）。",
+    "【第 2 波 b／Agent】UP-ADOPT-MENU-FILES → UP-ADOPT-SIDEBAR-UI（PINS → TRAJECTORY ∥ RENDER），均先对照自研清单防覆盖。",
+    "【第 2 波 c／Agent】UP-ADOPT-FORGE ∥ UP-ADOPT-SDK-PYTHON。",
+    "【第 2 波 d／Agent】你对上游缺失能力选完保留/放弃 → UP-ADOPT-SCHEDULE 直接替换（不迁移数据）→ 同卡开工时执行 UP-SCHEDULE-RETIRE-SELFDEV 删除自研模块（已授权）。三张 Schedule 卡 blocksRelease=true。",
+    "【第 3 波／Agent】KEEP-POST-ADOPT 回归对比绿基线 → SHIP-CANDIDATE；SHIP-PUBLISH 另授权。",
+    "【你·随时】WAIT-AUTH-COMMIT / WAIT-DESKTOP-ADOPT / WAIT-LOGIN-DATAFLOW；UP-SESSION-FIX-REVIEW 出结论后再定会话修复跟不跟。",
+    "【约束】基线 f3803c9697..8bd073392e（1017 提交）；只吸收已采纳区域列出的提交；不带入 packages/subagent/*、Agent Teams、vendor/Cordis 升级、apply_patch 及其它已拒绝区域；发布提交 1c78d475bf 不挑。"
+  ],
+  "upstreamDecisions": [
+    {
+      "id": "UPD-WINDOWS-CLI",
+      "area": "Windows CLI 入口与短路径修复",
+      "summary": "Windows 上 CLI 入口别名、8.3 短路径能被正确解析，命令行启动更不容易报找不到模块。",
+      "commits": 7,
+      "prs": [
+        "#7709",
+        "8632896e84",
+        "b2a7d2ec95"
+      ],
+      "dirs": "apps/cli、apps/desktop/config",
+      "conflict": "我方改过 apps/cli 16 个文件，需逐文件对照（未见直接同文件冲突证据）",
+      "windows": "高",
+      "risk": "小",
+      "recommend": "建议跟",
+      "reason": "直接影响 Windows 采用路径，改动小且集中。",
+      "decision": "adopt",
+      "note": "",
+      "decidedAt": "2026-11-03",
+      "cards": [
+        "UP-ADOPT-WINDOWS-CLI"
+      ],
+      "status": "已采纳（按波次开卡）"
+    },
+    {
+      "id": "UPD-LLM-DEEPSEEK",
+      "area": "DeepSeek 模型请求修复（延迟工具 / 工具历史 / 请求头）",
+      "summary": "工具全是延迟加载时请求不再失败；增删工具后历史会重建；插件可预置请求头且失败诊断不泄露凭据；超量图片自动卸载。",
+      "commits": 26,
+      "prs": [
+        "#6958",
+        "624c3e91a9",
+        "1f3bc8b22b",
+        "a05a0d02fa"
+      ],
+      "dirs": "packages/llm/llm-deepseek、packages/llm/llm、packages/llm/llm-pi-ai",
+      "conflict": "我方改过 packages/llm 35 个文件（llm-pi-ai 26 个），其中 12 个与上游同文件",
+      "windows": "通用",
+      "risk": "中",
+      "recommend": "建议跟",
+      "reason": "是对话主链路的 bug 修复，等于旧 UP-HDR-DIAG 的落地版。",
+      "decision": "adopt",
+      "note": "",
+      "decidedAt": "2026-11-03",
+      "cards": [
+        "UP-ADOPT-LLM-DEEPSEEK"
+      ],
+      "status": "已采纳（按波次开卡）"
+    },
+    {
+      "id": "UPD-DESKTOP-SETTINGS",
+      "area": "Desktop 设置保存与损坏配置恢复",
+      "summary": "设置保存能分清「已保存/不确定」，配置文件坏了会弹可操作的恢复对话框，不再卡死。",
+      "commits": 32,
+      "prs": [
+        "d7ca2e0ac2",
+        "224fe9a658",
+        "f578528f1f"
+      ],
+      "dirs": "apps/desktop/src、packages/api/settings-controller、packages/client/ui-settings-general",
+      "conflict": "与我方 apps/desktop/src 18 个文件、settings-controller 10 个、credentials 8 个同文件；#7695「显示已保存 API Key」已被上游回滚，不要跟",
+      "windows": "高",
+      "risk": "中",
+      "recommend": "建议跟",
+      "reason": "Windows Desktop 稳定性收益明确，但要避开已回滚的 #7695。",
+      "decision": "adopt",
+      "note": "",
+      "decidedAt": "2026-11-03",
+      "cards": [
+        "UP-ADOPT-DESKTOP-SETTINGS"
+      ],
+      "status": "已采纳（按波次开卡）"
+    },
+    {
+      "id": "UPD-PLUGIN-DIAG",
+      "area": "插件安装诊断与容错",
+      "summary": "插件装失败时对话框里保留步骤和完整日志；可选插件坏了不再拖垮整个启动；插件详情页 Git 拉取 https 被拒后改走 SSH 重试；插件可自定义设置页导航。",
+      "commits": 34,
+      "prs": [
+        "#7463",
+        "#7733",
+        "#7602",
+        "#7624"
+      ],
+      "dirs": "packages/client/ui-plugin-manager、packages/boot/plugin-manager、plugin-market",
+      "conflict": "我方仅改过 ui-plugin-manager 2 个文件",
+      "windows": "通用",
+      "risk": "小",
+      "recommend": "建议跟",
+      "reason": "契合「一切皆插件」，自研插件出错时也受益；等于旧 UP-PLUGIN-DIAG。",
+      "decision": "adopt",
+      "note": "",
+      "decidedAt": "2026-11-03",
+      "cards": [
+        "UP-ADOPT-PLUGIN-DIAG"
+      ],
+      "status": "已采纳（按波次开卡）"
+    },
+    {
+      "id": "UPD-SESSION-FIX",
+      "area": "会话投影 / 会话稳定性修复",
+      "summary": "检查点里保留已释放单元（#7754），修会话 400 卡死、会话搜索失效、「加载更早」失效；每个事件只发一帧投影更省资源。",
+      "commits": 25,
+      "prs": [
+        "#7754",
+        "#7606",
+        "#7570",
+        "#7587"
+      ],
+      "dirs": "packages/session、packages/api/session-controller",
+      "conflict": "我方改过 packages/session 161 个文件（V4 持久化、session-title、session-log-deepseek），冲突面大",
+      "windows": "通用",
+      "risk": "大",
+      "recommend": "可选",
+      "reason": "修复有价值但我方 V4 持久化改动多，只适合逐个挑修复并跑持久化八门。",
+      "decision": "defer",
+      "note": "审查具体冲突风险后再决定",
+      "decidedAt": "2026-11-03",
+      "cards": [
+        "UP-SESSION-FIX-REVIEW"
+      ],
+      "status": "已延后（只评估冲突风险，不吸收）"
+    },
+    {
+      "id": "UPD-WEB-SEARCH",
+      "area": "Web 搜索 / 抓取设置",
+      "summary": "设置页把「搜索」和「抓取」分开选；搜索默认改用 DeepSeek Search API；web_search 默认一次 10 条并限速。",
+      "commits": 8,
+      "prs": [
+        "#7565",
+        "#7022",
+        "c03b1d247e"
+      ],
+      "dirs": "packages/web/*、packages/client/ui-settings-web-search",
+      "conflict": "我方改过 packages/web 42 个文件；默认服务改为 DeepSeek Search API 可能影响我方账户/计费路径（待核实）",
+      "windows": "通用",
+      "risk": "中",
+      "recommend": "可选",
+      "reason": "有用户可感知收益，但默认服务切换要先和自研账户体系对齐。",
+      "decision": "reject",
+      "note": "我方已自建 SearXNG 服务器",
+      "decidedAt": "2026-11-03",
+      "cards": [],
+      "status": "已拒绝（不建卡、不吸收）"
+    },
+    {
+      "id": "UPD-MCP-MANAGER",
+      "area": "MCP 服务器管理器（ctx.mcpManager）",
+      "summary": "在设置里管理 MCP 服务器（连接状态、健康检查、取消/关闭）；插件可以注册 MCP 服务器；对外暴露 ctx.mcpManager。",
+      "commits": 43,
+      "prs": [
+        "#3372",
+        "30bf5733d6",
+        "6719b28294"
+      ],
+      "dirs": "packages/mcp/mcp-manager、packages/mcp/mcp-client",
+      "conflict": "我方改过 packages/mcp 5 个文件、tool-cordis 22 个；上游 tool-cordis 也有改动",
+      "windows": "通用",
+      "risk": "中",
+      "recommend": "可选",
+      "reason": "本身是插件形态、方向契合，但体量大，没有 MCP 管理需求可延后。",
+      "decision": "reject",
+      "note": "",
+      "decidedAt": "2026-11-03",
+      "cards": [],
+      "status": "已拒绝（不建卡、不吸收）"
+    },
+    {
+      "id": "UPD-UPDATE-CHANNELS",
+      "area": "Desktop 更新通道切换",
+      "summary": "在设置里切换稳定/预览更新通道，切换时清理旧下载；含 Windows 更新器资格测试。",
+      "commits": 11,
+      "prs": [
+        "#7495",
+        "0cf76b9fad",
+        "a635d6d908"
+      ],
+      "dirs": "apps/desktop/src（updater）、ui-settings-general",
+      "conflict": "与我方 apps/desktop/src 9 个文件同文件；上游更新源是 DSH 的发布通道，我方发布走 AsterHub 自己的 GitHub 预发布",
+      "windows": "高",
+      "risk": "中",
+      "recommend": "可选",
+      "reason": "先定 AsterHub 自己的更新/发布通道再决定，否则会指向错误的更新源。",
+      "decision": "reject",
+      "note": "",
+      "decidedAt": "2026-11-03",
+      "cards": [],
+      "status": "已拒绝（不建卡、不吸收）"
+    },
+    {
+      "id": "UPD-MENU-FILES",
+      "area": "右键菜单与文件操作",
+      "summary": "右键菜单可被插件扩展并显示快捷键；文件链接带行号跳转；每个窗格独立工作区树；文件可在侧栏或浮窗打开；Desktop 可显示开发者工具菜单。",
+      "commits": 37,
+      "prs": [
+        "#6951",
+        "#7056",
+        "#6759",
+        "#7523"
+      ],
+      "dirs": "packages/client/ui-context-menu、ui-file-actions、ui-open-in-app、ui-sidebar-files、ui-workspace",
+      "conflict": "与我方 ui-primitives 15 个、apps/desktop/src 6 个同文件",
+      "windows": "通用",
+      "risk": "中",
+      "recommend": "可选",
+      "reason": "体验改进，等于旧 UP-DESKTOP-MENU；没有明确缺口可延后。",
+      "decision": "adopt",
+      "note": "防覆盖自研部分",
+      "decidedAt": "2026-11-03",
+      "cards": [
+        "UP-UI-SELFDEV-AUDIT",
+        "UP-ADOPT-MENU-FILES"
+      ],
+      "status": "已采纳（按波次开卡）"
+    },
+    {
+      "id": "UPD-SIDEBAR-UI",
+      "area": "侧栏与对话阅读体验",
+      "summary": "侧栏可固定插件并预览、自定义「更多」菜单；工具轨迹可折叠、失败输出更清楚、代码高亮；KaTeX 公式复制为 TeX；流式渲染更快。",
+      "commits": 92,
+      "prs": [
+        "#7207",
+        "#7490",
+        "#7399",
+        "#7691"
+      ],
+      "dirs": "packages/client/ui-sidebar、ui-trajectory、ui-conversation、ui-primitives",
+      "conflict": "与我方 ui-primitives 18 个同文件；我方有 ui-asterhub-brand 品牌 UI，需防覆盖",
+      "windows": "通用",
+      "risk": "中",
+      "recommend": "可选",
+      "reason": "纯体验，量大且散；可只挑轨迹/复制类小修。",
+      "decision": "adopt",
+      "note": "防覆盖自研部分",
+      "decidedAt": "2026-11-03",
+      "cards": [
+        "UP-UI-SELFDEV-AUDIT",
+        "UP-ADOPT-SIDEBAR-UI",
+        "UP-ADOPT-SIDEBAR-PINS",
+        "UP-ADOPT-SIDEBAR-TRAJECTORY",
+        "UP-ADOPT-SIDEBAR-RENDER"
+      ],
+      "status": "已采纳（按波次开卡）"
+    },
+    {
+      "id": "UPD-AUTH-COOKIE",
+      "area": "Desktop 不再保存 Host 认证 Cookie",
+      "summary": "Desktop 不再把 Host 认证 Cookie 存进 Electron 会话，并清掉旧 Cookie（安全修复）。",
+      "commits": 3,
+      "prs": [
+        "#7663",
+        "5868dbc357",
+        "93bef27ec7"
+      ],
+      "dirs": "apps/desktop/src",
+      "conflict": "可能影响我方自研账户登录（ui-asterhub-account / deepseek-account-platform），未核实",
+      "windows": "高",
+      "risk": "中",
+      "recommend": "可选",
+      "reason": "安全收益明确，但必须先确认不打断自研账户登录，最好和 WAIT-LOGIN-DATAFLOW 一起验。",
+      "decision": "reject",
+      "note": "",
+      "decidedAt": "2026-11-03",
+      "cards": [],
+      "status": "已拒绝（不建卡、不吸收）"
+    },
+    {
+      "id": "UPD-FORGE",
+      "area": "Forge 代码评审 / 工作树插件",
+      "summary": "评审和工作树统一为一个插件入口；PR 检查按需加载；本地改动与 PR 并列显示；差异文件顺序与文件树一致。",
+      "commits": 51,
+      "prs": [
+        "#7721",
+        "#7619",
+        "#7603",
+        "#7482"
+      ],
+      "dirs": "packages/experimental/client-ui-forge、forge-*",
+      "conflict": "我方仅改过 client-ui-forge 2 个文件",
+      "windows": "通用",
+      "risk": "小",
+      "recommend": "可选",
+      "reason": "实验插件、冲突小；不在应用里做 GitHub 评审就不需要。",
+      "decision": "adopt",
+      "note": "",
+      "decidedAt": "2026-11-03",
+      "cards": [
+        "UP-ADOPT-FORGE"
+      ],
+      "status": "已采纳（按波次开卡）"
+    },
+    {
+      "id": "UPD-SCHEDULE",
+      "area": "Schedule 定时任务",
+      "summary": "任务创建和编辑合为一处、可预填；独立任务接入 WebUI；修复已存任务的定时控件初始化（#7704）。",
+      "commits": 19,
+      "prs": [
+        "#7567",
+        "#7702",
+        "#7704",
+        "#6189"
+      ],
+      "dirs": "packages/schedule/schedule、packages/client/ui-schedule",
+      "conflict": "我方改过 packages/schedule 46 个文件（含自研 asterhub-automation 22 个、schedule/schedule 21 个），会出现第二套调度入口",
+      "windows": "通用",
+      "risk": "大",
+      "recommend": "不建议",
+      "reason": "整块会和自研 Automation 打架；如确有 bug 只单挑 #7704 对照。",
+      "decision": "adopt",
+      "note": "完全替换自研的定时任务模块；直接用上游，功能一致时优先上游，不做数据迁移；删除自研模块已授权（2026-11-03 23:27）",
+      "decidedAt": "2026-11-03",
+      "cards": [
+        "UP-SCHEDULE-REPLACE-PLAN",
+        "UP-ADOPT-SCHEDULE",
+        "UP-SCHEDULE-RETIRE-SELFDEV"
+      ],
+      "status": "已采纳（按波次开卡）"
+    },
+    {
+      "id": "UPD-CORDIS-VENDOR",
+      "area": "Cordis / Loader / vendor 升级",
+      "summary": "框架底座升级到 cordis 4.0.6-alpha.2、Loader rc.8/rc11、Include 1.1.1，插件热重载更稳；用户基本无感。",
+      "commits": 117,
+      "prs": [
+        "05b1cae8db",
+        "#6220",
+        "#6210"
+      ],
+      "dirs": "vendor/*、packages/extensions/tool-cordis、cordis-client-runner",
+      "conflict": "我方 vendor 有 142 个文件与基线不同，tool-cordis 22 个、cordis-client-runner 19 个",
+      "windows": "通用",
+      "risk": "大",
+      "recommend": "不建议",
+      "reason": "底座升级牵一发动全身；先做 PLUGIN-INVENTORY，若自研插件确实需要新 API 再升。提交数含大量顺带触及 tool-cordis 的改动，偏高估。",
+      "decision": "reject",
+      "note": "",
+      "decidedAt": "2026-11-03",
+      "cards": [],
+      "status": "已拒绝（不建卡、不吸收）"
+    },
+    {
+      "id": "UPD-SUBAGENT-REFACTOR",
+      "area": "Subagent 运行时 / 命名重构",
+      "summary": "Subagent 改用 ID 身份、可选命名拆成独立插件、运行时归属移出核心注册表、选模型提示更清楚。",
+      "commits": 130,
+      "prs": [
+        "#7059",
+        "#7519",
+        "#7533"
+      ],
+      "dirs": "packages/subagent/*、packages/client/ui-subagent",
+      "conflict": "我方改过 packages/subagent 39 个文件；上游这批与 Agent Teams 高度交叉（共用提示层）",
+      "windows": "通用",
+      "risk": "大",
+      "recommend": "不建议",
+      "reason": "保我方普通 Subagent 优先；跟了等于半只脚踩进 Teams。提交数含与 Teams 重叠部分。",
+      "decision": "reject",
+      "note": "",
+      "decidedAt": "2026-11-03",
+      "cards": [],
+      "status": "已拒绝（不建卡、不吸收）"
+    },
+    {
+      "id": "UPD-APPLY-PATCH",
+      "area": "apply_patch 补丁工具",
+      "summary": "新增 Codex 风格的 apply_patch 文件修改工具，但上游 11-02 已在默认配置里临时关闭。",
+      "commits": 34,
+      "prs": [
+        "#6747",
+        "#7559",
+        "#7698"
+      ],
+      "dirs": "packages/fs/tool-fs、packages/fs/fs-patch",
+      "conflict": "我方改过 packages/fs 4 个文件",
+      "windows": "通用",
+      "risk": "中",
+      "recommend": "不建议",
+      "reason": "上游自己都临时关了，等稳定后再看。",
+      "decision": "reject",
+      "note": "",
+      "decidedAt": "2026-11-03",
+      "cards": [],
+      "status": "已拒绝（不建卡、不吸收）"
+    },
+    {
+      "id": "UPD-SANDBOX",
+      "area": "沙箱策略上限 / 文件观察策略",
+      "summary": "给沙箱策略加能力上限；文件观察策略默认关闭，补丁改动有护栏。",
+      "commits": 11,
+      "prs": [
+        "#7543",
+        "743d4602e9"
+      ],
+      "dirs": "packages/fs/fs-sandbox、fs-observation-policy",
+      "conflict": "未见与我方同文件冲突证据",
+      "windows": "未核实",
+      "risk": "中",
+      "recommend": "可选",
+      "reason": "没有明确产品缺口；Windows 下是否生效未核实。",
+      "decision": "adopt",
+      "note": "",
+      "decidedAt": "2026-11-03",
+      "cards": [
+        "UP-ADOPT-SANDBOX"
+      ],
+      "status": "已采纳（按波次开卡）"
+    },
+    {
+      "id": "UPD-SDK-PYTHON",
+      "area": "SDK / Python SDK 与运行时部署",
+      "summary": "SDK 支持原生斜杠命令（plan/goal/compact）；Python 运行时按锁文件部署（#7689/#7707）。不含 sdk-team-mode。",
+      "commits": 55,
+      "prs": [
+        "#6955",
+        "#7107",
+        "#7689",
+        "#7707"
+      ],
+      "dirs": "packages/sdk/*、python/sdk",
+      "conflict": "与我方 python/sdk 多文件同文件",
+      "windows": "中",
+      "risk": "中",
+      "recommend": "可选",
+      "reason": "只有 Python 运行时部署修复可能影响 Desktop 打包，其余面向 SDK 开发者。",
+      "decision": "adopt",
+      "note": "",
+      "decidedAt": "2026-11-03",
+      "cards": [
+        "UP-ADOPT-SDK-PYTHON"
+      ],
+      "status": "已采纳（按波次开卡）"
+    },
+    {
+      "id": "UPD-PTC",
+      "area": "PTC 脚本运行时",
+      "summary": "PTC 脚本运行时支持递归 ESM 导入和本地 import 处理，导入语义更稳。",
+      "commits": 27,
+      "prs": [
+        "#6978",
+        "fb59141935"
+      ],
+      "dirs": "packages/ptc-runtime/ptc-runtime-node、webworker-runtime",
+      "conflict": "我方改过 workflow-ptc 17 个文件",
+      "windows": "通用",
+      "risk": "中",
+      "recommend": "不建议",
+      "reason": "用户基本无感，除非自研工作流用到。",
+      "decision": "reject",
+      "note": "",
+      "decidedAt": "2026-11-03",
+      "cards": [],
+      "status": "已拒绝（不建卡、不吸收）"
+    },
+    {
+      "id": "UPD-CUA-MACOS",
+      "area": "Computer Use（macOS 助手）",
+      "summary": "Computer Use 的 macOS 助手：权限引导、开发者签名、公证、打包。",
+      "commits": 79,
+      "prs": [
+        "#7515",
+        "#7516",
+        "#7538",
+        "#7557"
+      ],
+      "dirs": "packages/experimental/cua-macos、cua、cua-bundle",
+      "conflict": "我方 cua-macos 与上游差异 105 个文件",
+      "windows": "无",
+      "risk": "中",
+      "recommend": "不建议",
+      "reason": "macOS 专属，不在 Windows 产品范围。",
+      "decision": "reject",
+      "note": "",
+      "decidedAt": "2026-11-03",
+      "cards": [],
+      "status": "已拒绝（不建卡、不吸收）"
+    },
+    {
+      "id": "UPD-MOBILE",
+      "area": "手机端布局",
+      "summary": "手机端侧栏、标题、布局打磨。",
+      "commits": 7,
+      "prs": [
+        "#6672",
+        "#7478",
+        "#7556"
+      ],
+      "dirs": "packages/client/*（mobile）",
+      "conflict": "无证据",
+      "windows": "无",
+      "risk": "小",
+      "recommend": "不建议",
+      "reason": "Windows Desktop 用不到。",
+      "decision": "reject",
+      "note": "",
+      "decidedAt": "2026-11-03",
+      "cards": [],
+      "status": "已拒绝（不建卡、不吸收）"
+    }
+  ],
+  "upstreamDecisionsMeta": {
+    "range": "f3803c9697..8bd073392e",
+    "total": 1017,
+    "nonMerge": 689,
+    "merges": 328,
+    "snapshot": "2026-11-03",
+    "method": "按提交标题关键词 + 改动路径粗分（只读 git log）；区域之间有重叠，提交数为近似值。冲突点仅写有文件面重叠证据的。",
+    "page": "./上游差距清单.html",
+    "decidedAt": "2026-11-03",
+    "decisionSource": "用户在「上游差距清单.html」导出并贴回对话（2026-11-03）",
+    "counts": {
+      "adopt": 10,
+      "defer": 1,
+      "reject": 10,
+      "pending_user": 0
+    },
+    "rejected": [
+      "UPD-WEB-SEARCH",
+      "UPD-MCP-MANAGER",
+      "UPD-UPDATE-CHANNELS",
+      "UPD-AUTH-COOKIE",
+      "UPD-CORDIS-VENDOR",
+      "UPD-SUBAGENT-REFACTOR",
+      "UPD-APPLY-PATCH",
+      "UPD-PTC",
+      "UPD-CUA-MACOS",
+      "UPD-MOBILE"
+    ],
+    "crossRules": [
+      "UPD-SUBAGENT-REFACTOR 已拒绝：任何采纳卡不得带入 packages/subagent/*、packages/client/ui-subagent 的上游改动（触及的提交剔除相关 hunk 或手工移植）。",
+      "UPD-CORDIS-VENDOR 已拒绝：不升级 vendor/*、tool-cordis、cordis-client-runner；依赖新 Cordis API 的提交先评估可裁剪性（Schedule / Forge / SDK 重点查）。",
+      "UPD-APPLY-PATCH 已拒绝：沙箱/轨迹相关提交里的 apply_patch、fs-patch 部分不带入，apply_patch 工具保持不存在/关闭。",
+      "UPD-WEB-SEARCH / UPD-MCP-MANAGER / UPD-UPDATE-CHANNELS / UPD-AUTH-COOKIE / UPD-MOBILE / UPD-CUA-MACOS / UPD-PTC 已拒绝：其提交即使出现在采纳区域的路径日志里也要剔除（如 3859913c68 搜索设置、6719b28294 MCP 注册）。",
+      "Agent Teams 仍整块排除：packages/team、ui-agent-team、teamwork 改动一律不带入。",
+      "发布提交 1c78d475bf（release 0.2.2-alpha.3，全仓版本号）不 cherry-pick。"
+    ]
+  }
 };
