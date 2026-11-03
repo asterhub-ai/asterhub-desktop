@@ -2028,7 +2028,15 @@ function ProgramOutput({ record, stringWrapping, onOpen, t }: {
     </div>
   )
   return onOpen === undefined
-    ? body
+    ? (
+      <section className={css.programPanel}>
+        <header className={css.overviewHeading}>
+          <span>{t('code.output')}</span>
+          {actions}
+        </header>
+        {body}
+      </section>
+    )
     : <OverviewSection label={t('code.output')} onOpen={onOpen} actions={actions}>{body}</OverviewSection>
 }
 
