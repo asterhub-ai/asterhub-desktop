@@ -11,7 +11,7 @@ window.ASTERHUB_STATUS = {
     "summary": "战略：保自研采用路径可用；自研尽量插件化；上游只收用户勾选、对自研/Windows 采用路径有必要价值的项，默认不吸收；仅 Windows 产品维护。多 Agent（OMP/ZCode/Codex）靠 claim 互斥 + 窄切片并行。",
     "scope": "人工核对离线快照，非实时 CI/监控。占用与断点以 journal + handoff.mjs 为准。",
     "source": "交接协议.md（2026-11-03 上游 alpha.3 重计划 + 用户勾选结果）",
-    "branch": "master @ 712c27e813a9（ahead 1 of origin/master @ 057651c81071）",
+    "branch": "master @ fa0820d2c1a4（ahead 2 of origin/master @ 057651c81071；本快照记录在收尾状态提交前）",
     "mainBranch": "master",
     "paused": "未签名正式发布。私人配置与真实 ~/.asterhub、项目 .aster 不碰。",
     "excluded": [
@@ -218,10 +218,10 @@ window.ASTERHUB_STATUS = {
       "track": "WAIT",
       "category": "等待授权",
       "priority": "P0",
-      "status": "ready",
-      "label": "已授权提交 · 仅本地，不推送",
-      "detail": "用户于 2026-11-04 明确授权本任务范围内所有本地提交；不包含 push、发布或签名。待提交范围先按当前 git status 核实，禁止夹带无关或未审阅改动。",
-      "acceptance": "用户明确授权后，指定 Agent 提交并按需推送；看板改为 verified。"
+      "status": "verified",
+      "label": "本地提交完成 · 未推送",
+      "detail": "用户于 2026-11-04 明确授权本任务范围内所有本地提交；提交 fa0820d2c1a4 包含已审阅的 4 个项目现状/交接文件。git diff --cached --check、status-data.js 语法检查、密钥样式扫描和本地看板浏览器冒烟通过；未 push、发布或签名。",
+      "acceptance": "用户明确授权并完成本地提交；push/发布/签名未授权且未执行；看板状态更新为 verified。",
     },
     {
       "source": "交接协议.md / 2026-11-03 上游 alpha.3 重计划",
