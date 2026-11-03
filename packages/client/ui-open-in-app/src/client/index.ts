@@ -46,7 +46,7 @@ export type { OpenPathActionProps, OpenPathInjected } from './OpenPathAction.tsx
 export type { OpenPathEmptyActionProps } from './OpenPathEmptyAction.tsx'
 
 /** Required services: sessions, layout selection, the slot registry, copy, Remote calls, and shortcuts. */
-export const inject = ['menus', 'sidebarRight', 'sidebarRightTabs', 'sessions', 'slots', 'locale', 'remote', 'remote.session', 'remote.workspaceFiles', 'shortcuts', 'layout']
+export const inject = ['contextMenus', 'sidebarRight', 'sidebarRightTabs', 'sessions', 'slots', 'locale', 'remote', 'remote.session', 'remote.workspaceFiles', 'shortcuts', 'layout']
 
 /**
  * Client plugin body: register dictionaries, workspace directory controls, and
@@ -66,7 +66,7 @@ export function apply(ctx: ClientContext): void {
     inject: () => ({ hooks: announcement.hooks, dismiss: announcement.dismiss }),
   }, OpenInAppToast))
   registerContextMenus(ctx, paths, t, controller)
-  registerSessionReveal(ctx, controller, t)
+  registerSessionReveal(ctx, controller, t, announcement.report)
   const target = () => {
     if (ctx.layout.panelInfo.getSnapshot().activePanelId !== null) return undefined
     const session = Object.values(ctx.sessions.list.getSnapshot().byId)

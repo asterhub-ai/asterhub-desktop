@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 
 import type { ProcessGroupData } from '../src/client/contract/process-groups.ts'
 import type { InboxState } from '@deepseek-ai/dsh-agent/types'
@@ -492,7 +493,7 @@ function makeHarness(
   const SessionProviderStub: ChatViewSlotProps['SessionProvider'] = ({ children }) => <>{children}</>
   const props: HarnessStandardProps = {
     fileDrag,
-    openContextMenu: vi.fn(),
+    resolveContextMenuTarget: vi.fn(() => ({ kind: 'image' as const, value: { url: 'unused' } })),
     renderFactorySlot,
     usePanelInfo: selector => selector({ activePanelId: null }),
     sessionId: SID,
@@ -506,6 +507,7 @@ function makeHarness(
     useTrajectory: (() => { throw new Error('unused') }),
     useSessions: emptySessions(),
     useSessionRetainInfo: () => undefined,
+    useContextMenu: contextMenuHook(),
     useResource,
     useSessionStatus: bindSnapshotSelector(
       createSnapshotStore<SessionStatusSnapshot>(new Map()),
@@ -4699,4 +4701,22 @@ const fileDrag = { prepare: vi.fn(async () => ({ start: () => true, release: () 
 
 it('formats Portuguese elapsed minutes with numeric units', () => {
   expect(formatRunDuration(90_000, key => pt[key])).toBe('1m 30s')
+})
+
+it('does not infer menu targets from links or data attributes inside a plugin flow slot', () => {
+  const h = makeHarness()
+  const custom = vi.fn()
+  const view = render(<ChatView {...h.props} renderSlot={() => <>
+    <a href="https://example.com/plugin">Plugin link</a>
+    <button data-file-path="/plugin/private.txt">Undeclared file</button>
+    <button onContextMenu={(event) => {
+      event.preventDefault()
+      custom()
+    }}>Custom target</button>
+  </>} />)
+  expect(fireEvent.contextMenu(view.getByRole('link', { name: 'Plugin link' }))).toBe(true)
+  expect(fireEvent.contextMenu(view.getByRole('button', { name: 'Undeclared file' }))).toBe(true)
+  fireEvent.contextMenu(view.getByRole('button', { name: 'Custom target' }))
+  expect(custom).toHaveBeenCalledOnce()
+  expect(h.props.resolveContextMenuTarget).not.toHaveBeenCalled()
 })

@@ -88,7 +88,7 @@ export interface ToolCallCommonProps {
   /** Open an argument path at its optional requested line. */
   openFile: (path: string, options?: OpenFileOptions) => void
   /** Session-bound menu capability passed by the Chat owner. */
-  openContextMenu?: ChatNodeOwnerProps['openContextMenu']
+  getContextMenuProps?: ChatNodeOwnerProps['getContextMenuProps']
   /** Chat-supplied, Gateway-authorized loader for durable images; Tool views do not manage attachment URLs. */
   loadImage: MessageImageLoader
   /** Inspect this call in the trajectory view when available. */

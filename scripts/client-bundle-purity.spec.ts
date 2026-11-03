@@ -234,10 +234,10 @@ describe('client bundle purity gate', () => {
     expect(() => resolveId('@deepseek-ai/dsh-spill-policy/notice/internal')).toThrow(/purity/)
   })
 
-  it('inlines the stateless file-drag entry without admitting its subpaths or UI plugin', () => {
-    expect(resolveId('@deepseek-ai/dsh-util-file-drag')).toBeNull()
-    expect(() => resolveId('@deepseek-ai/dsh-util-file-drag/internal')).toThrow(/purity/)
-    expect(() => resolveId('@deepseek-ai/dsh-client-ui-file-drag')).toThrow(/purity/)
+  it.each(['file-drag'])('inlines the stateless %s entry without admitting its subpaths or UI plugin', (name) => {
+    expect(resolveId(`@deepseek-ai/dsh-util-${name}`)).toBeNull()
+    expect(() => resolveId(`@deepseek-ai/dsh-util-${name}/internal`)).toThrow(/purity/)
+    expect(() => resolveId(`@deepseek-ai/dsh-client-ui-${name}`)).toThrow(/purity/)
     const deps = clientConfigs()[0]?.deps as { neverBundle: (specifier: string) => boolean }
     expect(deps.neverBundle('@deepseek-ai/dsh-util-file-drag')).toBe(false)
   })

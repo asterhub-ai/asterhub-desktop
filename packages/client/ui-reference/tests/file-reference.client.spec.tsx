@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -54,4 +55,25 @@ describe('FileReference', () => {
     expect(view.queryByRole('dialog')).toBeNull()
     expect(view.getByRole('button', { name: 'a b.md' })).toBeTruthy()
   })
+})
+
+it('declares workspace-relative targets for pointer and keyboard gestures and leaves previews inert', () => {
+  const open = vi.fn()
+  const input = props(vi.fn())
+  const view = render(<MarkdownDelegateProvider getContextMenuProps={contextMenuHook(open)().getTriggerProps}>
+    <FileReference {...input} />
+  </MarkdownDelegateProvider>)
+  const chip = view.getByRole('button', { name: 'a b.md' })
+  chip.getBoundingClientRect = () => new DOMRect(20, 30, 100, 20)
+  fireEvent.contextMenu(chip, { clientX: 40, clientY: 50 })
+  fireEvent.keyDown(chip, { key: 'F10', shiftKey: true })
+  expect(open.mock.calls).toEqual([
+    [{ kind: 'file', path: 'docs/a b.md', base: 'workspace' }, { x: 40, y: 50 }],
+    [{ kind: 'file', path: 'docs/a b.md', base: 'workspace' }, { x: 20, y: 50 }],
+  ])
+  view.rerender(<MarkdownDelegateProvider getContextMenuProps={contextMenuHook(open)().getTriggerProps}>
+    <FileReference {...input} interactive={false} />
+  </MarkdownDelegateProvider>)
+  expect(fireEvent.contextMenu(view.getByText('a b.md'))).toBe(true)
+  expect(open).toHaveBeenCalledTimes(2)
 })
