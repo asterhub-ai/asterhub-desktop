@@ -12,6 +12,11 @@
 # fork's curated catalogue tab (ui-asterhub-catalog, same slot).
 - id: ui-settings-plugin-inventory
   disabled: true
+# Models come from the fork account system only; the upstream models settings
+# page and its DeepSeek official sign-in onboarding stay out of the product
+# (the composer's fork model selection is ui-model-selection, untouched).
+- id: ui-settings-models
+  disabled: true
 - insert:
     - id: agent-preset-registry
       name: '@deepseek-ai/dsh-agent-preset-registry'
