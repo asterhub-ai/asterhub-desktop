@@ -488,6 +488,8 @@ On first launch, including after an upgrade, Desktop creates this document if it
 ```
 
 Existing documents are never overwritten; an omitted `updates` object or field resolves to `false`. Set the field to `true` to permit test authentication dialogs, then fully quit and restart the application. Set it back to `false` and restart to suppress them again. Creation, read, or validation failures use the default `false` without blocking startup. Desktop attempts to warn through the Electron console with the file path; unavailable logging does not block startup. Correct the file and restart to apply an explicit setting. Unknown fields are preserved. Installation updates retain this user-data file; Windows uninstallation removes it under the [uninstall rules](#windows-uninstall-rules).
+The shared settings storage distinguishes missing files, read failures, malformed JSON, invalid document structure and invalid individual fields. Fields are validated independently with Zod; an invalid field does not invalidate unrelated fields. Reads never create files; startup initialization is explicit and shares the writer lock with saves. A save preserves unknown and unrelated invalid fields. Write diagnostics distinguish no write, uncertain completion and a committed write followed by lock-cleanup failure; the last case is not a rollback.
+
 
 <a id="mandatory-update-policy"></a>
 
