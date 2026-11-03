@@ -12,9 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, TypeAlias, TypeVar
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, ValidationError
 
-from .errors import JsonRpcError, TransportClosedError
+from .errors import JsonRpcError, SdkProtocolError, TransportClosedError
 from .models import CommandExecution, IncomingRequest, InitializeResponse, JsonObject, JsonValue, Notification
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -191,7 +191,7 @@ class HarnessClient:
     def session_command(self, session_id: str, line: str) -> CommandExecution:
         """Execute an explicit command and return its handler result without waiting for a turn."""
         result = self._request_raw("session/command", {"sessionId": session_id, "line": line})
-        return _command_execution(result, "session/command")
+        return _command_execution(result)
     def _query(
         self, session_id: str, input: str | list[JsonObject],
     ) -> str | CommandExecution:

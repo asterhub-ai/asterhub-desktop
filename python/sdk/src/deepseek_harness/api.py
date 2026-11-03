@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Literal
+from typing import Callable, Literal, overload
 
 from .client import HarnessClient, HarnessConfig, NotificationSubscription
 from .errors import SdkProtocolError, TransportClosedError

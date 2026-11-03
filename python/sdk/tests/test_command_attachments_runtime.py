@@ -14,10 +14,19 @@ from deepseek_harness import RunResult
 from deepseek_harness.errors import JsonRpcError
 from test_commands_runtime import (
     _Completion, _SESSION_ID, _WAIT_SECONDS, _command_pair, _native_result, _of_type,
-    _read_events, _request_texts, _runtime, _wait_activity,
+    _read_events, _request_texts, _runtime, _text_blocks, _wait_activity,
 )
 from test_goal_runtime import _command, _until
-from test_plan_runtime import _GUIDANCE, _effective_system
+
+_GUIDANCE = "You are in plan mode."
+
+
+def _effective_system(request: dict) -> str:
+    system = chr(10).join(_text_blocks(request.get("system", "")))
+    for message in request["messages"]:
+        if message["role"] == "system":
+            system = chr(10).join(_text_blocks(message["content"]))
+    return system
 
 
 _IMAGE_MODEL = "deepseek-flash"

@@ -25,7 +25,6 @@ from pydantic import BaseModel
 
 from deepseek_harness.models import CommandExecution
 from deepseek_harness import DeepSeekHarness, Notification, RunResult, Session
-from deepseek_harness.client import UserQuestionHandler
 
 
 _WAIT_SECONDS = 30
@@ -237,7 +236,6 @@ def _wait_activity(runtime: _Runtime, session: Session) -> None:
 def _runtime(
     tmp_path: Path, completions: list[_Completion], *, capture_patch: Path | None = None,
     initial_permission: str = "danger-full-access",
-    on_user_question: UserQuestionHandler | None = None,
     max_goal_rounds: int | None = None,
     model: str = _MODEL,
 ) -> Iterator[_Runtime]:
@@ -263,7 +261,6 @@ def _runtime(
             dsh_bin=dsh_bin, profile="sdk", patches=tuple(str(item) for item in patches), model=model,
             base_url=model_server.url, api_key="keyless-commands-runtime",
             initialize_timeout_seconds=60, request_timeout_seconds=20, shutdown_timeout_seconds=20,
-            on_user_question=on_user_question,
             env={"DSH_PERMISSION_MODE": initial_permission,
                  "DSH_TELEMETRY_DISABLED": "1", "DSH_TOOLS_MODE": "native"},
         )
