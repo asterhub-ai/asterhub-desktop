@@ -400,7 +400,7 @@ it('lets a fresh lease attach the sidebar webview while the offscreen mirror sta
   const reservation = registry.acquire(fixture.owner, 'cwd:/workspace', SESSION_A, TAB_A)
   releases.push(() => registry.release(fixture.owner, reservation.lease))
   const target = { tabId: TAB_A, generation: brandNumber<DesktopBrowserTargetGeneration>(1) }
-  const mirror = registry.resolveGuest(fixture.owner, SESSION_A, target) as GuestContents
+  const mirror = registry.resolveGuest(fixture.owner, SESSION_A, target) as (GuestContents & WebContents)
 
   const preferences: Record<string, unknown> = {}
   const preventDefault = vi.fn()
