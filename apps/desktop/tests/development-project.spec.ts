@@ -41,6 +41,8 @@ describe('desktop development project', () => {
     mkdirSync(join(host, 'lib'), { recursive: true })
     mkdirSync(dependency)
     mkdirSync(hoisted)
+    mkdirSync(join(hoisted, '@scope', 'removed-package', 'lib'), { recursive: true })
+    mkdirSync(join(hoisted, 'removed-package', 'node_modules'), { recursive: true })
     writeFileSync(join(cli, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '1.2.3', dependencies: { unhoisted: 'workspace:^' } }))
     writeFileSync(join(host, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-desktop-host', version: '1.2.3' }))
     writeFileSync(join(host, 'lib/index.js'), '')
