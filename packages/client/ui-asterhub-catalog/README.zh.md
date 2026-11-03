@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 摘要
 
-以独立 fork 客户端插件恢复的 AsterHub 精选插件目录：插件页页签，数据来自签名验签的 `pluginManager.curatedCatalog()` Host Remote。移植自合并前的内嵌精选区块。
+以独立 fork 客户端插件恢复的 AsterHub 精选插件目录：插件页页签与设置页精选插件页签，数据来自签名验签的 `pluginManager.curatedCatalog()` Host Remote。移植自合并前的内嵌精选区块与合并前 `ui-settings-plugin-inventory` 的精选页签。
 
 ## 行为
 

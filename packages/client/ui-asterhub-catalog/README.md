@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-AsterHub curated plugin catalog restored as a standalone fork client plugin: a Plugins-page tab backed by the signature-verified `pluginManager.curatedCatalog()` Host remote. Ported from the pre-merge embedded curated section.
+AsterHub curated plugin catalog restored as a standalone fork client plugin: a Plugins-page tab plus the Settings curated-plugins tab, both backed by the signature-verified `pluginManager.curatedCatalog()` Host remote. Ported from the pre-merge embedded curated section and the pre-merge `ui-settings-plugin-inventory` curated tab.
 
 ## Behavior
 

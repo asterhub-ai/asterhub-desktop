@@ -104,4 +104,10 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('plugins.tab', () => ctx.slots.register({
     name: 'plugins.tab', id: 'asterhub-catalog', label: () => t('title'), locale: NS,
   }, Tab))
+  // The Settings → curated plugins section hosts the same catalogue as a tab
+  // (the pre-merge layout strategy; the vanilla read-only inventory tab is
+  // disabled in the asterhub-product-web patch).
+  ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
+    name: 'settings.plugins.tab', id: 'asterhub-catalog', order: 10, label: () => t('title'), locale: NS,
+  }, Tab))
 }
