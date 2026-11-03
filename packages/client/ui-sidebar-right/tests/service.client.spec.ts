@@ -9,11 +9,13 @@
  * complete until the tab knows how it was navigated to.
  */
 import { getEventListeners } from 'node:events'
+import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { PaneId, TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import { dockPaneIds, findTabPane, getPane } from '@deepseek-ai/dsh-client-ui-dockkit'
-import type { SidebarRightCloseHandler } from '../src/client/service.ts'
+import { createSidebarRightController, type SidebarRightCloseHandler } from '../src/client/service.ts'
+import { SidebarRightTabRegistry } from '../src/client/tab-registry.ts'
 import { createSidebarRightStore } from '../src/client/stores.ts'
 import { controllerHarness as harness, SESSION } from './controller-harness.client.ts'
 

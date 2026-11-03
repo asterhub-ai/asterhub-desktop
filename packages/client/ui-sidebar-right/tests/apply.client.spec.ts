@@ -30,7 +30,7 @@ import { ExpandButton } from '../src/client/shell/ExpandButton.tsx'
 import { GuideBody } from '../src/client/tabs/guide/GuideBody.tsx'
 import { GuideTitle } from '../src/client/tabs/guide/GuideTitle.tsx'
 import { GUIDE_ID } from '../src/client/tabs/guide/definition.ts'
-import { en, zh } from '../src/client/locales.ts'
+import { en, ja, zh, es, fr, de, ru, pt } from '../src/client/locales.ts'
 
 const SHORTCUT_CATALOG: readonly never[] = []
 
@@ -56,6 +56,8 @@ async function boot(shortcuts: Partial<Shortcuts> = {}) {
       registered.push(entry)
       return () => { registered.splice(registered.indexOf(entry), 1) }
     }),
+    entriesOfSlot: vi.fn((name: string) => registered.filter(entry => entry.name === name)),
+    subscribe: vi.fn((_name: string, _listener: () => void) => () => {}),
   }
   const dictionaries = new Map<string, unknown>()
   const locale = {
@@ -128,7 +130,7 @@ describe('ui-sidebar-right apply', () => {
     expect(ctx.sidebarRightTabs).toBeInstanceOf(SidebarRightTabRegistry)
     expect(ctx.sidebarRight).toBeInstanceOf(SidebarRightController)
     expect('adopt' in ctx.sidebarRight).toBe(false)
-    expect(dictionaries.get('sidebarRight')).toEqual({ zh, en })
+    expect(dictionaries.get('sidebarRight')).toEqual({ zh, en, ja, es, fr, de, ru, pt })
     const guide = ctx.sidebarRightTabs.get('guide')
     expect(guide?.id).toBe(GUIDE_ID)
     expect(guide?.priority).toBe('builtin')
@@ -140,7 +142,7 @@ describe('ui-sidebar-right apply', () => {
       ['rightbar', undefined, undefined, RightbarRoot],
       ['rightbar.session', undefined, 'sidebarRight', RightbarSeat],
       ['conversation.session.header.corner', undefined, 'sidebarRight', ExpandButton],
-      ['sidebar.right.pane.tab', GUIDE_ID, undefined, GuideBody],
+      ['sidebar.right.pane.tab', GUIDE_ID, 'sidebarRight', GuideBody],
       ['sidebar.right.pane.tab.title', GUIDE_ID, undefined, GuideTitle],
     ])
     // The panel declares the extension seats; the guide declares its chain child.
@@ -307,6 +309,20 @@ describe('ui-sidebar-right apply', () => {
     expect(guideEntries.getSnapshot().map(entry => entry.kind)).toEqual(['files'])
   })
 
+  it('hands the guide body its pin list, pin mutation, and the actions registration state', async () => {
+    const { slots, seat, injectedOf } = await boot()
+    const { hooks: { entryPins, entryActions }, setPinned } = injectedOf(seat('sidebar.right.pane.tab')) as GuideInjected
+    expect(entryPins.getSnapshot()).toEqual([])
+    setPinned('terminal:shell', false)
+    expect(entryPins.getSnapshot()).toEqual(['terminal:shell'])
+    const listener = vi.fn()
+    entryActions.subscribe(listener)
+    expect(slots.subscribe).toHaveBeenCalledWith('sidebar.right.tab.guide.actions', listener)
+    expect(entryActions.getSnapshot()).toBe(false)
+    slots.register({ name: 'sidebar.right.tab.guide.actions' }, () => null)
+    expect(entryActions.getSnapshot()).toBe(true)
+  })
+
   it('takes every registration and both faces back when disposed, aborting the open records, so a reload registers again', async () => {
     const { ctx, registered, dictionaries, current, fiber, seat, injectedOf } = await boot()
     const injected = injectedOf(seat('rightbar.session')) as SidebarRightInjected
@@ -344,6 +360,21 @@ it('closes captured pane tabs and rechecks tabs moved or closed while their menu
   instance.clearPersisted()
   instance.actions.open(SESSION)
   instance.actions.setExpanded(SESSION, true)
+  const surface = instance.getSnapshot().bySession[SESSION]!
+  const guide = Object.values(surface.layout.tabs)[0]!
+  const guideTarget = { kind: 'tab', value: { sessionId: SESSION, paneId: surface.layout.activePaneId, tab: guide } } as const
+  const empty = h.menus.resolve(guideTarget)
+  expect(empty.source.getSnapshot()).toEqual([])
+  empty.dispose()
+  const run = vi.fn()
+  const remove = h.menus.register({ id: 'plugin.guide', target: 'tab', order: 200,
+    resolve: () => [{ id: 'inspect', label: 'Inspect', run }],
+  })
+  const extended = h.menus.resolve(guideTarget)
+  expect(extended.source.getSnapshot().map(action => action.id)).toEqual(['plugin.guide/inspect'])
+  extended.select('plugin.guide/inspect')
+  expect(run).toHaveBeenCalledOnce()
+  remove()
   const add = (name: string) => {
     instance.actions.openContent(SESSION, { kind: 'text', contentId: `dsh-resource://file/session/s/${name}`, title: name }, () => {})
     return Object.values(instance.getSnapshot().bySession[SESSION]!.layout.tabs).find(tab => tab.title === name)!

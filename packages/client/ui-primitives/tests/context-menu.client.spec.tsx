@@ -3,8 +3,9 @@ import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { Menu, MenuItemButton } from '../src/Menu.tsx'
+import { ReferenceChip } from '../src/user-text.tsx'
 
-afterEach(() => { cleanup(); document.documentElement.style.removeProperty('--dsh-frame-top-clearance') })
+afterEach(() => { vi.restoreAllMocks(); cleanup(); document.documentElement.style.removeProperty('--dsh-frame-top-clearance') })
 
 it('places pointer menus at the cursor above the frame inset and focuses after portal placement', async () => {
   document.documentElement.style.setProperty('--dsh-frame-top-clearance', '96px')
@@ -25,10 +26,10 @@ it('groups data icons per divider, preserves component rows, and makes exit fram
     items: [{ id: 'first', label: 'First', icon: <svg /> }, { id: 'second', label: 'Second' },
       { type: 'separator' as const, id: 'split' }, { id: 'third', label: 'Third' }] }
   const view = render(<Menu {...props}><MenuItemButton onSelect={() => {}}>Plugin</MenuItemButton></Menu>)
-  expect(view.getByRole('menuitem', { name: 'First' }).hasAttribute('data-menu-icon-space')).toBe(true)
-  expect(view.getByRole('menuitem', { name: 'Second' }).hasAttribute('data-menu-icon-space')).toBe(true)
-  expect(view.getByRole('menuitem', { name: 'Third' }).hasAttribute('data-menu-icon-space')).toBe(false)
-  expect(view.getByRole('menuitem', { name: 'Plugin' }).hasAttribute('data-menu-icon-space')).toBe(false)
+  expect(view.getByRole('menuitem', { name: 'First' }).firstElementChild?.getAttribute('aria-hidden') === 'true').toBe(true)
+  expect(view.getByRole('menuitem', { name: 'Second' }).firstElementChild?.getAttribute('aria-hidden') === 'true').toBe(true)
+  expect(view.getByRole('menuitem', { name: 'Third' }).firstElementChild?.getAttribute('aria-hidden') === 'true').toBe(false)
+  expect(view.getByRole('menuitem', { name: 'Plugin' }).firstElementChild?.getAttribute('aria-hidden') === 'true').toBe(false)
   view.rerender(<Menu {...props} exiting="replace" />)
   expect(view.queryByRole('menu')).toBeNull()
   expect(document.querySelector('[data-menu-phase="replace"]')).not.toBeNull()

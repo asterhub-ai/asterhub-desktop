@@ -75,8 +75,6 @@ export function apply(ctx: ClientContext): void {
     name: 'shell.overlay', id: 'open-in-app.toast', locale: NS,
     inject: () => ({ hooks: announcement.hooks, dismiss: announcement.dismiss }),
   }, OpenInAppToast))
-  registerContextMenus(ctx, paths, t, controller)
-  registerSessionReveal(ctx, controller, t, announcement.report)
   const target = () => {
     if (ctx.layout.panelInfo.getSnapshot().activePanelId !== null) return undefined
     const session = Object.values(ctx.sessions.list.getSnapshot().byId)
