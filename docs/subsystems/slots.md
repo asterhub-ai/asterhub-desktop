@@ -8,6 +8,8 @@ This page documents slot ownership, component inputs, extension APIs, and the sh
 
 `plugins.bundle.config` supplies bundle detail configuration, keyed by npm package name. `plugins.bundle.activation` renders optional guidance after user-requested enablement, with owner callbacks to dismiss or open that bundle’s details. `conversation.input.activity` supplies one action between the model selector and Send, with toolbar expansion released on unmount.
 
+The root-scoped list `sidebar.panellist.actions` supplies the rows of the sidebar More menu after the panel rows. The sidebar draws its More button and menu only while its list has registrations, and passes the customizable entries with their pin state, `onOpen`, `onPinnedChange`, and `onDismiss`, each carrying optional `active` state for the current selection, independently of pin state. The `sidebar.panel.icon` root-scoped factory owns the `sidebar.panellist` list and renders its registered icon by `id`, `size`, and `active` for both sidebar rows and More entries. The sidebar keeps its unpinned entry ids in memory; [`ui-entry-customization`](../../packages/client/ui-entry-customization/README.md) registers the shipped rows.
+
 ## Declaration and lifecycle
 
 `SlotMap` is the compile-time registry. A package declaration-merges the key, cardinality, scope, owner props, keyed props, and optional slot-level inject face. The runtime declaration is the matching `children` entry on the component that owns the render location.
