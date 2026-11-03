@@ -115,6 +115,25 @@ function isLabel(entry: MenuEntry): entry is MenuLabel {
   return 'type' in entry && entry.type === 'label'
 }
 
+/** Mark icon columns within each separator-delimited data group. */
+function iconColumns(entries: readonly MenuEntry[], contextual: boolean): ReadonlySet<MenuEntry> {
+  const aligned = new Set<MenuEntry>()
+  if (!contextual) return aligned
+  let group: MenuEntry[] = []
+  const finish = (): void => {
+    if (group.some(entry => !isLabel(entry) && !isSeparator(entry) && entry.icon !== undefined)) {
+      for (const entry of group) aligned.add(entry)
+    }
+    group = []
+  }
+  for (const entry of entries) {
+    if (isSeparator(entry)) finish()
+    else group.push(entry)
+  }
+  finish()
+  return aligned
+}
+
 /** Unplaced portal list: hidden but laid out at a fixed origin so offsetWidth/offsetHeight are real. */
 const MEASURE_STYLE: CSSProperties = { visibility: 'hidden', left: 0, top: 0 }
 
@@ -158,7 +177,7 @@ const MEASURE_STYLE: CSSProperties = { visibility: 'hidden', left: 0, top: 0 }
  * frame, and scroll/resize; return null to skip placement for that frame.
  * @param props.minWidthFromAnchor - in portal mode, keep the menu at least as wide as its anchor, bounded by viewport margins.
  * @param props.footer - rows pinned below the scrolling items area, separated
- * by a hairline; contextual menus reuse an explicit leading separator. These rows stay visible while the items above scroll.
+ * by a hairline; they stay visible while the items above scroll.
  * @param props.children - component rows rendered after `items` in the same
  * list, each a `role="menuitem"` button such as {@link MenuItemButton}; they
  * share the keyboard walk, the submenu exclusivity, and the post-selection
@@ -462,7 +481,9 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
   // scroll clip would crop it, so only submenu-free menus get the height cap.
   const scrollable = !items.some(entry => !isSeparator(entry) && !isLabel(entry) && entry.submenu !== undefined && entry.submenu.length > 0)
 
-  const renderEntry = (entry: MenuEntry) => {
+  const itemColumns = iconColumns(items, contextual)
+  const footerColumns = iconColumns(footer ?? [], contextual)
+  const renderEntry = (entry: MenuEntry, columns: ReadonlySet<MenuEntry>) => {
     if (isSeparator(entry)) {
       return <div key={entry.id} className={css.separator} role="separator" />
     }
@@ -471,6 +492,7 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
     }
     const hasSub = entry.submenu !== undefined && entry.submenu.length > 0
     const subOpen = hasSub && openSubmenuId === entry.id
+    const subColumns = iconColumns(entry.submenu ?? [], contextual)
     const selected = entry.id === selectedId || selectedIds?.includes(entry.id) === true
     return (
       <div
@@ -496,7 +518,7 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
             onSelect?.(entry.id)
           }}
         >
-          {entry.icon !== undefined && <span className={css.itemIcon}>{entry.icon}</span>}
+          {(entry.icon !== undefined || columns.has(entry)) && <span aria-hidden="true" className={css.itemIcon}>{entry.icon}</span>}
           <span className={css.itemLabel}>{entry.label}</span>
           {entry.shortcut !== undefined && <span aria-hidden="true" className={css.shortcut}><ShortcutKeys keys={entry.shortcut.keys} className={css.shortcutKeys} /></span>}
           {/* Selection marker is a trailing check (figma .Menu_cell) unless the fill mode carries it. */}
@@ -516,7 +538,7 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
                   aria-keyshortcuts={sub.shortcut?.aria}
                   onClick={() => { onSelect?.(sub.id); refocusAfterSelection() }}
                 >
-                  {sub.icon !== undefined && <span className={css.itemIcon}>{sub.icon}</span>}
+                  {(sub.icon !== undefined || subColumns.has(sub)) && <span aria-hidden="true" className={css.itemIcon}>{sub.icon}</span>}
                   <span className={css.itemLabel}>{sub.label}</span>
                   {sub.shortcut !== undefined && <span aria-hidden="true" className={css.shortcut}><ShortcutKeys keys={sub.shortcut.keys} className={css.shortcutKeys} /></span>}
                 </button>
@@ -526,31 +548,6 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
       </div>
     )
   }
-
-  useLayoutEffect(() => {
-    const list = listRef.current
-    if (!open || !contextual || list === null) return
-    const alignIcons = (): void => {
-      const groups: HTMLElement[][] = []
-      for (const container of list.querySelectorAll(`.${css.viewport}, .${css.footer}, .${css.submenu}`)) {
-        let group: HTMLElement[] = []
-        groups.push(group)
-        for (const entry of container.querySelectorAll<HTMLElement>('[role="menuitem"], [role="separator"]')) {
-          if (entry.closest(`.${css.viewport}, .${css.footer}, .${css.submenu}`) !== container) continue
-          if (entry.getAttribute('role') === 'separator') { group = []; groups.push(group) }
-          else group.push(entry)
-        }
-      }
-      for (const group of groups) {
-        const hasIcon = group.some(item => item.querySelector(`:scope > .${css.itemIcon}`) !== null)
-        for (const item of group) item.toggleAttribute('data-menu-icon-space', hasIcon)
-      }
-    }
-    alignIcons()
-    const observer = new MutationObserver(alignIcons)
-    observer.observe(list, { childList: true, subtree: true })
-    return () => { observer.disconnect() }
-  }, [open, contextual, items, children, footer, openSubmenuId])
 
   // Submenu exclusivity is decided from the list's own bubble, by DOM:
   // reaching a top-level row that is not a submenu parent — by pointer or by
@@ -594,12 +591,12 @@ export function Menu({ open, anchor, items = [], children, selectedId, selectedI
       onFocus={collapseSubmenuFrom}
     >
       <div className={css.viewport} role="presentation">
-        {items.map(renderEntry)}
+        {items.map(entry => renderEntry(entry, itemColumns))}
         {children}
       </div>
       {footer !== undefined && footer.length > 0 && (
         <div className={css.footer} role="presentation">
-          {footer.map(renderEntry)}
+          {footer.map(entry => renderEntry(entry, footerColumns))}
         </div>
       )}
     </MenuSurface>

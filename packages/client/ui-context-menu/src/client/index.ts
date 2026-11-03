@@ -9,6 +9,7 @@ import { MENU_TRANSITION_MS } from '@deepseek-ai/dsh-client-ui-primitives'
 import { menuTargetKey } from './target-key.ts'
 import { MenuRegistry } from './registry.ts'
 import { createMenuStore } from './store.ts'
+import { dictionaries } from './locales.ts'
 import { MenuOverlay } from './View.tsx'
 import type { ContextMenus, MenuResolution, MenuTarget } from './types.ts'
 
@@ -35,9 +36,7 @@ export const Config: z<Config> = z.object({ resolutionTimeoutMs: z.natural().min
 export const inject = ['slots', 'locale', 'shortcuts']
 /** @param ctx - plugin-owned Client context. @param config - validated preparation budget. */
 export function apply(ctx: Context, config: Config = Config({})): void {
-  ctx.effect(() => ctx.locale.register('contextMenu', {
-    zh: { failed: '操作失败，请重试' }, en: { failed: 'Could not complete the action. Try again.' }, ja: { failed: '操作に失敗しました。再試行してください。' },
-  }), 'context menu: locale')
+  ctx.effect(() => ctx.locale.register('contextMenu', dictionaries), 'context menu: locale')
   const t = ctx.locale.bind('contextMenu')
   const handle = createMenuStore()
   const instance = handle.create()
