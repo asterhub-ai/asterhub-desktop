@@ -2,7 +2,7 @@
 /** Account actions remain wired to the Host state through the injected slot face. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { SlotTestRuntime, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { contextMenuHook, SlotTestRuntime, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { AccountSection, type AccountSectionProps } from '../src/client/AccountSection.tsx'
 import { AccountGate, type AccountGateProps } from '../src/client/AccountGate.tsx'
@@ -46,6 +46,7 @@ function section(overrides: Partial<AccountSectionProps> = {}) {
     useWorkspaces: unusedHook,
     useResource: unusedHook,
     useWorkspaceAccess: unusedHook,
+    useContextMenu: contextMenuHook(() => {}),
     close: vi.fn(),
     t,
     getStatus: vi.fn().mockResolvedValue({ ok: true, value: loggedOut }),

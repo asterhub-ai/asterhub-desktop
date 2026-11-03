@@ -34,7 +34,7 @@ function fixture(title: string): string {
     ...session.snapshotEvents().map(event => JSON.stringify({ ...event, time: 1_000 + event.seq * 1_000 })), ''].join('\n')
 }
 
-describe('web context menus', () => {
+describe.each(['MacIntel', 'Win32', 'Linux x86_64'])('web context menus on %s', (platform) => {
   let scaffold: WebScaffold, browser: Browser, page: Page
   let tripwire: ReturnType<typeof watchConsole>
   beforeAll(async () => {
@@ -48,6 +48,7 @@ describe('web context menus', () => {
     await seedSession(scaffold, fixture('Menu background'), 'context-menu-other')
     browser = await chromium.launch()
     const context = await browser.newContext({ viewport: { width: 1680, height: 1000 }, locale: 'en-US', timezoneId: 'Asia/Shanghai' })
+    await context.addInitScript((value) => { Object.defineProperty(navigator, 'platform', { value }) }, platform)
     page = await context.newPage()
     await page.setViewportSize({ width: 1291, height: 768 })
     tripwire = watchConsole(page)
@@ -102,6 +103,7 @@ describe('web context menus', () => {
     await background.getByRole('button', { name: /actions/i }).click()
     await menu.getByRole('menuitem', { name: /Copy.*[Ii][Dd]/ }).waitFor()
     expect(await menuLabels(menu)).toEqual(names)
+    await alignedSeparators()
     await background.getByRole('button', { name: /actions/i }).click()
     expect(await menu.count()).toBe(0)
     expect(await background.getAttribute('aria-selected')).toBe('false')
@@ -123,11 +125,12 @@ describe('web context menus', () => {
       const initial = await item.getAttribute('aria-keyshortcuts')
       await other.evaluate((key) => {
         localStorage.setItem(key, JSON.stringify({ schemaVersion: 2, profiles: {
-          'web:macos': { 'session.rename': { code: 'KeyJ', modifiers: ['primary', 'alt', 'shift'] } },
-          'web:windows': { 'session.rename': { code: 'KeyJ', modifiers: ['primary', 'alt', 'shift'] } },
+          'web:macos': { 'session.rename': { code: 'Comma', modifiers: ['primary', 'shift'] } },
+          'web:windows': { 'session.rename': { code: 'Comma', modifiers: ['primary', 'shift'] } },
+          'web:linux': { 'session.rename': { code: 'Comma', modifiers: ['primary', 'shift'] } },
         } }))
       }, key)
-      await expect.poll(() => item.getAttribute('aria-keyshortcuts')).toMatch(/J$/)
+      await expect.poll(() => item.getAttribute('aria-keyshortcuts')).toBe(platform === 'MacIntel' ? 'Shift+Meta+,' : 'Control+Shift+,')
       expect(await item.getAttribute('aria-keyshortcuts')).not.toBe(initial)
       expect(await popup!.evaluate(element => element.isConnected)).toBe(true)
       expect(await background.getAttribute('aria-selected')).toBe('false')
@@ -140,7 +143,7 @@ describe('web context menus', () => {
       await item.waitFor()
       await other.evaluate((key) => {
         localStorage.setItem(key, JSON.stringify({ schemaVersion: 2, profiles: {
-          'web:macos': { 'session.rename': null }, 'web:windows': { 'session.rename': null },
+          'web:macos': { 'session.rename': null }, 'web:windows': { 'session.rename': null }, 'web:linux': { 'session.rename': null },
         } }))
       }, key)
       await expect.poll(() => item.getAttribute('aria-keyshortcuts')).toBeNull()
@@ -210,7 +213,7 @@ describe('web context menus', () => {
     await page.keyboard.press('ArrowUp')
     expect(await page.getByRole('menuitem', { name: 'Copy file path', exact: true }).evaluate(element => element === document.activeElement)).toBe(true)
     await page.keyboard.press('Enter')
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(join(scaffold.workspaceCwd, 'first.txt'))
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(join(scaffold.workspaceCwd, 'first.txt'))
     expect(await file.evaluate(element => element === document.activeElement)).toBe(true)
     await page.evaluate(() => {
       document.documentElement.style.setProperty('--dsh-frame-overlay-top', '100px')

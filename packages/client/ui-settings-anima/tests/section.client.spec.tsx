@@ -3,7 +3,7 @@
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { allowAllAccess, bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
+import { allowAllAccess, bindSnapshotSelector, contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { SettingsFieldState, SettingsFormShell } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
@@ -41,6 +41,7 @@ function renderSection(locale: typeof en = en, overrides: Partial<AnimaFormState
   const t: PropsLocale<'settings.anima'>['t'] = key => messages[key] ?? key
   const props: AnimaSettingsSectionProps = {
     ...kit, ...actions, t, close: vi.fn(), useAnimaForm: bindSnapshotSelector(store),
+    useContextMenu: contextMenuHook(() => {}),
   }
   render(<AnimaSettingsSection {...props} />)
   return actions

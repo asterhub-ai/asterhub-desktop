@@ -2,7 +2,7 @@
 /** Account usage abbreviates large token totals without changing accounting values. */
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
-import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { contextMenuHook, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import type { AccountUsageSnapshot } from '@deepseek-ai/dsh-account-sub2api/types'
@@ -19,6 +19,7 @@ const globalProps = {
   useSessionRetainInfo: unusedHook, useSessionAccess: unusedHook,
   useRemoteAccess: unusedHook, useWorkspaces: unusedHook,
   useResource: unusedHook, useWorkspaceAccess: unusedHook,
+  useContextMenu: contextMenuHook(() => {}),
 }
 
 describe.each([

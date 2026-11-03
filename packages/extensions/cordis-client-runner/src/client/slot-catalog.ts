@@ -92,7 +92,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -153,7 +152,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -204,7 +202,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -246,7 +243,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -290,7 +286,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -343,7 +338,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -401,7 +395,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -455,15 +448,13 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       },
     ],
     ownerProps: [
-      '/** Owner currency of the completed-Turn extension chain. */\nexport interface TurnTailOwnerProps {\n  turn: TurnLocation\n  seq: number\n  openFile: (path: string) => void\n  getContextMenuProps?: MarkdownDelegate[\'getContextMenuProps\']\n}',
+      '/** Owner currency of the completed-Turn extension chain. */\nexport interface TurnTailOwnerProps {\n  turn: TurnLocation\n  seq: number\n  openFile: (path: string) => void\n}',
     ],
     ownerPropsReferences: [
-      'MarkdownDelegate',
       'TurnLocation',
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -509,7 +500,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -559,7 +549,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -603,7 +592,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -658,7 +646,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -696,7 +683,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -734,7 +720,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -764,7 +749,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -802,7 +786,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -836,7 +819,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -868,7 +850,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -903,7 +884,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -947,7 +927,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1007,7 +986,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1066,7 +1044,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1104,7 +1081,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1161,7 +1137,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1203,7 +1178,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1243,7 +1217,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1300,7 +1273,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1357,7 +1329,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1395,7 +1366,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1433,7 +1403,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1492,7 +1461,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1534,7 +1502,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1574,7 +1541,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1633,7 +1599,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1679,7 +1644,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1726,7 +1690,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1793,7 +1756,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1854,7 +1816,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1915,7 +1876,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1960,7 +1920,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -1993,7 +1952,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2038,7 +1996,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2077,7 +2034,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2128,7 +2084,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2179,7 +2134,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2230,7 +2184,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2281,7 +2234,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2325,7 +2277,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2355,7 +2306,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2387,7 +2337,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2427,7 +2376,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2478,7 +2426,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2508,7 +2455,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2559,7 +2505,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2602,7 +2547,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2634,7 +2578,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2683,7 +2626,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2722,7 +2664,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2750,7 +2691,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2799,7 +2739,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2851,7 +2790,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2902,7 +2840,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2941,7 +2878,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -2971,7 +2907,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3020,7 +2955,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3069,7 +3003,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3099,7 +3032,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3131,7 +3063,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3163,7 +3094,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3193,7 +3123,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3252,7 +3181,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3303,7 +3231,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3342,7 +3269,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3395,7 +3321,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3450,7 +3375,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3506,7 +3430,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3563,7 +3486,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3612,7 +3534,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3669,7 +3590,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3726,7 +3646,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3771,7 +3690,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3816,7 +3734,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3877,7 +3794,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3934,7 +3850,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -3985,7 +3900,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -4017,7 +3931,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -4047,7 +3960,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -4079,7 +3991,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -4111,7 +4022,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -4163,7 +4073,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -4218,7 +4127,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ownerPropsReferences: [],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -4254,7 +4162,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -4310,7 +4217,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',
@@ -4414,7 +4320,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     standardProps: [
       'useResource: UseResource',
-      'useContextMenu: import(\'./types.ts\').UseContextMenu',
       'useWorkspaces: SnapshotSelectorHook<WorkspaceSnapshot>',
       'usePanelInfo: UsePanelInfo',
       'useSessions: UseSessions',

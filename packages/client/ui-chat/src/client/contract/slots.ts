@@ -319,7 +319,7 @@ export interface ChatViewInjected {
   /** File preparation and failure callbacks owned by the file-drag plugin. */
   readonly fileDrag: import('@deepseek-ai/dsh-client-ui-primitives').FileDragActions
   /** Resolve the reference against this Session and its current path base when the gesture begins. */
-  resolveContextMenuTarget: (target: import('@deepseek-ai/dsh-client-ui-primitives').MarkdownMenuTarget) => import('@deepseek-ai/dsh-client-ui-context-menu/client').MenuTarget
+  resolveContextMenuTarget: (target: import('@deepseek-ai/dsh-client-ui-primitives').MarkdownMenuTarget) => import('@deepseek-ai/dsh-client-ui-context-menu/client').ContextMenuTarget
   /** Dispatch one gesture to the Conversation plugin registry. */
   dispatchInteraction: (gesture: TextInteractionGesture) => string | null
   hooks: {
