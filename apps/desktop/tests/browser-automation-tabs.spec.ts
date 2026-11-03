@@ -339,8 +339,8 @@ it('keeps shared-workspace guest targets inside their owning Session and tab', (
   const [tabA] = registry.describeSessionTabs(a.owner, SESSION_A, [{ tabId: TAB_A, active: true }])
   const [tabB] = registry.describeSessionTabs(b.owner, SESSION_B, [{ tabId: TAB_B, active: false }])
   expect(reservationA.partition).toBe(reservationB.partition)
-  expect(tabA).toMatchObject({ url: 'https://a.example/', title: 'A page', active: true, ownership: 'user', attached: true })
-  expect(tabB).toMatchObject({ url: 'https://b.example/', title: 'B page', active: false, ownership: 'user', attached: true })
+  expect(tabA).toMatchObject({ url: 'https://a.example/', title: 'A page', active: true, ownership: 'user', attached: false })
+  expect(tabB).toMatchObject({ url: 'https://b.example/', title: 'B page', active: false, ownership: 'user', attached: false })
   expect(tabA!.target.tabId).not.toBe(tabB!.target.tabId)
   expect(registry.resolveGuest(a.owner, SESSION_A, tabA!.target)).toBe(guestA)
   expect(registry.resolveGuest(a.owner, SESSION_A, tabB!.target)).toBeUndefined()
@@ -390,6 +390,39 @@ it('creates a hidden offscreen BrowserWindow in the workspace partition upon acq
       partition: reservation.partition,
     },
   })
+})
+
+it('lets a fresh lease attach the sidebar webview while the offscreen mirror stays the lease guest', async () => {
+  const registry = new DesktopBrowserGuests(() => undefined)
+  const fixture = ownerFixture()
+  const attachInput = vi.fn(() => () => {})
+  registry.bind(fixture.window, attachInput)
+  const reservation = registry.acquire(fixture.owner, 'cwd:/workspace', SESSION_A, TAB_A)
+  releases.push(() => registry.release(fixture.owner, reservation.lease))
+  const target = { tabId: TAB_A, generation: brandNumber<DesktopBrowserTargetGeneration>(1) }
+  const mirror = registry.resolveGuest(fixture.owner, SESSION_A, target) as GuestContents
+
+  const preferences: Record<string, unknown> = {}
+  const preventDefault = vi.fn()
+  fixture.owner.emit('will-attach-webview', { preventDefault }, preferences, {
+    src: `about:blank#${reservation.lease}`, partition: reservation.partition,
+  })
+  expect(preventDefault).not.toHaveBeenCalled()
+  expect(preferences.partition).toBe(reservation.partition)
+
+  const visible = guestFixture(reservation.lease)
+  fixture.owner.emit('did-attach-webview', {}, visible)
+  ;(visible as unknown as EventEmitter).emit('dom-ready')
+  expect(attachInput).toHaveBeenCalledWith(visible, reservation.lease)
+
+  await registry.navigate(fixture.owner, reservation.lease, 'https://mirror.example/')
+  expect(vi.mocked(mirror).loadURL.mock.calls).toContainEqual(['https://mirror.example/'])
+  expect(vi.mocked(visible).loadURL.mock.calls).toHaveLength(0)
+
+  const second = guestFixture(reservation.lease)
+  fixture.owner.emit('did-attach-webview', {}, second)
+  ;(second as unknown as EventEmitter).emit('dom-ready')
+  expect(second.close).toHaveBeenCalled()
 })
 
 it('forwards navigation, history, viewport, and input operations to the offscreen guest', async () => {

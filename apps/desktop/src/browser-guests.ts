@@ -45,6 +45,8 @@ interface GuestLease {
   readonly lease: DesktopBrowserLeaseId
   attached: boolean
   guest?: WebContents | undefined
+  /** The attached sidebar webview guest; kept apart from the offscreen mirror in guest. */
+  webviewGuest?: WebContents | undefined
   window?: BrowserWindow | undefined
   viewport?: DesktopBrowserViewport | undefined
   latestImage?: NativeImage | undefined
@@ -121,7 +123,7 @@ export class DesktopBrowserGuests {
       sessionId: validSessionId,
       tabId: validTabId,
       lease,
-      attached: true,
+      attached: false,
       guest,
       window: guestWindow,
       sequence: 0,
@@ -212,11 +214,11 @@ export class DesktopBrowserGuests {
         const url = guest.getURL()
         const id = (url.startsWith('about:blank#') ? url.slice('about:blank#'.length) : '') as DesktopBrowserLeaseId
         const lease = this.leases.get(id)
-        if (lease === undefined || lease.owner !== owner || lease.guest !== undefined) {
+        if (lease === undefined || lease.owner !== owner || lease.webviewGuest !== undefined) {
           guest.close({ waitForBeforeUnload: false })
           return
         }
-        lease.guest = guest
+        lease.webviewGuest = guest
         attachedLease = id
         lease.resolveAttaching?.()
         lease.attachingPromise = undefined
@@ -224,12 +226,12 @@ export class DesktopBrowserGuests {
         guest.once('destroyed', () => {
           lease.resolveAttaching?.()
           lease.releaseInput?.()
-          this.leases.delete(id)
+          void this.release(owner, id).catch((error: unknown) => { console.error(error) })
         })
       })
       guest.setWindowOpenHandler(({ url, postBody }) => {
         const lease = attachedLease === undefined ? undefined : this.leases.get(attachedLease)
-        if (attachedLease !== undefined && lease?.guest === guest && lease.owner === owner && !owner.isDestroyed()
+        if (attachedLease !== undefined && lease?.webviewGuest === guest && lease.owner === owner && !owner.isDestroyed()
           && postBody === undefined && this.allowedNavigation(url)) {
           const request: DesktopBrowserOpenRequest = { lease: attachedLease, url: new URL(url).href }
           owner.send(DESKTOP_IPC.browserOpenRequested, request)
