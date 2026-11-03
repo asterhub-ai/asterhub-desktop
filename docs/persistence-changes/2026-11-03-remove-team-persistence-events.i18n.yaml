@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-11-03-remove-team-persistence-events.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-11-03-remove-team-persistence-events.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: b9e95dd1881db114
+/2026-11-03-remove-team-persistence-events:
+  en: 64983ce4504d2ec9
+  zh: ae19ad5d75930d09
+/2026-11-03-remove-team-persistence-events/summary:
+  en: 562e2bedb7004151
+  zh: 7253f47daf6a6a88
+/2026-11-03-remove-team-persistence-events/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-11-03-remove-team-persistence-events/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-11-03-remove-team-persistence-events/compatibility:
+  en: 4afd112c7154ef8e
+  zh: 55358822bc6b8d27
+/2026-11-03-remove-team-persistence-events/verification:
+  en: a384758c0bfc17a5
+  zh: b685a80918fbb62b
+/2026-11-03-remove-team-persistence-events/dev-note:
+  en: db54f38193181bfe
+  zh: eaf79ab1dd6f8fb8
