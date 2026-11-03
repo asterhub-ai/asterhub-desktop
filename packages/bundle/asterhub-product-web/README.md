@@ -27,6 +27,8 @@ This layer adds AsterHub account, project-local session, Neo4j-backed Anima, loc
 
 The shipped `web` and Desktop profiles compose this patch-only layer after `dsh-web-app`. The Desktop AI workbench gains account login and model-key provisioning, project-local Sessions with original binary attachments, local Neo4j Anima memory and voice defaults, model selection, and four presets: `standard` (default), `ptc`, `minimal`, and `cordis`. Desktop adds `asterhub-desktop-native` after this layer.
 
+The sidebar and new-conversation hero use AsterHub's name and mark in every build profile. This product layer disables the upstream official-brand plugin and mounts [`ui-asterhub-brand`](../../client/ui-asterhub-brand/README.md).
+
 ### Optional Desktop analytics
 
 Analytics mounts only when `DSH_PRODUCT_ANALYTICS_OTLP_URL` is explicitly configured. Partial batches run every 30 seconds; exporter and processor timeouts are 15 and 20 seconds. Shutdown allows 2 seconds to drain before cancelling pending requests, so pending events may be lost.

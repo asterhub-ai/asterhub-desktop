@@ -1,7 +1,11 @@
 import { useId } from 'react'
 import type { IconProps } from './icons/props.ts'
 
-/** Render the compact AsterHub mark used across the workbench. */
+/**
+ * Render the existing AsterHub artwork with a unique gradient identifier per instance.
+ * @param props - Square size and optional class name supplied by the containing surface.
+ * @returns Decorative AsterHub star mark.
+ */
 export function AsterHubMark({ size = 24, className }: IconProps) {
   const gradientId = `asterhub-mark-${useId().replaceAll(':', '')}`
   return (

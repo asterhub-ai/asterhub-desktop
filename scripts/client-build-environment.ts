@@ -16,10 +16,13 @@ const CLIENT_BUILD_ENV_PREFIX = 'DSH_CLIENT_'
 /** Non-public selector used by build orchestration to request a named client profile. */
 export const CLIENT_BUILD_PROFILE_SELECTOR = 'DSH_BUILD_CLIENT_PROFILE'
 
-/** Public client environment required by official DSH artifacts. */
+/** Product title every AsterHub client artifact profile embeds. */
+const CLIENT_BUILD_TITLE = 'AsterHub'
+
+/** Public client environment required by official AsterHub artifacts. */
 const OFFICIAL_CLIENT_BUILD_ENVIRONMENT = {
   DSH_CLIENT_BUILD_PROFILE: 'official',
-  DSH_CLIENT_TITLE: 'DeepSeek Harness',
+  DSH_CLIENT_TITLE: CLIENT_BUILD_TITLE,
 } as const
 
 /** Public variable carrying the source commit embedded in client artifacts. */
@@ -123,12 +126,14 @@ export function repositoryClientBuildEnvironment(
   const inherited = { ...clientBuildEnvironment(environment) }
   delete inherited.DSH_CLIENT_COMMIT_HASH
   delete inherited.DSH_CLIENT_GIT_DIRTY
+  delete inherited.DSH_CLIENT_TITLE
   delete inherited.DSH_CLIENT_VERSION
   const dirty = repositoryGitDirty(root)
   return {
     ...inherited,
     DSH_CLIENT_COMMIT_HASH: repositoryCommitHash(root, environment),
     ...(dirty === true ? { DSH_CLIENT_GIT_DIRTY: 'true' } : {}),
+    DSH_CLIENT_TITLE: CLIENT_BUILD_TITLE,
     DSH_CLIENT_VERSION: repositoryVersion(root),
   }
 }
@@ -182,7 +187,8 @@ function clientBuildEnvironment(environment: NodeJS.ProcessEnv): ClientBuildEnvi
 /**
  * Resolve the exact public environment selected for a complete client build.
  * Named profiles discard inherited public overrides. Local builds retain the supplied
- * commit, version, and true dirty marker; repositoryClientBuildEnvironment supplies that metadata.
+ * commit, version, and true dirty marker, and pin the repository product title;
+ * repositoryClientBuildEnvironment supplies that metadata.
  * @param environment - parent process environment.
  * @param profile - explicit profile, or the non-public selector when omitted.
  * @returns the inherited public values when no profile is selected, otherwise the named profile.
@@ -206,6 +212,7 @@ export function resolveClientBuildEnvironment(
       DSH_CLIENT_VERSION: version,
       ...(profile === 'official' ? OFFICIAL_CLIENT_BUILD_ENVIRONMENT : {
         DSH_CLIENT_BUILD_PROFILE: 'local',
+        DSH_CLIENT_TITLE: CLIENT_BUILD_TITLE,
         ...(environment.DSH_CLIENT_GIT_DIRTY === 'true' ? { DSH_CLIENT_GIT_DIRTY: 'true' } : {}),
       }),
     }

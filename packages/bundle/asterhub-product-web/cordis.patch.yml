@@ -17,7 +17,11 @@
 # (the composer's fork model selection is ui-model-selection, untouched).
 - id: ui-settings-models
   disabled: true
+- id: ui-brand-official
+  disabled: true
 - insert:
+    - id: ui-asterhub-brand
+      name: '@deepseek-ai/dsh-client-ui-asterhub-brand'
     - id: agent-preset-registry
       name: '@deepseek-ai/dsh-agent-preset-registry'
       config:

@@ -27,6 +27,8 @@ kind: "package-bundle"
 
 随发行版交付的 `web` 与 Desktop profile 会在 `dsh-web-app` 之后组合此 patch-only 层。Desktop AI 工作台获得账户登录与模型密钥配置、项目本地 Session 与原始二进制附件、本地 Neo4j Anima 记忆和语音默认值、模型选择，以及四种 preset：`standard`（默认）、`ptc`、`minimal` 和 `cordis`。Desktop 会在本层之后添加 `asterhub-desktop-native`。
 
+侧栏和新对话欢迎区在所有构建类型中使用 AsterHub 自有名称与标记。本产品层禁用上游官方品牌插件，并挂载 [`ui-asterhub-brand`](../../client/ui-asterhub-brand/README.zh.md)。
+
 ### 可选 Desktop 分析
 
 仅显式配置 `DSH_PRODUCT_ANALYTICS_OTLP_URL` 时才挂载分析。每 30 秒发送未满批次；exporter 与 processor 超时分别为 15 秒和 20 秒。退出时允许 2 秒排空，随后取消待完成的请求，因此待处理事件可能丢失。
