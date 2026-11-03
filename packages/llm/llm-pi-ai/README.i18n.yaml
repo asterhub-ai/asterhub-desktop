@@ -21,8 +21,8 @@
   en: f3b761c7c7ecb82f
   zh: e10d999aa348ef86
 /deepseek-ai-dsh-llm-pi-ai/use-this-package/configure-provider-routes:
-  en: e291a90fc4790b8f
-  zh: 1959e0ad032a9635
+  en: de58538d051c96b5
+  zh: 2a9d1cc5eeb7fe95
 /deepseek-ai-dsh-llm-pi-ai/use-this-package/sign-in-to-a-provider:
   en: c36f66438638ae08
   zh: 066a2fc4cb97c86f
@@ -66,14 +66,14 @@
   en: e7348db3f7115960
   zh: 5fd5fb09d7d09982
 /deepseek-ai-dsh-llm-pi-ai/model-experience/provider-request-through-pi-ai/what-the-model-sees:
-  en: 203535e4c439eb08
-  zh: d51d696f122691cb
+  en: 7769951985fffa4a
+  zh: 99fa211c3914e480
 /deepseek-ai-dsh-llm-pi-ai/model-experience/provider-request-through-pi-ai/token-effect:
   en: 820221e8ae37aa61
   zh: 7e6ff4db10067fc0
 /deepseek-ai-dsh-llm-pi-ai/model-experience/provider-request-through-pi-ai/kv-cache-effect:
-  en: 8c1f842a95ab46fb
-  zh: d6dd124c82f1d96b
+  en: 2ad4b489b21022df
+  zh: f142903f3303f4cb
 /deepseek-ai-dsh-llm-pi-ai/model-experience/provider-response:
   en: 802d7ff60a1d03ff
   zh: c41c56e28f3e8680
@@ -87,8 +87,8 @@
   en: b6bd570c0159ba08
   zh: 7d2d91eea6a8d830
 /deepseek-ai-dsh-llm-pi-ai/known-limitations-and-deferred-work:
-  en: 46c3b766a72e7ff5
-  zh: dfa42024d5a775e1
+  en: 62fb5d7536c69345
+  zh: 920da5d8523ba6ff
 /deepseek-ai-dsh-llm-pi-ai/known-limitations-and-deferred-work/dev-note:
   en: be67a4547256efbf
   zh: 8c32799683ba292c

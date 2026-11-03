@@ -497,6 +497,8 @@ export class PiAiAdapter extends LlmAdapter {
           resolveImageAccess,
           ...scope === undefined ? {} : { scope },
           maxRequestImageBytes: profile.maxRequestImageBytes,
+          maxRequestImages: profile.maxRequestImages,
+          imageOffloadCountQuantum: profile.imageOffloadCountQuantum,
           requestImagePolicy: {
             maxPixels: profile.requestImagePixelBudget,
             maxBytes: profile.requestImageMaxBytes,

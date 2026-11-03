@@ -239,8 +239,13 @@ describe('LlmRuntime', () => {
         tools: [search],
         toolHistory: { tools: [], updates: [{ messageId: added.id, additions: [search] }] },
       }))
-      expect(adapter.lastOptions?.tools).toEqual([{ ...search, deferLoading: true }])
-      expect(adapter.lastOptions?.messages).toEqual([added])
+      if (mode === 'in-history') {
+        expect(adapter.lastOptions?.tools).toEqual([{ ...search, deferLoading: true }])
+        expect(adapter.lastOptions?.messages).toEqual([added])
+      } else {
+        expect(adapter.lastOptions?.tools).toEqual([search])
+        expect(adapter.lastOptions?.messages).toEqual([])
+      }
 
       const afterRemoval = await ctx.llm.prepareCall({ provider: 'test-provider', model: 'test-model' })
       await collect(afterRemoval.stream({
@@ -530,7 +535,6 @@ describe('LlmRuntime', () => {
           [Symbol.asyncIterator](): AsyncIterator<StreamChunk> {
             return {
               // Third-party adapters can reject with arbitrary values.
-              // oxlint-disable-next-line typescript/prefer-promise-reject-errors
               next: () => Promise.reject('plain provider failure'),
             }
           },
