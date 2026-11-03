@@ -6,7 +6,7 @@ import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { MenuRegistry } from '@deepseek-ai/dsh-client-ui-context-menu/src/client/registry.ts'
-import type { ContextMenus, MenuTarget } from '@deepseek-ai/dsh-client-ui-context-menu/client'
+import type { ContextMenus, ContextMenuTarget } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import type { FileActionSource, FileSaveResult } from '@deepseek-ai/dsh-client-ui-file-actions/client'
 import { OpenInAppPathController } from '../src/client/open-path.ts'
 import { OpenInAppController } from '../src/client/controller.ts'
@@ -57,12 +57,12 @@ async function boot() {
   } })
   await fiber.await()
   onTestFinished(async () => { registry.dispose(); await ctx.fiber.dispose() })
-  const resolve = async (target: MenuTarget) => {
+  const resolve = async (target: ContextMenuTarget) => {
     const menu = registry.resolve(target)
     await menu.ready
     return menu
   }
-  const choose = async (target: MenuTarget, id: string) => {
+  const choose = async (target: ContextMenuTarget, id: string) => {
     const menu = await resolve(target)
     const action = menu.source.getSnapshot().find(item => item.id === id)
     expect(action?.disabled).not.toBe(true)
@@ -82,7 +82,8 @@ it('routes file actions through the captured pane, line, native association and 
   await h.choose(file, 'open-in-app.file/sidebar')
   expect(h.sidebar.openResourceIn).toHaveBeenCalledWith(sessionId, expect.stringContaining('file.svg'),
     { paneId: 'pane', params: { line: 24 } })
-  await h.choose(file, 'open-in-app.file/open')
+  const opened = await h.choose(file, 'open-in-app.file/open')
+  expect(opened?.icon).toEqual({ key: 'open-in-app.application', src: 'data:image/png;base64,a' })
   expect(h.remote.session.openWorkspacePath).toHaveBeenCalledWith({ path: '/workspace/file.svg', application: 'preview' })
   await h.choose(file, 'open-in-app.file/reveal')
   expect(h.remote.session.openWorkspacePath).toHaveBeenCalledWith({ path: '/workspace/file.svg', action: 'reveal' })
@@ -236,7 +237,7 @@ it('offers only folder reveal and path copy, retaining the captured directory', 
 
 it('opens the captured Workspace through the directory app catalog and reports launch failure', async () => {
   const h = await boot()
-  const target: MenuTarget = { kind: 'workspace', value: { workspaceId: 'workspace' as never, path: '/workspace', displayTitle: 'Workspace' } }
+  const target: ContextMenuTarget = { kind: 'workspace', value: { workspaceId: 'workspace' as never, path: '/workspace', displayTitle: 'Workspace' } }
   await h.choose(target, 'open-in-app.workspace/reveal')
   expect(h.directoryFetch).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ body: JSON.stringify({ app: 'finder', path: '/workspace' }) }))
   h.directoryFetch.mockResolvedValueOnce(new Response('', { status: 500 }))
