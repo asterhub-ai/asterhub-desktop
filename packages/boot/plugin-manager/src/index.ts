@@ -37,7 +37,7 @@ import { attributeFailure, normalizeRegistry, NPMMIRROR_REGISTRY, registryPlan }
 import { flatten, writePluginEnabled } from './patch.ts'
 import { incompatiblePlugin, ManagementFailure } from './failure.ts'
 import { approveBuilds, recordPendingBuilds } from './build-approval.ts'
-import { checkGithubConnection } from './github-connection.ts'
+import { checkGithubConnection, type GithubConnectionFailure } from './github-connection.ts'
 import { chooseGitTransport, sshGitSpec } from './git-transport.ts'
 import { newerVersions, VERSION_FIELDS, VERSION_LIST_FIELDS, versionFacts } from './versions.ts'
 import type {
@@ -1062,7 +1062,8 @@ export class PluginManager extends TypertRemoteService {
   /**
    * Install a package using the same pnpm implementation as dsh plugin. GitHub
    * repositories get a connection check bounded by githubConnectionTimeoutMs before pnpm starts;
-   * only network failures or timeouts stop installation, while pnpm owns authentication and transport fallback. An
+   * only network failures or timeouts stop installation, and a stop streams the check's diagnostic
+   * as the installation's install-log run under its request id, while pnpm owns authentication and transport fallback. An
    * HTTP(S) Git URL on another host is installed over SSH instead when access probes bounded by gitTransportTimeoutMs
    * find that only SSH can read it. A run
    * that fails, is cancelled, or adds a package without a bundle patch restores
@@ -1125,7 +1126,7 @@ export class PluginManager extends TypertRemoteService {
         const parsed = parsedForRegistry(spec)
         const signal = AbortSignal.any([this.abort.signal, control.abort.signal])
         const env = this.profile.packageManager?.env === undefined ? {} : { env: this.profile.packageManager.env }
-        let connectionFailure: PackageResult | undefined
+        let connectionFailure: GithubConnectionFailure | undefined
         if (curated === undefined) {
           const connection = checkGithubConnection(parsed, this.profile.dir, {
             timeoutMs: this.githubConnectionTimeoutMs, outputBytes: this.outputBytes, signal, ...env,
@@ -1136,8 +1137,18 @@ export class PluginManager extends TypertRemoteService {
         }
         if (stopped()) throw new InstallCancelledError()
         if (connectionFailure?.kind === 'network' || connectionFailure?.kind === 'timeout') {
-          result.packageResult = connectionFailure
+          // The answer keeps a plain PackageResult; the check's command line is only streamed as the run below.
+          const { argv, ...packageResult } = connectionFailure
+          result.packageResult = packageResult
           result.failedAt = 'spec-host'
+          // pnpm never runs, so the check is the installation's only run: stream its failure into the install log.
+          // A timed-out Git reports no exit code of its own, unlike the result, which records the status it is read as.
+          if (requestId !== undefined) {
+            this.ownerContext.emit('plugin-manager/install-log', {
+              requestId, jobId: randomUUID(), argv, cwd: this.profile.dir, stream: 'stderr',
+              text: connectionFailure.output, exitCode: connectionFailure.timedOut === true ? null : connectionFailure.exitCode,
+            })
+          }
           throw new Error(connectionFailure.output)
         }
         const transport = chooseGitTransport(parsed, this.profile.dir, { timeoutMs: this.gitTransportTimeoutMs, signal, ...env })
