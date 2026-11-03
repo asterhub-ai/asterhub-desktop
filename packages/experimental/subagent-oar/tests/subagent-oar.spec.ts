@@ -172,15 +172,13 @@ describe('OAR task input', () => {
 
 describe('OAR one-shot execution', () => {
 
-  it('passes deployment environment overlays to installation probes', async () => {
+  it('passes deployment environment overlays to the runtime session environment', async () => {
     const observed = observedRuntime()
-    const installation = vi.fn(observed.runtime.installation)
-    const run = await startOarRun(await request(), spec({
-      ...observed.runtime, installation,
-    }, { env: { OAR_EXPLICIT_TOKEN: 'configured', OAR_DELETE: null } }))
+    const run = await startOarRun(await request(), spec(observed.runtime, { env: { OAR_EXPLICIT_TOKEN: 'configured', OAR_DELETE: null } }))
     await run.result
     await run.dispose()
-    const overlay = installation.mock.calls[0]?.[0]?.env
+    // oar@0.67.0 probes take no arguments; the deployment overlay lands on the session options.
+    const overlay = observed.options[0]?.env
     expect(overlay).toMatchObject({ OAR_EXPLICIT_TOKEN: 'configured', OAR_DELETE: null })
     expect(overlay).not.toHaveProperty('PATH')
   })
