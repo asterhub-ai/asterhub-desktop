@@ -14,7 +14,7 @@ export const turnStateSchema = z.object({
 /** Bounded replayable input to local capture and model extraction. */
 export type TurnState = z.infer<typeof turnStateSchema>
 
-const handles = new WeakMap<object, ProjectionHandle<TurnState>>()
+const handles = new WeakMap<Context, ProjectionHandle<TurnState>>()
 
 /**
  * Return textual content only; attachments and tool calls remain in their original Session log.
@@ -26,7 +26,7 @@ export function messageText(content: readonly ContentBlock[]): string {
 }
 
 /**
- * Register the turn evidence projection and retain its ready handle on the registry instance.
+ * Register the turn evidence projection and retain its ready handle on the owning context.
  * @param ctx - Projection registry owner.
  * @param maxBytes - Current complete serialized evidence state limit.
  * @returns ready handle promise whose registration is bound to the context fiber.
@@ -56,10 +56,10 @@ export async function registerTurnProjection(ctx: Context, maxBytes: () => numbe
       return Buffer.byteLength(JSON.stringify(next), 'utf8') > maxBytes() ? { ...state, truncated: true } : next
     },
   })
-  handles.set(registry, handle)
+  handles.set(ctx, handle)
   ctx.effect(() => () => {
-    if (handles.get(registry) === handle) {
-      handles.delete(registry)
+    if (handles.get(ctx) === handle) {
+      handles.delete(ctx)
     }
   }, 'Anima turn projection lifecycle')
   return handle
@@ -73,7 +73,7 @@ export async function registerTurnProjection(ctx: Context, maxBytes: () => numbe
  * @throws when the projection is not registered on the supplied context.
  */
 export function turnStateOf(ctx: Context, session: Session): TurnState {
-  const handle = handles.get(ctx.sessionProjections)
+  const handle = handles.get(ctx)
   if (handle === undefined) {
     throw new Error('Anima turn projection is not registered on this Context')
   }

@@ -93,12 +93,12 @@ Anima 页面提供昵称与七项交流偏好。它们保存在本地 Loader 设
 |---|---|
 | [`src/config.ts`](src/config.ts) | 必需的数据路径和可实时更新的 Anima 策略 |
 | [`src/index.ts`](src/index.ts) | 插件挂载、步骤前召回和已完成轮次处理入口 |
-| [`src/host.ts`](src/host.ts) | CaptureCore 与 MemoryCore 所有权、Session 导入和图操作 |
+| [`src/host.ts`](src/host.ts) | CaptureCore 与 MemoryCore 所有权、规范化的本地所有权路径、Session 导入和图操作 |
 | [`src/session-capture.ts`](src/session-capture.ts) | 将 AsterHub Session 事件映射为原始 Anima 源事实 |
 | [`src/neo4j-runtime.ts`](src/neo4j-runtime.ts) | 私有 Neo4j 进程、运行时验证、就绪检查和清理 |
 | [`src/runtime-assets.ts`](src/runtime-assets.ts) | 固定的 Neo4j 和 Java 版本元数据 |
 | [`scripts/prepare-runtime.ts`](scripts/prepare-runtime.ts) | 使用发布构建代理环境，在构建阶段准备运行时 |
-| [`src/projection.ts`](src/projection.ts) | 有界当前轮次文本和已记录的模型路由 |
+| [`src/projection.ts`](src/projection.ts) | 有界当前轮次文本和已记录的模型路由；按所属 Context 保留投影句柄，不依赖上下文化服务代理的身份 |
 | [`src/extraction.ts`](src/extraction.ts) | 已记录的辅助审核和反思请求 |
 | [`src/tools.ts`](src/tools.ts) | 四个项目级原生工具和精确的人类证据检查 |
 | [`src/recall.ts`](src/recall.ts) | 模型上下文中完整记录的 UTF-8 封装 |

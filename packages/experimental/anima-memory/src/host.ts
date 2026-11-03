@@ -1,7 +1,7 @@
 /** Native Host ownership of Anima's original CaptureCore, Neo4j graph, and MemoryCore. */
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID, createHash } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
 import type { Context } from '@deepseek-ai/cordis'
@@ -527,12 +527,12 @@ function awaitWithSignal<T>(promise: Promise<T>, signal: AbortSignal): Promise<T
 /**
  * Create this installation's ownership directories, including the `data` directory
  * required before any project registration or ownership listing.
- * @param dataRoot - Local Anima data directory.
+ * @param dataRoot - Existing local Anima data directory, canonicalized before ownership checks.
  * @param installationUid - This installation's directory identity.
  * @returns the ownership scope accepted by the original ownership store.
  */
 export async function prepareOwnershipScope(dataRoot: string, installationUid: string): Promise<ProjectOwnershipScope> {
-  const usersRoot = join(dataRoot, 'owners')
+  const usersRoot = join(await realpath(dataRoot), 'owners')
   const directory = join(usersRoot, installationUid)
   await mkdir(join(directory, 'data'), { recursive: true, mode: 0o700 })
   return { users_root: usersRoot, directory_id: installationUid, directory, principal_uid: installationUid }

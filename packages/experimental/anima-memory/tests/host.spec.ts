@@ -16,8 +16,9 @@ describe('Anima ownership scope', () => {
   it('creates the ownership base directories required by project registration', async () => {
     const dataRoot = await realpath(await mkdtemp(join(tmpdir(), 'anima-ownership-')))
     roots.push(dataRoot)
+    const configuredRoot = process.platform === 'win32' ? dataRoot.toLowerCase() : dataRoot
     const installationUid = randomUUID()
-    const scope = await prepareOwnershipScope(dataRoot, installationUid)
+    const scope = await prepareOwnershipScope(configuredRoot, installationUid)
     const project = { project_uid: randomUUID(), identity_fingerprint: 'a'.repeat(64) }
 
     await registerProjectOwnership(scope, project)

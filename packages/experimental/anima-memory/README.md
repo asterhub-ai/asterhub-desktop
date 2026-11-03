@@ -93,12 +93,12 @@ The managed runtime pins Neo4j Community `5.26.32` and Temurin JRE `21.0.12.1+1`
 |---|---|
 | [`src/config.ts`](src/config.ts) | Required data path and live Anima policy |
 | [`src/index.ts`](src/index.ts) | Plugin mount, pre-step recall, and completed-turn admission |
-| [`src/host.ts`](src/host.ts) | CaptureCore and MemoryCore ownership, Session import, and graph operations |
+| [`src/host.ts`](src/host.ts) | CaptureCore and MemoryCore ownership, canonical local ownership paths, Session import, and graph operations |
 | [`src/session-capture.ts`](src/session-capture.ts) | AsterHub Session event mapping into original Anima source facts |
 | [`src/neo4j-runtime.ts`](src/neo4j-runtime.ts) | Private Neo4j process, runtime verification, readiness, and teardown |
 | [`src/runtime-assets.ts`](src/runtime-assets.ts) | Pinned Neo4j and Java release metadata |
 | [`scripts/prepare-runtime.ts`](scripts/prepare-runtime.ts) | Build-time runtime preparation using the release build's proxy environment |
-| [`src/projection.ts`](src/projection.ts) | Bounded current-turn text and logged model route |
+| [`src/projection.ts`](src/projection.ts) | Bounded current-turn text and logged model route; retains the projection handle by owning Context, not contextual service-proxy identity |
 | [`src/extraction.ts`](src/extraction.ts) | Logged auxiliary review and reflection requests |
 | [`src/tools.ts`](src/tools.ts) | Four project-scoped native tools and exact human evidence checks |
 | [`src/recall.ts`](src/recall.ts) | Complete-record UTF-8 framing for model context |
