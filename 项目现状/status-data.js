@@ -11,7 +11,7 @@ window.ASTERHUB_STATUS = {
     "summary": "战略：保自研采用路径可用；自研尽量插件化；上游只收用户勾选、对自研/Windows 采用路径有必要价值的项，默认不吸收；仅 Windows 产品维护。多 Agent（OMP/ZCode/Codex）靠 claim 互斥 + 窄切片并行。",
     "scope": "人工核对离线快照，非实时 CI/监控。占用与断点以 journal + handoff.mjs 为准。",
     "source": "交接协议.md（2026-11-03 上游 alpha.3 重计划 + 用户勾选结果）",
-    "branch": "master @ fa0820d2c1a4（ahead 2 of origin/master @ 057651c81071；本快照记录在收尾状态提交前）",
+    "branch": "master @ cc6f64d276（已推送 origin/master @ cc6f64d276，2026-11-04 用户授权；含 Wave 1-3 全部采纳/修复/候选打包与看板收口提交）",
     "mainBranch": "master",
     "paused": "未签名正式发布。私人配置与真实 ~/.asterhub、项目 .aster 不碰。",
     "excluded": [
