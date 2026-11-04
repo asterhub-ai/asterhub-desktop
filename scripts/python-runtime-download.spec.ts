@@ -95,14 +95,13 @@ async function fixture() {
 }
 
 it('supplies downloaded Node and pnpm to profile and CLI package operations without changing the host PATH', async () => {
-  const { root, cache, run, file } = await fixture()
+  const { root, run, file } = await fixture()
   try {
-    await run('primary').done
-    const primary = join(cache, 'a'.repeat(64), 'primary', 'primary-runtime')
+    const primary = join(root, 'cache', 'a'.repeat(64), 'primary', 'primary-runtime')
     await file(join(primary, 'runtime.json'), JSON.stringify({ node: '24.9.0', pnpm: '11.0.0' }))
     const node = join(primary, 'dependencies/node/bin', process.platform === 'win32' ? 'node.exe' : 'node')
     for (const args of [[], ['plugin', '--profile', 'sdk', 'add', 'local-bundle']]) {
-      const result = await run(undefined, { PATH: '' }, args).done
+      const result = await run(undefined, { PATH: '', DSH_PRIMARY_RUNTIME: primary }, args).done
       expect(result.code, result.stderr).toBe(0)
       expect(JSON.parse(result.stdout)).toMatchObject({
         packageManager: { command: node, args: [join(primary, 'dependencies/pnpm/bin/pnpm.mjs')],

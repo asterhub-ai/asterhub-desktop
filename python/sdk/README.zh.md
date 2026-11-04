@@ -32,6 +32,8 @@ print(result.final_response if isinstance(result, RunResult) else result.result.
 
 `DeepSeekHarness` 延迟启动运行时，并在调用 `close()` 或退出上下文管理器前复用该进程。首次 profile 握手通过 `initialize_timeout_seconds` 使用独立的 30 秒默认上限；普通活动在协议响应后仍不设时限；`request_timeout_seconds` 可以限制协议响应的等待。超时诊断会指明所选 profile，并包含保留的运行时诊断。`cwd` 是 agent workspace；`runtime_cwd` 独立选择子进程工作目录。两者都会在启动前转成绝对路径。`provider`、`model`、可选的 `reasoning_effort` 和可选的正整数 `max_tokens` 通过 JSON-RPC 初始化发送。`base_url` 与 `api_key` 会显式覆盖子进程环境中的 `DEEPSEEK_BASE_URL` 与 `DEEPSEEK_API_KEY`。
 
+使用 `session = harness.resume_session(saved_id)` 可从相同的 `dsh_home` 和工作区恢复已有 Session，然后在返回的句柄上调用 `session.run(...)`。恢复不会发送新输入并保留已保存的历史；会话缺失、不可读、不兼容或被占用时会抛出 `JsonRpcError`，且不创建替代会话。`start_session(saved_id)` 只创建本地句柄，不恢复持久化历史。
+
 ## 运行文本与命令
 
 `session.run(input, on_notification=..., delivery="queue")` 是字符串和内容块数组共用的高层输入入口。两者都使用运行时的[命令形式与 Desktop 别名](../../packages/sdk/server/README.zh.md#command-input)识别规则；未识别的输入保持普通提示词及原始内容块顺序。对普通输入，包括图片，`delivery="steer"` 指向下一个可用步骤。命令的接纳规则与执行时序仍由原生处理器负责。

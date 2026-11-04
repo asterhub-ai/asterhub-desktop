@@ -428,6 +428,12 @@ def test_snapshot_stream_expands_reasoning_and_tool_call_records() -> None:
     ]
 
 
+def test_minimal_snapshot_normalizes_json_escaped_working_directory() -> None:
+    cwd = Path(r"C:\Users\Rover\AppData\Local\Temp\dsh-sdk-minimal-example")
+    message = f'Current working directory: "{json.dumps(str(cwd), ensure_ascii=False)[1:-1]}".'
+    assert SMOKE["minimal_snapshot_text"](message, cwd) == 'Current working directory: "{{cwd}}".'
+
+
 def test_snapshot_file_builder_order_is_checked_outside_update_mode(tmp_path: Path) -> None:
     compare = SMOKE["compare_snapshot_files"]
 

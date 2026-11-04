@@ -32,6 +32,8 @@ print(result.final_response if isinstance(result, RunResult) else result.result.
 
 `DeepSeekHarness` starts lazily and reuses its runtime until `close()` or context-manager exit. The initial profile handshake has an independent 30-second default bound through `initialize_timeout_seconds`; ordinary activity remains unbounded after its protocol response, whose wait can be limited with `request_timeout_seconds`. A timeout names the selected profile and includes retained runtime diagnostics. `cwd` is the agent workspace; `runtime_cwd` independently selects the subprocess working directory. Both become absolute before launch. `provider`, `model`, optional `reasoning_effort`, and optional positive `max_tokens` are sent during JSON-RPC initialization. `base_url` and `api_key` explicitly override `DEEPSEEK_BASE_URL` and `DEEPSEEK_API_KEY` in the child environment.
 
+Use `session = harness.resume_session(saved_id)` to restore an existing Session from the same `dsh_home` and workspace, then call `session.run(...)` on the returned handle. Restoration sends no new input and preserves saved history; missing, unreadable, incompatible, or occupied sessions raise `JsonRpcError` without creating a replacement. `start_session(saved_id)` creates only a local handle; it does not restore persisted history.
+
 <a id="run-text-and-commands"></a>
 ## Run text and commands
 

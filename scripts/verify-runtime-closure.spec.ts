@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { loadCordisYaml } from './cordis-yaml.ts'
 import { verifyRuntimeClosure } from './verify-runtime-closure.ts'
@@ -12,7 +12,7 @@ function fixture(files: Record<string, string | Record<string, unknown>>): strin
   roots.push(root)
   for (const [relative, value] of Object.entries(files)) {
     const preset = /^preset:(.+)$/.exec(relative)
-    const path = join(root, preset === null ? relative : `packages/bundle/web-app/presets/${preset[1]}.patch.yml`)
+    const path = join(root, preset === null ? relative : `packages/bundle/asterhub-product-web/presets/${preset[1]}.patch.yml`)
     mkdirSync(dirname(path), { recursive: true })
     writeFileSync(path, preset === null ? (typeof value === 'string' ? value : `${JSON.stringify(value, null, 2)}\n`) : JSON.stringify([{ insert: [{ name: '@deepseek-ai/dsh-agent-preset', config: { id: preset[1], plugins: typeof value === 'string' ? loadCordisYaml(value) : value } }] }]))
   }
@@ -144,7 +144,7 @@ describe('verifyRuntimeClosure', () => {
 
     expect(result.presetCount).toBe(0)
     expect(result.failures).toEqual([
-      'no agent presets matched packages/bundle/web-app/presets/*.patch.yml',
+      'no agent presets matched packages/bundle/*/presets/*.patch.yml',
     ])
   })
 
@@ -179,5 +179,12 @@ describe('verifyRuntimeClosure', () => {
 
     expect(result.workspacePackageCount).toBe(1)
     expect(result.failures).toEqual(['runtime -> @scope/root -> @scope/required'])
+  })
+
+  it('checks the shipped AsterHub runtime preset and peer graph', async () => {
+    const result = await verifyRuntimeClosure(resolve(import.meta.dirname, '..'))
+
+    expect(result.failures).toEqual([])
+    expect(result.presetCount).toBeGreaterThan(0)
   })
 })

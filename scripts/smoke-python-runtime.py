@@ -2355,7 +2355,8 @@ def minimal_snapshot_message(message: object, cwd: Path) -> dict[str, object]:
 def minimal_snapshot_text(value: object, cwd: Path) -> object:
     """Replace the scenario's temporary working directory everywhere it appears."""
     if isinstance(value, str):
-        return value.replace(str(cwd), "{{cwd}}")
+        escaped_cwd = json.dumps(str(cwd), ensure_ascii=False)[1:-1]
+        return value.replace(str(cwd), "{{cwd}}").replace(escaped_cwd, "{{cwd}}")
     if isinstance(value, list):
         return [minimal_snapshot_text(item, cwd) for item in value]
     if isinstance(value, dict):

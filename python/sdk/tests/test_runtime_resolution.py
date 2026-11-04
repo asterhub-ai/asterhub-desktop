@@ -116,7 +116,7 @@ def test_explicit_mode_wins_over_env_mode(monkeypatch: pytest.MonkeyPatch) -> No
         args = resolve_bundled_launch_args("exe")
     except FileNotFoundError:
         return  # explicit 'exe' was honored; only the artifact is missing
-    assert args[0].endswith(("-x64", "-arm64"))
+    assert Path(args[0]).name == "deepseek-harness-sdk-runtime-win-x64.exe"
 
 
 

@@ -192,6 +192,16 @@ class HarnessClient:
         """Execute an explicit command and return its handler result without waiting for a turn."""
         result = self._request_raw("session/command", {"sessionId": session_id, "line": line})
         return _command_execution(result)
+
+    def resume_session(self, session_id: str) -> None:
+        """Restore an existing persisted Session after initialization without new input.
+
+        Raises ``JsonRpcError`` when the stored Session cannot be restored and
+        ``SdkProtocolError`` when the server violates the empty-result contract.
+        """
+        result = self._request_raw("session/resume", {"sessionId": session_id})
+        if not isinstance(result, dict) or result:
+            raise SdkProtocolError("session/resume response must be an empty object")
     def _query(
         self, session_id: str, input: str | list[JsonObject],
     ) -> str | CommandExecution:

@@ -172,6 +172,16 @@ class DeepSeekHarness:
         self.start()
         return Session(self, session_id or f"session-{uuid.uuid4().hex}")
 
+    def resume_session(self, session_id: str) -> "Session":
+        """Restore the persisted Session with this id without sending new input.
+
+        Reuse the original ``dsh_home`` and workspace. Server errors propagate;
+        this method does not create a replacement Session.
+        """
+        self.start()
+        self.client.resume_session(session_id)
+        return Session(self, session_id)
+
     @overload
     def run(
         self, input: list[JsonObject], *, session_id: str | None = None,

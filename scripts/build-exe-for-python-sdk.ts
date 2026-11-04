@@ -12,14 +12,15 @@ import { spawn } from 'node:child_process'
 import { pnpmInvocation } from './executable-packaging.ts'
 import { existsSync, statSync } from 'node:fs'
 import { chmod, copyFile, glob, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { basename, join, resolve, sep } from 'node:path'
 import { parseArgs } from 'node:util'
 import { pathToFileURL } from 'node:url'
 import { resolveWindowsNodePtyAddons } from './build-exe-for-python-sdk-native-pty.ts'
-import { officeSidecarArchives, runtimeNpmArchive, OFFICE_ASSET_IGNORES } from './build-exe-for-python-sdk-office.ts'
+import { officeSidecarArchives, downloadOfficeSidecar, runtimeNpmArchive, OFFICE_ASSET_IGNORES } from './build-exe-for-python-sdk-office.ts'
 import { syncPythonRuntimeProduct } from './build-exe-for-python-sdk-resources.ts'
 import { deduplicateStagedWorkspacePackages, materializeStagedLinks } from './build-exe-for-python-sdk-staging.ts'
-import { prepareOfficeSkillAssets } from './primary-runtime/prepare.ts'
+import { preparePrimaryRuntime, smokePrimaryRuntime } from './primary-runtime/prepare.ts'
 import primaryLock from './primary-runtime/lock.json' with { type: 'json' }
 
 const root = resolve(import.meta.dirname, '..')
@@ -393,10 +394,14 @@ class SingleExeBuild {
     }
     const ripgrep = await this.copyRipgrepSidecar(target, product)
     const resources = join(this.outDir, `${target.platform}-${target.arch}`)
+    const officeSidecar = join(this.outDir, `${OUTPUT_BASENAME}-${target.platform}-${target.arch}-office`)
     if (this.cli.dryRun) {
+      console.log(`build-exe-for-python-sdk: [dry-run] prepare the locked primary runtime in ${join(resources, 'primary-runtime')}`)
       console.log(`build-exe-for-python-sdk: [dry-run] lock optional resource downloads and copy Office skills to ${resources}`)
+      console.log(`build-exe-for-python-sdk: [dry-run] deploy locked Office package sidecar to ${officeSidecar}`)
     } else {
       await rm(resources, { recursive: true, force: true })
+      await rm(officeSidecar, { recursive: true, force: true })
       await mkdir(resources, { recursive: true })
       const { version, packageManager } = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as { version: string; packageManager: string }
       const office = await officeSidecarArchives(this.staging, { platform, arch: target.arch })
@@ -404,9 +409,19 @@ class SingleExeBuild {
       const inputs = { version, target: `${target.platform}-${target.arch}`, office, pnpm }
       const identity = createHash('sha256').update(JSON.stringify({ ...inputs, primaryLock })).digest('hex')
       await writeFile(join(resources, 'downloads.json'), JSON.stringify({ ...inputs, identity }, undefined, 2) + '\n')
-      await prepareOfficeSkillAssets(join(this.staging, 'node_modules/@deepseek-ai/dsh-skill-office/assets'), join(resources, 'office-skills'))
+      const primaryTarget = `${target.platform}-${target.arch}`
+      const archiveCache = join(tmpdir(), 'dsh-primary-runtime-downloads')
+      await preparePrimaryRuntime({
+        target: primaryTarget,
+        output: resources,
+        cache: archiveCache,
+        version,
+        skillSource: join(this.staging, 'node_modules/@deepseek-ai/dsh-skill-office/assets'),
+      })
+      smokePrimaryRuntime(join(resources, 'primary-runtime'))
+      await downloadOfficeSidecar(office, officeSidecar, join(tmpdir(), 'dsh-office-sidecar-downloads'))
     }
-    return [product, ripgrep, resources]
+    return [product, ripgrep, officeSidecar, resources]
   }
 
   /** Copy the target ripgrep binary beside the executable so Node can spawn it outside pkg's virtual filesystem. */

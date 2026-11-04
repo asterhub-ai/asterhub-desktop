@@ -30,7 +30,7 @@ describe('Python runtime executable builder CLI', () => {
     const result = run(
       { npm_execpath: 'C:\\tools\\pnpm.cjs' },
       '--dry-run',
-      '--targets=node24-macos-arm64',
+      '--targets=node24-win-x64',
       ...flags,
     )
 
@@ -84,7 +84,7 @@ describe('Python runtime executable builder CLI', () => {
     const result = run(
       { npm_execpath: entrypoint, DSH_PYTHON_BUILD_COMMANDS: commands },
       '--build-artifacts',
-      '--targets=node24-macos-arm64',
+      '--targets=node24-win-x64',
     )
 
     expect(result.error).toBeUndefined()
@@ -116,7 +116,7 @@ describe('Python runtime executable builder CLI', () => {
     expect(cliManifest.devDependencies).toHaveProperty('@deepseek-ai/dsh-subprocess-local')
     expect(runtimeManifest.dependencies).toHaveProperty('@deepseek-ai/dsh-subprocess-local')
     expect(bootstrap).toContain("import('@deepseek-ai/dsh/lib/bin.js')")
-    expect(bootstrap).toContain('await runCli()')
+    expect(bootstrap).toContain('await runCli({ packageManager })')
     expect(bootstrap).toContain("import('@deepseek-ai/dsh-subprocess-local/runner')")
     expect(bootstrap).toContain('await runSelectedSubprocessRunner(selection)')
   })
@@ -130,16 +130,16 @@ describe('Python runtime executable builder CLI', () => {
     )
 
     expect(result.status).toBe(0)
-    expect(result.stdout).toContain(`${process.execPath} C:\\tools\\pnpm.cjs run verify-runtime-closure`)
+    expect(result.stdout).toContain(`${JSON.stringify(process.execPath)} C:\\tools\\pnpm.cjs run verify-runtime-closure`)
     expect(result.stdout).not.toMatch(/\[dry-run\] .* run build(?::src)?$/m)
-    expect(result.stdout).toContain(`${process.execPath} C:\\tools\\pnpm.cjs --filter dsh-python-runtime-closure deploy`)
+    expect(result.stdout).toContain(`${JSON.stringify(process.execPath)} C:\\tools\\pnpm.cjs --filter dsh-python-runtime-closure deploy`)
     const deploy = result.stdout.split('\n').find(line => line.includes(' --filter dsh-python-runtime-closure deploy'))
     expect(deploy).toContain('--prod --config.allow-unused-patches=true')
     expect(deploy).toContain('--config.hoist-workspace-packages=false')
     expect(result.stdout.split('--config.allow-unused-patches=true')).toHaveLength(2)
     expect(result.stdout).not.toContain(resolve(root, 'python/sdk-runtime/runtime-bootstrap.mjs'))
     expect(result.stdout).toContain('"bin":"runtime-bootstrap.mjs"')
-    expect(result.stdout).toContain(`${process.execPath} C:\\tools\\pnpm.cjs exec pkg`)
+    expect(result.stdout).toContain(`${JSON.stringify(process.execPath)} C:\\tools\\pnpm.cjs exec pkg`)
     expect(result.stdout).not.toMatch(/pnpm\.cmd/i)
   })
 
@@ -160,7 +160,7 @@ describe('Python runtime executable builder CLI', () => {
     )
 
     expect(result.status).toBe(0)
-    expect(result.stdout).toContain(`${process.execPath} ${entrypoint} run verify-runtime-closure`)
+    expect(result.stdout).toContain(`${JSON.stringify(process.execPath)} ${entrypoint} run verify-runtime-closure`)
     expect(result.stdout).not.toMatch(/pnpm\.cmd/i)
   })
 
@@ -174,9 +174,11 @@ describe('Python runtime executable builder CLI', () => {
 
     expect(result.status).toBe(0)
     expect(result.stdout).toContain('exec pkg')
-    expect(result.stdout).toContain('--sea --targets node24-win-x64')
-    expect(result.stdout).toContain('prepare Python and Office skills for win-x64')
+    expect(result.stdout).toContain('--sea --compress Brotli --targets node24-win-x64')
+    expect(result.stdout).toContain('lock optional resource downloads and copy Office skills to')
+    expect(result.stdout).toContain('prepare the locked primary runtime in')
     expect(result.stdout).toContain(join(root, 'dist-exe', 'win-x64'))
+    expect(result.stdout).toContain(join(root, 'dist-exe', 'deepseek-harness-sdk-runtime-win-x64-office'))
   })
 
   it('rejects a Windows arm64 product before any build step', () => {

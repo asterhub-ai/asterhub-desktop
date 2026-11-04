@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /** Private entry owned by the Python single-file runtime packaging. */
 import { registerHooks } from 'node:module'
-import { delimiter, dirname, isAbsolute, join } from 'node:path'import { isSea } from 'node:sea'
+import { delimiter, dirname, join } from 'node:path'
+import { isSea } from 'node:sea'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 if (isSea()) {

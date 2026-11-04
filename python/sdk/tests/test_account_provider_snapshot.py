@@ -2,20 +2,32 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
 
 from deepseek_harness import DeepSeekHarness
+from deepseek_harness_runtime import resolve_bundled_launch_args
 
 ROOT = Path(__file__).resolve().parents[3]
 CLI = ROOT / 'apps' / 'cli' / 'lib' / 'bin.js'
 
 
-@pytest.mark.skipif(not CLI.exists(), reason='requires the built dsh profile runtime')
+def _dsh_bin() -> str:
+    if sys.platform == "win32":
+        try:
+            return resolve_bundled_launch_args("exe")[0]
+        except FileNotFoundError as exc:
+            pytest.skip(f"requires the built Windows runtime: {exc}")
+    if not CLI.is_file():
+        pytest.skip("requires the built dsh CLI profile runtime")
+    return str(CLI)
+
+
 def test_account_provider_signout_snapshot(tmp_path: Path) -> None:
     with DeepSeekHarness(
-        dsh_bin=str(CLI),
+        dsh_bin=_dsh_bin(),
         dsh_home=str(tmp_path / 'home'),
         cwd=str(tmp_path),
         profile='sdk',

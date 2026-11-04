@@ -1128,7 +1128,7 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       if (scenario.name === 'command-attachments') {
         const parent = ordered[0]
         if (parent === undefined) throw new Error('command attachments have no persisted Session')
-        const events = parseSessionLog(parent.content)
+        const events = records(parent.content)
         const commands = events.filter(event => event.type === 'command/run')
         expect(commands.map(event => ({ name: event.data.name, args: event.data.args }))).toEqual([
           { name: 'plan', args: ' Reply SDK_COMMAND_IMAGE_OK without tools.' },
@@ -1173,7 +1173,7 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       if (scenario.name === 'goal-rounds') {
         const parent = ordered[0]
         if (parent === undefined) throw new Error('goal rounds have no persisted Session')
-        const events = parseSessionLog(parent.content)
+        const events = records(parent.content)
         expect(events.filter(event => event.type === 'goal/change').map(event => event.data.operation))
           .toEqual(['create', 'complete'])
         expect(events.filter(event => event.type === 'user/message' && event.data.source.kind === 'goal')
@@ -1194,7 +1194,7 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       if (scenario.name === 'plan-review') {
         const parent = ordered[0]
         if (parent === undefined) throw new Error('plan review has no persisted Session')
-        const events = parseSessionLog(parent.content)
+        const events = records(parent.content)
         expect(events.filter(event => event.type === 'plan/mode').map(event => event.data.active))
           .toEqual([true, false, true, false])
         expect(events.filter(event => event.type === 'command/run').map(event => ({ name: event.data.name, args: event.data.args })))
@@ -1223,7 +1223,7 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       if (scenario.name === 'command-identity') {
         const parent = ordered[0]
         if (parent === undefined) throw new Error('Command identity has no persisted Session')
-        const events = parseSessionLog(parent.content)
+        const events = records(parent.content)
         expect(events.filter(event => event.type === 'command/run').map(event => event.data.name))
           .toEqual(['access', 'access', 'access'])
         expect(events.filter(event => event.type === 'command/done').map(event => event.data.kind))
@@ -1241,7 +1241,7 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       if (scenario.name === 'permission-switch') {
         const parent = ordered[0]
         if (parent === undefined) throw new Error('permission switch has no persisted Session')
-        const events = parseSessionLog(parent.content)
+        const events = records(parent.content)
         const commands = events.filter(event => event.type === 'command/run')
         expect(commands.map(event => ({ name: event.data.name, args: event.data.args }))).toEqual([
           { name: 'permission', args: ' read-only' },
@@ -1285,7 +1285,7 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       if (scenario.name === 'manual-compact') {
         const parent = ordered[0]
         if (parent === undefined) throw new Error('manual compact has no persisted Session')
-        const events = parseSessionLog(parent.content)
+        const events = records(parent.content)
         const commands = events.filter(event => event.type === 'command/run')
         expect(commands).toHaveLength(1)
         const command = commands[0]

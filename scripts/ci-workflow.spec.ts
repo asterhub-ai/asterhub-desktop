@@ -712,29 +712,19 @@ describe('Python release workflows', () => {
     const call = workflowEvent(workflow, 'workflow_call')
     const plan = workflowJob(workflow, 'plan')
     const build = workflowJob(workflow, 'build')
-    if (!isRecord(call.inputs) || !isRecord(call.secrets) || !Array.isArray(plan.steps) || !Array.isArray(build.steps)) {
+    if (!isRecord(call.inputs) || !Array.isArray(plan.steps) || !Array.isArray(build.steps)) {
       throw new TypeError('Python wheel builder must define workflow_call inputs and plan steps')
     }
 
-    const buildSteps: unknown[] = build.steps
-    const cleanVenvWindows = buildSteps.find(step => isRecord(step) && step.name === 'Install local SDK and runtime wheels into a clean venv (Windows)')
-    const installedKeylessWindows = buildSteps.find(step => isRecord(step) && step.name === 'Run installed-wheel keyless black-box tests (Windows)')
-    const realApiPreflightWindows = buildSteps.find(step => isRecord(step) && step.name === 'Preflight installed-wheel real API test (Windows)')
-    const installedRealApiWindows = buildSteps.find(step => isRecord(step) && step.name === 'Run installed-wheel real API black-box test (Windows)')
-    if (!isRecord(cleanVenvWindows)
-      || !isRecord(installedKeylessWindows)
-      || !isRecord(realApiPreflightWindows)
-      || !isRecord(installedRealApiWindows)) {
-      throw new TypeError('Python wheel builder must define Windows installed-wheel steps')
-    }
+    const buildSteps = build.steps.filter(isRecord)
+    const cleanVenvWindows = buildSteps.find(step => step.name === 'Install local SDK and runtime wheels into a clean venv (Windows)')
+    const installedKeylessWindows = buildSteps.find(step => step.name === 'Run installed-wheel keyless black-box tests (Windows)')
     expect(call.inputs).toHaveProperty('targets')
     expect(call.inputs).toMatchObject({
       ci: { type: 'boolean', default: false },
       release: { type: 'boolean', default: false },
     })
-    expect(call.secrets).toMatchObject({
-      DEEPSEEK_API_KEY_EXTERNAL: { required: false },
-    })
+    expect(call).not.toHaveProperty('secrets')
     expect(workflow.concurrency).toMatchObject({
       group: 'build-single-exe-${{ github.workflow }}-${{ github.ref }}',
     })
@@ -750,35 +740,30 @@ describe('Python release workflows', () => {
     expect(workflowJson).toContain('dist-python/$env:RUNTIME_WHEEL')
     expect(workflowJson).not.toContain('--find-links dist-python')
     expect(workflowJson).not.toContain('cygpath')
+    expect(workflowJson).not.toContain('DEEPSEEK_API_KEY_EXTERNAL')
+    expect(buildSteps.some(step => step.name === 'Preflight installed-wheel real API test (Windows)'
+      || step.name === 'Run installed-wheel real API black-box test (Windows)')).toBe(false)
     expect(installedKeylessWindows).toMatchObject({ if: "runner.os == 'Windows'", shell: 'pwsh' })
     expect(cleanVenvWindows).toMatchObject({ if: "runner.os == 'Windows'", shell: 'pwsh' })
     expect(JSON.stringify(cleanVenvWindows)).toContain('Scripts\\\\python.exe')
-    expect(realApiPreflightWindows).toMatchObject({ shell: 'pwsh' })
-    expect(installedRealApiWindows).toMatchObject({
-      shell: 'pwsh',
-      env: {
-        DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}',
-        DEEPSEEK_BASE_URL: 'https://api.deepseek.com/anthropic',
-      },
-    })
-    expect(JSON.stringify(installedRealApiWindows)).toContain('--scenario sdk-live --installed-wheel')
-    it('runs native command regressions through the installed Windows wheel', () => {
-      const build = workflowJob(loadWorkflow('.github/workflows/build-exe-for-python-sdk.yml'), 'build')
-      if (!Array.isArray(build.steps)) throw new TypeError('Python wheel builder must define steps')
-      const steps = build.steps.filter(isRecord)
-      const installIndex = steps.findIndex(step => step.id === 'smoke-venv-windows')
-      const testIndex = steps.findIndex(step => step.name === 'Run installed-wheel native command tests (Windows)')
-      expect(installIndex).toBeGreaterThanOrEqual(0)
-      expect(testIndex).toBeGreaterThan(installIndex)
-      const install = steps[installIndex]
-      const test = steps[testIndex]
-      expect(install?.run).toContain('pytest>=8.0')
-      expect(test).toMatchObject({ if: "runner.os == 'Windows'", shell: 'pwsh' })
-      expect(test).not.toHaveProperty('continue-on-error')
-      expect(test?.run).toContain('"${{ steps.smoke-venv-windows.outputs.python }}" -I')
-      expect(test?.run).toContain('run_installed_commands.py')
-      expect(test?.run).toContain('if ($LASTEXITCODE -ne 0) { throw')
-    })
+  })
+
+  it('runs native command regressions through the installed Windows wheel', () => {
+    const build = workflowJob(loadWorkflow('.github/workflows/build-exe-for-python-sdk.yml'), 'build')
+    if (!Array.isArray(build.steps)) throw new TypeError('Python wheel builder must define steps')
+    const steps = build.steps.filter(isRecord)
+    const installIndex = steps.findIndex(step => step.id === 'smoke-venv-windows')
+    const testIndex = steps.findIndex(step => step.name === 'Run installed-wheel native command tests (Windows)')
+    expect(installIndex).toBeGreaterThanOrEqual(0)
+    expect(testIndex).toBeGreaterThan(installIndex)
+    const install = steps[installIndex]
+    const test = steps[testIndex]
+    expect(install?.run).toContain('pytest>=8.0')
+    expect(test).toMatchObject({ if: "runner.os == 'Windows'", shell: 'pwsh' })
+    expect(test).not.toHaveProperty('continue-on-error')
+    expect(test?.run).toContain('"${{ steps.smoke-venv-windows.outputs.python }}" -I')
+    expect(test?.run).toContain('run_installed_commands.py')
+    expect(test?.run).toContain('if ($LASTEXITCODE -ne 0) { throw')
   })
 
   it('builds and black-box tests the Windows x64 wheel in GitLab', () => {

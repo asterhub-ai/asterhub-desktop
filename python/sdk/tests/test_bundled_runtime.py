@@ -57,6 +57,7 @@ def test_bundled_runtime_boots_the_sdk_profile(
     profile = json.loads((tmp_path / "home" / "profiles" / "sdk" / "package.json").read_text())
     assert profile["dsh"]["profile"]["bundles"] == [
         "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-asterhub-product",
         "@deepseek-ai/dsh-sdk-app",
     ]
 

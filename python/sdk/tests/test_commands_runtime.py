@@ -1,6 +1,6 @@
 """Exercise Session commands through Python and the real sdk profile with a local model.
 
-The default carrier is the repository's built dsh CLI. Set
+The default carrier is the repository's built dsh entry for the current host. Set
 DSH_COMMANDS_TEST_RUNTIME=installed to run these same cases against the imported
 SDK wheel and its bundled runtime, including from outside the repository.
 """
@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 from deepseek_harness.models import CommandExecution
 from deepseek_harness import DeepSeekHarness, Notification, RunResult, Session
+from deepseek_harness_runtime import resolve_bundled_launch_args
 
 
 _WAIT_SECONDS = 30
@@ -204,6 +205,11 @@ def _dsh_bin() -> str | None:
         return None
     if mode != "built":
         raise ValueError("DSH_COMMANDS_TEST_RUNTIME must be built or installed")
+    if sys.platform == "win32":
+        try:
+            return resolve_bundled_launch_args("exe")[0]
+        except FileNotFoundError as exc:
+            pytest.skip(f"requires the built Windows runtime, or DSH_COMMANDS_TEST_RUNTIME=installed: {exc}")
     repo = Path(__file__).resolve().parents[3]
     node = shutil.which("node")
     binary = repo / "apps/cli/lib/bin.js"
