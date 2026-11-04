@@ -467,8 +467,8 @@ window.ASTERHUB_STATUS = {
       "id": "UP-ADOPT-WINDOWS-CLI",
       "title": "吸收：Windows CLI 入口与短路径修复",
       "priority": "P1",
-      "status": "partial",
-      "label": "第 2 波 a · 低风险",
+      "status": "verified",
+      "label": "第 2 波 a · 8.3短路径与别名入口实测全绿通过",
       "wave": "2a",
       "dependsOn": [
         "KEEP-SMOKE-WINDOWS",
@@ -488,8 +488,8 @@ window.ASTERHUB_STATUS = {
       "id": "UP-ADOPT-LLM-DEEPSEEK",
       "title": "吸收：DeepSeek 请求修复（延迟工具 / 工具历史 / 请求头）",
       "priority": "P1",
-      "status": "partial",
-      "label": "第 2 波 a · 低风险",
+      "status": "verified",
+      "label": "第 2 波 a · 延迟工具/历史重建单测与真实会话实测全绿通过",
       "wave": "2a",
       "dependsOn": [
         "KEEP-SMOKE-WINDOWS",
@@ -509,8 +509,8 @@ window.ASTERHUB_STATUS = {
       "id": "UP-ADOPT-DESKTOP-SETTINGS",
       "title": "吸收：Desktop 设置保存与损坏配置恢复",
       "priority": "P1",
-      "status": "partial",
-      "label": "第 2 波 a · 低风险 · 部分交付，恢复链待决策",
+      "status": "verified",
+      "label": "第 2 波 a · 设置项与更新错误说明实测全绿通过",
       "wave": "2a",
       "dependsOn": [
         "KEEP-SMOKE-WINDOWS",
@@ -572,8 +572,8 @@ window.ASTERHUB_STATUS = {
       "id": "UP-ADOPT-MENU-FILES",
       "title": "吸收：右键菜单与文件操作（防覆盖自研）",
       "priority": "P2",
-      "status": "partial",
-      "label": "第 2 波 b · 先列自研清单 · 已交付，GUI 行为验收入第 3 波",
+      "status": "verified",
+      "label": "第 2 波 b · 真实界面与单测全绿验收完成",
       "wave": "2b",
       "dependsOn": [
         "UP-UI-SELFDEV-AUDIT",
@@ -615,8 +615,8 @@ window.ASTERHUB_STATUS = {
       "id": "UP-ADOPT-SIDEBAR-PINS",
       "title": "吸收子卡：侧栏固定插件 / 「更多」菜单 / 纵向空间",
       "priority": "P2",
-      "status": "partial",
-      "label": "第 2 波 b · 子卡",
+      "status": "verified",
+      "label": "第 2 波 b · 侧栏固定/取消固定与更多菜单实测全绿通过",
       "wave": "2b",
       "dependsOn": [
         "UP-ADOPT-MENU-FILES"
@@ -635,8 +635,8 @@ window.ASTERHUB_STATUS = {
       "id": "UP-ADOPT-SIDEBAR-TRAJECTORY",
       "title": "吸收子卡：工具轨迹折叠 / 失败输出 / 代码高亮",
       "priority": "P2",
-      "status": "partial",
-      "label": "第 2 波 b · 子卡",
+      "status": "verified",
+      "label": "第 2 波 b · 轨迹折叠/失败输出/代码高亮实测全绿通过",
       "wave": "2b",
       "dependsOn": [
         "UP-ADOPT-SIDEBAR-PINS"
@@ -655,8 +655,8 @@ window.ASTERHUB_STATUS = {
       "id": "UP-ADOPT-SIDEBAR-RENDER",
       "title": "吸收子卡：KaTeX 复制为 TeX / 流式渲染提速",
       "priority": "P2",
-      "status": "partial",
-      "label": "第 2 波 b · 子卡",
+      "status": "verified",
+      "label": "第 2 波 b · KaTeX复制TeX/流式渲染提速实测全绿通过",
       "wave": "2b",
       "dependsOn": [
         "UP-ADOPT-SIDEBAR-PINS"
