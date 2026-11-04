@@ -297,7 +297,7 @@ export class ScheduleService extends TypertRemoteService {
       } catch (error) {
         this.stopping = true
         await domain.close()
-        if (error instanceof Error && error.message.includes('cannot create effect on inactive context')) return
+        if (error instanceof Error && error.message.includes('cannot create effect on inactive context')) return async () => {}
         throw error
       }
       const tasks = domain.table('tasks')
