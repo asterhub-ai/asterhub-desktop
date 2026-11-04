@@ -503,7 +503,6 @@
     { "path": "./packages/lsp/lsp" },
     { "path": "./packages/lsp/lsp-stdio" },
     { "path": "./packages/lsp/tool-lsp" },
-    { "path": "./packages/schedule/asterhub-automation" },
     { "path": "./packages/bundle/asterhub-desktop-native" },
     { "path": "./apps/cli" },
     { "path": "./apps/desktop-host" },

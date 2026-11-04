@@ -13,7 +13,6 @@ import type {} from '@deepseek-ai/dsh-permission-presets/types'
 import type {} from '@deepseek-ai/dsh-plugin-manager/types'
 import type {} from '@deepseek-ai/dsh-plugin-market/types'
 import type {} from '@deepseek-ai/dsh-schedule/client'
-import type {} from '@deepseek-ai/dsh-asterhub-automation/types'
 import type { TypertForwardableEventEntry } from '@deepseek-ai/dsh-typert-protocol'
 
 /**
@@ -32,8 +31,6 @@ export const API_REMOTE_FORWARDED_EVENTS = [
   { event: 'api-session/error', mode: 'emit', resources: { session: (sessionId): SessionId => sessionId } },
   { event: 'api-session/removed', mode: 'emit', resources: { session: (sessionId): SessionId => sessionId } },
   { event: 'api-session/status', mode: 'emit', resources: { session: (sessionId): SessionId => sessionId } },
-  { event: 'automation/changed', mode: 'emit' },
-  { event: 'automation/account-changed', mode: 'emit' },
   { event: 'commands/change', mode: 'emit' },
   { event: 'deepseek-account/session-expired', mode: 'emit' },
   { event: 'deepseek-account/model-sign-in-required', mode: 'emit' },

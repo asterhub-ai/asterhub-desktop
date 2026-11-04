@@ -16,7 +16,6 @@ import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typer
 import { credentialKey, credentialRef, type CredentialProvider, type CredentialRef } from '@deepseek-ai/dsh-credentials'
 import type {
   AccountAuthSettings,
-  AccountAutomationIdentity,
   AccountLoginInput,
   AccountPaymentMethod,
   AccountRegisterInput,
@@ -29,16 +28,6 @@ import type {
   UsagePeriodSnapshot,
 } from './types.ts'
 
-declare module '@deepseek-ai/cordis' {
-  interface Events {
-    /**
-     * Publish the active account lifetime without credentials.
-     * @param identity - Active identity, or null when acquisition is unavailable.
-     * @mode emit
-     */
-    'asterhub-account/changed'(identity: AccountAutomationIdentity | null): void
-  }
-}
 /** Credential reference holding the sub2api access token. */
 const TOKEN_REF = 'ASTERHUB_ACCOUNT_TOKEN'
 /** Credential reference holding the JSON account identity. */
@@ -62,8 +51,6 @@ const BOUND_KEY_USER_REF = 'ASTERHUB_ACCOUNT_BOUND_MODEL_KEY_USER'
 /** JSON map from account id to its retained, Host-only model key. */
 const BOUND_KEYS_REF = 'ASTERHUB_ACCOUNT_BOUND_MODEL_KEYS'
 
-/** Event name for credential-free account identity changes consumed by the scheduler. */
-const ACCOUNT_CHANGED_EVENT = 'asterhub-account/changed'
 
 /** Upstream failure vocabulary the UI maps to copy. */
 export type AccountErrorCode =
@@ -172,11 +159,6 @@ interface Sub2ApiOrder {
   status?: string
 }
 
-/** One registered automation lease with its stop callback; identity is the Set membership. */
-interface AutomationLease {
-  readonly epoch: number
-  readonly stop: () => Promise<void>
-}
 
 /** Minimal sub2api control-plane client: login, key management, quota, top-up. */
 class Sub2ApiClient {
@@ -479,163 +461,18 @@ export class AccountSub2apiService extends TypertRemoteService {
   private readonly client: Sub2ApiClient
   private keyProvisioning: Promise<void> = Promise.resolve()
 
-  /** Automation account epoch for credential isolation. Monotonically increases on each account switch. */
-  private automationEpoch = 0
-  /** Current automation identity; null when logged out. Cleared atomically with epoch advance. */
-  private automationIdentityState: AccountAutomationIdentity | null = null
-  /** Registered automation leases. Set supports simultaneous runs at the same epoch. */
-  private readonly automationLeases = new Set<AutomationLease>()
   /** Serializes credential transitions so two finishes cannot interleave credential sets. Strictly serial. */
   private automationTransition: Promise<void> = Promise.resolve()
   /** True while a credential transition is active. Used to guard reads: status() during
    * transition returns transitional projection without network/auto-login. */
   private automationTransitionActive = false
-  /** Resolves when initial identity readiness check completes; prevents stale identity reads during startup. */
-  private automationReadiness: Promise<void>
   constructor(ctx: Context, config: Config) {
     super(ctx, 'accountSub2api')
     this.credentials = ctx.credentials
     const resolved = config as Required<Config>
     this.client = new Sub2ApiClient({ baseUrl: resolved.authBaseUrl, groupId: resolved.groupId })
-    // Awaited readiness: identity is only published after verifying a stored
-    // token AND a bound model key exist locally, without network. Until the
-    // readiness promise resolves, automationIdentity returns null (fail closed).
-    // Guard readiness promise against unhandled rejection: verifyStoredIdentity
-    // catches internally and logs, so the promise always resolves.
-    this.automationReadiness = this.verifyStoredIdentity().catch((error: unknown) => {
-      this.ctx.logger.warn('account automation readiness check failed', error)
-    })
   }
 
-  /**
-   * Verify stored credentials form a valid binding before publishing identity.
-   * Requires both a stored token AND a bound model key record (non-blank);
-   * never publishes a user identity without a valid key binding. Logs named
-   * store-read errors instead of silently swallowing them.
-   */
-  private async verifyStoredIdentity(): Promise<void> {
-    const token = await this.token()
-    const keyRecord = await this.credentials.readRecord(MODEL_KEY_RECORD)
-    // Do not publish on blank key record: key must be a non-empty api-key.
-    const keyBound = keyRecord?.kind === 'api-key' && typeof keyRecord.key === 'string' && keyRecord.key.length > 0
-    if (!token || !keyBound) return
-    const user = await this.storedUser()
-    if (user === undefined) return
-    // Only publish if epoch is still 0 (no concurrent transition has advanced it).
-    if (this.automationEpoch === 0 && this.automationIdentityState === null) {
-      this.automationEpoch = 1
-      this.automationIdentityState = { accountId: user.id, epoch: this.automationEpoch }
-      this.ctx.emit(ACCOUNT_CHANGED_EVENT, this.automationIdentityState)
-    }
-  }
-
-
-  /** Advance epoch and block old acquisition; called before credential changes. */
-  private advanceAutomationEpoch(): number {
-    this.automationEpoch += 1
-    return this.automationEpoch
-  }
-
-  /** Publish new automation identity and emit credential-free change event. */
-  private publishAutomationIdentity(accountId: string | null): void {
-    if (accountId === null) {
-      this.automationIdentityState = null
-    } else {
-      this.automationIdentityState = { accountId, epoch: this.automationEpoch }
-    }
-    this.ctx.emit(ACCOUNT_CHANGED_EVENT, this.automationIdentityState)
-  }
-
-  /**
-   * Host-only: Get current automation account identity.
-   * Awaits readiness before returning. If the epoch has been advanced since
-   * the identity was issued (e.g., during a concurrent transition), returns null.
-   * @returns Current identity with epoch, or null if logged out/stale.
-   */
-  async automationIdentity(): Promise<AccountAutomationIdentity | null> {
-    await this.automationReadiness
-    // Return null if the identity is stale (epoch advanced since it was issued).
-    const identity = this.automationIdentityState
-    if (identity === null) return null
-    // Verify the current epoch hasn't advanced past this identity.
-    if (identity.epoch !== this.automationEpoch) return null
-    return identity
-  }
-  /**
-   * Host-only: Assert identity matches current epoch before model requests.
-   * Validates the identity against both the current epoch counter and the active
-   * identity (accountId and epoch must match).
-   * @param identity - The identity to validate.
-   * @throws Error if identity epoch is stale, account mismatch, or epoch does
-   * not match active identity.
-   */
-  assertAutomationIdentity(identity: AccountAutomationIdentity): void {
-    if (this.automationIdentityState === null) {
-      throw new Error('Automation identity assertion failed: no active account')
-    }
-    if (identity.epoch !== this.automationEpoch) {
-      throw new Error(`Automation identity epoch ${identity.epoch} is stale; current epoch is ${this.automationEpoch}`)
-    }
-    if (identity.accountId !== this.automationIdentityState.accountId) {
-      throw new Error('Automation identity account mismatch')
-    }
-    if (identity.epoch !== this.automationIdentityState.epoch) {
-      throw new Error('Automation identity epoch does not match active identity epoch')
-    }
-  }
-
-  /**
-   * Host-only: Register a lease for automation execution.
-   * Synchronous and rejects stale epochs. Validates the identity against both
-   * the current epoch and the active identity (account and epoch).
-   * @param identity - The identity to lease under.
-   * @param stop - Callback to stop/drain the leased work.
-   * @returns Disposer function to unregister the lease.
-   * @throws Error if identity epoch is stale or account mismatch.
-   */
-  registerAutomationLease(identity: AccountAutomationIdentity, stop: () => Promise<void>): () => void {
-    // Validate against the active identity: account must match AND epoch must
-    // match both the active identity epoch and the current epoch counter.
-    const active = this.automationIdentityState
-    if (active === null) {
-      throw new Error('Cannot register lease: no active account')
-    }
-    if (identity.accountId !== active.accountId) {
-      throw new Error(`Cannot register lease: account ${identity.accountId} does not match active ${active.accountId}`)
-    }
-    if (identity.epoch !== this.automationEpoch) {
-      throw new Error(`Cannot register lease for stale epoch ${identity.epoch}; current epoch is ${this.automationEpoch}`)
-    }
-    if (identity.epoch !== active.epoch) {
-      throw new Error(`Cannot register lease: identity epoch ${identity.epoch} does not match active epoch ${active.epoch}`)
-    }
-    const lease: AutomationLease = { epoch: identity.epoch, stop }
-    this.automationLeases.add(lease)
-    return () => {
-      // Set membership is the lease identity; deleting by reference is safe.
-      this.automationLeases.delete(lease)
-    }
-  }
-
-  /**
-   * Await all registered automation leases to quiescence.
-   * Stop callbacks that call status() or automationIdentity() do not deadlock
-   * because those methods do not take the transition lock.
-   * @throws Error if any stop callback fails; the caller must leave credentials
-   * unchanged (fail closed) when drain does not complete.
-   */
-  private async awaitAutomationLeases(): Promise<void> {
-    const leases = Array.from(this.automationLeases)
-    // Do NOT clear before drain: if a stop fails, the leases remain registered
-    // so the caller can retry or the scheduler can re-register.
-    const results = await Promise.allSettled(leases.map(lease => lease.stop()))
-    const failed = results.find(result => result.status === 'rejected')
-    if (failed !== undefined) {
-      throw new Error('Automation lease drain failed; credentials left unchanged')
-    }
-    // Drain succeeded; leases have quiesced and can be released.
-    for (const lease of leases) this.automationLeases.delete(lease)
-  }
 
   /**
    * Serialize a credential transition. Two finishes cannot interleave credential
@@ -855,10 +692,7 @@ export class AccountSub2apiService extends TypertRemoteService {
       const currentToken = await this.token()
       if (currentToken !== requestToken) return
     }
-    this.advanceAutomationEpoch()
-    await this.awaitAutomationLeases()
     await this.clearSessionCredentials()
-    this.publishAutomationIdentity(null)
   }
 
   private async storedUser(): Promise<AccountUser | undefined> {
@@ -1016,11 +850,6 @@ export class AccountSub2apiService extends TypertRemoteService {
     })
     // Serialize the credential transition so two finishes cannot interleave.
     await this.withAutomationTransition(async () => {
-      // Advance epoch first: stale-epoch runs cannot begin new model requests.
-      this.advanceAutomationEpoch()
-      // Await all registered scheduler stop callbacks to exact quiescence before
-      // replacing the key. Stop callbacks may read status/identity without deadlock.
-      await this.awaitAutomationLeases()
       // Replace the prior account only after the new upstream key is ready, and
       // clear all three refs before writing so a partial storage failure cannot
       // pair one account token with another account's model key.
@@ -1051,10 +880,6 @@ export class AccountSub2apiService extends TypertRemoteService {
         ])
         throw accountCredentialSaveFailed()
       }
-      // Publish new automation identity after successful credential storage.
-      // Epoch cannot assign a new account before valid key binding because we
-      // only reach here after the key record is written.
-      this.publishAutomationIdentity(userId)
     })
     // Build status outside the transition; no lock held, safe to call status()
     return this.status()
@@ -1066,12 +891,8 @@ export class AccountSub2apiService extends TypertRemoteService {
   @Remote
   async logout(): Promise<void> {
     await this.withAutomationTransition(async () => {
-      // Advance epoch and await leases before clearing credentials.
-      this.advanceAutomationEpoch()
-      await this.awaitAutomationLeases()
       await this.clearSessionCredentials()
       await this.clearAutoLogin()
-      this.publishAutomationIdentity(null)
     })
   }
 

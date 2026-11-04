@@ -2,7 +2,6 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type {} from '@deepseek-ai/dsh-asterhub-automation'
 import type {} from '@deepseek-ai/dsh-jobs'
 import type {} from '@deepseek-ai/dsh-client-connection'
 
@@ -50,22 +49,14 @@ export function installDesktopUpdateTaskControl(ctx: Context): (action: 'inspect
     const agents = ctx.get('agents')
     const jobs = ctx.get('jobs')
     if (agents === undefined || jobs === undefined) throw new Error('desktop update: task services are unavailable')
-    // Native automation admission lock prevents new scheduled runs during update.
-    // Only lock/unlock toggle it; inspect must not change admission state.
-    const automation = ctx.get('asterhubAutomation')
-    if (automation !== undefined && action !== 'inspect') {
-      automation.setAdmissionLocked(action === 'lock')
-    }
     if (action === 'lock') {
       locked = true
       const generation = ++lockGeneration
       // Read requests are not tasks; admitted writes must finish before the final work check.
       await Promise.all(pendingRequests)
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Disposal can run while admitted requests drain.
       if (stopped) throw new Error('desktop update: Host is stopping')
       if (generation !== lockGeneration) throw new Error('desktop update: admission lock was superseded')
     }
-    const nativeActive = typeof automation?.inspectLifecycle === 'function' ? automation.inspectLifecycle().active : false
-    return hasDesktopActiveTasks(agents.list(), jobs) ||  nativeActive
+    return hasDesktopActiveTasks(agents.list(), jobs)
   }
 }

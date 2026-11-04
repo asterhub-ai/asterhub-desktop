@@ -127,7 +127,6 @@
     { "path": "./packages/client/ui-sidebar-files" },
     { "path": "./packages/client/ui-jobs" },
     { "path": "./packages/client/ui-schedule" },
-    { "path": "./packages/client/ui-asterhub-automation" },
     { "path": "./packages/client/ui-asterhub-account" },
     { "path": "./packages/client/ui-asterhub-brand" },
     { "path": "./packages/client/ui-asterhub-catalog" },

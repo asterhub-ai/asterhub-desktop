@@ -27,7 +27,6 @@
     "@deepseek-ai/dsh-skill-office": "workspace:*",
     "@deepseek-ai/dsh-deepseek-account": "workspace:*",
     "@deepseek-ai/dsh-workspace": "workspace:*",
-    "@deepseek-ai/dsh-asterhub-automation": "workspace:*",
     "@deepseek-ai/dsh-asterhub-desktop-native": "workspace:*",
     "@deepseek-ai/dsh-browser-use-desktop": "workspace:*",
     "@deepseek-ai/dsh-plugin-manager": "workspace:*"

@@ -115,9 +115,6 @@
     },
     {
       "path": "../../account/account-sub2api"
-    },
-    {
-      "path": "../../schedule/asterhub-automation"
     }
   ]
 }

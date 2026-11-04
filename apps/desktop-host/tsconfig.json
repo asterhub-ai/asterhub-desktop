@@ -13,7 +13,6 @@
     { "path": "../../packages/jobs/jobs" },
     { "path": "../../packages/schedule/schedule" },
     { "path": "../../packages/browser-use/browser-use-desktop" },
-    { "path": "../../packages/schedule/asterhub-automation" },
     { "path": "../../packages/credentials/credentials" },
     { "path": "../../packages/bundle/asterhub-product" },
     { "path": "../../packages/workspace/workspace" },

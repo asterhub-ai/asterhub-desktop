@@ -238,13 +238,12 @@ async function main(): Promise<void> {
         throw new Error(`desktop runtime: missing private Host file ${file}`)
       }
     }
-    // The native automation Host, its generated Remote client, and the pure
-    // timing library must all reach the packaged runtime; the Host profile
-    // cannot boot without them.
-    const automationRoot = join(DSH_OUTPUT_ROOT, 'node_modules', '@deepseek-ai', 'dsh-asterhub-automation')
-    for (const file of ['lib/index.js', 'lib/typert.host.js', 'lib/typert.remote-client.js', 'lib/types/timing.js']) {
-      if (!existsSync(join(automationRoot, file))) {
-        throw new Error(`desktop runtime: missing native automation artifact ${file}`)
+    // The schedule Host service must reach the packaged runtime; the Host profile
+    // cannot boot without it.
+    const scheduleRoot = join(DSH_OUTPUT_ROOT, 'node_modules', '@deepseek-ai', 'dsh-schedule')
+    for (const file of ['lib/index.js']) {
+      if (!existsSync(join(scheduleRoot, file))) {
+        throw new Error(`desktop runtime: missing schedule artifact ${file}`)
       }
     }
     const timeContextRoot = join(DSH_OUTPUT_ROOT, 'node_modules', '@deepseek-ai', 'dsh-time-context')
