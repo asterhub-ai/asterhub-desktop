@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-asterhub-desktop-native",
-  "description": "Desktop-only composition that mounts the native AsterHub automation Host service and task panel, replacing the optional Schedule Bundle for the desktop product",
+  "description": "Desktop-only composition that mounts the schedule Host service and task panel for the desktop product",
   "version": "0.2.2-alpha.2",
   "private": true,
   "license": "MIT",
@@ -27,10 +27,10 @@
     }
   },
   "dependencies": {
-    "@deepseek-ai/dsh-asterhub-automation": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-schedule": "workspace:*",
     "@deepseek-ai/dsh-browser-use": "workspace:*",
     "@deepseek-ai/dsh-browser-use-desktop": "workspace:*",
-    "@deepseek-ai/dsh-client-ui-asterhub-automation": "workspace:*",
+    "@deepseek-ai/dsh-schedule": "workspace:*",
     "@deepseek-ai/dsh-computer-use": "workspace:*",
     "@deepseek-ai/dsh-experimental-computer-use-cua-driver-native": "workspace:*",
     "@deepseek-ai/dsh-time-context": "workspace:*"

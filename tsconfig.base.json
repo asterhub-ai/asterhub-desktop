@@ -29,7 +29,6 @@
     // under its own tsconfig boundary.
     "paths": {
       "@deepseek-ai/dsh-ptc-runtime-node/configuration": ["./packages/ptc-runtime/ptc-runtime-node/src/configuration.ts"],
-      "@deepseek-ai/dsh-client-ui-asterhub-automation": ["./packages/client/ui-asterhub-automation/src/index.ts"],
       "@deepseek-ai/dsh-client-ui-settings-anima": ["./packages/client/ui-settings-anima/src/index.ts"],
       "@deepseek-ai/dsh-experimental-client-ui-forge": ["./packages/experimental/client-ui-forge/src/index.ts"],
       "@deepseek-ai/dsh-experimental-client-ui-stats": ["./packages/experimental/client-ui-stats/src/index.ts"],
@@ -436,7 +435,6 @@
       "@deepseek-ai/dsh-anima-memory": ["./packages/experimental/anima-memory/src"],
       "@deepseek-ai/dsh-anonymous-user-id": ["./packages/identity/anonymous-user-id/src"],
       "@deepseek-ai/dsh-app-boot": ["./packages/boot/app-boot/src"],
-      "@deepseek-ai/dsh-asterhub-automation": ["./packages/schedule/asterhub-automation/src"],
       "@deepseek-ai/dsh-asterhub-desktop-native": ["./packages/bundle/asterhub-desktop-native/src"],
       "@deepseek-ai/dsh-asterhub-product": ["./packages/bundle/asterhub-product/src"],
       "@deepseek-ai/dsh-asterhub-product-web": ["./packages/bundle/asterhub-product-web/src"],

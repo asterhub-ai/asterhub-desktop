@@ -39,6 +39,9 @@
       "path": "../../session/session-persistence-jsonl"
     },
     {
+      "path": "../../session/session-title"
+    },
+    {
       "path": "../../api/session-controller/tsconfig.host.json"
     },
     {
@@ -52,12 +55,6 @@
     },
     {
       "path": "../../workspace/workspace"
-    },
-    {
-      "path": "../../subagent/subagent"
-    },
-    {
-      "path": "../../runtime-diagnostics/invariants"
     }
   ]
 }

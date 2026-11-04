@@ -66,30 +66,6 @@ describe('Desktop Host update task control', () => {
     expect(await control('inspect')).toBe(true)
   })
 
-  it('does not toggle native admission lock on inspect', async () => {
-    ctx.provide('asterhubAutomation', {
-      setAdmissionLocked: (locked: boolean) => { admissionCalls.push(locked) },
-    } as never)
-    await control('inspect')
-    expect(admissionCalls).toEqual([])
-  })
-
-  it('locks native admission on lock and unlocks on unlock', async () => {
-    ctx.provide('asterhubAutomation', {
-      setAdmissionLocked: (locked: boolean) => { admissionCalls.push(locked) },
-    } as never)
-    await control('lock')
-    expect(admissionCalls).toEqual([true])
-    await control('unlock')
-    expect(admissionCalls).toEqual([true, false])
-  })
-
-  it('ignores native admission control when the service is absent', async () => {
-    // No automation service provided; lock/unlock must not throw.
-    await control('lock')
-    await control('unlock')
-    expect(admissionCalls).toEqual([])
-  })
 
   it('refuses control after disposal', async () => {
     await ctx.fiber.dispose()

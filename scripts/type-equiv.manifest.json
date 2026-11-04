@@ -2372,21 +2372,6 @@
       "source": "packages/account/account-sub2api/src/types.ts"
     },
     {
-      "doc": "docs/subsystems/schedule.md",
-      "symbol": "AutomationChangedEvent",
-      "source": "packages/schedule/asterhub-automation/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/schedule.md",
-      "symbol": "AutomationAccountChangedEvent",
-      "source": "packages/schedule/asterhub-automation/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/schedule.md",
-      "symbol": "AutomationRunStopRequestedEvent",
-      "source": "packages/schedule/asterhub-automation/src/types.ts"
-    },
-    {
       "doc": "docs/subsystems/workspace.md",
       "symbol": "ProjectStorageChanged",
       "source": "packages/workspace/project-storage/src/types.ts"
@@ -2425,81 +2410,6 @@
       "doc": "docs/subsystems/workspace.md",
       "symbol": "WorkspaceOpenProjectRequest",
       "source": "packages/api/workspace-controller/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/schedule.md",
-      "symbol": "AutomationTask",
-      "source": "packages/schedule/asterhub-automation/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/schedule.md",
-      "symbol": "AutomationAccountIdentity",
-      "source": "packages/schedule/asterhub-automation/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/schedule.md",
-      "symbol": "AutomationDraft",
-      "source": "packages/schedule/asterhub-automation/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/schedule.md",
-      "symbol": "AutomationPreview",
-      "source": "packages/schedule/asterhub-automation/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/schedule.md",
-      "symbol": "AutomationOperation",
-      "source": "packages/schedule/asterhub-automation/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/schedule.md",
-      "symbol": "AutomationPreparedOperation",
-      "source": "packages/schedule/asterhub-automation/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/schedule.md",
-      "symbol": "AutomationCommitRequest",
-      "source": "packages/schedule/asterhub-automation/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/schedule.md",
-      "symbol": "AutomationMutationResult",
-      "source": "packages/schedule/asterhub-automation/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/schedule.md",
-      "symbol": "AutomationListRequest",
-      "source": "packages/schedule/asterhub-automation/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/schedule.md",
-      "symbol": "AutomationTaskPage",
-      "source": "packages/schedule/asterhub-automation/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/schedule.md",
-      "symbol": "AutomationGetRequest",
-      "source": "packages/schedule/asterhub-automation/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/schedule.md",
-      "symbol": "AutomationRunsPage",
-      "source": "packages/schedule/asterhub-automation/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/schedule.md",
-      "symbol": "AutomationRunsRequest",
-      "source": "packages/schedule/asterhub-automation/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/schedule.md",
-      "symbol": "AutomationChoices",
-      "source": "packages/schedule/asterhub-automation/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/schedule.md",
-      "symbol": "AutomationRunId",
-      "source": "packages/schedule/asterhub-automation/src/types.ts"
     },
     {
       "doc": "docs/subsystems/attachment.md",

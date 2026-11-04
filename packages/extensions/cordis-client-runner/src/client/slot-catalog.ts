@@ -1932,7 +1932,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     slotInject: '',
     declaredBy: 'an entry in \'root\' (client-ui-layout), so it exists while that entry is mounted',
     occupants: [
-      'client-ui-asterhub-automation AutomationPanel',
       'client-ui-conversation ConversationPanel key \'conversation\'',
       'client-ui-plugin-manager Page',
       'client-ui-schedule TaskManagerPage',
@@ -3243,7 +3242,6 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     slotInject: '',
     declaredBy: 'an entry in \'sidebar\' (client-ui-sidebar), so it exists while that entry is mounted',
     occupants: [
-      'client-ui-asterhub-automation AutomationPanelIcon',
       'client-ui-plugin-manager PluginsPanelIcon',
       'client-ui-schedule TaskManagerIcon',
     ],
