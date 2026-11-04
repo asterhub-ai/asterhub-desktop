@@ -3,7 +3,7 @@ window.ASTERHUB_STATUS = {
   "meta": {
     "title": "AsterHub · 项目现状",
     "date": "2026-11-04",
-    "productVersion": "0.21.3（源码；未发布）",
+    "productVersion": "0.22.0（源码；未发布）",
     "frameworkVersion": "0.2.2-alpha.2（已吸收）；上游最新 0.2.2-alpha.3",
     "upstreamBaseline": "本仓已吸收内容基线 dsh-v0.2.2-alpha.2 / f3803c9697（2026-10-28）；上游 upstream/master = 8bd073392e（2026-11-03 15:27，PR #7798，根版本 0.2.2-alpha.3，tag dsh-v0.2.2-alpha.3）。差距 f3803c9697..8bd073392e 共 1017 提交（689 非合并 + 328 合并）。注意：git 拓扑上 master 与上游的 merge-base 是 dsh-v0.2.0-rc.2（639ed01539），f3803c9697 为内容吸收基线而非 git 祖先。用户已于 2026-11-03 勾选：采纳 10 / 延后 1 / 拒绝 10（见 upstreamDecisions）；不追提交数。",
     "phase": "保绿基线 · 按用户勾选分波吸收上游 · 插件化 · 多 Agent 并行窄切片",
@@ -125,14 +125,14 @@ window.ASTERHUB_STATUS = {
     "activeSlices": []
   },
   "release": {
-    "name": "asterhub-0.21.3-win-x64-unsigned.exe",
-    "path": "apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/asterhub-0.21.3-win-x64-unsigned.exe",
-    "bytes": 689954985,
-    "size": "657.99 MiB",
-    "sha256": "273F7BCD014B5555273E0D0ECAE1A47E7FA025FB5BB3F51D2564A4B84DEFD125",
-    "status": "Unsigned · 候选安装包 (0.21.3)",
-    "build": "Windows x64 unsigned 0.21.3",
-    "acceptance": "package-target.ts win-x64 --unsigned 退出码 0，内置 smoke 与独立 smoke-packaged-runtime.ts 均全绿通过；Node 24.21.0 / Python 3.12.14 / Office 侧车 / Anima Neo4j 5.26.32 均达标",
+    "name": "asterhub-0.22.0-win-x64-unsigned.exe",
+    "path": "apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/asterhub-0.22.0-win-x64-unsigned.exe",
+    "bytes": 689977044,
+    "size": "658.01 MiB",
+    "sha256": "0A8F7CB57616D7FEC7C52909EE5EBF13DB6171F42A79872844B1B155EC658BD8",
+    "status": "Unsigned · 候选安装包 (0.22.0)",
+    "build": "Windows x64 unsigned 0.22.0",
+    "acceptance": "package-target.ts win-x64 --unsigned 退出码 0，内置 smoke 与独立 smoke-packaged-runtime.ts 均全绿通过；Node 24.21.0 / Python 3.12.14 / Office 侧车 / Anima Neo4j 5.26.32 均达标；0.21.3 候选已被 0.22.0 取代（用户 2026-11-04 升号决定）",
     "evidence": ".local-workspace/ship-candidate/evidence.md",
     "limitations": "未签名；签名与发布须用户明确授权。"
   },
