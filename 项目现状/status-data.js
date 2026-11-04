@@ -130,11 +130,11 @@ window.ASTERHUB_STATUS = {
     "bytes": 689977044,
     "size": "658.01 MiB",
     "sha256": "0A8F7CB57616D7FEC7C52909EE5EBF13DB6171F42A79872844B1B155EC658BD8",
-    "status": "Unsigned · 候选安装包 (0.22.0)",
+    "status": "Unsigned · GitHub 预发布 (0.22.0)",
     "build": "Windows x64 unsigned 0.22.0",
-    "acceptance": "package-target.ts win-x64 --unsigned 退出码 0，内置 smoke 与独立 smoke-packaged-runtime.ts 均全绿通过；Node 24.21.0 / Python 3.12.14 / Office 侧车 / Anima Neo4j 5.26.32 均达标；0.21.3 候选已被 0.22.0 取代（用户 2026-11-04 升号决定）",
-    "evidence": ".local-workspace/ship-candidate/evidence.md",
-    "limitations": "未签名；签名与发布须用户明确授权。"
+    "acceptance": "GitHub 预发布 desktop-v0.22.0-unsigned 已公开（安装包+blockmap 双资产 uploaded）；package-target 与独立 smoke-packaged-runtime 全绿；Node 24.21.0 / Python 3.12.14 / Office 侧车 / Anima Neo4j 5.26.32 均达标；生产通道 https://asterhub.xapi.fans 上传因本机无 COS/EdgeOne 凭据阻塞（历史从未上传，0.21.0-0.21.2 也仅 GitHub 预发布）",
+    "evidence": "https://github.com/asterhub-ai/asterhub-desktop/releases/tag/desktop-v0.22.0-unsigned",
+    "limitations": "未签名；生产通道未上传（凭据缺失）；签名须用户明确授权。"
   },
   "checkpoints": [
     {
@@ -776,9 +776,9 @@ window.ASTERHUB_STATUS = {
       "track": "SHIP",
       "category": "交付",
       "priority": "P2",
-      "status": "waiting_user",
-      "label": "必须明确授权",
-      "detail": "任何签名、商店/对外通道发布。",
+      "status": "partial",
+      "label": "GitHub 预发布已公开 · 生产通道阻塞待 COS 凭据",
+      "detail": "【2026-11-04 OMP 执行记录】用户授权：不签名（无 EV 证书）、GitHub 发布与生产通道上传。已完成：GitHub 预发布 desktop-v0.22.0-unsigned（安装包 689,977,044 字节 + blockmap，双资产 uploaded，SHA-256 0a8f7cb5...）。阻塞：生产通道 https://asterhub.xapi.fans 实测从未上传过（全部关键 key 404，0.21.0-0.21.2 也仅 GitHub 预发布）；本机无 COS/EdgeOne 凭据，本地 unsigned 打包不产出 win-x64-release.json 与 nightly.yml（属签名/CI 更新流）。需用户提供 COS 凭据或指定持有配置的机器。",
       "acceptance": "用户书面授权范围 + 执行记录。"
     },
     {
