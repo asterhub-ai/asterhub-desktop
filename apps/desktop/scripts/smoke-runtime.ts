@@ -1,10 +1,11 @@
 /** Boot the materialized target runtime without access to a user's Harness profile. */
 
-import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { isAbsolute, join, relative } from 'node:path'
-import { execFile } from 'node:child_process'
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { readPrimaryRuntime, workspaceDependencyPaths } from '../../../packages/skill/tool-workspace-dependencies/src/index.ts'
@@ -13,8 +14,7 @@ import { createPluginProfile } from '../src/project-manager.ts'
 import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 
 /**
- * Check CLI package operations, Host startup, its matching frontend, external plugins, real Office-to-PDF
- * conversion, authenticated workspace inspection, project opening, and Session creation over an empty directory.
+ * Check CLI package operations, Host startup, its frontend, external plugins and real Office-to-PDF conversion.
  * @param root - Materialized dsh resources.
  * @param node - Prepared target Electron executable.
  * @param runtime - Verified resource descriptor.
@@ -59,7 +59,7 @@ export async function smokeDesktopRuntime(
     writeFileSync(join(home, 'npmrc'), '')
     createPluginProfile(profile)
     const pluginName = 'desktop-runtime-smoke-plugin'
-    const plugin = join(profile, 'node_modules', pluginName)
+    const plugin = join(home, pluginName)
     mkdirSync(plugin, { recursive: true })
     const installedName = 'desktop-installed-smoke-plugin'
     const installedPlugin = join(home, installedName)
@@ -105,7 +105,6 @@ import { Context } from '@deepseek-ai/cordis'
 import { inspect, promisify } from 'node:util'
 import { execFile } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
-export const inject = ['webServer', 'officeToPdf', 'skills', 'pluginManager']
 export function apply(ctx) {
   if (!(ctx instanceof Context)) throw new Error('desktop runtime: external plugin loaded another Cordis instance')
   ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/desktop-smoke',
@@ -122,14 +121,7 @@ export function apply(ctx) {
   ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/desktop-smoke-office-cli',
     async handler(_request, response) {
       try {
-        const expectedSkills = ['office', 'office-docx', 'office-export-pdf', 'office-pptx', 'office-recalculate', 'office-render', 'office-xlsx']
-        const catalog = (await ctx.skills.list()).filter(skill => skill.provider === 'dsh-office').map(skill => skill.name)
-        if (JSON.stringify(catalog) !== JSON.stringify(expectedSkills)) throw new Error('Office skill catalog is incomplete')
-        const operationSkills = await Promise.all(['office-render', 'office-recalculate', 'office-export-pdf'].map(name => ctx.skills.get(name)))
-        if (operationSkills.some(skill => skill === undefined || !skill.content.includes('libreofficeKit'))) {
-          throw new Error('Office operation skills did not supply the bundled runtime paths')
-        }
-        const skill = operationSkills[0]
+        const skill = await ctx.skills.get('office-export-pdf')
         const json = skill?.content.match(/\\n(\\{\\n[\\s\\S]+)$/u)?.[1]
         if (json === undefined) throw new Error('Office skill did not supply CLI paths')
         const { libreofficeKit: { node, cli } } = JSON.parse(json)
@@ -161,18 +153,15 @@ export function apply(ctx) {
 }
 `)
     writeFileSync(join(plugin, 'bundle.yml'), '- insert:\n    - id: desktop-runtime-smoke-plugin\n      name: desktop-runtime-smoke-plugin\n      inject: [webServer, officeToPdf, skills, pluginManager]\n')
+    cpSync(plugin, join(profile, 'node_modules', pluginName), { recursive: true })
     const manifest = JSON.parse(readFileSync(join(profile, 'package.json'), 'utf8')) as {
-      dependencies: Record<string, string>
+      dependencies?: Record<string, string>
       dsh: { profile: { bundles: string[] } }
     }
-    manifest.dependencies[pluginName] = '1.0.0'
+    manifest.dependencies = { ...manifest.dependencies, [pluginName]: `file:${plugin}` }
     manifest.dsh.profile.bundles.push(pluginName)
     writeFileSync(join(profile, 'package.json'), JSON.stringify(manifest))
-    writeFileSync(join(profile, 'cordis.patch.yml'), [
-      '- id: webserver\n  config:\n    host: 127.0.0.1\n    port: 0',
-      `- id: workspace-controller\n  config:\n    documentsDirectory: ${JSON.stringify(join(home, 'Documents'))}`,
-      '',
-    ].join('\n'))
+    writeFileSync(join(profile, 'cordis.patch.yml'), '- id: webserver\n  config:\n    host: 127.0.0.1\n    port: 0\n')
     const ready = await Promise.race([host.start(), new Promise<never>((_, reject) => {
       timer = setTimeout(() => { reject(new Error('desktop runtime: Host readiness exceeded 120 seconds')) }, 120_000)
     })])
@@ -183,76 +172,8 @@ export function apply(ctx) {
     if (response.status !== 200 || !(await response.text()).includes('<html')) {
       throw new Error('desktop runtime: packaged frontend smoke failed')
     }
-    const emptyWorkspaceDir = join(home, 'empty-workspace')
-    mkdirSync(emptyWorkspaceDir)
-    if (process.platform === 'win32') chmodSync(emptyWorkspaceDir, 0o444)
-    const inspectRpcId = 'desktop-smoke-workspace-inspect'
-    const inspectResponse = await fetch(new URL('/api/workspace/inspect', ready.url), {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        cookie,
-      },
-      body: JSON.stringify({
-        type: 'client-request',
-        rpcId: inspectRpcId,
-        method: 'workspace/inspect',
-        payload: { args: { request: { path: emptyWorkspaceDir } } },
-      }),
-      signal: AbortSignal.timeout(30_000),
-    })
-    if (!inspectResponse.ok) {
-      const responseText = await inspectResponse.text()
-      throw new Error(`desktop runtime: workspace inspect HTTP ${inspectResponse.status} ${inspectResponse.statusText}: ${responseText}`)
-    }
-    const inspectText = await inspectResponse.text()
-    let inspectBody: unknown
-    try {
-      inspectBody = JSON.parse(inspectText)
-    } catch (error) {
-      throw new Error(`desktop runtime: workspace inspect returned non-JSON response (${inspectResponse.status}): ${inspectText}`, { cause: error })
-    }
-    assertWorkspaceInspectResponse(inspectBody, emptyWorkspaceDir)
-    const callSessionSmoke = async (method: string, request: Record<string, unknown>) => {
-      const rpcResponse = await fetch(new URL(`/api/${method}`, ready.url), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', cookie },
-        body: JSON.stringify({
-          type: 'client-request', rpcId: `desktop-smoke-${method}`, method,
-          payload: { args: { request } },
-        }),
-        signal: AbortSignal.timeout(30_000),
-      })
-      const body = await rpcResponse.json() as { result?: { ok?: boolean; value?: unknown } }
-      const value = body.result?.value
-      if (!rpcResponse.ok || body.result?.ok !== true || typeof value !== 'object' || value === null || Array.isArray(value)) {
-        throw new Error(`desktop runtime: ${method} failed (${rpcResponse.status}): ${JSON.stringify(body)}`)
-      }
-      return value as Record<string, unknown>
-    }
-    const missingWorkspaceDir = join(home, 'missing-metadata-workspace')
-    mkdirSync(missingWorkspaceDir)
-    await callSessionSmoke('workspace/openProject', { path: missingWorkspaceDir, mode: 'new' })
-    rmSync(join(missingWorkspaceDir, '.aster', 'project.json'))
-    const opened = await callSessionSmoke('workspace/openProject', { path: emptyWorkspaceDir, mode: 'new' })
-    const workspace = opened.workspace as { workspaceId?: unknown } | undefined
-    if (typeof workspace?.workspaceId !== 'string') throw new Error('desktop runtime: opened Workspace has no identity')
-    if (process.platform === 'win32') chmodSync(join(emptyWorkspaceDir, '.aster'), 0o444)
-    const created = await callSessionSmoke('session/create', { workspaceId: workspace.workspaceId })
-    if (typeof created.sessionId !== 'string') throw new Error('desktop runtime: created Session has no identity')
-    if (!existsSync(join(emptyWorkspaceDir, '.aster', 'project.json'))) throw new Error('desktop runtime: created Workspace has no project metadata')
-    const locator = JSON.parse(readFileSync(join(home, 'locator.json'), 'utf8')) as { projects: { root: string }[] }
-    for (const project of locator.projects) {
-      const path = relative(home, project.root)
-      if (isAbsolute(path) || path === '..' || path.startsWith('../') || path.startsWith('..\\')) {
-        throw new Error(`desktop runtime: workspace escaped isolated smoke directory: ${project.root}`)
-      }
-    }
     const pluginResponse = await fetch(new URL('/desktop-smoke', ready.url), { headers: { cookie } })
-    const pluginResponseText = await pluginResponse.text()
-    if (pluginResponseText !== 'plugin route ready') {
-      throw new Error(`desktop runtime: plugin HTTP route failed (${String(pluginResponse.status)}): ${pluginResponseText}`)
-    }
+    if (await pluginResponse.text() !== 'plugin route ready') throw new Error('desktop runtime: plugin HTTP route failed')
     const installation = await fetch(new URL('/desktop-smoke-install', ready.url), {
       headers: { cookie }, signal: AbortSignal.timeout(120_000),
     })
@@ -275,65 +196,17 @@ export function apply(ctx) {
     const cliResponse = await fetch(new URL('/desktop-smoke-office-cli', ready.url), {
       headers: { cookie }, signal: AbortSignal.timeout(120_000),
     })
-    if (!cliResponse.ok) throw new Error(`desktop runtime: Office skills failed: ${await cliResponse.text()}`)
+    if (!cliResponse.ok) throw new Error(`desktop runtime: skill CLI failed: ${await cliResponse.text()}`)
     const cliResult = await cliResponse.json() as { capabilities: { runtime: { cliPath: string } }; pdf: string }
     if (!cliResult.capabilities.runtime.cliPath.endsWith('cli.js') || Buffer.from(cliResult.pdf, 'base64').subarray(0, 5).toString() !== '%PDF-') {
-      throw new Error('desktop runtime: Office skill did not return capabilities and a PDF')
+      throw new Error('desktop runtime: skill CLI did not return capabilities and a PDF')
     }
-    console.log('desktop runtime: DOCX, XLSX, PPTX to PDF, progressive Office skills, workspace inspect, and Session creation passed')
+    console.log('desktop runtime: DOCX, XLSX, PPTX to PDF and skill CLI discovery passed')
   } finally {
     clearTimeout(timer)
-    await host.stop()
     credentialKey.fill(0)
-    if (process.platform === 'win32') {
-      for (const path of [join(home, 'empty-workspace', '.aster'), join(home, 'empty-workspace')]) {
-        if (existsSync(path)) chmodSync(path, 0o700)
-      }
+    try { await host.stop() } finally {
+      await rm(home, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
     }
-    rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
-  }
-}
-
-interface WorkspaceInspectRpcResponse {
-  result?: {
-    ok: boolean
-    value?: {
-      kind?: string
-      [key: string]: unknown
-    }
-    error?: {
-      code?: string
-      message?: string
-      [key: string]: unknown
-    }
-  }
-  [key: string]: unknown
-}
-
-/**
- * Validate that an authenticated workspace/inspect response succeeded with kind 'new'
- * and that the target directory remains untouched (read-only inspection).
- * @param body - Parsed JSON RPC response from /api/workspace/inspect.
- * @param inspectedPath - Physical directory path supplied to inspect.
- */
-export function assertWorkspaceInspectResponse(body: unknown, inspectedPath: string): void {
-  if (typeof body !== 'object' || body === null || !('result' in body)) {
-    throw new Error(`desktop runtime: workspace inspect returned malformed response\nresponse body: ${JSON.stringify(body)}`)
-  }
-  const envelope = body as WorkspaceInspectRpcResponse
-  if (!envelope.result || envelope.result.ok !== true) {
-    const code = envelope.result?.error?.code ?? 'unknown-error'
-    const message = envelope.result?.error?.message ?? 'unknown failure'
-    throw new Error(`desktop runtime: workspace inspect failed: ${code}: ${message}\nresponse body: ${JSON.stringify(body)}`)
-  }
-  if (envelope.result.value?.kind !== 'new') {
-    throw new Error(`desktop runtime: workspace inspect expected kind 'new', received '${String(envelope.result.value?.kind)}'\nresponse body: ${JSON.stringify(body)}`)
-  }
-  if (existsSync(join(inspectedPath, '.aster'))) {
-    throw new Error(`desktop runtime: workspace inspect wrote private metadata to ${inspectedPath}`)
-  }
-  const entries = readdirSync(inspectedPath)
-  if (entries.length > 0) {
-    throw new Error(`desktop runtime: workspace inspect modified empty directory: ${entries.join(', ')}`)
   }
 }

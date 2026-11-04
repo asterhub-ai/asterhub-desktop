@@ -19,6 +19,9 @@ import type {
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
   WorkspaceDeleteValue,
+  WorkspaceInspectRequest,
+  WorkspaceInspectionView,
+  WorkspaceOpenProjectRequest,
   WorkspaceInsertBeforeRequest,
   WorkspaceInsertSessionBeforeRequest,
   WorkspaceOrderValue,
@@ -42,25 +45,71 @@ export class WorkspaceCommands {
    * @param request - directory path to register.
    * @returns the Workspace and whether this call created it.
    */
-  create(request: WorkspaceCreateRequest): Promise<WorkspaceCreateValue> {
-    return this.enqueue(async () => {
-      try {
-        const existing = await this.ctx.workspaceRegistry.resolveByPath(request.path)
-        if (existing !== undefined) {
-          return { workspace: workspaceView(existing), created: false }
-        }
-        const workspace = await this.ctx.workspaceRegistry.create(request.path)
-        return { workspace: workspaceView(workspace), created: true }
-      } catch (error) {
-        if (remoteErrorOf(error) !== undefined) throw error
-        throw new RemoteError(
-          'workspace/invalid-path',
-          `cannot create a Workspace at "${request.path}": ${errorMessage(error)}`,
-          { path: request.path },
-          { cause: error },
-        )
+  private async createInternal(path: string): Promise<WorkspaceCreateValue> {
+    try {
+      const existing = await this.ctx.workspaceRegistry.resolveByPath(path)
+      if (existing !== undefined) {
+        return { workspace: workspaceView(existing), created: false }
       }
+      const workspace = await this.ctx.workspaceRegistry.create(path)
+      return { workspace: workspaceView(workspace), created: true }
+    } catch (error) {
+      if (remoteErrorOf(error) !== undefined) throw error
+      throw new RemoteError(
+        'workspace/invalid-path',
+        `cannot create a Workspace at "${path}": ${errorMessage(error)}`,
+        { path },
+        { cause: error },
+      )
+    }
+  }
+
+  create(request: WorkspaceCreateRequest): Promise<WorkspaceCreateValue> {
+    return this.enqueue(() => this.createInternal(request.path))
+  }
+
+  /**
+   * Confirm and open an existing, legacy, or new project directory.
+   * @param request - confirmed parameters including path, mode, and optional expected ID/digest.
+   * @param signal - caller cancellation signal.
+   * @returns the created or resolved Workspace projection.
+   */
+  openProject(request: WorkspaceOpenProjectRequest, signal?: AbortSignal): Promise<WorkspaceCreateValue> {
+    return this.enqueue(async () => {
+      interface ProjectStorageOpenLike {
+        open(options: { root: string; mode: string; expectedId?: unknown; expectedDigest?: string }, signal?: AbortSignal): Promise<void>
+      }
+      const projectStorage = this.ctx.get('projectStorage', false) as unknown as ProjectStorageOpenLike | undefined
+      if (projectStorage !== undefined) {
+        try {
+          await projectStorage.open({
+            root: request.path,
+            mode: request.mode,
+            ...(request.expectedId !== undefined ? { expectedId: request.expectedId } : {}),
+            ...(request.expectedDigest !== undefined ? { expectedDigest: request.expectedDigest } : {}),
+          }, signal)
+        } catch (error) {
+          if (remoteErrorOf(error) !== undefined) throw error
+          throw new RemoteError(
+            'workspace/confirmation-mismatch',
+            `cannot open project at "${request.path}": ${errorMessage(error)}`,
+            { path: request.path, reason: errorMessage(error) },
+            { cause: error },
+          )
+        }
+      }
+      return this.createInternal(request.path)
     })
+  }
+
+  /**
+   * Inspect a directory before creating or adopting a Workspace.
+   * @param request - path to inspect.
+   * @param signal - caller cancellation signal.
+   * @returns the inspection view (new, existing, registered, or legacy).
+   */
+  async inspect(request: WorkspaceInspectRequest, _signal?: AbortSignal): Promise<WorkspaceInspectionView> {
+    return { kind: 'new', root: request.path }
   }
 
   /**

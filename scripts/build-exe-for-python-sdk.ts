@@ -20,7 +20,7 @@ import { resolveWindowsNodePtyAddons } from './build-exe-for-python-sdk-native-p
 import { officeSidecarArchives, downloadOfficeSidecar, runtimeNpmArchive, OFFICE_ASSET_IGNORES } from './build-exe-for-python-sdk-office.ts'
 import { syncPythonRuntimeProduct } from './build-exe-for-python-sdk-resources.ts'
 import { deduplicateStagedWorkspacePackages, materializeStagedLinks } from './build-exe-for-python-sdk-staging.ts'
-import { preparePrimaryRuntime, smokePrimaryRuntime } from './primary-runtime/prepare.ts'
+import { preparePrimaryRuntime, smokePrimaryRuntime, type PrimaryRuntimeTarget } from './primary-runtime/prepare.ts'
 import primaryLock from './primary-runtime/lock.json' with { type: 'json' }
 
 const root = resolve(import.meta.dirname, '..')
@@ -409,7 +409,7 @@ class SingleExeBuild {
       const inputs = { version, target: `${target.platform}-${target.arch}`, office, pnpm }
       const identity = createHash('sha256').update(JSON.stringify({ ...inputs, primaryLock })).digest('hex')
       await writeFile(join(resources, 'downloads.json'), JSON.stringify({ ...inputs, identity }, undefined, 2) + '\n')
-      const primaryTarget = `${target.platform}-${target.arch}`
+      const primaryTarget = `${target.platform}-${target.arch}` as PrimaryRuntimeTarget
       const archiveCache = join(tmpdir(), 'dsh-primary-runtime-downloads')
       await preparePrimaryRuntime({
         target: primaryTarget,

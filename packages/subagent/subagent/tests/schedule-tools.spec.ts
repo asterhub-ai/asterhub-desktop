@@ -109,7 +109,7 @@ describe('a delegated child under a preset that mounts the Schedule tools', () =
     expect(ctx.tools.schemas(child).map(schema => schema.name)).toContain('schedule_create')
     await run.result
     expect(toolResultTexts(child).join('')).toContain('"code":"subagent_session"')
-    expect((await ctx.schedule.list({ sessionId: child.session.id })).items).toEqual([])
+    expect((await ctx.schedule.list({})).items).toEqual([])
     expect(await ctx.schedule.catalog()).toEqual([])
     expect(dispatched).not.toHaveBeenCalled()
     await run.dispose()

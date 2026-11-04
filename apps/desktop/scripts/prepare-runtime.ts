@@ -1,31 +1,20 @@
 /** Prepare the target Electron distribution, pinned pnpm CLI, and Desktop resources. */
 
-import { packagingStep } from './packaging-step.mjs'
 import { execFileSync } from 'node:child_process'
-import { chmodSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { downloadArtifact } from '@electron/get'
 import extractZip from 'extract-zip'
+import { readPrimaryRuntime } from '../../../packages/skill/tool-workspace-dependencies/src/index.ts'
+import { packagingStep } from './packaging-step.mjs'
 import { resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { preparePrimaryRuntime } from './prepare-primary-runtime.ts'
 import { prepareDesktopCli } from './prepare-cli.ts'
-
 const BUILD_PATHS = resolveDesktopTargetBuildPaths()
 const RUNTIME_ROOT = BUILD_PATHS.runtime
 
-function preparePnpm(): string {
-  const require = createRequire(import.meta.url)
-  const manifestPath = require.resolve('pnpm')
-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { version?: unknown }
-  if (typeof manifest.version !== 'string') throw new Error('desktop runtime: pnpm manifest has no version')
-  const packageDir = dirname(manifestPath)
-  const destination = join(RUNTIME_ROOT, 'pnpm')
-  rmSync(destination, { recursive: true, force: true })
-  cpSync(packageDir, destination, { recursive: true })
-  return manifest.version
-}
 
 function prepareCli(): void {
   cpSync(join(import.meta.dirname, 'node-bin'), join(RUNTIME_ROOT, 'bin'), { recursive: true })
@@ -57,18 +46,18 @@ async function main(): Promise<void> {
   mkdirSync(RUNTIME_ROOT, { recursive: true })
 
   const nodeVersion = await prepareElectron()
-  const pnpmVersion = preparePnpm()
+  await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'prepare:primary-runtime',
+    () => preparePrimaryRuntime({ deferSmoke: values['defer-primary-runtime-smoke'] }))
+
+  const { pnpm } = await readPrimaryRuntime(join(RUNTIME_ROOT, 'primary-runtime'))
+  if (pnpm === undefined) throw new Error('desktop runtime: primary-runtime manifest has no pnpm version')
 
   await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'prepare:cli', async () => { prepareCli() })
 
   writeFileSync(join(RUNTIME_ROOT, 'versions.json'), `${JSON.stringify({
     schemaVersion: 1,
     node: nodeVersion,
-    pnpm: pnpmVersion,
+    pnpm,
   }, undefined, 2)}\n`)
-
-  await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'prepare:primary-runtime',
-    () => preparePrimaryRuntime({ deferSmoke: values['defer-primary-runtime-smoke'] }))
 }
-
 await main()

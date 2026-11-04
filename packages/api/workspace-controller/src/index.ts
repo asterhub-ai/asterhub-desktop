@@ -17,6 +17,9 @@ import type {
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
   WorkspaceDeleteValue,
+  WorkspaceInspectRequest,
+  WorkspaceInspectionView,
+  WorkspaceOpenProjectRequest,
   WorkspaceFollowFrame,
   WorkspaceId,
   WorkspaceInsertBeforeRequest,
@@ -90,6 +93,28 @@ export class WorkspaceController extends TypertRemoteService {
   @Remote('create')
   create(request: WorkspaceCreateRequest): Promise<WorkspaceCreateValue> {
     return this.commands.create(request)
+  }
+
+  /**
+   * Inspect a directory before creating or adopting a Workspace.
+   * @param request - path to inspect.
+   * @param signal - caller cancellation signal.
+   * @returns the inspection view (new, existing, registered, or legacy).
+   */
+  @Remote('inspect')
+  inspect(request: WorkspaceInspectRequest, signal: AbortSignal): Promise<WorkspaceInspectionView> {
+    return this.commands.inspect(request, signal)
+  }
+
+  /**
+   * Confirm and open an existing, legacy, or new project directory.
+   * @param request - confirmed parameters including path, mode, and optional expected ID/digest.
+   * @param signal - caller cancellation signal.
+   * @returns the created or resolved Workspace projection.
+   */
+  @Remote('openProject')
+  openProject(request: WorkspaceOpenProjectRequest, signal: AbortSignal): Promise<WorkspaceCreateValue> {
+    return this.commands.openProject(request, signal)
   }
 
   /**

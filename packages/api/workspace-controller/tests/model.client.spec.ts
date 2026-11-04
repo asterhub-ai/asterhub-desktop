@@ -13,6 +13,9 @@ import type {
   WorkspaceInsertBeforeRequest,
   WorkspaceInsertSessionBeforeRequest,
   WorkspaceOrderValue,
+  WorkspaceInspectRequest,
+  WorkspaceInspectionView,
+  WorkspaceOpenProjectRequest,
   WorkspacePinSessionRequest,
   WorkspacePinValue,
   WorkspaceRenameRequest,
@@ -148,6 +151,16 @@ class FakeWorkspaceRemote implements WorkspaceRemote {
     return this.onUnpinSession(request)
   }
 
+
+  inspect(request: WorkspaceInspectRequest): Promise<RemoteResult<WorkspaceInspectionView>> {
+    this.record('inspect', request)
+    return Promise.resolve(remoteOk({ kind: 'new', root: request.path }))
+  }
+
+  openProject(request: WorkspaceOpenProjectRequest): Promise<RemoteResult<WorkspaceCreateValue>> {
+    this.record('openProject', request)
+    return Promise.resolve(remoteOk({ workspace: workspace(request.path.split('/').pop() ?? 'workspace'), created: true }))
+  }
   follow(_signal?: AbortSignal): RemoteStreamHandle<WorkspaceFollowFrame, never> {
     return streamHandle<WorkspaceFollowFrame>((async function* () {})())
   }

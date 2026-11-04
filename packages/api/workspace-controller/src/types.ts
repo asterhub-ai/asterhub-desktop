@@ -29,6 +29,39 @@ export interface WorkspaceView {
   readonly updatedAt: string
 }
 
+/** Parameters for inspecting a candidate directory before opening or creating a Workspace. */
+export interface WorkspaceInspectRequest {
+  readonly path: string
+}
+
+/** Host response to a directory inspection query. */
+export type WorkspaceInspectionView =
+  | { readonly kind: 'new'; readonly root: string }
+  | {
+    readonly kind: 'existing'
+    readonly root: string
+    readonly projectId: string
+    readonly title: string
+    readonly sessionCount: number
+    readonly digest: string
+  }
+  | {
+    readonly kind: 'registered'
+    readonly root: string
+    readonly workspaceId: WorkspaceId
+    readonly title: string
+    readonly sessionCount: number
+    readonly digest: string
+  }
+  | {
+    readonly kind: 'legacy'
+    readonly root: string
+    readonly proposalId: string
+    readonly title: string
+    readonly sessionCount: number
+    readonly digest: string
+  }
+
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
     /** The requested directory cannot back a Workspace. */
@@ -58,12 +91,22 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'directory-picker/exists': { readonly path: string }
     /** The parent is not fully qualified, the name is not one segment, or creation failed. */
     'directory-picker/create-failed': { readonly path: string }
+    /** An openProject request carried stale or conflicting confirmation identity or digest. */
+    'workspace/confirmation-mismatch': { readonly path: string; readonly reason: string }
   }
 }
 
 /** Existing directory requested for Workspace adoption. */
 export interface WorkspaceCreateRequest {
   readonly path: string
+}
+
+/** Request to confirm and adopt or create a project workspace. */
+export interface WorkspaceOpenProjectRequest {
+  readonly path: string
+  readonly mode: 'new' | 'existing' | 'legacy'
+  readonly expectedId?: string
+  readonly expectedDigest?: string
 }
 
 /** Created or previously registered Workspace. */
