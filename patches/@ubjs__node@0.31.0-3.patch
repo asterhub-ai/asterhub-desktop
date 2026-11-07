@@ -1,0 +1,35 @@
+diff --git a/typescript/dist/resolve-lib.js b/typescript/dist/resolve-lib.js
+index e8837bb2337c42eaffe15942923b8af39fca2b1a..8884fe2c27e593b4cc5e7b7bf9bc04773845b91d 100644
+--- a/typescript/dist/resolve-lib.js
++++ b/typescript/dist/resolve-lib.js
+@@ -157,14 +157,27 @@ function resolveNpmPackage(crateName, callerUrl, npmPackageBase, tripleStyle) {
+         });
+     }
+     const binaryPath = (0, node_path_1.join)((0, node_path_1.dirname)(pkgJsonPath), libFileName(crateName, process.platform));
+-    if (!(0, node_fs_1.existsSync)(binaryPath)) {
++    /*
++     * AsterHub patch (not upstream @ubjs/node): under Electron, `require.resolve`
++     * and `fs.existsSync` are shimmed for asar archives, so `binaryPath` points
++     * inside `app.asar` and the existsSync probe falsely succeeds even though
++     * the file is not on disk; the Rust side then fails LoadLibrary with
++     * os error 126. Remap to `app.asar.unpacked`, where electron-builder
++     * asarUnpack physically extracts native binaries. No-op outside an asar
++     * archive because such paths never contain an `app.asar` segment. Same
++     * remap rule as the AsterHub macOS precedent in
++     * packages/experimental/cua-macos/src/native-build.ts and
++     * packages/fs/tool-fs-search/src/search-core.ts.
++     */
++    const unpackedBinaryPath = binaryPath.replace(/([\\/])app\.asar(?=[\\/])/u, "$1app.asar.unpacked");
++    if (!(0, node_fs_1.existsSync)(unpackedBinaryPath)) {
+         throw new ResolveLibPathError({
+             message: `Platform package "${pkgName}" is installed but does not contain ` +
+                 `"${libFileName(crateName, process.platform)}" — package layout is malformed.`,
+             mode: "npmPackageBase",
+             crateName,
+-            attempted: [binaryPath],
++            attempted: [binaryPath, unpackedBinaryPath],
+         });
+     }
+-    return binaryPath;
++    return unpackedBinaryPath;
+ }
