@@ -129,6 +129,8 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'workspace/initializeDefault': 'owner-only', // owner initializes the default Workspace
   'workspace/insertBefore': 'owner-only', // owner reorders Workspaces
   'workspace/insertSessionBefore': 'owner-only', // owner reorders Sessions
+  'workspace/inspect': 'owner-only', // owner inspects a candidate directory before opening or creating a Workspace
+  'workspace/openProject': 'owner-only', // owner opens or creates the Workspace project
   'workspace/pinSession': 'owner-only', // owner pins a Session
   'workspace/rename': 'owner-only', // owner renames a Workspace
   'workspace/unarchiveSession': 'owner-only', // owner unarchives a Session
