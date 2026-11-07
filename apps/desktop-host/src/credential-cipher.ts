@@ -1,11 +1,19 @@
 /** Correlated requests to Electron's OS-backed credential encryption service. */
 
-import type { CredentialCipher } from '@deepseek-ai/dsh-credentials'
+import { CredentialCipherOsError, type CredentialCipher } from '@deepseek-ai/dsh-credentials'
 
 interface PendingRequest {
   resolve(value: string): void
   reject(error: Error): void
 }
+
+/**
+ * Prefix the shell puts on OS-backed cipher failures before sending them over
+ * the child-process channel; failures of the channel itself carry other
+ * strings. Producer: the credential-cipher catch in the desktop shell's host
+ * process.
+ */
+const OS_FAILURE_PREFIX = 'OS credential encryption failed:'
 
 /** Host-side credential cipher; plaintext crosses only the private child-process IPC channel. */
 export class DesktopCredentialCipher implements CredentialCipher {
@@ -43,7 +51,11 @@ export class DesktopCredentialCipher implements CredentialCipher {
     const request = this.pending.get(requestId)
     if (request === undefined) return true
     this.pending.delete(requestId)
-    if ('error' in message && typeof message.error === 'string') request.reject(new Error(message.error))
+    if ('error' in message && typeof message.error === 'string') {
+      request.reject(message.error.startsWith(OS_FAILURE_PREFIX)
+        ? new CredentialCipherOsError(message.error)
+        : new Error(message.error))
+    }
     else if ('value' in message && typeof message.value === 'string') request.resolve(message.value)
     else request.reject(new Error('desktop credential cipher returned an invalid response'))
     return true

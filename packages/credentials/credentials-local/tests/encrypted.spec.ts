@@ -4,7 +4,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { credentialRef, type CredentialCipher } from '@deepseek-ai/dsh-credentials'
+import { CredentialCipherOsError, credentialRef, type CredentialCipher } from '@deepseek-ai/dsh-credentials'
 import type { WriteFileAtomicOptions } from '@deepseek-ai/dsh-atomic-write'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { LocalCredentialProvider } from '../src/index.ts'
@@ -218,6 +218,29 @@ it('refuses corrupted ciphertext at boot without rewriting or disclosing its con
   await expect(boot()).rejects.toThrow()
   expect(await readFile(path, 'utf8')).toBe(stored)
   expect(stored).not.toContain('private-test-value')
+})
+
+it('names the file and its recovery when the OS cipher rejects the stored document', async () => {
+  const { path, boot, encryption } = await setup()
+  const stored = `${ENCRYPTED_PREFIX}unreadable-ciphertext`
+  await writeFile(path, stored, { mode: 0o600 })
+
+  await expect(boot({
+    ...encryption,
+    async decrypt() { throw new CredentialCipherOsError('OS credential encryption failed: Error while decrypting the ciphertext') },
+  })).rejects.toThrow(/cannot decrypt .*\.credentials\.yaml.*delete the file to reset stored credentials/)
+  expect(await readFile(path, 'utf8')).toBe(stored)
+})
+
+it('passes cipher transport failures through without store recovery guidance', async () => {
+  const { path, boot, encryption } = await setup()
+  await writeFile(path, `${ENCRYPTED_PREFIX}unreadable-ciphertext`, { mode: 0o600 })
+
+  const failure = await boot({ ...encryption, async decrypt() { throw new Error('desktop credential cipher is unavailable') } })
+    .catch((error: unknown) => error)
+  expect(failure).toBeInstanceOf(Error)
+  expect((failure as Error).message).toContain('desktop credential cipher is unavailable')
+  expect((failure as Error).message).not.toContain('delete the file')
 })
 
 it('refuses encrypted storage when the host has not provided a cipher', async () => {

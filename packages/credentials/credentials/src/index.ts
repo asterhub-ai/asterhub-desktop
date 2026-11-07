@@ -28,9 +28,20 @@ export interface CredentialCipher {
    * Decrypt one value previously returned by {@link encrypt}.
    * @param ciphertext - the encrypted value.
    * @returns the original clear text.
+   * @throws {@link CredentialCipherOsError} when the OS-backed backend cannot
+   * perform the operation in this environment.
    */
   decrypt(ciphertext: string): Promise<string>
 }
+
+/**
+ * A failure the OS-backed cipher backend itself reported — the OS refused the
+ * ciphertext or reports encryption unavailable — as distinct from a transport
+ * failure between the credential provider and the cipher backend. Recovery
+ * advice about the stored document may hang on this class, so ciphers must not
+ * use it for unavailable transports.
+ */
+export class CredentialCipherOsError extends Error {}
 
 const REF_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
 

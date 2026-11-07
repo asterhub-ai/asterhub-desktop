@@ -44,7 +44,7 @@ import { Document, isMap, isScalar, parseDocument, type YAMLError } from 'yaml'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { canonicalizeWatchPath, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
-import { CredentialProvider, credentialRef, parseCredentialKey } from '@deepseek-ai/dsh-credentials'
+import { CredentialCipherOsError, CredentialProvider, credentialRef, parseCredentialKey } from '@deepseek-ai/dsh-credentials'
 import type {
   ApiKeyRecord,
   CredentialInfo,
@@ -902,7 +902,13 @@ export class LocalCredentialProvider extends CredentialProvider {
     }, { waitMs: DOCUMENT_LOCK_WAIT_MS })
   }
 
-  /** Reject unencrypted documents when encryption is required. */
+  /**
+   * Reject unencrypted documents when encryption is required. An OS cipher
+   * rejection on a stored document means the ciphertext is unreadable under
+   * this environment's OS key, which no in-place operation can repair, so the
+   * error names the file and its one recovery; transport failures pass through
+   * unmodified, because deleting the store cannot fix them.
+   */
   private async decodeDocument(stored: string): Promise<string> {
     if (!this.encrypted) return stored
     if (!stored.startsWith(ENCRYPTED_DOCUMENT_PREFIX)) {
@@ -910,7 +916,16 @@ export class LocalCredentialProvider extends CredentialProvider {
     }
     const cipher = this.cipher
     if (cipher === undefined) throw new Error('credentials-local: credential cipher is unavailable')
-    return cipher.decrypt(stored.slice(ENCRYPTED_DOCUMENT_PREFIX.length))
+    try {
+      return await cipher.decrypt(stored.slice(ENCRYPTED_DOCUMENT_PREFIX.length))
+    } catch (error) {
+      if (!(error instanceof CredentialCipherOsError)) throw error
+      throw new Error(
+        `credentials-local: cannot decrypt ${this.spec.filename}: ${error.message}. The store was encrypted`
+        + ' for a different Windows user or machine, or the OS key changed since; delete the file to reset'
+        + ' stored credentials and sign in again',
+      )
+    }
   }
 
   /** Persist a document through the configured OS-backed cipher before publishing its cache. */
