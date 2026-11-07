@@ -1152,6 +1152,12 @@ describe('AsterHub account model catalog', () => {
       resolveApiKey: async () => 'account-key', auth: memoryAuth() })
   }
 
+  it('keeps the listing-declared model name including its vendor prefix', async () => {
+    const adapter = managed(async () => [{ id: 'deepseek-v4.1-flash', name: 'DeepSeek-V4.1-Flash' }])
+    expect((await adapter.listModels('sub2api')).map(model => model.name))
+      .toEqual(['DeepSeek-V4.1-Flash'])
+  })
+
   it('advertises discovered image modalities for dynamic account models', async () => {
     const adapter = managed(async () => [{ id: 'gpt-luna', name: 'GPT-Luna', inputModalities: ['text', 'image'] }])
     expect((await adapter.listModels('sub2api'))[0]?.inputModalities).toEqual(['text', 'image'])

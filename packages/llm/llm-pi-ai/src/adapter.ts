@@ -316,17 +316,13 @@ export class PiAiAdapter extends LlmAdapter {
       const template = profile.piProvider?.getModels()[0]
       if (template === undefined) throw new LlmError(`provider "${profile.provider}" has no model template`, 'INVALID_CONFIG')
       const seen = new Set<string>()
-      target.models = entries.flatMap((entry, index) => {
+      target.models = entries.flatMap((entry) => {
         if (entry.id.length === 0 || seen.has(entry.id)) return []
         seen.add(entry.id)
-        const name = (entry.name ?? entry.id)
-          .replace(/deepseek/giu, '')
-          .replace(/\s+/gu, ' ')
-          .replace(/^[-:_\s]+|[-:_\s]+$/gu, '') || `Model ${index + 1}`
         return [{
           ...template,
           id: entry.id,
-          name,
+          name: entry.name ?? entry.id,
           provider: profile.provider,
           ...profile.baseURL === undefined ? {} : { baseUrl: profile.baseURL },
           contextWindow: entry.contextWindow ?? template.contextWindow,
