@@ -101,10 +101,16 @@ describe('the shipped shell composition (real bundle layers)', () => {
 })
 
 describe('shipped agent presets gate both shell tools by platform', () => {
-  const webBundle = fileURLToPath(new URL('../../../packages/bundle/web-app/', import.meta.url))
-  const webManifest = JSON.parse(readFileSync(join(webBundle, 'package.json'), 'utf8')) as { dsh: { bundle: { patch: string[] } } }
-  const presetRows = composeEntries([bundlePatchPaths(webBundle, webManifest.dsh.bundle).flatMap(file =>
-    yaml.load(readFileSync(file, 'utf8'), { schema: entryListSchema }) as import('@deepseek-ai/cordis-plugin-include').PatchOptions[])])
+  // The presets ship with the AsterHub product layer, not the generic Web
+  // surface: dsh-asterhub-product-web declares the standard/ptc/minimal/cordis
+  // preset patches after the web patch, so both bundles are composed here.
+  const presetBundles = ['web-app', 'asterhub-product-web'].map(name =>
+    fileURLToPath(new URL(`../../../packages/bundle/${name}/`, import.meta.url)))
+  const presetRows = composeEntries(presetBundles.map((bundle) => {
+    const manifest = JSON.parse(readFileSync(join(bundle, 'package.json'), 'utf8')) as { dsh: { bundle: { patch: string | string[] } } }
+    return bundlePatchPaths(bundle, manifest.dsh.bundle).flatMap(file =>
+      yaml.load(readFileSync(file, 'utf8'), { schema: entryListSchema }) as import('@deepseek-ai/cordis-plugin-include').PatchOptions[])
+  }))
 
   const definitions = presetRows.filter(row => row.name === '@deepseek-ai/dsh-agent-preset').map(row => row.config as import('@deepseek-ai/dsh-agent-preset-registry').PresetDefinition)
 

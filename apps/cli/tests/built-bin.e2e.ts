@@ -32,6 +32,48 @@ const dshBin = join(repoRoot, 'apps/cli/lib/bin.js')
 const invalidProvider = fileURLToPath(new URL('./fixtures/invalid-provider.cordis.yml', import.meta.url))
 const webReadyExitHook = new URL('./fixtures/web-browser-open/register.mjs', import.meta.url).href
 
+/**
+ * The shipped base-backed profiles select `@deepseek-ai/dsh-asterhub-product`,
+ * whose trusted route bills every model call to the signed-in AsterHub account.
+ * A throwaway DSH_HOME has no such sign-in, so the model-turn cases layer the
+ * documented generic composition over the shipped profile: the product route is
+ * disabled and the base DeepSeek provider answers through `DEEPSEEK_API_KEY` /
+ * `DEEPSEEK_BASE_URL` instead.
+ */
+const GENERIC_MODEL_PATCH = [
+  '- id: asterhub-model-policy',
+  '  disabled: true',
+  '- id: llm',
+  '  inject: []',
+  '- id: llm-pi-ai',
+  '  disabled: true',
+  '- id: agent-default-model',
+  '  inject: []',
+  '  config:',
+  '    locked: false',
+  '    provider: deepseek-official',
+  '    model: deepseek-flash',
+  '',
+].join('\n')
+
+/**
+ * The ACP bundle pins its own `provider: sub2api` route, so the ACP turn also
+ * repoints the `acp` row at the same generic DeepSeek provider.
+ */
+const ACP_MODEL_PATCH = GENERIC_MODEL_PATCH + [
+  '- id: acp',
+  '  config:',
+  '    provider: deepseek-official',
+  '    model: deepseek-flash',
+  '',
+].join('\n')
+
+function writeGenericModelPatch(home: string, body: string = GENERIC_MODEL_PATCH): string {
+  const file = join(home, 'generic-model.patch.yml')
+  writeFileSync(file, body)
+  return file
+}
+
 async function runBuiltBin(
   args: readonly string[] = [],
   env: Readonly<Record<string, string | undefined>> = {},
@@ -386,7 +428,7 @@ describe.skipIf(!existsSync(dshBin))('dsh BUILT bin (node lib/bin.js, no tsx)', 
       expect(web.stderr).toBe('')
       expect(web.stdout).toContain('Usage: dsh --profile web')
       expect(web.stdout).toContain('--port <port>')
-      expect(web.stdout).toContain('--public-url <url>')
+      expect(web.stdout).toContain('--trusted-host <authority...>')
       expect(web.stdout).not.toContain('dsh web: http://')
 
       const wildcardHost = await runBuiltBin(['web', '--host', '0.0.0.0'], {
@@ -540,7 +582,7 @@ describe.skipIf(!existsSync(dshBin))('dsh BUILT bin (node lib/bin.js, no tsx)', 
       successText: 'ACP BUILT PROFILE OK',
     })
     const home = mkdtempSync(join(tmpdir(), 'dsh-built-acp-'))
-    const child = execa(process.execPath, [dshBin, '--profile', 'acp'], {
+    const child = execa(process.execPath, [dshBin, '--profile', 'acp', '--patch', writeGenericModelPatch(home, ACP_MODEL_PATCH)], {
       cwd: home,
       reject: false,
       timeout: SPAWN_TIMEOUT_MS,
@@ -584,7 +626,8 @@ describe.skipIf(!existsSync(dshBin))('dsh BUILT bin (node lib/bin.js, no tsx)', 
       expect(initialized.agentInfo).toMatchObject({ name: 'deepseek-harness-acp' })
       expect(initialized.agentCapabilities).toEqual({
         mcpCapabilities: { http: true },
-        promptCapabilities: { image: false, audio: false, embeddedContext: false },
+        // The generic DeepSeek route this case selects declares image input.
+        promptCapabilities: { image: true, audio: false, embeddedContext: false },
         sessionCapabilities: { close: {}, list: {}, resume: {} },
       })
       expect('_meta' in initialized).toBe(false)
@@ -626,7 +669,7 @@ describe.skipIf(!existsSync(dshBin))('dsh BUILT bin (node lib/bin.js, no tsx)', 
     })
     const home = mkdtempSync(join(tmpdir(), 'dsh-built-headless-'))
     try {
-      const result = await runBuiltBin(['--profile', 'headless', 'answer', 'from', 'the', 'published', 'entry'], {
+      const result = await runBuiltBin(['--profile', 'headless', '--patch', writeGenericModelPatch(home), 'answer', 'from', 'the', 'published', 'entry'], {
         DSH_HOME: home,
         DSH_TELEMETRY_DISABLED: '1',
         DEEPSEEK_API_KEY: apiKey,
