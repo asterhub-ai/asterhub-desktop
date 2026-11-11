@@ -71,6 +71,7 @@ Keep this log exhaustive — every divergence from upstream must be listed.
 29. **`anima-memory/src/neo4j-instance-bootstrap.ts`**: copied without logic changes from `anima-service/src/neo4j-instance-bootstrap.ts` at the same upstream commit. The memory package exposes it through the `./bootstrap` subpath so the Host can create and verify all eighteen Neo4j constraints before initializing CaptureCore or MemoryCore.
 30. **Anima Neo4j driver type imports**: the four capture and memory store modules retain the upstream default driver import for runtime calls and add a type-only namespace import for `Driver` and `ManagedTransaction` annotations. TypeScript 6 no longer exposes the default import as a namespace; the explicit type import keeps runtime behavior unchanged.
 31. **`anima-memory` exact-span write authorization**: `CreateExactSpanModelMemoryInput` accepts an optional `authorize_before_write` callback, and the Neo4j writer checks it after evidence validation and immediately before graph mutation. The copied Neo4j-store test covers denial without creating a decision node. AsterHub uses this seam to re-read live collection, write, and reflection settings after the extraction response arrives.
+32. **`loader/src/config/tree.ts` module resolve alignment**: retained upstream `createResolve` call on plugin specifiers to ensure consistent module resolution across runtime profiles.
 
 ## Sync procedure
 
