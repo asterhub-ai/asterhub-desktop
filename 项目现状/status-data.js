@@ -367,9 +367,9 @@ window.ASTERHUB_STATUS = {
       "track": "PLUGIN",
       "category": "插件化",
       "priority": "P1",
-      "status": "pending",
-      "label": "依赖清单",
-      "detail": "按 PLUGIN-INVENTORY 优先级迁第一批；不阻断无关交付。",
+      "status": "verified",
+      "label": "批次 1 已收口",
+      "detail": "按 PLUGIN-INVENTORY 批次 1 治理：#27 对齐 vendor/loader createResolve 基线；#14 零侵入；#12/#24 产物与测试断言对齐。typecheck 与 built-bin 33/33 冒烟全绿，提交合入 master。",
       "acceptance": "迁出有测试/冒烟；核心面减少有 diff 证据。"
     },
     {
